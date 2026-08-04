@@ -6,6 +6,7 @@ import {
   zBacktestTimeframe,
   zChartDrawings,
   zConfidence,
+  zDryRun,
   zInterval,
   zLooseBoolean,
   zMarket,
@@ -327,7 +328,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_account_overview",
     domain: "core",
     description:
-      "Returns a combined view of the connected account in one call: technical connection status, portfolio summary, the operator's standing trade mode, and (unless include_live=false) live broker account data. When: at session start, or whenever a full picture of the account is needed before discussing balance, exposure, or execution. read-only.",
+      "Returns a combined view of the connected account in one call: technical connection status, portfolio summary, the operator's standing trade mode, and (unless include_live=false) live broker account data. When: at session start, or whenever a full picture of the account is needed before discussing balance, exposure, or execution. Not when only one figure changed — get_portfolio/get_agent_trade_mode alone are cheaper. Default include_live=true (pass false only for a faster, connection-only summary). read-only. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence, not a suggestion.",
     inputSchema: {
       include_live: z
         .boolean()
@@ -341,7 +342,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_readiness",
     domain: "core",
     description:
-      "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
+      "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. Not a substitute for open_trade's own checks — a pass here does not skip them, and open_trade still refuses independently on a stale quote, closed session, or unsafe spread. Defaults: market=forex, practice=false. read-only. If recovery_tool is returned (e.g. after a SPREAD_TOO_WIDE or MARKET_CLOSED signal elsewhere), this is usually that recovery_tool — call it immediately, don't ask the operator first.",
     inputSchema: {
       symbol: z.string().optional().describe("Pair symbol — for quote/spread check"),
       market: zMarket,
@@ -354,7 +355,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_capabilities",
     domain: "core",
     description:
-      "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
+      "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_account_overview -> get_agent_trade_mode), not a suggestion.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -362,7 +363,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_portfolio",
     domain: "core",
     description:
-      "Returns the account balance and portfolio summary, including current PnL. When: after get_account_overview when only the portfolio needs refreshing, or when the operator asks about balance or PnL. read-only. Not for execution.",
+      "Returns the account balance and portfolio summary, including current PnL. When: after get_account_overview when only the portfolio needs refreshing, or when the operator asks about balance or PnL. Not for execution, and not for open-position detail — use get_open_trades for that. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "portfolio" },
@@ -371,7 +372,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_open_trades",
     domain: "core",
     description:
-      "Lists all currently open trades together with an Arabic summary (summary_ar). When: before evaluate_trade or any close action, or when the operator asks what positions are open. read-only.",
+      "Lists all currently open trades together with an Arabic summary (summary_ar). When: before evaluate_trade or any close action, to confirm the result of open_trade/close_trade/modify_sl_tp/cancel_mt5_order/close_partial (none of those five have a before/after position lookup of their own — this is how you verify a change actually landed), or when the operator asks what positions are open. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "open-trades" },
@@ -380,7 +381,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_lessons",
     domain: "core",
     description:
-      "Retrieves lessons learned from past trades as structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. read-only. Example: symbol=EURUSD&recent=true.",
+      "Retrieves lessons learned from past trades as structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. Not a substitute for get_strategy_performance — lessons are past-trade outcomes, not a strategy's live-vs-backtest evidence. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=EURUSD&recent=true.",
     inputSchema: {
       symbol: z.string().optional(),
       pattern: z.string().optional(),
@@ -394,7 +395,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_backtest",
     domain: "core",
     description:
-      "Runs a deterministic historical backtest of a catalog strategy over the given symbol, timeframe, and date_range, and records the result as server-side evidence. When: before trusting a catalog strategy live, or before citing statistical support for it. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity — and executes no trades. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
+      "Queues a deterministic historical backtest of a catalog strategy over the given symbol, timeframe, and date_range; returns job_id/status immediately (well under 1s) — the simulation itself can take up to 120s and never blocks this call. When: before trusting a catalog strategy live, or before citing statistical support for it. Not for a strategy already backtested for this exact symbol+timeframe — check get_strategy_performance first, a repeat run wastes 120s for the same evidence. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity — and executes no trades. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call, long-polls up to ~20s) until all_terminal is true, then read result from that response — do not call this tool again to check status. If polling several backtests, batch every job_id into ONE jobs_wait call, never one call per job. Once the job completes, call get_strategy_performance with the same strategy_id/symbol/timeframe before citing the result — that comparison against live outcomes and deployment state (shadow/active/suspended) is the actual evidence a recommendation needs, not the raw backtest numbers alone. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
     inputSchema: {
       strategy_id: zBacktestStrategyId,
       symbol: zSymbol,
@@ -418,10 +419,39 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: IDEMPOTENT_WRITE,
   },
   {
+    name: "jobs_wait",
+    domain: "core",
+    description:
+      "Long-polls 1-12 bucket-C job ids together (run_backtest, run_market_analysis) and returns as soon as every job is terminal (completed or failed), or after ~20s if some are still running — check all_terminal, not just that the call returned. When: immediately after queuing one or more async jobs, and again after poll_after_seconds if all_terminal was false. Not for a job_id you already saw reported completed/failed — that result is final, re-polling wastes a call. Never poll one job at a time in a loop when several are outstanding — pass every job_id in one call; the 12-job cap is enforced, not a suggestion. Job ids are process-local — after a server restart every previously issued job_id reports not_found, which is expected, not an error to retry. read-only.",
+    inputSchema: {
+      jobs: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(12)
+        .describe("job_id values from run_backtest/run_market_analysis, 1-12 per call"),
+    },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "show_jobs_by_ids",
+    domain: "core",
+    description:
+      "Renders a completed batch of bucket-C jobs (run_backtest, run_market_analysis) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to show the operator the results together. Not before all_terminal — call jobs_wait again first, don't guess at a still-running job's outcome. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. read-only.",
+    inputSchema: {
+      jobs: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(12)
+        .describe("job_id values to render together, 1-12 per call"),
+    },
+    annotations: READ_ONLY,
+    ui: { widget: "jobs-report" },
+  },
+  {
     name: "get_strategy_performance",
     domain: "core",
     description:
-      "Compares a strategy's live outcomes against its backtest expectation and reports its deployment state (shadow/active/suspended). When: after run_backtest, or before create_recommendation to obtain a server-issued backtested_confidence. read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "Compares a strategy's live outcomes against its backtest expectation and reports its deployment state (shadow/active/suspended). When: after a run_backtest job completes, or before create_recommendation to obtain a server-issued backtested_confidence. Not a source of confidence numbers to invent from — only a confidence value THIS tool returned may be passed to create_recommendation's backtested_confidence field. read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
     inputSchema: {
       strategy_id: zBacktestStrategyId,
       symbol: z.string().optional(),
@@ -433,7 +463,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
+      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. Not for placing a live order — this only records the plan; open_trade or request_approval is the separate, explicit step that acts on it. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
@@ -442,7 +472,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_trade",
     domain: "core",
     description:
-      "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. stop_loss is mandatory; confidence is audit-only. side-effect: places a real order (idempotencyKey deduplicates for 24h).",
+      "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. Not when mode=approval — use request_approval there instead; this route only ever executes under the operator's own standing auto-mode authorisation, never a per-call approved_by_user claim. stop_loss is mandatory; confidence is audit-only; lots/notional cannot be passed — sizing is always server-computed, never accepted from the caller. side-effect: places a real order (idempotencyKey deduplicates for 24h). Pass dry_run:true to run every check (failure brake, authorization, market session, verified equity) and return the real risk_amount/equity figures without placing anything — use it to preview before the first live call on a symbol; the response is never cached under idempotencyKey. If recovery_tool is returned on a failure, call it immediately — don't explain or ask the operator first. On a real (non-preview) success, call get_open_trades next to confirm the order actually opened before telling the operator it worked.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -459,6 +489,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       order_type: z.enum(["market", "limit"]).optional(),
       limit_price: z.number().positive().optional(),
       idempotencyKey: z.string().max(128).optional().describe("idempotency 24h"),
+      dry_run: zDryRun,
     },
     annotations: IDEMPOTENT_WRITE,
   },
@@ -466,10 +497,11 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "close_trade",
     domain: "core",
     description:
-      "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123.",
+      "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. Not for reducing size while keeping a position open — that's close_partial, a different tool. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123. Pass dry_run:true to see the live price and estimated PnL each targeted trade would realize, without closing anything — trades on a broker this platform cannot close report would_close:false with the reason instead of a number. On a real (non-preview) call, call get_open_trades next to confirm the trade is actually gone.",
     inputSchema: {
       trade_id: zTradeId.optional(),
       all: z.boolean().optional(),
+      dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
   },
@@ -477,7 +509,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "evaluate_trade",
     domain: "core",
     description:
-      "Evaluates one open trade, returning its live PnL together with current market context. When: a trade is open and the operator asks how it is doing, or before making an exit decision. read-only. Example: trade_id=42.",
+      "Evaluates one open trade, returning its live PnL together with current market context. When: a trade is open and the operator asks how it is doing, or before making an exit decision. Not for listing which trades exist — get_open_trades gives the trade_id this tool needs. read-only. Example: trade_id=42.",
     inputSchema: { trade_id: zTradeId },
     annotations: READ_ONLY,
   },
@@ -485,7 +517,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "record_exit_decision",
     domain: "core",
     description:
-      "Records an exit-management decision (hold | close | adjust_sl) with its reason in the audit trail; it documents the decision only and never closes or modifies the position itself. When: after evaluate_trade, once a management decision has been made — follow with close_trade or modify_sl_tp to act on it. side-effect: records decision. Does not auto-close.",
+      "Records an exit-management decision (hold | close | adjust_sl) with its reason in the audit trail; it documents the decision only and never closes or modifies the position itself. When: after evaluate_trade, once a management decision has been made — follow with close_trade or modify_sl_tp to act on it. Not the tool that acts — recording decision:close or decision:adjust_sl does nothing to the position by itself; the corresponding call is a separate, required step. side-effect: records decision. Does not auto-close.",
     inputSchema: {
       trade_id: zTradeId,
       decision: z.enum(["hold", "close", "adjust_sl"]),
@@ -498,7 +530,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_approval",
     domain: "core",
     description:
-      "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram. When: mode=approval — do not use in direct mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons.",
+      "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram; the response also renders an approval-card with its own Approve/Reject buttons wired to respond_approval. When: mode=approval — do not use in direct mode, where open_trade acts on the operator's standing authorisation instead. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons. Pass dry_run:true to see the risk_amount/equity the card would show and confirm the card would send, without creating the intent or messaging Telegram. On a real (non-preview) success, call get_pending_approvals next to confirm the intent actually queued before telling the operator it was sent.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -510,34 +542,38 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       rationale: z.string().optional(),
       recommendation_id: z.number().optional(),
       practice: z.boolean().optional(),
+      dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
+    ui: { widget: "approval-card" },
   },
   {
     name: "respond_approval",
     domain: "core",
     description:
-      "Resolves a pending trade intent by approving or rejecting it; approving may immediately execute the trade. When: a pending intent exists and the operator has given a decision. side-effect: may execute the trade on approve.",
+      "Resolves a pending trade intent by approving or rejecting it; approving re-validates the levels against the live market before executing, and may immediately execute the trade — this is the ONLY tool an approval-card's buttons may call. When: a pending intent exists and the operator has given a decision (in chat, or by clicking a card button). Not for a trade that was already approved/rejected/cancelled — check get_pending_approvals or the intent's status first; resolving twice is refused, not silently repeated. side-effect: may execute the trade on approve. Pass dry_run:true to see the pending intent's stored levels and confirm it is still pending, without approving or rejecting it — nothing is resolved and no trade is executed. On a real approve, call get_open_trades next to confirm the trade actually opened — approval alone doesn't guarantee execution succeeded (revalidation or a technical check can still refuse it).",
     inputSchema: {
       intent_id: zTradeId,
       action: z.enum(["approve", "reject"]),
+      dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
+    ui: { widget: "approval-card" },
   },
   {
     name: "get_pending_approvals",
     domain: "core",
     description:
-      "Lists every trade intent still awaiting operator approval. When: mode=approval, to review what is pending before requesting or responding. read-only.",
+      "Lists every trade intent still awaiting operator approval, rendered as a queue with inline Approve/Reject per row (each button still only calls respond_approval, which re-validates before executing). When: mode=approval, to review what is pending before requesting or responding, or to confirm a request_approval call actually queued. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
-    ui: { widget: "pending-approvals" },
+    ui: { widget: "approval-queue" },
   },
   {
     name: "get_agent_settings",
     domain: "core",
     description:
-      "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. read-only.",
+      "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live equity or exposure figures — that's get_account_overview/get_portfolio. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -545,7 +581,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_trade_mode",
     domain: "core",
     description:
-      "Returns the operator's standing trading mode, shared with the platform: mode (auto | advisory), connected, and needs_choice. When: at session start after get_account_overview, and before offering execution. needs_choice=true means a connected operator has not chosen yet — ask ONCE which mode they want, remember the answer, and never re-ask on every analysis. read-only.",
+      "Returns the operator's standing trading mode, shared with the platform: mode (auto | advisory), connected, and needs_choice. When: at session start after get_account_overview, and before offering execution. Not needed again mid-session unless the connection just changed — get_account_overview already embeds this. needs_choice=true means a connected operator has not chosen yet — ask ONCE which mode they want, remember the answer, and never re-ask on every analysis. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -553,7 +589,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_agent_trade_mode",
     domain: "core",
     description:
-      "Sets the operator's standing trading mode: 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met, and 'advisory' means analysis and recommendations with no execution at all. When: ONLY when the operator explicitly states which mode they want in their own words — for auto, pass confirmed_by_user:true to record that. auto additionally requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation.",
+      "Sets the operator's standing trading mode: 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met, and 'advisory' means analysis and recommendations with no execution at all. When: ONLY when the operator explicitly states which mode they want in their own words — for auto, pass confirmed_by_user:true to record that. Not on a hunch that the operator implied it, and not to re-confirm a mode already set — check get_agent_trade_mode/get_account_overview first. auto additionally requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation — the single biggest blast-radius action in this catalog, since it removes the per-trade confirmation step entirely. Call get_agent_trade_mode next to confirm the change actually took effect before telling the operator it did.",
     inputSchema: setAgentTradeModeShape,
     annotations: DESTRUCTIVE,
   },
@@ -561,7 +597,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "find_similar_cases",
     domain: "core",
     description:
-      "Finds structurally similar past moments for this symbol and timeframe and returns aggregated forward outcomes for BOTH directions (buy and short) — evidence to weigh, never confirmation of a direction already chosen, and never a gate on a recommendation. When: during analysis, to ask what historically followed setups like the current one. found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. read-only.",
+      "Finds structurally similar past moments for this symbol and timeframe and returns aggregated forward outcomes for BOTH directions (buy and short) — evidence to weigh, never confirmation of a direction already chosen, and never a gate on a recommendation. When: during analysis, to ask what historically followed setups like the current one. Not a substitute for get_strategy_performance's live-vs-backtest comparison — this is unlabelled historical pattern matching, not a validated strategy's track record. Defaults: min_similarity 0.82, limit unset (server default). found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. read-only.",
     inputSchema: findSimilarCasesShape,
     annotations: READ_ONLY,
   },
@@ -569,7 +605,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "send_telegram_menu",
     domain: "core",
     description:
-      "Sends the agent's menu to the operator's Telegram as an outbound notification. When: the operator should be notified on Telegram; this is not an interactive chat channel. side-effect: sends a Telegram message.",
+      "Sends the agent's menu to the operator's Telegram as an outbound notification. When: the operator should be notified on Telegram; this is not an interactive chat channel — a reply the operator sends on Telegram does not come back through this tool call. Not for approval cards — request_approval sends its own Telegram message with approve/reject buttons. side-effect: sends a Telegram message.",
     inputSchema: {},
     annotations: DESTRUCTIVE,
   },
@@ -577,7 +613,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_chart_snapshot",
     domain: "core",
     description:
-      "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. Not for multiple timeframes at once — capture_multi_timeframe_snapshot does that in one parallel call instead of several of these. Default inline_image=true. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -597,7 +633,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_multi_timeframe_snapshot",
     domain: "core",
     description:
-      "Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels); a timeframe that fails to render is reported in missing_timeframes while the rest still return. Frames are attached inline and each carries display_markdown — when the operator should see the charts, paste each frame's display_markdown in your reply (links expire ~3 minutes). When: before every recommendation — use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
+      "Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels); a timeframe that fails to render is reported in missing_timeframes while the rest still return. Frames are attached inline and each carries display_markdown — when the operator should see the charts, paste each frame's display_markdown in your reply (links expire ~3 minutes). When: before every recommendation — use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). Not one capture_chart_snapshot call per timeframe — that serializes what this does in parallel and burns the image budget faster. Defaults: timeframes [\"15m\",\"1h\",\"4h\",\"1D\"], max_images 4 (extra timeframes are reported, not captured), include_numeric_context true, inline_image true, inline_base64 false. Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
     inputSchema: {
       symbol: zSymbol,
       timeframes: z
@@ -655,7 +691,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_agent_skills",
     domain: "core",
     description:
-      "Discovers the canonical skill catalogue and returns metadata only (name, version, category, riskLevel, description) — it never loads skill content, and a listed skill does NOT count as loaded. When: at session start, after get_agent_capabilities, to learn which skills exist. read-only.",
+      "Discovers the canonical skill catalogue and returns metadata only (name, version, category, riskLevel, description) — it never loads skill content, and a listed skill does NOT count as loaded. When: at session start, after get_agent_capabilities, to learn which skills exist. Not the normal path to actually using a skill for a specific request — prefer resolve_agent_skills for that; this is a full-catalogue browse. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -663,7 +699,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "resolve_agent_skills",
     domain: "core",
     description:
-      "Selects the most relevant skills for the operator's current request from the catalogue and returns metadata only — the selected names plus the rejected ones with reasons, never skill bodies. When: before answering a trading or analysis request; follow with load_agent_skill for each selected name, and prefer this over manually attaching skill files. read-only.",
+      "Selects the most relevant skills for the operator's current request from the catalogue and returns metadata only — the selected names plus the rejected ones with reasons, never skill bodies. When: before answering a trading or analysis request; follow with load_agent_skill for each selected name, and prefer this over manually attaching skill files. Not a way to load a skill by itself — this only decides WHICH ones, load_agent_skill is the separate step that actually reads content. Defaults: locale unset (auto), market forex, max_skills 2, allow_execution_skills false (set true only when execution tools are actually authorized). read-only. If next_step is returned, call it immediately without asking the user — it names exactly which load_agent_skill calls are required.",
     inputSchema: {
       request: z
         .string()
@@ -689,7 +725,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "load_agent_skill",
     domain: "core",
     description:
-      "Loads the FULL content of one named skill explicitly and traceably, and fails honestly if the skill is missing — never assume a skill was read without a successful load. When: after resolve_agent_skills, or when a specific skill is clearly needed. Skills never grant permissions. read-only.",
+      "Loads the FULL content of one named skill explicitly and traceably, and fails honestly if the skill is missing — never assume a skill was read without a successful load. When: after resolve_agent_skills, or when a specific skill is clearly needed. Not for discovering which skill to load — that's resolve_agent_skills/list_agent_skills; this needs an exact name. Default version: latest. Skills never grant permissions — loading one never authorizes an execution tool call it wasn't already authorized for. read-only.",
     inputSchema: {
       name: z
         .string()

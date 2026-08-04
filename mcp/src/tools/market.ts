@@ -19,6 +19,8 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         market?: "forex";
       };
       return bridgeCall(
+        "get_market_snapshot",
+        args as Record<string, unknown>,
         () =>
           bridge.get("/api/agent/market/snapshot", {
             symbol: bridgeSymbol(symbol),
@@ -40,6 +42,8 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         market?: "forex";
       };
       return bridgeCall(
+        "get_multi_timeframe_snapshot",
+        args as Record<string, unknown>,
         () =>
           bridge.get(
             "/api/agent/market/multi-snapshot",
@@ -63,7 +67,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         symbol: string;
         market?: "forex";
       };
-      return bridgeCall(() =>
+      return bridgeCall("get_market_price", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/price", {
           symbol: bridgeSymbol(symbol),
           market: market ?? "forex",
@@ -80,7 +84,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         market?: "forex";
         q?: string;
       };
-      return bridgeCall(() =>
+      return bridgeCall("list_instruments", args as Record<string, unknown>, () =>
         bridge.get("/api/instruments", {
           market: market ?? "forex",
           q,
@@ -116,7 +120,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         symbol: string;
         interval?: string;
       };
-      return bridgeCall(() =>
+      return bridgeCall("get_market_context", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/context", { symbol, interval }),
       );
     },
@@ -125,7 +129,10 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "scan_market",
     mcpToolConfig("scan_market"),
-    async (body) => bridgeCall(() => bridge.post("/api/agent/market/scan", body)),
+    async (body) =>
+      bridgeCall("scan_market", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/market/scan", body),
+      ),
   );
 
   server.registerTool(
@@ -140,7 +147,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         cursor?: number;
       };
       const oandaSymbol = toOandaForexSymbol(symbol);
-      return bridgeCall(() =>
+      return bridgeCall("get_ohlc", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/ohlc", {
           symbol: oandaSymbol,
           interval,
@@ -162,7 +169,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         interval?: string;
         market?: "forex";
       };
-      return bridgeCall(() =>
+      return bridgeCall("get_forex_indicators", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/forex-indicators", {
           symbol,
           interval,
@@ -182,7 +189,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         market?: "forex";
         limit?: number;
       };
-      return bridgeCall(() =>
+      return bridgeCall("detect_levels", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/detect-levels", {
           symbol,
           interval,
@@ -203,7 +210,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         market?: "forex";
         limit?: number;
       };
-      return bridgeCall(() =>
+      return bridgeCall("detect_market_regime", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/detect-regime", {
           symbol: bridgeSymbol(symbol),
           interval,

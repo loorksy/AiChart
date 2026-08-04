@@ -78,12 +78,24 @@ describe("the Redis release validator refuses the deployed instance", () => {
   /** Run the validator and return its combined output, expecting a non-zero exit. */
   function expectRefusal(env: Record<string, string>): string {
     try {
+      // On Windows, npx is a .cmd shim. Renaming the binary to npx.cmd is not
+      // a fix on any current Node: since the CVE-2024-27980 patch,
+      // execFileSync refuses to spawn a .cmd/.bat directly and throws EINVAL
+      // instead of running it (this is deliberate — see the CVE) — the
+      // earlier version of this fix was never actually verified on Windows,
+      // it only "worked" by producing empty output that happened to look
+      // like a refusal. shell:true is the supported way to run it. The args
+      // array is shell-concatenated under shell:true (Node's DEP0190), not
+      // individually escaped — harmless here because `script` is a fixed
+      // path this file constructs, never external/user input, but do not
+      // copy this pattern for a call built from anything else.
       execFileSync("npx", ["tsx", script], {
         cwd: WEB_ROOT,
         env: { ...process.env, ...env },
         encoding: "utf8",
         stdio: "pipe",
         timeout: 60_000,
+        shell: true,
       });
     } catch (error) {
       const err = error as { stdout?: string; stderr?: string };

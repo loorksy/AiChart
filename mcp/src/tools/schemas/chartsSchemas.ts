@@ -69,7 +69,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_chart_layouts",
     domain: "charts",
     description:
-      "Lists the user's saved chart layouts, returning each one's id, symbol, and link. When: before drawing or reading chart state, to find the right layout_id. read-only.",
+      "Lists the user's saved chart layouts, returning each one's id, symbol, and link. When: before drawing or reading chart state on a NON-primary layout, to find the right layout_id. Not needed for the primary chart — every charts-domain tool defaults layout_id to it when omitted. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -77,7 +77,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_chart_state",
     domain: "charts",
     description:
-      "Reads the current state of the user's chart — symbol, timeframe, drawings, and active recommendation — for the given layout_id, defaulting to the primary chart. When: before editing a chart, so existing drawings and the recommendation are known. read-only. Example: optional layout_id.",
+      "Reads the current state of the user's chart — symbol, timeframe, drawings, and active recommendation — for the given layout_id, defaulting to the primary chart. When: before editing a chart, so existing drawings and the recommendation are known, or right after draw_on_chart/clear_chart_drawings to confirm the write actually applied. Not for a picture of the chart — this is state data only; show_live_chart/capture_chart_snapshot render the image. read-only. Example: optional layout_id.",
     inputSchema: { layout_id: zLayoutId },
     annotations: READ_ONLY,
     ui: { widget: "live-chart" },
@@ -86,7 +86,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_live_chart",
     domain: "charts",
     description:
-      "Shows a live mini chart card in chat, with candles refreshing about every 4s plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch a pair live inside the conversation. Pass symbol or layout_id; defaults to the user's primary chart. read-only.",
+      "Shows a live mini chart card in chat, with candles refreshing about every 4s plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch a pair live inside the conversation. Not for a one-off static picture — capture_chart_snapshot is cheaper for that; use this only when the operator wants to keep watching. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
@@ -100,7 +100,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "draw_on_chart",
     domain: "charts",
     description:
-      "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. mode=set replaces existing drawings, add appends. Pass recommendation for a full trade box (entry/stop/targets).",
+      "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. dataSource is OANDA-only (drawings are time-anchored against OANDA-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
     inputSchema: {
       layout_id: zLayoutId,
       symbol: zSymbol.optional().describe("Change chart symbol (optional)"),
@@ -125,7 +125,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "clear_chart_drawings",
     domain: "charts",
     description:
-      "Clears every agent-drawn shape and the active recommendation from the user's chart, leaving candles and manually drawn TradingView objects untouched. When: the operator asks to clean the chart, or the current recommendation should be retracted.",
+      "Clears every agent-drawn shape and the active recommendation from the user's chart, leaving candles and manually drawn TradingView objects untouched. When: the operator asks to clean the chart, or the current recommendation should be retracted. Not reversible — the cleared drawings are gone, not hidden; re-drawing means calling draw_on_chart again with the same shapes. Call get_chart_state next to confirm the drawings were actually cleared.",
     inputSchema: { layout_id: zLayoutId },
     annotations: {
       readOnlyHint: false,
@@ -137,7 +137,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_market_analysis",
     domain: "charts",
     description:
-      "Runs the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns a recommendation with technical drawings auto-drawn on the user's chart when layout_id is passed. When: the operator asks for a complete analysis rather than individual indicator calls. Consumes 4 user credits and may take up to two minutes. The response includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
+      "Queues the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns job_id/status immediately (well under 1s); the real run (technical drawings auto-drawn on the user's chart when layout_id is passed) can take up to two minutes and never blocks this call. When: the operator asks for a complete analysis rather than individual indicator calls. Not for a quick single-indicator read — get_market_snapshot/get_forex_indicators are far cheaper when the operator just wants one number. Consumes 4 user credits. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call) until all_terminal is true, then read the result from that response — do not call this tool again to check status, and never poll multiple jobs one at a time when they can go in one jobs_wait call. The completed result includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),

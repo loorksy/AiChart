@@ -1,8 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { BridgeError } from "../bridge/client.js";
+import { BridgeError, formatBridgeResult } from "../bridge/client.js";
 import { toOandaForexSymbol } from "../lib/forexSymbol.js";
 import { bridgeCall } from "./helpers.js";
+import { startJob } from "./jobStore.js";
 import { mcpToolConfig } from "./schemas/index.js";
 
 /** Full AI analysis can take ~2 minutes (model reasoning + chart vision). */
@@ -21,7 +22,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
     "list_chart_layouts",
     mcpToolConfig("list_chart_layouts"),
     async () => {
-      return bridgeCall(() => bridge.get("/api/agent/chart/layout"));
+      return bridgeCall("list_chart_layouts", {}, () => bridge.get("/api/agent/chart/layout"));
     },
   );
 
@@ -30,13 +31,14 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("get_chart_state"),
     async (args) => {
       const { layout_id } = args as { layout_id?: string };
+      const a = args as Record<string, unknown>;
       if (layout_id) {
-        return bridgeCall(() =>
+        return bridgeCall("get_chart_state", a, () =>
           bridge.get("/api/agent/chart/layout", { id: layout_id }),
         );
       }
       // No id → resolve the user's primary layout via the list.
-      return bridgeCall(async () => {
+      return bridgeCall("get_chart_state", a, async () => {
         const list = (await bridge.get("/api/agent/chart/layout")) as {
           layouts?: Array<{ id: string }>;
         };
@@ -53,21 +55,24 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
     async (args) => {
       const a = args as Record<string, unknown>;
       const rawSymbol = typeof a.symbol === "string" ? a.symbol : undefined;
-      return bridgeCall(() =>
-        bridge.post(
-          "/api/agent/chart/layout",
-          {
-            id: a.layout_id,
-            symbol: rawSymbol ? toOandaForexSymbol(rawSymbol) : undefined,
-            interval: a.interval,
-            mode: a.mode ?? "set",
-            drawings: a.drawings ?? [],
-            recommendation: a.recommendation,
-            targets: a.targets,
-            dataSource: "oanda",
-          },
-          DRAW_TIMEOUT_MS,
-        ),
+      return bridgeCall(
+        "draw_on_chart",
+        a,
+        () =>
+          bridge.post(
+            "/api/agent/chart/layout",
+            {
+              id: a.layout_id,
+              symbol: rawSymbol ? toOandaForexSymbol(rawSymbol) : undefined,
+              interval: a.interval,
+              mode: a.mode ?? "set",
+              drawings: a.drawings ?? [],
+              recommendation: a.recommendation,
+              targets: a.targets,
+              dataSource: "oanda",
+            },
+            DRAW_TIMEOUT_MS,
+          ),
         { structured: true },
       );
     },
@@ -78,7 +83,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("clear_chart_drawings"),
     async (args) => {
       const { layout_id } = args as { layout_id?: string };
-      return bridgeCall(() =>
+      return bridgeCall("clear_chart_drawings", args as Record<string, unknown>, () =>
         bridge.post("/api/agent/chart/layout", {
           id: layout_id,
           mode: "clear",
@@ -97,7 +102,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         layout_id?: string;
         market?: "forex";
       };
-      return bridgeCall(async () => {
+      return bridgeCall("show_live_chart", args as Record<string, unknown>, async () => {
         // Layout is optional context (drawings/recommendation); the chart
         // renders from candles alone when the user has no saved layout.
         type LayoutRes = {
@@ -186,21 +191,32 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         layout_id?: string;
         data_source?: "oanda";
       };
-      return bridgeCall(
-        () =>
-          bridge.post(
-            "/api/agent/market/analyze",
-            {
-              symbol: a.symbol ? toOandaForexSymbol(a.symbol) : undefined,
-              interval: a.interval ?? "1h",
-              market: a.market,
-              layout_id: a.layout_id,
-              data_source: a.data_source ?? "oanda",
-            },
-            ANALYZE_TIMEOUT_MS,
-          ),
-        { structured: true },
+      // Queued, not awaited: full model reasoning + chart vision can take up
+      // to 150s — this call returns well under 500ms regardless, and the
+      // caller polls the background job with jobs_wait.
+      const job = startJob("run_market_analysis", () =>
+        bridge.post(
+          "/api/agent/market/analyze",
+          {
+            symbol: a.symbol ? toOandaForexSymbol(a.symbol) : undefined,
+            interval: a.interval ?? "1h",
+            market: a.market,
+            layout_id: a.layout_id,
+            data_source: a.data_source ?? "oanda",
+          },
+          ANALYZE_TIMEOUT_MS,
+        ),
       );
+      return formatBridgeResult({
+        job_id: job.id,
+        status: job.status,
+        tool: "run_market_analysis",
+        next_step: {
+          tool: "jobs_wait",
+          reason: "Poll until all_terminal is true before reading the result.",
+          params: { jobs: [job.id] },
+        },
+      });
     },
   );
 }

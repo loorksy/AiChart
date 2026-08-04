@@ -10,6 +10,10 @@
     "lots": {
       "type": "number",
       "exclusiveMinimum": 0
+    },
+    "dry_run": {
+      "description": "Preview only: runs the real checks and returns the real consequence figures without committing anything. Use before the first live call on a symbol, or whenever the operator asks what would happen.",
+      "type": "boolean"
     }
   },
   "required": [

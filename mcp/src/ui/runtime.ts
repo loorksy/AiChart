@@ -58,6 +58,9 @@ export const RUNTIME_JS = `
       chartTitle: "Chart",
       noDataAvailable: "No data available",
       updated: "Last updated",
+      approve: "Approve", reject: "Reject",
+      previewBadge: "Preview", sending: "Sending…", actionFailed: "Action failed — try again",
+      noPending: "No pending approvals",
       confidence: "Confidence", riskReward: "Risk/Reward", setup: "Setup",
       freeMargin: "Free Margin", floatingPnl: "Floating P/L",
       "status.pending": "Pending", "status.pending_entry": "Pending entry",
@@ -115,6 +118,9 @@ export const RUNTIME_JS = `
       chartTitle: "الشارت",
       noDataAvailable: "لا توجد بيانات متاحة",
       updated: "آخر تحديث",
+      approve: "موافقة", reject: "رفض",
+      previewBadge: "معاينة", sending: "جارٍ الإرسال…", actionFailed: "فشل الإجراء — حاول مجدداً",
+      noPending: "لا توجد طلبات معلّقة",
       confidence: "نسبة الثقة", riskReward: "نسبة العائد إلى المخاطرة", setup: "نوع الصفقة",
       freeMargin: "الهامش المتاح", floatingPnl: "الربح/الخسارة العائمة",
       "status.pending": "معلقة", "status.pending_entry": "بانتظار الدخول",
@@ -648,6 +654,21 @@ export const THEME_CSS = `
   }
   .empty{text-align:center;color:var(--faint);padding:18px 10px;font-size:12px;font-weight:700;
     border:1px dashed var(--line-soft);border-radius:8px;background:var(--surface-2)}
+  .banner{padding:12px;border-radius:8px;font-size:12px;font-weight:700;line-height:1.5;
+    border:1px solid var(--line-soft);background:var(--surface-2)}
+  .banner.ok{border-color:rgba(45,212,191,.35);color:var(--up);background:rgba(45,212,191,.1)}
+  .banner.bad{border-color:rgba(251,113,133,.35);color:var(--down);background:rgba(251,113,133,.1)}
+  .banner.warn{border-color:rgba(245,194,107,.35);color:var(--amber);background:rgba(245,194,107,.1)}
+  .card button{font:inherit;cursor:pointer;border:none;-webkit-appearance:none;appearance:none}
+  .card button:disabled{opacity:.5;cursor:not-allowed}
+  .card button:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .actions button{flex:1;min-width:96px;text-align:center;justify-content:center}
+  .qrow{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+  .qrow:last-child{border-bottom:0}
+  .qrow .qtop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .qrow .qactions{display:flex;gap:6px}
+  .qrow .qactions button{padding:5px 10px;font-size:11px;border-radius:999px;font-weight:900}
   .status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);min-height:16px}
   .status:empty{display:none}
   .status.stale{color:var(--amber)} .status.live{color:var(--up)}

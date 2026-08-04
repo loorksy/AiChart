@@ -29,6 +29,19 @@ export const zLooseBoolean = z.preprocess((value) => {
 }, z.boolean());
 
 /**
+ * Preview mode for bucket-A (execution) tools: runs every check the real call
+ * runs and returns the real consequence figures, but stops before the one
+ * line that has a side effect — nothing is placed, closed, modified,
+ * cancelled, or sent to Telegram. Each tool's description states exactly
+ * which figures its preview can and cannot show.
+ */
+export const zDryRun = zLooseBoolean
+  .optional()
+  .describe(
+    "Preview only: runs the real checks and returns the real consequence figures without committing anything. Use before the first live call on a symbol, or whenever the operator asks what would happen.",
+  );
+
+/**
  * Known catalog strategies at the time of writing — informational only.
  * The WEB CATALOG (web/src/lib/strategies/catalog.ts) is the single source of
  * truth; the server rejects unknown ids with 409 and, for BUY/SELL, requires a

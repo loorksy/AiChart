@@ -910,18 +910,438 @@ const recommendationCard = widgetHtml(
   `,
 );
 
+/* ─────────────────────────── approval decision card ───────────────────────────
+ * The one card in the catalog allowed to own buttons — it is an APPROVAL
+ * surface, never an execution surface: the only tool its buttons ever call is
+ * respond_approval, which itself still runs every server-side check
+ * (revalidation, technical execution safety) before anything reaches the
+ * broker. Renders 3 states from one shape:
+ *  - "actionable": intent.status === "pending" and not a preview → Approve/Reject.
+ *  - "preview": dry_run === true (request_approval or respond_approval preview)
+ *    → PREVIEW badge, no buttons (nothing exists yet to act on, or this is
+ *    only a look-before-you-leap check).
+ *  - "resolved": respond_approval's real response (top-level status/ok/reason)
+ *    → outcome banner, no buttons.
+ * No "modify" button: no tool in this catalog can alter a pending intent's
+ * terms — only reject and re-propose (in chat), which is not a card action. */
+const approvalCard = widgetHtml(
+  "AiChart approval",
+  `<div class="card wait" id="appr-card">
+    <div class="top">
+      <div><div class="title" id="appr-title">—</div></div>
+      <div class="tag amber" id="appr-badge">—</div>
+    </div>
+    <div class="main" id="appr-body"><div class="skel"></div></div>
+    <div class="row">
+      <div class="mini"><span data-i18n="stopLoss">Stop loss</span><strong id="appr-sl" class="red">—</strong></div>
+      <div class="mini"><span data-i18n="targetLabel">Target</span><strong id="appr-tp" class="green">—</strong></div>
+    </div>
+    <div class="banner" id="appr-banner" style="display:none"></div>
+    <div class="actions" id="appr-actions" style="display:none">
+      <button type="button" id="appr-approve" class="tag green">✓ <span data-i18n="approve">Approve</span></button>
+      <button type="button" id="appr-reject" class="tag red">✕ <span data-i18n="reject">Reject</span></button>
+    </div>
+    <div class="foot">
+      <span id="appr-status" class="status"></span>
+    </div>
+  </div>`,
+  `
+  function obj(v){ return v && typeof v === "object" ? v : {}; }
+  function first(){ for (var i=0;i<arguments.length;i++){ var v=arguments[i]; if (v!==undefined&&v!==null&&v!=="") return v; } return null; }
+  var state = { intentId: null, busy: false };
+  function titleCase(s){ s = String(s||""); return s ? s.charAt(0).toUpperCase()+s.slice(1).replace(/_/g," ") : ""; }
+  window.__aicReady = function (AIC){
+    AIC.applyStaticLabels();
+    var approveBtn = document.getElementById("appr-approve");
+    var rejectBtn = document.getElementById("appr-reject");
+    function setBusy(b){
+      state.busy = b;
+      approveBtn.disabled = b;
+      rejectBtn.disabled = b;
+    }
+    function render(data){
+      data = obj(data);
+      var preview = data.dry_run === true;
+      var intent = obj(data.intent || data.would_send);
+      var act = AIC.actInfo(intent.side);
+      var card = document.getElementById("appr-card");
+      card.className = "card " + act.cls;
+      var sym = intent.symbol || "—";
+      document.getElementById("appr-title").textContent = intent.side ? sym + " · " + act.label : sym;
+      var badge = document.getElementById("appr-badge");
+      var resolvedStatus = !preview && data.status ? String(data.status) : null;
+      badge.textContent = preview ? AIC.t("previewBadge") : (resolvedStatus ? titleCase(resolvedStatus) : (intent.status ? titleCase(intent.status) : "—"));
+      badge.className = "tag " + (preview ? "amber" : (data.ok === true ? "green" : data.ok === false ? "red" : "amber"));
+      var entry = AIC.num(intent.entry);
+      var sl = AIC.num(intent.stop_loss);
+      var tp = AIC.num(intent.take_profit);
+      var body = document.getElementById("appr-body");
+      var lines = [];
+      if (entry != null) lines.push([AIC.t("entryLabel"), AIC.fmt(entry, 5), "blue"]);
+      if (intent.notional != null) lines.push(["Risk", AIC.cell(intent.notional, 2), ""]);
+      if (intent.broker) lines.push(["Broker", String(intent.broker), ""]);
+      var h = "";
+      if (lines.length) {
+        h = lines.map(function (p) {
+          return '<div class="pair"><strong>'+p[0]+'</strong><span class="'+p[2]+'">'+p[1]+'</span></div>';
+        }).join("");
+      }
+      if (intent.rationale) h += '<div class="sub">' + String(intent.rationale).slice(0, 160) + '</div>';
+      body.innerHTML = h || '<div class="empty">' + AIC.t("noRecommendation") + '</div>';
+      document.getElementById("appr-sl").textContent = sl != null ? AIC.fmt(sl, 5) : "—";
+      document.getElementById("appr-tp").textContent = tp != null ? AIC.fmt(tp, 5) : "—";
+
+      var banner = document.getElementById("appr-banner");
+      var actions = document.getElementById("appr-actions");
+      var actionable = !preview && intent.id != null && intent.status === "pending" && !resolvedStatus;
+      if (actionable) {
+        actions.style.display = "flex";
+        banner.style.display = "none";
+        state.intentId = intent.id;
+      } else {
+        actions.style.display = "none";
+        state.intentId = null;
+        if (resolvedStatus) {
+          banner.style.display = "block";
+          var cls = data.ok === true ? "ok" : (resolvedStatus === "rejected" ? "warn" : "bad");
+          banner.className = "banner " + cls;
+          banner.textContent = titleCase(resolvedStatus) + (data.reason ? " — " + data.reason : "") +
+            (data.tradeId != null ? " (trade #" + data.tradeId + ")" : "");
+        } else if (preview) {
+          banner.style.display = "block";
+          banner.className = "banner warn";
+          banner.textContent = AIC.t("previewBadge") +
+            (data.note ? " — " + data.note : "") +
+            (data.blocking_reason ? " — " + data.blocking_reason : "") +
+            (data.reason ? " — " + data.reason : "");
+        } else {
+          banner.style.display = "none";
+        }
+      }
+      var statusEl = document.getElementById("appr-status");
+      var stale = AIC.bridgeLinkState(data).stale;
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
+      statusEl.className = stale ? "status stale" : "status";
+      AIC.notifySize();
+    }
+    function act(action){
+      if (state.busy || state.intentId == null) return;
+      setBusy(true);
+      var statusEl = document.getElementById("appr-status");
+      statusEl.textContent = AIC.t("sending");
+      statusEl.className = "status";
+      AIC.callTool("respond_approval", { intent_id: state.intentId, action: action }).catch(function () {
+        setBusy(false);
+        statusEl.textContent = AIC.t("actionFailed");
+        statusEl.className = "status stale";
+      });
+    }
+    approveBtn.addEventListener("click", function () { act("approve"); });
+    rejectBtn.addEventListener("click", function () { act("reject"); });
+    AIC.onData(function (data) { setBusy(false); render(data); });
+  };
+  `,
+);
+
+/* ─────────────────────────── approval queue (row-action table) ───────────────────────────
+ * get_pending_approvals: aggregate count on top, each pending intent as its
+ * own row with inline Approve/Reject — same respond_approval call as the
+ * decision card, just triggered per-row instead of for a single intent. */
+const approvalQueue = widgetHtml(
+  "AiChart pending approvals",
+  `<div class="card wait" id="queue-card">
+    <div class="top">
+      <div><div class="title" data-i18n="pendingApprovalsTitle">Pending approvals</div></div>
+      <div class="tag amber" id="queue-count">—</div>
+    </div>
+    <div class="main" id="queue-body"><div class="skel"></div></div>
+    <div class="foot">
+      <span id="queue-status" class="status"></span>
+    </div>
+  </div>`,
+  `
+  function obj(v){ return v && typeof v === "object" ? v : {}; }
+  var busyIds = {};
+  window.__aicReady = function (AIC){
+    AIC.applyStaticLabels();
+    function actInfoOf(intent){ return AIC.actInfo(intent.side); }
+    function rowHtml(intent){
+      var act = actInfoOf(intent);
+      var busy = !!busyIds[intent.id];
+      var bits = [];
+      if (AIC.num(intent.entry) != null) bits.push(AIC.t("entryLabel") + " " + AIC.fmt(intent.entry, 5));
+      if (AIC.num(intent.stop_loss) != null) bits.push(AIC.t("stop") + " " + AIC.fmt(intent.stop_loss, 5));
+      if (AIC.num(intent.take_profit) != null) bits.push(AIC.t("target") + " " + AIC.fmt(intent.take_profit, 5));
+      return '<div class="qrow" data-id="' + intent.id + '">' +
+        '<div class="qtop"><strong>' + (intent.symbol || "—") + ' · ' + act.label + '</strong>' +
+        '<span class="qactions">' +
+          '<button type="button" class="tag green qa" data-action="approve" data-id="' + intent.id + '" ' + (busy ? "disabled" : "") + '>✓</button>' +
+          '<button type="button" class="tag red qa" data-action="reject" data-id="' + intent.id + '" ' + (busy ? "disabled" : "") + '>✕</button>' +
+        '</span></div>' +
+        (bits.length ? '<span class="sub">' + bits.join(" · ") + '</span>' : "") +
+        '</div>';
+    }
+    function render(data){
+      data = obj(data);
+      var pending = Array.isArray(data.pending) ? data.pending : [];
+      document.getElementById("queue-count").textContent = String(pending.length);
+      var body = document.getElementById("queue-body");
+      body.innerHTML = pending.length
+        ? pending.slice(0, 8).map(rowHtml).join("")
+        : '<div class="empty">' + AIC.t("noPending") + '</div>';
+      var statusEl = document.getElementById("queue-status");
+      var stale = AIC.bridgeLinkState(data).stale;
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
+      statusEl.className = stale ? "status stale" : "status";
+      AIC.notifySize();
+    }
+    document.getElementById("queue-body").addEventListener("click", function (ev) {
+      var btn = ev.target.closest ? ev.target.closest(".qa") : null;
+      if (!btn || btn.disabled) return;
+      var id = Number(btn.getAttribute("data-id"));
+      var action = btn.getAttribute("data-action");
+      if (!id || busyIds[id]) return;
+      busyIds[id] = true;
+      btn.disabled = true;
+      var sibling = btn.parentNode.querySelector('.qa[data-action="' + (action === "approve" ? "reject" : "approve") + '"]');
+      if (sibling) sibling.disabled = true;
+      var statusEl = document.getElementById("queue-status");
+      statusEl.textContent = AIC.t("sending");
+      statusEl.className = "status";
+      // respond_approval's OWN result is single-intent shaped, not the list
+      // this widget renders — chaining a get_pending_approvals refetch after
+      // it is what puts the shared "latest" payload back into {pending:[...]}
+      // shape before the automatic onData re-render fires, otherwise a
+      // one-row action would blank out every other still-pending row.
+      AIC.callTool("respond_approval", { intent_id: id, action: action })
+        .then(function () { return AIC.callTool("get_pending_approvals", {}); })
+        .then(function () {
+        delete busyIds[id];
+      }).catch(function () {
+        delete busyIds[id];
+        btn.disabled = false;
+        if (sibling) sibling.disabled = false;
+        statusEl.textContent = AIC.t("actionFailed");
+        statusEl.className = "status stale";
+      });
+    });
+    AIC.onData(render);
+  };
+  `,
+);
+
+/* ─────────────────────────── scan results (report) ───────────────────────────
+ * scan_market compares MULTIPLE symbols and returns a code-only opportunity
+ * SCORE per candidate — it computes no direction (no buy/sell field exists
+ * anywhere in its response; scanForexSymbol only tallies mixed bullish AND
+ * bearish signal strength into one magnitude). The old recommendation-card
+ * reuse rendered every row with a fabricated "Wait" badge (its action-lookup
+ * found no direction field and fell through to that default) — evidence
+ * dressed as a verdict. This card shows exactly what the tool computed:
+ * ranked by score, with the actual signal strings that produced it, and
+ * nothing colored buy/sell. Directional judgment is the model's, made from
+ * real analysis of the winning candidate — never this list. */
+const scanResults = widgetHtml(
+  "AiChart scan results",
+  `<div class="card" id="scan-card">
+    <div class="top">
+      <div><div class="title" id="scan-title">—</div></div>
+      <div class="tag" id="scan-count">—</div>
+    </div>
+    <div class="main" id="scan-body"><div class="skel"></div></div>
+    <div class="foot">
+      <span id="scan-status" class="status"></span>
+    </div>
+  </div>`,
+  `
+  function obj(v){ return v && typeof v === "object" ? v : {}; }
+  window.__aicReady = function (AIC){
+    AIC.applyStaticLabels();
+    AIC.onData(function (data){
+      data = obj(data);
+      var candidates = Array.isArray(data.candidates) ? data.candidates.slice() : [];
+      candidates.sort(function (a, b) { return (AIC.num(b.score) || 0) - (AIC.num(a.score) || 0); });
+      document.getElementById("scan-title").textContent = Array.isArray(data.scanned) ? (data.scanned.length + " scanned") : "Scan";
+      document.getElementById("scan-count").textContent = String(candidates.length);
+      var body = document.getElementById("scan-body");
+      if (!candidates.length) {
+        body.innerHTML = '<div class="empty">' + AIC.t("noOpportunities") + '</div>';
+      } else {
+        body.innerHTML = candidates.slice(0, 6).map(function (c) {
+          var score = AIC.num(c.score);
+          var top = Array.isArray(c.signals) && c.signals.length ? c.signals.slice(0, 2).join(" · ") : "";
+          return '<div class="pair"><strong>' + (c.symbol || "—") + '</strong>' +
+            '<span class="blue">' + (score != null ? "score " + score : "—") + '</span></div>' +
+            (top ? '<div class="sub" style="margin:-6px 0 6px">' + top + '</div>' : "");
+        }).join("");
+      }
+      var statusEl = document.getElementById("scan-status");
+      var stale = AIC.bridgeLinkState(data).stale;
+      var errBits = Array.isArray(data.errors) && data.errors.length ? data.errors.length + " failed" : "";
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : errBits;
+      statusEl.className = stale ? "status stale" : (errBits ? "status stale" : "status");
+      AIC.notifySize();
+    });
+  };
+  `,
+);
+
+/* ─────────────────────────── levels report ───────────────────────────
+ * detect_levels returns support/resistance clusters with a deterministic
+ * strength score (touches + relative volume + recency), not the price/RSI/
+ * MACD/decision shape the reused "analysis" template expects — that reuse
+ * rendered an empty or misleading card (Phase 0 finding §2.2). This is
+ * evidence-first (Pattern C: verdict-free here, since detect_levels makes
+ * no trade call): current price, nearest support/resistance, then every
+ * detected level with the inputs behind its score — never a bare number. */
+const levelsReport = widgetHtml(
+  "AiChart levels",
+  `<div class="card" id="lv-card">
+    <div class="top">
+      <div><div class="title" id="lv-title">—</div></div>
+      <div class="tag" id="lv-structure">—</div>
+    </div>
+    <div class="main" id="lv-body"><div class="skel"></div></div>
+    <div class="row">
+      <div class="mini"><span data-i18n="support">Support</span><strong id="lv-sup" class="green">—</strong></div>
+      <div class="mini"><span data-i18n="resistance">Resistance</span><strong id="lv-res" class="red">—</strong></div>
+    </div>
+    <div class="foot">
+      <span id="lv-status" class="status"></span>
+    </div>
+  </div>`,
+  `
+  function obj(v){ return v && typeof v === "object" ? v : {}; }
+  function structClass(s){
+    s = String(s || "").toLowerCase();
+    if (s === "uptrend") return ["green", "trend.uptrend"];
+    if (s === "downtrend") return ["red", "trend.downtrend"];
+    if (s === "range") return ["amber", "trend.range"];
+    return ["", "trend.unknown"];
+  }
+  function levelRow(AIC, lv, cls){
+    var price = AIC.num(lv && lv.price);
+    if (price == null) return "";
+    var bits = [];
+    if (lv.touches != null) bits.push(lv.touches + "×");
+    if (lv.strengthScore != null) bits.push("score " + Math.round(lv.strengthScore));
+    return '<div class="pair"><strong class="' + cls + '">' + AIC.fmt(price, 5) + '</strong>' +
+      '<span>' + bits.join(" · ") + '</span></div>';
+  }
+  window.__aicReady = function (AIC){
+    AIC.applyStaticLabels();
+    AIC.onData(function (data){
+      data = obj(data);
+      document.getElementById("lv-title").textContent = (data.symbol || "—") + (data.interval ? " · " + data.interval : "");
+      var sc = structClass(data.structure);
+      var structEl = document.getElementById("lv-structure");
+      structEl.className = "tag " + (sc[0] || "");
+      structEl.textContent = AIC.t(sc[1]);
+      var price = AIC.num(data.currentPrice);
+      var sup = AIC.num(data.nearestSupport);
+      var res = AIC.num(data.nearestResistance);
+      document.getElementById("lv-sup").textContent = sup != null ? AIC.fmt(sup, 5) : "—";
+      document.getElementById("lv-res").textContent = res != null ? AIC.fmt(res, 5) : "—";
+      var supports = Array.isArray(data.supports) ? data.supports.slice().sort(function(a,b){return (b.strengthScore||0)-(a.strengthScore||0);}) : [];
+      var resistances = Array.isArray(data.resistances) ? data.resistances.slice().sort(function(a,b){return (b.strengthScore||0)-(a.strengthScore||0);}) : [];
+      var body = document.getElementById("lv-body");
+      var rows = "";
+      if (price != null) rows += '<div class="pair"><strong>' + AIC.t("price") + '</strong><span class="blue">' + AIC.fmt(price, 5) + '</span></div>';
+      resistances.slice(0, 2).forEach(function (r) { rows += levelRow(AIC, r, "red"); });
+      supports.slice(0, 2).forEach(function (s) { rows += levelRow(AIC, s, "green"); });
+      body.innerHTML = rows || ('<div class="empty">' + (data.summary || AIC.t("noData")) + '</div>');
+      var statusEl = document.getElementById("lv-status");
+      var stale = AIC.bridgeLinkState(data).stale;
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : (data.summary || "");
+      statusEl.className = stale ? "status stale" : "status";
+      AIC.notifySize();
+    });
+  };
+  `,
+);
+
+/* ─────────────────────────── jobs report ───────────────────────────
+ * show_jobs_by_ids: renders a whole batch of bucket-C job results (run_backtest,
+ * run_market_analysis) in ONE card instead of one display call per job. Each
+ * job's own result shape differs (backtest metrics vs a full analysis
+ * payload) so this deliberately does NOT try to render either bespoke —
+ * status first (queued/running never show fabricated numbers), then a
+ * generic flattened key/value summary of whatever the completed result
+ * actually contains, same discipline as the generic collections card. */
+const jobsReport = widgetHtml(
+  "AiChart jobs",
+  `<div class="card" id="jobs-card">
+    <div class="top">
+      <div><div class="title" data-i18n="chartTitle">Jobs</div></div>
+      <div class="tag" id="jobs-count">—</div>
+    </div>
+    <div class="main" id="jobs-body"><div class="skel"></div></div>
+    <div class="foot">
+      <span id="jobs-status" class="status"></span>
+    </div>
+  </div>`,
+  `
+  function obj(v){ return v && typeof v === "object" ? v : {}; }
+  function statusCls(s){
+    if (s === "completed") return "green";
+    if (s === "failed") return "red";
+    if (s === "not_found") return "";
+    return "amber";
+  }
+  function summarize(AIC, result){
+    result = obj(result);
+    var out = [];
+    for (var k in result) {
+      if (out.length >= 3) break;
+      var v = result[k];
+      if (v == null) continue;
+      if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") {
+        var c = AIC.cell(v, 4);
+        if (c) out.push(k + ": " + c);
+      }
+    }
+    return out.join(" · ");
+  }
+  window.__aicReady = function (AIC){
+    AIC.applyStaticLabels();
+    AIC.onData(function (data){
+      data = obj(data);
+      var jobs = Array.isArray(data.jobs) ? data.jobs : [];
+      document.getElementById("jobs-count").textContent = String(jobs.length);
+      var body = document.getElementById("jobs-body");
+      body.innerHTML = jobs.length ? jobs.map(function (j) {
+        j = obj(j);
+        var cls = statusCls(j.status);
+        var line = j.status === "failed" ? String(j.error || "") : (j.status === "completed" ? summarize(AIC, j.result) : (j.status === "not_found" ? "unknown job_id" : "still running"));
+        return '<div class="pair"><strong>' + (j.tool || j.id || "job") + '</strong>' +
+          '<span class="' + cls + '">' + String(j.status || "—") + '</span></div>' +
+          (line ? '<div class="sub" style="margin:-6px 0 6px">' + line + '</div>' : "");
+      }).join("") : '<div class="empty">' + AIC.t("noData") + '</div>';
+      var statusEl = document.getElementById("jobs-status");
+      var stale = AIC.bridgeLinkState(data).stale;
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
+      statusEl.className = stale ? "status stale" : "status";
+      AIC.notifySize();
+    });
+  };
+  `,
+);
+
 export const WIDGETS: Record<string, string> = {
   "account-overview": accountOverview,
   analysis,
   "recommendation-card": recommendationCard,
+  "scan-results": scanResults,
+  "jobs-report": jobsReport,
+  "levels-report": levelsReport,
   "account-status": accountOverview,
   "pair-picker": genericCard("pairPickerTitle", "pairPickerSubtitle"),
   "risk-status": genericCard("riskStatusTitle", "riskStatusSubtitle"),
   "open-trades": openTradesCard,
-  "pending-approvals": genericCard("pendingApprovalsTitle", "pendingApprovalsSubtitle"),
+  "approval-card": approvalCard,
+  "approval-queue": approvalQueue,
   "market-snapshot": analysis,
   "mtf-analysis": analysis,
-  "levels-card": analysis,
   "chart-drawn": liveChart,
   "live-chart": liveChart,
   portfolio: accountOverview,
