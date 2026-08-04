@@ -129,10 +129,15 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       // the URL land on a real chat id, not a throwaway uuid.
       let chatId = opts.chatId ?? sessionIdRef.current;
       if (!opts.chatId && opts.ensureChatId) {
-        const ensured = await opts.ensureChatId();
-        if (ensured) {
-          chatId = ensured;
-          sessionIdRef.current = ensured;
+        try {
+          const ensured = await opts.ensureChatId();
+          if (ensured) {
+            chatId = ensured;
+            sessionIdRef.current = ensured;
+          }
+        } catch {
+          // Network failure minting the chat must not vanish the whole send —
+          // fall through and stream against the ephemeral session id instead.
         }
       }
 

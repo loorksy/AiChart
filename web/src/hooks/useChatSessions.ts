@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentChatMessage, AgentPersistPayload } from "@/hooks/useSmartChartAgent";
 import type { AgentFinalResult } from "@/lib/agent/types";
 import type {
@@ -27,6 +27,14 @@ function recordToMessage(rec: AgentChatMessageRecord): AgentChatMessage {
 export interface UseChatSessions {
   sessions: AgentChatSession[];
   activeChatId: string | null;
+  /**
+   * What the agent panel should be keyed on. Unlike `activeChatId`, this does
+   * NOT change when `ensureChat` mints a chat for a send already in flight on
+   * the current panel instance — only when the operator switches to a
+   * genuinely different conversation (sidebar select, explicit new chat, or
+   * a deep-linked chat hydrating on load).
+   */
+  panelKey: string;
   activeMessages: AgentChatMessage[];
   ready: boolean;
   loadingMessages: boolean;
@@ -60,9 +68,17 @@ export function useChatSessions(opts: {
   const { enabled, symbol, interval, locale, urlChatId, syncChatUrl } = opts;
   const [sessions, setSessions] = useState<AgentChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [panelKey, setPanelKey] = useState<string>("home");
   const [activeMessages, setActiveMessages] = useState<AgentChatMessage[]>([]);
   const [ready, setReady] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  // Lets the initial-load effect's async continuation see whether a send
+  // already self-minted a chat (via ensureChat) while that fetch was still
+  // in flight, so it doesn't clobber a conversation that's already sending.
+  const activeChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   const refreshSessions = useCallback(async () => {
     const res = await fetch("/api/agent/chats");
@@ -108,19 +124,36 @@ export function useChatSessions(opts: {
         : { sessions: [] };
       if (cancelled) return;
       const list = json.sessions ?? [];
-      setSessions(list);
+      // A send from the bare welcome screen can self-mint a chat (ensureChat)
+      // while this fetch is still in flight, inserting it into `sessions`
+      // directly. This snapshot predates that insert and would silently drop
+      // it from the sidebar on overwrite — keep it if the fetched list is
+      // missing exactly the chat that's currently self-minting.
+      setSessions((prev) => {
+        const mintedId = activeChatIdRef.current;
+        if (!mintedId || list.some((s) => s.id === mintedId)) return list;
+        const minted = prev.find((s) => s.id === mintedId);
+        return minted ? [minted, ...list] : list;
+      });
 
+      // Same race, for activeChatId/activeMessages: don't clobber a
+      // conversation that's already sending back to null/[]; just unblock
+      // `ready`.
       if (!urlChatId) {
-        setActiveChatId(null);
-        setActiveMessages([]);
+        if (!activeChatIdRef.current) {
+          setActiveChatId(null);
+          setActiveMessages([]);
+        }
         setReady(true);
         return;
       }
 
       const active = list.find((s) => s.id === urlChatId) ?? null;
       if (!active) {
-        setActiveChatId(null);
-        setActiveMessages([]);
+        if (!activeChatIdRef.current) {
+          setActiveChatId(null);
+          setActiveMessages([]);
+        }
         setReady(true);
         return;
       }
@@ -129,6 +162,7 @@ export function useChatSessions(opts: {
       // Set messages before the id so the (keyed) panel mounts already hydrated.
       setActiveMessages(msgs);
       setActiveChatId(active.id);
+      setPanelKey(active.id);
       setReady(true);
     })();
     return () => {
@@ -154,6 +188,7 @@ export function useChatSessions(opts: {
           // Batched together: the keyed panel remounts already hydrated.
           setActiveMessages(msgs);
           setActiveChatId(id);
+          setPanelKey(id);
         } finally {
           setLoadingMessages(false);
         }
@@ -168,6 +203,7 @@ export function useChatSessions(opts: {
     setSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
     setActiveMessages([]);
     setActiveChatId(session.id);
+    setPanelKey(session.id);
     syncChatUrl?.(session.id, "push");
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("aichart:chats-updated"));
@@ -181,6 +217,14 @@ export function useChatSessions(opts: {
     setSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
     setActiveMessages([]);
     setActiveChatId(session.id);
+    // Deliberately NOT setPanelKey here: this mints a chat id for a send
+    // already in flight on the current (keyed "home") panel instance. Keying
+    // the panel to the new id would remount it mid-send, destroying the
+    // useSmartChartAgent instance that owns that send before it can commit
+    // the user's message — the panel resets to the empty greeting while the
+    // turn keeps running invisibly in an orphaned closure. panelKey only
+    // moves once the operator actually switches to a different conversation
+    // (selectChat / newChat / a deep-linked chat hydrating on load).
     syncChatUrl?.(session.id, "push");
     if (typeof window !== "undefined") {
       localStorage.setItem(LS_ACTIVE_CHAT, session.id);
@@ -216,6 +260,7 @@ export function useChatSessions(opts: {
     () => ({
       sessions,
       activeChatId,
+      panelKey,
       ensureChat,
       activeMessages,
       ready,
@@ -228,6 +273,7 @@ export function useChatSessions(opts: {
     [
       sessions,
       activeChatId,
+      panelKey,
       ensureChat,
       activeMessages,
       ready,
