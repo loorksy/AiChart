@@ -26,6 +26,11 @@ import {
   migrateLegacyDynamicPageBranding,
   type DynamicPageBrandFields,
 } from "./dynamicPageBranding";
+import {
+  DOCS_MT5_LINKING_CONTENT_AR,
+  DOCS_MT5_LINKING_CONTENT_EN,
+  DOCS_MT5_LINKING_STALE_MARKERS,
+} from "../content/docsMt5LinkingCopy";
 import { adaptSql, normalizeRow } from "./sql";
 import type { DbRow, ExecuteResult } from "./types";
 
@@ -1958,6 +1963,25 @@ async function migratePg(client: PoolClient) {
   await client.query(`DROP TABLE IF EXISTS ea_commands CASCADE`).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS ea_market_cache CASCADE`).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS ea_connections CASCADE`).catch(() => {});
+
+  const mt5Doc = await client
+    .query<{ content_ar: string; content_en: string }>(
+      "SELECT content_ar, content_en FROM dynamic_pages WHERE slug = $1",
+      ["docs-mt5-linking"],
+    )
+    .catch(() => ({ rows: [] as { content_ar: string; content_en: string }[] }));
+  const row = mt5Doc.rows[0];
+  if (row) {
+    const stale = DOCS_MT5_LINKING_STALE_MARKERS.some(
+      (m) => row.content_ar.includes(m) || row.content_en.includes(m),
+    );
+    if (stale) {
+      await client.query(
+        "UPDATE dynamic_pages SET content_ar = $1, content_en = $2 WHERE slug = $3",
+        [DOCS_MT5_LINKING_CONTENT_AR, DOCS_MT5_LINKING_CONTENT_EN, "docs-mt5-linking"],
+      );
+    }
+  }
 }
 
 async function seedAdminPg(client: PoolClient) {
@@ -2073,8 +2097,6 @@ export async function initPg(): Promise<void> {
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       [SCHEMA_VERSION],
     );
-    const { patchDocsMt5LinkingIfStale } = await import("../content/seedContent");
-    await patchDocsMt5LinkingIfStale();
   } finally {
     if (migrationLockHeld) {
       await client
