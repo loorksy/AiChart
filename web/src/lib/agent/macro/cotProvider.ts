@@ -42,8 +42,10 @@ export interface CotPositioning {
   weeklyChange: number | null;
   /** Where the net sits in its ~3y range: 0 = record short, 1 = record long. */
   rangePosition: number | null;
-  /** extreme_long / extreme_short when in the outer decile of the range. */
-  extremity: "extreme_long" | "extreme_short" | "neutral";
+  /** extreme_long / extreme_short when in the outer decile of the range;
+   *  "unknown" when the history is too short to place the net at all —
+   *  absence of a range read is reported as absence, never as "neutral". */
+  extremity: "extreme_long" | "extreme_short" | "neutral" | "unknown";
   reportDate: string;
 }
 
@@ -61,12 +63,13 @@ interface CacheEntry {
 
 let cache: CacheEntry | null = null;
 
-function toNet(row: CotRow): { date: string; net: number } | null {
+function toNet(row: CotRow): { date: string; net: number; name: string } | null {
   const long = Number(row.noncomm_positions_long_all);
   const short = Number(row.noncomm_positions_short_all);
   const date = String(row.report_date_as_yyyy_mm_dd ?? "");
-  if (!Number.isFinite(long) || !Number.isFinite(short) || !date) return null;
-  return { date: date.slice(0, 10), net: long - short };
+  const name = String(row.market_and_exchange_names ?? "").trim();
+  if (!Number.isFinite(long) || !Number.isFinite(short) || !date || !name) return null;
+  return { date: date.slice(0, 10), net: long - short, name };
 }
 
 async function fetchMarketSeries(marketPrefix: string): Promise<
@@ -84,9 +87,34 @@ async function fetchMarketSeries(marketPrefix: string): Promise<
   if (!Array.isArray(rows)) {
     throw new Error(`COT returned an unexpected shape for ${marketPrefix}.`);
   }
-  return (rows as CotRow[])
+  const parsed = (rows as CotRow[])
     .map(toNet)
-    .filter((entry): entry is { date: string; net: number } => entry !== null);
+    .filter((entry): entry is { date: string; net: number; name: string } => entry !== null);
+
+  // A prefix can match MORE than one listed contract — 'EURO FX' also matches
+  // the 'EURO FX/BRITISH POUND XRATE' cross-rate. Mixing them into one series
+  // corrupts the weekly change and the range, so the series is built from ONE
+  // exact contract name: the dominant one (most reports; ties broken by which
+  // holds the newest report). One market, one time series.
+  const byName = new Map<string, { date: string; net: number }[]>();
+  for (const entry of parsed) {
+    const group = byName.get(entry.name) ?? [];
+    group.push({ date: entry.date, net: entry.net });
+    byName.set(entry.name, group);
+  }
+  let dominant: { date: string; net: number }[] = [];
+  let dominantNewest = "";
+  for (const group of byName.values()) {
+    const newest = group[0]?.date ?? "";
+    if (
+      group.length > dominant.length ||
+      (group.length === dominant.length && newest > dominantNewest)
+    ) {
+      dominant = group;
+      dominantNewest = newest;
+    }
+  }
+  return dominant;
 }
 
 function buildPositioning(
@@ -113,7 +141,7 @@ function buildPositioning(
     rangePosition,
     extremity:
       rangePosition == null
-        ? "neutral"
+        ? "unknown"
         : rangePosition >= 0.9
           ? "extreme_long"
           : rangePosition <= 0.1

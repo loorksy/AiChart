@@ -77,7 +77,11 @@ export function newsProviderConfigured(): boolean {
 
 /** Same event from two sources under slightly different names: dedupe ONLY on
  *  an exact (currency, minute, normalized title) match — over-deduping would
- *  drop real simultaneous releases (CPI m/m and CPI y/y share a timestamp). */
+ *  drop real simultaneous releases (CPI m/m and CPI y/y share a timestamp).
+ *  Accepted tradeoff (reviewed): two GENUINELY distinct events sharing all
+ *  three keys (e.g. two euro-area "Bank Holiday" rows at midnight) collapse to
+ *  one — same impact at the same minute, so the risk classification cannot
+ *  change; collapsing here is deliberate, not an oversight. */
 function dedupeKey(event: EconomicEvent): string {
   const minute = Math.floor(new Date(event.time).getTime() / 60_000);
   const title = event.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();

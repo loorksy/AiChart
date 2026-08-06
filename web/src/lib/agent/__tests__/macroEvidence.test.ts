@@ -106,9 +106,14 @@ describe("FRED macro regime", () => {
   });
 });
 
-function cotRow(date: string, long: number, short: number) {
+function cotRow(
+  date: string,
+  long: number,
+  short: number,
+  name = "GOLD - COMMODITY EXCHANGE INC.",
+) {
   return {
-    market_and_exchange_names: "GOLD - COMMODITY EXCHANGE INC.",
+    market_and_exchange_names: name,
     report_date_as_yyyy_mm_dd: date,
     noncomm_positions_long_all: String(long),
     noncomm_positions_short_all: String(short),
@@ -134,6 +139,53 @@ describe("COT positioning", () => {
     assert.equal(gold.weeklyChange, 6_500);
     assert.equal(gold.extremity, "extreme_long");
     assert.ok(gold.rangePosition != null && gold.rangePosition >= 0.9);
+  });
+
+  it("a prefix matching two contracts builds the series from the dominant one only", async () => {
+    // 'EURO FX' also matches the EURO FX/BRITISH POUND cross-rate. The main
+    // contract has 20 reports (January, strictly date-descending); the
+    // cross-rate has 3 NEWER February reports, deeply net-short. Under the
+    // old prefix-mixing bug the newest cross-rate row led the series, so net
+    // read −89,500 and the weekly change crossed contracts.
+    const main = Array.from({ length: 20 }, (_, i) =>
+      cotRow(
+        `2026-01-${String(28 - i).padStart(2, "0")}`,
+        100_000 - i * 1_000,
+        20_000,
+        "EURO FX - CHICAGO MERCANTILE EXCHANGE",
+      ),
+    );
+    const cross = Array.from({ length: 3 }, (_, i) =>
+      cotRow(
+        `2026-02-${String(28 - i).padStart(2, "0")}`,
+        500,
+        90_000,
+        "EURO FX/BRITISH POUND XRATE - CHICAGO MERCANTILE EXCHANGE",
+      ),
+    );
+    // Socrata returns them date-desc: the cross-rate rows sit on top.
+    const rows = [...cross, ...main];
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(rows), { status: 200 })) as typeof fetch;
+
+    const positioning = (await getCotPositioning(["EUR"]))!;
+    const eur = positioning.find((p) => p.currency === "EUR")!;
+    // From the MAIN contract alone: newest net 80,000 (100,000 − 20,000) and
+    // a one-step weekly change — never a subtraction against the cross-rate.
+    assert.equal(eur.netNonCommercial, 80_000);
+    assert.equal(eur.weeklyChange, 1_000);
+  });
+
+  it("history too short for a range reads extremity=unknown, never neutral", async () => {
+    const rows = Array.from({ length: 5 }, (_, i) =>
+      cotRow(`2026-07-${String(25 - i).padStart(2, "0")}`, 50_000, 30_000),
+    );
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(rows), { status: 200 })) as typeof fetch;
+    const positioning = (await getCotPositioning(["XAU"]))!;
+    const gold = positioning.find((p) => p.currency === "XAU")!;
+    assert.equal(gold.rangePosition, null);
+    assert.equal(gold.extremity, "unknown");
   });
 
   it("irrelevant currencies return null, and the flag turns the source off", async () => {

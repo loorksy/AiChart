@@ -66,7 +66,7 @@ export interface BuildEvidenceDimensionsInput {
   /** Weekly COT positioning per relevant currency, when collected. */
   cotPositioning?: {
     currency: string;
-    extremity: "extreme_long" | "extreme_short" | "neutral";
+    extremity: "extreme_long" | "extreme_short" | "neutral" | "unknown";
   }[] | null;
   /** Whether coverage met the trade gate. */
   dataSufficient: boolean;
@@ -223,9 +223,15 @@ export function buildEvidenceDimensions(
   }
 
   // COT positioning. Extremes get a weaker grade on purpose: a crowded trade
-  // is a WARNING about continuation, not a stronger case for it.
+  // is a WARNING about continuation, not a stronger case for it. An "unknown"
+  // extremity (history too short to place the net) is NOT an extreme and is
+  // never described as "within its usual range" — limited history is said
+  // plainly, per the absence-is-absence rule.
   if (input.cotPositioning?.length) {
-    const extreme = input.cotPositioning.find((c) => c.extremity !== "neutral");
+    const extreme = input.cotPositioning.find(
+      (c) => c.extremity === "extreme_long" || c.extremity === "extreme_short",
+    );
+    const anyUnknown = input.cotPositioning.some((c) => c.extremity === "unknown");
     dimensions.push(
       dim(
         "cot_positioning",
@@ -234,9 +240,13 @@ export function buildEvidenceDimensions(
           ? `تموضع المضاربين على ${extreme.currency} عند طرف تاريخي (${
               extreme.extremity === "extreme_long" ? "شراء مكتظ" : "بيع مكتظ"
             }) — احتمال انعكاس أعلى.`
-          : `تموضع المضاربين الأسبوعي ضمن نطاقه المعتاد (${input.cotPositioning
-              .map((c) => c.currency)
-              .join("، ")}).`,
+          : anyUnknown
+            ? `تموضع المضاربين الأسبوعي متاح (${input.cotPositioning
+                .map((c) => c.currency)
+                .join("، ")}) والتاريخ المقارن أقصر من أن يقيس التطرف.`
+            : `تموضع المضاربين الأسبوعي ضمن نطاقه المعتاد (${input.cotPositioning
+                .map((c) => c.currency)
+                .join("، ")}).`,
       ),
     );
   } else {
