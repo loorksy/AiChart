@@ -63,6 +63,18 @@ export const FEATURES = {
   agentDoctrineV3: () => flag("AGENT_DOCTRINE_V3", true),
 
   /**
+   * Tradability gate (docs/PLATFORM_AGENT_UPGRADE_PLAN.md Phase 1). ON by
+   * default: the externally reachable recommendation write path refuses plans
+   * whose entry is beyond the publishable distance budget, instead of storing
+   * them as normal conditional trades.
+   *
+   * OFF stops REFUSING only — the assessment is still computed, persisted in
+   * the context blob, and returned to the caller, so rollback loses the gate
+   * but never the measurement.
+   */
+  tradabilityGateV1: () => flag("TRADABILITY_GATE_V1", true),
+
+  /**
    * Phase B — effective revisions. ON by default.
    *
    * OFF stops SEEDING new revisions and stops the compare-and-swap denial on
@@ -148,6 +160,7 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     visionDecisionV1: FEATURES.visionDecisionV1(),
     caseMemoryV1: FEATURES.caseMemoryV1(),
     agentDoctrineV3: FEATURES.agentDoctrineV3(),
+    tradabilityGateV1: FEATURES.tradabilityGateV1(),
     recRevisionsV1: FEATURES.recRevisionsV1(),
     recLifecycleAlertsV1: FEATURES.recLifecycleAlertsV1(),
     agentTradeModeV1: FEATURES.agentTradeModeV1(),
