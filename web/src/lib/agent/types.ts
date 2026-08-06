@@ -130,6 +130,9 @@ export interface AgentRunContext {
     status: "running" | "done" | "failed" | "resumed";
     durationMs?: number;
   }) => void;
+  /** Live cumulative SANITIZED answer text for the pending bubble (general
+   *  answers only — replace semantics). The final result stays authoritative. */
+  emitAnswerText?: (fullText: string) => void;
   /** Cooperative cancellation from the client (AbortController). */
   signal?: AbortSignal;
   /** Session preferences (educational-only, minimal drawings, no execution…). */

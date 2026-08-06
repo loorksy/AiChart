@@ -13,6 +13,7 @@ import type { AgentStageEvent } from "@/lib/agent/stageEvents";
 import {
   appendUserAndPending,
   applyFinal,
+  applyStreamText,
   applyTicker,
   dropPending,
 } from "@/hooks/agentChatReducer";
@@ -32,6 +33,9 @@ export interface AgentChatMessage {
   pending?: boolean;
   /** Live thinking-ticker line shown inside the pending bubble. */
   ticker?: AgentTickerItem | null;
+  /** Live streamed answer text (cumulative, sanitized) for general answers.
+   *  UI-only — the final event replaces the whole bubble. */
+  streamText?: string | null;
 }
 
 /** Persisted-message payload handed to the chat-history store on each turn. */
@@ -236,6 +240,13 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               const item = data as AgentTickerItem;
               setCurrentTicker(item);
               setMessages((prev) => applyTicker(prev, pendingId, item));
+            } else if (eventName === "answer_text") {
+              // Cumulative sanitized text — replace, never append, so a
+              // dropped frame cannot corrupt the rendered answer.
+              const text = (data as { text?: string }).text;
+              if (typeof text === "string" && text) {
+                setMessages((prev) => applyStreamText(prev, pendingId, text));
+              }
             } else if (eventName === "stage") {
               // Live run-stage checklist for the pending bubble; the final
               // result carries the same list for the persisted message.

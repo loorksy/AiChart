@@ -250,7 +250,14 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 <div className="flex items-start gap-2.5">
                   <AgentAvatar size={22} state="thinking" className="mt-0.5" />
                   <div className="min-w-0 flex-1">
-                    {m.ticker ? (
+                    {m.streamText ? (
+                      /* Live streamed answer (general questions): the text
+                         grows in place; the final event replaces the bubble. */
+                      <p className="whitespace-pre-wrap py-0.5 text-sm leading-relaxed text-foreground">
+                        {m.streamText}
+                        <span className="ms-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-foreground/60 align-middle" />
+                      </p>
+                    ) : m.ticker ? (
                       <AgentThinkingTicker item={m.ticker} />
                     ) : (
                       <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">

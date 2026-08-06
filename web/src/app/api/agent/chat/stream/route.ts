@@ -420,6 +420,12 @@ export async function POST(req: NextRequest) {
           send("heartbeat", { t: Date.now() });
         }, 3000);
 
+        // Live answer text (Phase 3.3, general answers): cumulative sanitized
+        // text with REPLACE semantics — the final event remains authoritative.
+        const emitAnswerText = (fullText: string) => {
+          send("answer_text", { text: fullText });
+        };
+
         // --- Live thinking ticker (UI-only, model-generated per run). ---
         // Runs CONCURRENTLY with the agent: the final answer never waits for
         // ticker generation, and if generation fails the ticker is simply
@@ -507,6 +513,7 @@ export async function POST(req: NextRequest) {
                 sessionId,
                 emitActivity,
                 emitStage,
+                emitAnswerText,
                 emitDebug: () => {},
                 signal: req.signal,
                 session,

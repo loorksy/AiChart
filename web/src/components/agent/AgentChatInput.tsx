@@ -4,6 +4,7 @@ import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { useTradeMode } from "@/hooks/useTradeMode";
 import { ComposerMoreMenu } from "@/components/agent/ComposerMoreMenu";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
 import {
@@ -40,6 +41,15 @@ export function AgentChatInput({
   const { t, dir } = useLocale();
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Context chip (Phase 3.2): whether execution is armed is part of what
+  // governs the next turn, so it sits visibly in the row — read-only here;
+  // changing it stays behind the options menu's explicit confirmation flow.
+  const { view: tradeMode } = useTradeMode({ enabled: brokerConnected });
+  const visibleMode =
+    brokerConnected && tradeMode?.connected && tradeMode.mode !== "unset"
+      ? tradeMode.mode
+      : null;
 
   // Auto-grow: reset to auto first so the box can also shrink back down.
   useLayoutEffect(() => {
@@ -109,6 +119,27 @@ export function AgentChatInput({
             <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
           )}
           <RiskPerTradeControl />
+          {visibleMode ? (
+            <span
+              data-testid="composer-mode-chip"
+              title={t(`trade_mode.desc.${visibleMode}`)}
+              className={
+                visibleMode === "auto"
+                  ? "inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 text-[11px] font-medium text-warning"
+                  : "inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 text-[11px] text-muted-foreground"
+              }
+            >
+              <span
+                className={
+                  visibleMode === "auto"
+                    ? "h-1.5 w-1.5 rounded-full bg-warning"
+                    : "h-1.5 w-1.5 rounded-full bg-muted-foreground/60"
+                }
+                aria-hidden
+              />
+              {t(`trade_mode.mode.${visibleMode}`)}
+            </span>
+          ) : null}
 
           {/*
             End of the row: the plus holds what is set once and left alone (the

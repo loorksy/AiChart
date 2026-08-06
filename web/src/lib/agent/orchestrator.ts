@@ -529,7 +529,7 @@ async function runUnifiedChartAgentInner(
   // "preparing a general answer".
   if (isGeneralOnly(intents)) {
     const summary = await withTimeout(
-      answerGeneralQuestion(userMessage, input.conversationContext),
+      answerGeneralQuestion(userMessage, input.conversationContext, ctx.emitAnswerText),
       generalStageTimeoutMs(),
       null,
     );
@@ -672,7 +672,7 @@ async function runUnifiedChartAgentInner(
   if (!wantMarket) {
     // Account-only or platform-help without market context.
     const summary = await withTimeout(
-      answerGeneralQuestion(userMessage, input.conversationContext),
+      answerGeneralQuestion(userMessage, input.conversationContext, ctx.emitAnswerText),
       generalStageTimeoutMs(),
       null,
     );

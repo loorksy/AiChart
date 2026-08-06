@@ -31,6 +31,21 @@ export function applyTicker(
 }
 
 /**
+ * Update the pending bubble's live streamed answer text (replace semantics —
+ * the server sends cumulative sanitized text). UI-only; the final event still
+ * owns the message content.
+ */
+export function applyStreamText(
+  messages: AgentChatMessage[],
+  pendingId: string,
+  text: string,
+): AgentChatMessage[] {
+  return messages.map((m) =>
+    m.id === pendingId && m.pending ? { ...m, streamText: text } : m,
+  );
+}
+
+/**
  * Replace the pending bubble in place with the final assistant message. Keeps
  * the same id (no duplicate assistant message) and drops the ticker text.
  * If the pending bubble is gone (e.g. chat switched), the final is appended.
