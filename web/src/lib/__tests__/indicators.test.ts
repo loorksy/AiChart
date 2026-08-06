@@ -70,6 +70,40 @@ describe("adx", () => {
   });
 });
 
+describe("local math agrees with the technicalindicators library", () => {
+  // The repo runs two math stacks (local + npm). The rsiCrossCheck precedent:
+  // any indicator both stacks can compute must agree, or two consumers would
+  // show the operator two different numbers for the same chart.
+  it("bollinger bands match within a tick", async () => {
+    const { BollingerBands } = await import("technicalindicators");
+    const values = Array.from({ length: 40 }, (_, i) => 100 + Math.sin(i / 3) * 4 + i * 0.1);
+    const lib = BollingerBands.calculate({ period: 20, stdDev: 2, values }).at(-1)!;
+    const local = bollinger(values, 20, 2)!;
+    assert.ok(Math.abs(lib.middle - local.middle) < 1e-6);
+    assert.ok(Math.abs(lib.upper - local.upper) < 1e-6);
+    assert.ok(Math.abs(lib.lower - local.lower) < 1e-6);
+  });
+
+  it("stochastic %K tracks the library within 2 points", async () => {
+    const { Stochastic } = await import("technicalindicators");
+    const candles = Array.from({ length: 40 }, (_, i) => ({
+      high: 101 + Math.sin(i / 4) * 3,
+      low: 99 + Math.sin(i / 4) * 3,
+      close: 100 + Math.sin(i / 4) * 3 + Math.cos(i) * 0.5,
+    }));
+    const lib = Stochastic.calculate({
+      high: candles.map((c) => c.high),
+      low: candles.map((c) => c.low),
+      close: candles.map((c) => c.close),
+      period: 14,
+      signalPeriod: 3,
+    }).at(-1)!;
+    // The library's k is raw (unsmoothed); compare against smoothK=1.
+    const local = stochastic(candles, 14, 1, 3)!;
+    assert.ok(Math.abs(lib.k - local.k) < 2, `lib %K ${lib.k} vs local ${local.k}`);
+  });
+});
+
 describe("existing indicators stay coherent with the new ones", () => {
   it("rsi and macd still behave on a monotone series", () => {
     const values = Array.from({ length: 60 }, (_, i) => 100 + i);

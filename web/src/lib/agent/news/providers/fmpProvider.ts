@@ -7,7 +7,11 @@
  * never fake events.
  */
 import { fetchWithTimeout } from "@/lib/externalFetch";
-import type { EconomicEvent, NewsProvider } from "../newsProvider";
+import {
+  eventMatchesRequest,
+  type EconomicEvent,
+  type NewsProvider,
+} from "../newsProvider";
 
 const BASE_URL = "https://financialmodelingprep.com/api/v3/economic_calendar";
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -54,10 +58,6 @@ const COUNTRY_CURRENCY: Record<string, string> = {
   NZ: "NZD",
   "NEW ZEALAND": "NZD",
 };
-
-/** Terms that matter for gold (XAU) beyond plain USD events. */
-const GOLD_TERMS =
-  /fed|fomc|cpi|nfp|non[- ]?farm|payroll|inflation|interest rate|yield|treasury|powell|pce/i;
 
 function mapImpact(raw: string | undefined): EconomicEvent["impact"] {
   const v = (raw ?? "").toLowerCase();
@@ -108,22 +108,9 @@ export function createFmpProvider(apiKey: string): NewsProvider {
         cache.set(cacheKey, { fetchedAt: Date.now(), events: all });
       }
 
-      const wanted = new Set(input.currencies.map((c) => c.toUpperCase()));
-      const wantsGold = wanted.has("XAU");
-      const fromMs = input.from.getTime();
-      const toMs = input.to.getTime();
-
-      return all.filter((e) => {
-        const t = new Date(e.time).getTime();
-        if (!(t >= fromMs && t <= toMs)) return false;
-        if (e.currency && wanted.has(e.currency)) return true;
-        // Gold: USD events + Fed/CPI/NFP/FOMC/yields/inflation terms.
-        if (wantsGold) {
-          if (e.currency === "USD") return true;
-          if (GOLD_TERMS.test(e.title)) return true;
-        }
-        return false;
-      });
+      // One shared relevance rule for every calendar source (window +
+      // currencies + the gold-terms extension) — sources must not drift apart.
+      return all.filter((event) => eventMatchesRequest(event, input));
     },
   };
 }

@@ -75,6 +75,14 @@ export const FEATURES = {
   tradabilityGateV1: () => flag("TRADABILITY_GATE_V1", true),
 
   /**
+   * Forex Factory weekly calendar as a news source (no API key). ON by
+   * default: it merges with FMP when both exist, and its failure degrades to
+   * the other source or to newsRisk=unknown — never fake events. OFF returns
+   * the FMP-only (or no-provider) behavior.
+   */
+  forexFactoryCalendarV1: () => flag("FOREX_FACTORY_CALENDAR_V1", true),
+
+  /**
    * Phase B — effective revisions. ON by default.
    *
    * OFF stops SEEDING new revisions and stops the compare-and-swap denial on
@@ -161,6 +169,7 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     caseMemoryV1: FEATURES.caseMemoryV1(),
     agentDoctrineV3: FEATURES.agentDoctrineV3(),
     tradabilityGateV1: FEATURES.tradabilityGateV1(),
+    forexFactoryCalendarV1: FEATURES.forexFactoryCalendarV1(),
     recRevisionsV1: FEATURES.recRevisionsV1(),
     recLifecycleAlertsV1: FEATURES.recLifecycleAlertsV1(),
     agentTradeModeV1: FEATURES.agentTradeModeV1(),
