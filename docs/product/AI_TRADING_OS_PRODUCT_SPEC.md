@@ -1,6 +1,9 @@
 # AiChart — AI Trading Operating System
 ## Product Specification v1.0 (Design Only)
 
+> **Supersession:** For investor/CTO decisions, IA ruthlessness, MVP scope, and pushbacks, prefer  
+> [`AI_TRADING_OS_MASTER_SPEC.md`](./AI_TRADING_OS_MASTER_SPEC.md) (v2.0). This v1.0 remains a detailed inventory; where they conflict, **Master wins**.
+
 > **Status:** Product Design Spec — لا كود في هذه المرحلة  
 > **Role lens:** Chief Product Architect × UX Lead × AI Systems Architect  
 > **Positioning shift:** من *AI Recommendation Platform* → إلى *AI Trading Operating System*  
