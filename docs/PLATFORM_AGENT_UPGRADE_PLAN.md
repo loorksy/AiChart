@@ -1,5 +1,19 @@
 # Platform & Agent Upgrade Plan
 
+> **Implementation status** (this branch):
+>
+> | Item | State |
+> |---|---|
+> | Phase 1 — tradability gate, write-path refusal, doctrine text | ✅ shipped (`tradability.ts`, gate in `/api/agent/recommendation`, `TRADABILITY_GATE_V1`) |
+> | Phase 1 — watch-only UI section, entry-proximity alerts, calibration cron | ✅ shipped (`ActiveRecommendationsPanel`, `tradabilityCalibration.ts`, `/api/cron/tradability-calibration`; proximity events already existed in `lifecycleEvents.ts`) |
+> | Phase 3.1 — stage protocol + heartbeat over SSE | ✅ shipped (`stageEvents.ts`, `captureStage` emission, `stage`/`heartbeat` events) |
+> | Phase 3.2 — live run checklist + persisted run card + context chips | ✅ shipped (`AgentRunStages`, pending-bubble checklist, "how this was produced", trade-mode chip; symbol/interval/risk chips pre-existed; interrupt/cancel pre-existed) |
+> | Phase 3.3 — streamed answers | ✅ shipped for general answers (`answer_text`, replace semantics); analysis answers are structured JSON — stage checklist covers their latency |
+> | Phase 3 — stream survives page navigation | ⬜ not started (needs a client-side run store owning the fetch; the hook currently aborts on unmount by design) |
+> | Phase 2 — vision decisions, self-check, WAIT-sweep, decision metrics | ⬜ not started |
+> | Phase 4 — layered memory (L0–L3) | ⬜ not started |
+> | Phase 5 — DESIGN.md system | ⬜ not started |
+
 **Scope:** Improve the existing platform with its current feature set — no new product surface.
 Two goals: (1) make the agent professional — correct analysis, correct entries, an engineered
 decision pipeline instead of a system-prompt-bound bot; (2) rebuild the chat experience, memory,
