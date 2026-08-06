@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   chatConsoleHref,
   parseChatIdFromSearchParams,
+  WORKSPACE_HOME_HREF,
 } from "@/lib/chatUrl";
 
 export function useConsoleChatUrl(opts?: { enabled?: boolean }) {
@@ -14,9 +15,9 @@ export function useConsoleChatUrl(opts?: { enabled?: boolean }) {
   const urlChatId = enabled ? parseChatIdFromSearchParams(searchParams) : null;
 
   const syncChatUrl = useCallback(
-    (chatId: string, mode: "push" | "replace") => {
+    (chatId: string | null, mode: "push" | "replace") => {
       if (!enabled) return;
-      const href = chatConsoleHref(chatId);
+      const href = chatId ? chatConsoleHref(chatId) : WORKSPACE_HOME_HREF;
       if (mode === "replace") router.replace(href, { scroll: false });
       else router.push(href, { scroll: false });
     },

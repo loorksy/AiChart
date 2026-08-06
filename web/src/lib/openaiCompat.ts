@@ -21,6 +21,7 @@ import {
   llmTtftTimeoutMs,
 } from "./externalFetch";
 import { resilientFetch } from "./providerResilience";
+import { isReasoningModel } from "./modelCatalog";
 
 export interface OpenAICompatTarget {
   baseUrl: string;
@@ -133,11 +134,29 @@ export function openAICompatTokenLimitField(
   return "max_tokens";
 }
 
+/**
+ * Reasoning-family models (o-series, gpt-5) spend part of the completion
+ * budget on hidden reasoning tokens before the visible JSON/text starts — the
+ * same problem anthropic.ts's THINKING_MODELS solves for Claude 5-family
+ * extended thinking. A cap sized for a fast, non-reasoning model (4096) can
+ * be entirely consumed by reasoning, truncating the answer (finish_reason:
+ * "length"), which forces callers with a JSON-parse retry loop (e.g. the
+ * final-decision synthesizer) to re-run the whole reasoning pass — and that
+ * retry is what actually blows a shared stage deadline sized for one attempt.
+ */
+const REASONING_MIN_TOKENS = 8192;
+const REASONING_MAX_TOKENS = 16000;
+
 function tokenLimitBody(
   model: string,
   maxTokens?: number,
 ): Record<string, number> {
-  const limit = Math.min(maxTokens ?? 4096, 4096);
+  const limit = isReasoningModel(model)
+    ? Math.min(
+        Math.max(maxTokens ?? REASONING_MIN_TOKENS, REASONING_MIN_TOKENS),
+        REASONING_MAX_TOKENS,
+      )
+    : Math.min(maxTokens ?? 4096, 4096);
   const field = openAICompatTokenLimitField(model);
   return { [field]: limit };
 }
@@ -148,8 +167,7 @@ function tokenLimitBody(
  * TTFT budget instead of stalling for tens of seconds.
  */
 function reasoningBody(model: string): Record<string, unknown> {
-  const id = bareModelId(model);
-  if (/^o\d/.test(id) || /^gpt-5/.test(id)) return { reasoning_effort: "low" };
+  if (isReasoningModel(model)) return { reasoning_effort: "low" };
   return {};
 }
 

@@ -27,6 +27,8 @@ import {
 } from "./intentRouter";
 import { handleUserDrawingCommand } from "./drawingCommands/handleUserDrawingCommand";
 import { withTimeout, withDeadline, createRunBudget, AGENT_TIMEOUTS } from "./timeout";
+import { getQuickModel } from "@/lib/llm";
+import { isReasoningModel } from "@/lib/modelCatalog";
 import { buildInformationalResult, buildAgentFallbackResult } from "./fallback";
 import {
   failureCodeFromSynthesizerKind,
@@ -156,6 +158,23 @@ import {
 } from "./learningLoop";
 
 const log = createLogger("agent.orchestrator");
+
+/**
+ * `AGENT_TIMEOUTS.general` was calibrated against the fast platform default
+ * (gpt-4.1). An explicit user model pick is honoured for the quick tier too
+ * (`getQuickModel()` in lib/llm.ts) — so picking a reasoning-family model
+ * (o-series, gpt-5) pins these short general-question calls onto a model that
+ * "thinks" before answering, even at reasoning_effort "low". Double the
+ * budget rather than leave a real, well-formed answer to die on a deadline
+ * sized for a model the operator didn't choose. Safe to widen freely: these
+ * are early-return paths that never run alongside the deep-tier decision
+ * call, so there's no TOTAL_RUN_BUDGET_MS to share.
+ */
+function generalStageTimeoutMs(): number {
+  return isReasoningModel(getQuickModel())
+    ? AGENT_TIMEOUTS.general * 2
+    : AGENT_TIMEOUTS.general;
+}
 
 /**
  * Realised R for a resolved recommendation, from its own levels.
@@ -455,7 +474,7 @@ async function runUnifiedChartAgentInner(
         chartContext,
         activeRecommendation,
       }),
-      AGENT_TIMEOUTS.general,
+      generalStageTimeoutMs(),
       null,
     );
     if (summary == null) {
@@ -511,7 +530,7 @@ async function runUnifiedChartAgentInner(
   if (isGeneralOnly(intents)) {
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage, input.conversationContext),
-      AGENT_TIMEOUTS.general,
+      generalStageTimeoutMs(),
       null,
     );
     if (summary == null) {
@@ -654,7 +673,7 @@ async function runUnifiedChartAgentInner(
     // Account-only or platform-help without market context.
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage, input.conversationContext),
-      AGENT_TIMEOUTS.general,
+      generalStageTimeoutMs(),
       null,
     );
     if (summary == null) {

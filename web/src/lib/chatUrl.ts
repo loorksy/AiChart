@@ -20,6 +20,9 @@ export function chatConsoleHref(chatId: string): string {
   return `/workspace?${CHAT_QUERY_KEY}=${encodeURIComponent(chatId)}`;
 }
 
+/** Bare workspace — no chat selected. */
+export const WORKSPACE_HOME_HREF = "/workspace";
+
 /** Shareable pretty link — resolves to the canonical console URL. */
 export function chatShareHref(chatId: string): string {
   return `/console/chats/${encodeURIComponent(chatId)}`;

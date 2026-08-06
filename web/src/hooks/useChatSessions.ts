@@ -39,7 +39,13 @@ export interface UseChatSessions {
   ready: boolean;
   loadingMessages: boolean;
   selectChat: (id: string, opts?: { skipUrlSync?: boolean }) => void;
-  newChat: () => Promise<void>;
+  /**
+   * Returns to the bare, chat-less workspace. Does NOT create a chat row —
+   * that stayed empty in the sidebar for every operator who opened "new
+   * chat" and never typed anything. Mints lazily via `ensureChat` on the
+   * first actual send, same as the bare `/workspace` landing.
+   */
+  newChat: () => void;
   /**
    * Home screen has no chat id. The first send creates one, navigates into it,
    * and returns the id so the stream can persist against a real conversation.
@@ -62,8 +68,8 @@ export function useChatSessions(opts: {
   locale?: "ar" | "en";
   /** Active chat from `/workspace?chat=` — wins over localStorage on first load. */
   urlChatId?: string | null;
-  /** Keep the browser URL aligned with the active chat. */
-  syncChatUrl?: (chatId: string, mode: ChatUrlSyncMode) => void;
+  /** Keep the browser URL aligned with the active chat. `null` clears it. */
+  syncChatUrl?: (chatId: string | null, mode: ChatUrlSyncMode) => void;
 }): UseChatSessions {
   const { enabled, symbol, interval, locale, urlChatId, syncChatUrl } = opts;
   const [sessions, setSessions] = useState<AgentChatSession[]>([]);
@@ -197,18 +203,12 @@ export function useChatSessions(opts: {
     [activeChatId, fetchMessages, syncChatUrl],
   );
 
-  const newChat = useCallback(async () => {
-    const session = await createChat();
-    if (!session) return;
-    setSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
+  const newChat = useCallback(() => {
     setActiveMessages([]);
-    setActiveChatId(session.id);
-    setPanelKey(session.id);
-    syncChatUrl?.(session.id, "push");
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("aichart:chats-updated"));
-    }
-  }, [createChat, syncChatUrl]);
+    setActiveChatId(null);
+    setPanelKey("home");
+    syncChatUrl?.(null, "push");
+  }, [syncChatUrl]);
 
   const ensureChat = useCallback(async (): Promise<string | null> => {
     if (activeChatId) return activeChatId;
