@@ -9,10 +9,10 @@
 > | Phase 3.1 — stage protocol + heartbeat over SSE | ✅ shipped (`stageEvents.ts`, `captureStage` emission, `stage`/`heartbeat` events) |
 > | Phase 3.2 — live run checklist + persisted run card + context chips | ✅ shipped (`AgentRunStages`, pending-bubble checklist, "how this was produced", trade-mode chip; symbol/interval/risk chips pre-existed; interrupt/cancel pre-existed) |
 > | Phase 3.3 — streamed answers | ✅ shipped for general answers (`answer_text`, replace semantics); analysis answers are structured JSON — stage checklist covers their latency |
-> | Phase 3 — stream survives page navigation | ⬜ not started (needs a client-side run store owning the fetch; the hook currently aborts on unmount by design) |
-> | Phase 2 — vision decisions, self-check, WAIT-sweep, decision metrics | ⬜ not started |
-> | Phase 4 — layered memory (L0–L3) | ⬜ not started |
-> | Phase 5 — DESIGN.md system | ⬜ not started |
+> | Phase 3 — stream survives page navigation | ✅ shipped (`liveRunStore.ts`: no unmount abort, remount re-attach, retained finals claimed without duplicating history) |
+> | Phase 2 — vision decisions, self-check, WAIT-sweep, decision metrics | ✅ complete — 2.1/2.2/2.3 verified already shipped on base (multimodal synthesizer, corrective retry with objections + level-menu + plan contract, `doctrineGuard.test.ts` phrase scan); 2.4 closed here (`aichart_tradability_verdicts_total`, `aichart_synth_corrective_retries_total`, nightly calibration) |
+> | Phase 4 — layered memory (L0–L3) | ✅ shipped (L2 `scenarioMemory.ts` per-symbol realized-outcome blocks via daily cron into the existing semantic store; GET/DELETE `/api/agent/memory` + settings `AgentMemoryPanel` transparency). Remaining operational: flipping `AGENT_MEMORY_WRITE_V1` on for conversation-derived L1 writes is a rollout decision, not code |
+> | Phase 5 — DESIGN.md system | ✅ shipped (`web/DESIGN.md` codified from live tokens + CLAUDE.md conformance note; surface-by-surface normalization is ongoing review work) |
 
 **Scope:** Improve the existing platform with its current feature set — no new product surface.
 Two goals: (1) make the agent professional — correct analysis, correct entries, an engineered
