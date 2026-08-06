@@ -666,6 +666,12 @@ export const ar: Record<TranslationKey, string> = {
   "rec.exec_state.expired": "منتهي",
   "rec.exec_state.invalidated": "ملغى",
   "rec.exec_state.blocked": "محجوب",
+  "rec.tradability.now": "قابلة الآن",
+  "rec.tradability.soon": "قريبة من التفعيل",
+  "rec.tradability.watch_only": "تحت المراقبة",
+  "rec.page.watch": "آراء سوقية تحت المراقبة",
+  "rec.watch.note":
+    "الاتجاه واضح لكن الدخول بعيد عن السعر الحالي — تُعرض للمتابعة فقط، ويصلك تنبيه عند اقتراب السعر من منطقة الدخول.",
   "rec.detail.revision": "المراجعة",
   "rec.detail.entry_zone": "منطقة الدخول",
   "rec.detail.activation": "شرط التفعيل",

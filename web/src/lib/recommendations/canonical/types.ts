@@ -77,6 +77,12 @@ export interface CanonicalRecommendation {
   engineVersion: string;
   entryType?: string;
   legacyTrackingId?: string;
+  /**
+   * The stored context blob (statistical support, tradability verdict, visual
+   * audit). Exposed on reads so projections can surface individual facts —
+   * writers still treat it as append-at-create, never a mutable channel.
+   */
+  contextJson?: string;
 }
 
 export interface CreateCanonicalRecommendationInput {

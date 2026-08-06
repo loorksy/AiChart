@@ -15,6 +15,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Clock3,
+  Eye,
   RefreshCw,
   ScrollText,
   ShieldCheck,
@@ -32,6 +33,13 @@ const GRADE_CLASSES: Record<DimensionGrade, string> = {
   moderate: "text-info",
   weak: "text-warning",
   unavailable: "text-muted-foreground",
+};
+
+/** Tradability verdicts, styled by urgency: actionable → amber-near → watch. */
+const TRADABILITY_CLASSES: Record<string, string> = {
+  now: "border-buy/45 bg-buy/10 text-buy",
+  soon: "border-warning/40 bg-warning/10 text-warning",
+  watch_only: "border-border bg-muted/40 text-muted-foreground",
 };
 
 const EXEC_STATE_CLASSES: Record<string, string> = {
@@ -145,6 +153,22 @@ function ActiveRecommendationDetailCard({ rec }: { rec: ActiveRecommendationView
         >
           {t(`rec.exec_state.${execState}`)}
         </span>
+        {rec.tradability && rec.tradability.verdict !== "now" ? (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+              TRADABILITY_CLASSES[rec.tradability.verdict] ?? TRADABILITY_CLASSES.watch_only,
+            )}
+          >
+            {rec.tradability.verdict === "watch_only" ? (
+              <Eye className="h-3 w-3" aria-hidden />
+            ) : null}
+            {t(`rec.tradability.${rec.tradability.verdict}`)}
+            {rec.tradability.entryDistanceAtr != null
+              ? ` · ${rec.tradability.entryDistanceAtr} ATR`
+              : ""}
+          </span>
+        ) : null}
         {rec.revisionNo != null ? (
           <span className="ms-auto rounded-md bg-muted/50 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
             {t("rec.detail.revision")} #{rec.revisionNo}
@@ -326,11 +350,44 @@ export function ActiveRecommendationsPanel() {
           {t("rec.active.empty")}
         </p>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
-          {recs.map((rec) => (
-            <ActiveRecommendationDetailCard key={rec.id} rec={rec} />
-          ))}
-        </div>
+        (() => {
+          // Watch items are market views whose entry was graded unreachable —
+          // they live in their OWN section so an actionable list never shows a
+          // plan the operator cannot act on (tradability budget, Phase 1).
+          const watch = recs.filter((r) => r.tradability?.verdict === "watch_only");
+          const actionable = recs.filter((r) => r.tradability?.verdict !== "watch_only");
+          return (
+            <>
+              {actionable.length ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {actionable.map((rec) => (
+                    <ActiveRecommendationDetailCard key={rec.id} rec={rec} />
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+                  {t("rec.active.empty")}
+                </p>
+              )}
+              {watch.length ? (
+                <div className="mt-4" data-testid="watch-recommendations-section">
+                  <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                    <Eye className="h-4 w-4" aria-hidden />
+                    {t("rec.page.watch")} ({watch.length})
+                  </h3>
+                  <p className="mb-2 text-[11px] text-muted-foreground">
+                    {t("rec.watch.note")}
+                  </p>
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {watch.map((rec) => (
+                      <ActiveRecommendationDetailCard key={rec.id} rec={rec} />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          );
+        })()
       )}
     </section>
   );

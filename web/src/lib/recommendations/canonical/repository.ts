@@ -48,6 +48,7 @@ interface RecommendationRow {
   engine_version: string | null;
   entry_type: string | null;
   legacy_tracking_id: string | null;
+  context_json: string | null;
 }
 
 interface TransitionRow {
@@ -151,6 +152,7 @@ function toCanonical(row: RecommendationRow): CanonicalRecommendation {
     engineVersion: row.engine_version ?? "legacy",
     entryType: row.entry_type ?? undefined,
     legacyTrackingId: row.legacy_tracking_id ?? undefined,
+    contextJson: row.context_json ?? undefined,
   };
 }
 

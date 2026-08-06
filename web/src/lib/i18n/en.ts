@@ -668,6 +668,12 @@ export const en = {
   "rec.exec_state.expired": "Expired",
   "rec.exec_state.invalidated": "Invalidated",
   "rec.exec_state.blocked": "Blocked",
+  "rec.tradability.now": "Tradable now",
+  "rec.tradability.soon": "Near activation",
+  "rec.tradability.watch_only": "Watching",
+  "rec.page.watch": "Market views under watch",
+  "rec.watch.note":
+    "The direction is clear but the entry is far from the current price — shown for monitoring only; you will be alerted when price approaches the entry zone.",
   "rec.detail.revision": "Revision",
   "rec.detail.entry_zone": "Entry zone",
   "rec.detail.activation": "Activation condition",
