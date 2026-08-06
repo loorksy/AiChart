@@ -68,12 +68,22 @@ describe("useChatSessions panelKey", () => {
     );
   });
 
-  it("selectChat and newChat DO move panelKey — a real conversation switch", () => {
+  it("selectChat moves panelKey to the selected chat — a real conversation switch", () => {
     const selectBody = fnBody(HOOK_SRC, "const selectChat = useCallback");
     assert.match(selectBody, /setPanelKey\(id\)/);
+  });
 
+  /**
+   * newChat used to eagerly create a session and move panelKey to it
+   * (matching this same "real conversation switch" rule). It's now lazy
+   * (see useChatSessionsLazyNewChat.test.ts) — "new chat" resets back to the
+   * bare "home" panelKey instead, and a session is only minted by ensureChat
+   * on the first actual send, exactly like the bare /workspace landing.
+   */
+  it("newChat resets panelKey back to home — no eager session, no eager remount target", () => {
     const newChatBody = fnBody(HOOK_SRC, "const newChat = useCallback");
-    assert.match(newChatBody, /setPanelKey\(session\.id\)/);
+    assert.match(newChatBody, /setPanelKey\("home"\)/);
+    assert.doesNotMatch(newChatBody, /createChat\(/);
   });
 
   it("a deep-linked chat hydrating on load also sets panelKey", () => {
