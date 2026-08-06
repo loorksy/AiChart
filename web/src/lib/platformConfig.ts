@@ -155,6 +155,15 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "من OANDA ← Manage API Access",
   },
   {
+    key: "FRED_API_KEY",
+    label: "مفتاح FRED (بيانات الفيدرالي والماكرو)",
+    labelEn: "FRED_API_KEY",
+    group: "markets",
+    secret: true,
+    plainStorage: false,
+    placeholder: "مفتاح مجاني من fred.stlouisfed.org",
+  },
+  {
     key: "OANDA_ACCOUNT_ID",
     label: "رقم حساب OANDA",
     labelEn: "OANDA_ACCOUNT_ID",

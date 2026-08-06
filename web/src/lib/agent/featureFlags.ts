@@ -83,6 +83,21 @@ export const FEATURES = {
   forexFactoryCalendarV1: () => flag("FOREX_FACTORY_CALENDAR_V1", true),
 
   /**
+   * FRED macro-regime evidence (Fed policy rate, CPI YoY, 2s10s, U-3) in the
+   * decision bundle. ON by default but inert until FRED_API_KEY is set; a
+   * null block simply means no macro entry — the model may not claim it was
+   * checked. Gated on BOTH the prompt and the evidence card.
+   */
+  macroEvidenceV1: () => flag("MACRO_EVIDENCE_V1", true),
+
+  /**
+   * CFTC COT positioning evidence (weekly net non-commercial + extremity) in
+   * the decision bundle. ON by default; keyless public dataset. Same null
+   * semantics and both-sides gating as the macro block.
+   */
+  cotEvidenceV1: () => flag("COT_EVIDENCE_V1", true),
+
+  /**
    * Phase B — effective revisions. ON by default.
    *
    * OFF stops SEEDING new revisions and stops the compare-and-swap denial on
@@ -170,6 +185,8 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     agentDoctrineV3: FEATURES.agentDoctrineV3(),
     tradabilityGateV1: FEATURES.tradabilityGateV1(),
     forexFactoryCalendarV1: FEATURES.forexFactoryCalendarV1(),
+    macroEvidenceV1: FEATURES.macroEvidenceV1(),
+    cotEvidenceV1: FEATURES.cotEvidenceV1(),
     recRevisionsV1: FEATURES.recRevisionsV1(),
     recLifecycleAlertsV1: FEATURES.recLifecycleAlertsV1(),
     agentTradeModeV1: FEATURES.agentTradeModeV1(),

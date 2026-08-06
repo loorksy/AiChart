@@ -56,6 +56,18 @@ export interface BuildEvidenceDimensionsInput {
   /** Similar historical cases, once the case memory exists. */
   historicalCases?: { count: number; winRate?: number | null } | null;
   newsRisk?: "low" | "medium" | "high" | "unknown";
+  /** FRED macro regime, when collected — the card shows the trend words. */
+  macroRegime?: {
+    policyRatePct: number;
+    policyTrend: "rising" | "falling" | "holding";
+    inflationYoYPct: number | null;
+    curveSpreadPct: number | null;
+  } | null;
+  /** Weekly COT positioning per relevant currency, when collected. */
+  cotPositioning?: {
+    currency: string;
+    extremity: "extreme_long" | "extreme_short" | "neutral";
+  }[] | null;
   /** Whether coverage met the trade gate. */
   dataSufficient: boolean;
   /** Visual review outcome when charts were actually read. */
@@ -188,6 +200,50 @@ export function buildEvidenceDimensions(
         : `خطر الأحداث الاقتصادية: ${news}.`,
     ),
   );
+
+  // Macro regime (FRED). Context weight only — the trend words are the read;
+  // the model saw the full numbers in its own bundle entry.
+  if (input.macroRegime) {
+    const m = input.macroRegime;
+    dimensions.push(
+      dim(
+        "macro_regime",
+        "moderate",
+        `سياسة الفيدرالي ${m.policyRatePct}% (${
+          m.policyTrend === "rising" ? "ترتفع" : m.policyTrend === "falling" ? "تنخفض" : "ثابتة"
+        })${m.inflationYoYPct != null ? ` — التضخم السنوي ${m.inflationYoYPct}%` : ""}${
+          m.curveSpreadPct != null ? ` — ميل المنحنى ${m.curveSpreadPct}` : ""
+        }.`,
+      ),
+    );
+  } else {
+    dimensions.push(
+      dim("macro_regime", "unavailable", "بيانات الماكرو (الفيدرالي/التضخم) غير متاحة — لم تُراجَع."),
+    );
+  }
+
+  // COT positioning. Extremes get a weaker grade on purpose: a crowded trade
+  // is a WARNING about continuation, not a stronger case for it.
+  if (input.cotPositioning?.length) {
+    const extreme = input.cotPositioning.find((c) => c.extremity !== "neutral");
+    dimensions.push(
+      dim(
+        "cot_positioning",
+        extreme ? "weak" : "moderate",
+        extreme
+          ? `تموضع المضاربين على ${extreme.currency} عند طرف تاريخي (${
+              extreme.extremity === "extreme_long" ? "شراء مكتظ" : "بيع مكتظ"
+            }) — احتمال انعكاس أعلى.`
+          : `تموضع المضاربين الأسبوعي ضمن نطاقه المعتاد (${input.cotPositioning
+              .map((c) => c.currency)
+              .join("، ")}).`,
+      ),
+    );
+  } else {
+    dimensions.push(
+      dim("cot_positioning", "unavailable", "تقرير مراكز المتداولين COT غير متاح — لم يُراجَع."),
+    );
+  }
 
   const visual = input.visualConfirmation ?? "not_checked";
   dimensions.push(

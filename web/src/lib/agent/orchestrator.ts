@@ -75,6 +75,9 @@ import {
 } from "@/lib/research/client";
 import { buildInformationalConfidence } from "./confidenceSemantics";
 import { runMarketDataAgent } from "./agents/marketDataAgent";
+import { getMacroRegime } from "./macro/fredProvider";
+import { getCotPositioning } from "./macro/cotProvider";
+import { affectedCurrencies } from "@/lib/markets/symbolMapping";
 import { runStructureAgent } from "./agents/structureAgent";
 import { runLiquidityAgent } from "./agents/liquidityAgent";
 import { runSupplyDemandAgent } from "./agents/supplyDemandAgent";
@@ -1145,6 +1148,24 @@ async function runUnifiedChartAgentInner(
       }).catch(() => null)
     : null;
 
+  // Macro (Fed policy / inflation / curve) and weekly COT positioning — the
+  // same rules as every other bundle entry: gathered BEFORE the decision
+  // call with their own timeout, null-degrading, evidence-not-gates. Both
+  // ride the designed additionalEvidence extension point, and the prompt
+  // forbids the model claiming either was checked while its block is null.
+  const [macroRegime, cotPositioning] = await Promise.all([
+    FEATURES.macroEvidenceV1()
+      ? withTimeout(getMacroRegime(), AGENT_TIMEOUTS.news, null).catch(() => null)
+      : Promise.resolve(null),
+    FEATURES.cotEvidenceV1()
+      ? withTimeout(
+          getCotPositioning(affectedCurrencies(market.symbol)),
+          AGENT_TIMEOUTS.news,
+          null,
+        ).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
   const visual = FEATURES.visionDecisionV1()
     ? await collectVisualEvidence({
         userId: ctx.userId,
@@ -1184,6 +1205,17 @@ async function runUnifiedChartAgentInner(
           visualSnapshots: visual.snapshots,
           statisticalSupport,
           historicalCases,
+          // The designed extension point: fresh keys reach the model prompt
+          // (and the frozen evidence snapshot) without contract changes.
+          additionalEvidence:
+            macroRegime || cotPositioning
+              ? {
+                  ...(macroRegime ? { macroRegime } : {}),
+                  ...(cotPositioning ? { cotPositioning } : {}),
+                }
+              : null,
+          macroRegime,
+          cotPositioning,
         },
         {
           ...input.synthesizerDeps,
