@@ -44,6 +44,7 @@ import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { buildAgentFallbackResult } from "@/lib/agent/fallback";
 import { classifyAgentError, userMessageForFailure } from "@/lib/agent/errorTaxonomy";
 import type { AgentActivityEvent } from "@/lib/agent/types";
+import type { AgentStageEvent } from "@/lib/agent/stageEvents";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
@@ -403,6 +404,22 @@ export async function POST(req: NextRequest) {
           send("activity", full);
         };
 
+        // Run-stage protocol (Phase 3.1): the orchestrator narrates its own
+        // fleet boundaries; this only forwards them and keeps the run's list
+        // so the final result persists the checklist with the message.
+        const stageEvents: AgentStageEvent[] = [];
+        const emitStage = (ev: Omit<AgentStageEvent, "timestamp">) => {
+          const full: AgentStageEvent = { ...ev, timestamp: Date.now() };
+          stageEvents.push(full);
+          send("stage", full);
+        };
+
+        // Heartbeat: long stages (decision model, captures) must never read as
+        // a dead stream. Unknown SSE event names are ignored by old clients.
+        const heartbeat = setInterval(() => {
+          send("heartbeat", { t: Date.now() });
+        }, 3000);
+
         // --- Live thinking ticker (UI-only, model-generated per run). ---
         // Runs CONCURRENTLY with the agent: the final answer never waits for
         // ticker generation, and if generation fails the ticker is simply
@@ -489,6 +506,7 @@ export async function POST(req: NextRequest) {
                 userId: user.id,
                 sessionId,
                 emitActivity,
+                emitStage,
                 emitDebug: () => {},
                 signal: req.signal,
                 session,
@@ -600,6 +618,9 @@ export async function POST(req: NextRequest) {
             ...stripInternalFieldsFromClientResult(result),
             sessionId,
             activityEvents,
+            // The run's stage checklist, persisted with the message so a
+            // reopened chat still shows HOW the answer was produced.
+            stages: stageEvents,
             // Replace static contextual options with the dynamic suggestions.
             options: suggestions,
             suggestions,
@@ -675,6 +696,7 @@ export async function POST(req: NextRequest) {
               ...stripInternalFieldsFromClientResult(fallbackResult),
               sessionId,
               activityEvents,
+              stages: stageEvents,
               options: [],
               suggestions: [],
             });
@@ -699,6 +721,7 @@ export async function POST(req: NextRequest) {
             log.error("agent.stream.slo_breach", { requestId, reason: "no_final_event" });
           }
           done = true; // stop any in-flight ticker loop
+          clearInterval(heartbeat);
           // Do not release the burst slot while dependent work is still running
           // (RELIABILITY_PLAN.md item 2): abort the ticker, then wait — briefly
           // and boundedly — for it to unwind. Otherwise the next run could

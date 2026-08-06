@@ -9,6 +9,7 @@ import type {
   AgentOption,
 } from "@/lib/agent/types";
 import type { AgentTickerItem } from "@/lib/agent/ticker/types";
+import type { AgentStageEvent } from "@/lib/agent/stageEvents";
 import {
   appendUserAndPending,
   applyFinal,
@@ -99,6 +100,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
     () => opts.initialMessages ?? [],
   );
   const [activityEvents, setActivityEvents] = useState<AgentActivityEvent[]>([]);
+  const [stageEvents, setStageEvents] = useState<AgentStageEvent[]>([]);
   const [currentTicker, setCurrentTicker] = useState<AgentTickerItem | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,6 +155,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         appendUserAndPending(prev, { id: uuid(), content: text }, pendingId),
       );
       setActivityEvents([]);
+      setStageEvents([]);
       setError(null);
       setRunning(true);
 
@@ -233,6 +236,10 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               const item = data as AgentTickerItem;
               setCurrentTicker(item);
               setMessages((prev) => applyTicker(prev, pendingId, item));
+            } else if (eventName === "stage") {
+              // Live run-stage checklist for the pending bubble; the final
+              // result carries the same list for the persisted message.
+              setStageEvents((prev) => [...prev, data as AgentStageEvent]);
             } else if (eventName === "activity") {
               // Live stream only — the server already filtered to visible work.
               setActivityEvents((prev) => [...prev, data as AgentActivityEvent]);
@@ -255,6 +262,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               );
               // Clear the live stream + ticker — the run is over.
               setActivityEvents([]);
+              setStageEvents([]);
               setCurrentTicker(null);
               // Only the final event delivers drawings to the chart. Ticker and
               // activity events NEVER touch the chart.
@@ -333,12 +341,13 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
     () => ({
       messages,
       activityEvents,
+      stageEvents,
       currentTicker,
       running,
       error,
       sendMessage,
       cancel,
     }),
-    [messages, activityEvents, currentTicker, running, error, sendMessage, cancel],
+    [messages, activityEvents, stageEvents, currentTicker, running, error, sendMessage, cancel],
   );
 }

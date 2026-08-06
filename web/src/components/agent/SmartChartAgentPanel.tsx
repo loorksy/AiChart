@@ -11,6 +11,7 @@ import {
 import { useLocale } from "@/hooks/useLocale";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
+import { AgentRunStages } from "./AgentRunStages";
 import { AgentChatInput } from "./AgentChatInput";
 import { AgentModeBadge, AgentFaultCard, AgentEvidenceCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
 import { isOperationalBlocker } from "@/lib/agent/executionModeBadge";
@@ -103,6 +104,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
     }>({ greeting: null, suggestions: [] });
     const {
       messages,
+      stageEvents,
       running,
       error,
       sendMessage,
@@ -247,14 +249,23 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {m.pending ? (
                 <div className="flex items-start gap-2.5">
                   <AgentAvatar size={22} state="thinking" className="mt-0.5" />
-                  {m.ticker ? (
-                    <AgentThinkingTicker item={m.ticker} />
-                  ) : (
-                    <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-foreground/70" />
-                      <span>{t("agent.processing")}</span>
-                    </div>
-                  )}
+                  <div className="min-w-0 flex-1">
+                    {m.ticker ? (
+                      <AgentThinkingTicker item={m.ticker} />
+                    ) : (
+                      <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-foreground/70" />
+                        <span>{t("agent.processing")}</span>
+                      </div>
+                    )}
+                    {/* Live run-stage checklist: what the agent is actually
+                        doing right now, stage by stage — never dead air. */}
+                    {stageEvents.length ? (
+                      <div className="mt-2 max-w-64 rounded-lg border border-border/50 bg-muted/20 px-2.5 py-2">
+                        <AgentRunStages events={stageEvents} />
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <>
@@ -372,6 +383,19 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {/* What the read actually rests on (item 13) — never a bare number. */}
               {m.result?.evidenceCard ? (
                 <AgentEvidenceCard card={m.result.evidenceCard} />
+              ) : null}
+              {/* How this answer was produced — the run's persisted stage
+                  checklist, collapsed by default. */}
+              {m.result?.stages?.length ? (
+                <details className="group mt-2 rounded-lg border border-border/40 bg-muted/10">
+                  <summary className="flex min-h-8 cursor-pointer select-none list-none items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                    <ChevronDown className="h-3 w-3 shrink-0 transition-transform group-open:rotate-180" />
+                    {t("agent.run_stages")}
+                  </summary>
+                  <div className="border-t border-border/30 px-2.5 py-2">
+                    <AgentRunStages events={m.result.stages} />
+                  </div>
+                </details>
               ) : null}
               {m.result?.riskWarnings?.length ? (
                 <ul className="mt-1 space-y-0.5 text-[12px] text-warning">

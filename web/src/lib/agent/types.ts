@@ -122,6 +122,14 @@ export interface AgentRunContext {
   /** Optional internal/debug signal — NEVER shown to the user. Used for
    *  observability (e.g. intent classification) without leaking to the UI. */
   emitDebug?: (event: { type: string; [key: string]: unknown }) => void;
+  /** Emit a run-stage lifecycle event (stage name + status + duration only —
+   *  never evidence or reasoning). Optional: callers without a live client
+   *  simply do not provide it. */
+  emitStage?: (event: {
+    stage: string;
+    status: "running" | "done" | "failed" | "resumed";
+    durationMs?: number;
+  }) => void;
   /** Cooperative cancellation from the client (AbortController). */
   signal?: AbortSignal;
   /** Session preferences (educational-only, minimal drawings, no execution…). */
@@ -252,6 +260,9 @@ export interface AgentFinalResult {
   keyReasons: string[];
   riskWarnings: string[];
   activityEvents: AgentActivityEvent[];
+  /** Run-stage lifecycle events (stage names + durations only) — the persisted
+   *  "how this answer was produced" checklist. Attached by the stream route. */
+  stages?: import("./stageEvents").AgentStageEvent[];
   recommendation?: AgentRecommendation;
   drawings?: ChartDrawing[];
   /** User-drawing mutations to apply AFTER the final SSE (idempotent by id). */

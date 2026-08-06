@@ -692,18 +692,37 @@ async function runUnifiedChartAgentInner(
   // recorded here instead of vanishing into `.catch(() => null)`. The list
   // feeds envelope.degraded_stages and operator diagnostics.
   const stageFailures: AgentStageFailure[] = [];
-  const captureStage = <T,>(stage: AgentStage, promise: Promise<T>): Promise<T | null> =>
-    promise.catch((error) => {
-      const failure = stageFailureFromError(stage, error);
-      stageFailures.push(failure);
-      // Observability (item 9): per-stage failure/timeout rates by taxonomy code.
-      recordStageFailure({
-        stage: failure.stage,
-        code: failure.code,
-        retryable: failure.retryable,
+  const captureStage = <T,>(stage: AgentStage, promise: Promise<T>): Promise<T | null> => {
+    // Live run-stage protocol (Phase 3.1): the client's checklist rides the
+    // stage boundaries that already exist here — names and durations only.
+    ctx.emitStage?.({ stage, status: "running" });
+    const stageStartedAt = performance.now();
+    return promise
+      .then((value) => {
+        ctx.emitStage?.({
+          stage,
+          status: "done",
+          durationMs: Math.round(performance.now() - stageStartedAt),
+        });
+        return value;
+      })
+      .catch((error) => {
+        const failure = stageFailureFromError(stage, error);
+        stageFailures.push(failure);
+        // Observability (item 9): per-stage failure/timeout rates by taxonomy code.
+        recordStageFailure({
+          stage: failure.stage,
+          code: failure.code,
+          retryable: failure.retryable,
+        });
+        ctx.emitStage?.({
+          stage,
+          status: "failed",
+          durationMs: Math.round(performance.now() - stageStartedAt),
+        });
+        return null;
       });
-      return null;
-    });
+  };
 
   // Market Data Agent is CRITICAL: failure → stop, return action_required.
   // It performs network I/O (warehouse + OANDA), so it uses withDeadline: a
@@ -904,6 +923,11 @@ async function runUnifiedChartAgentInner(
 
   if (resumed) {
     ({ structure, liquidity, supplyDemand, mtf, news } = resumed);
+    // The evidence is real and the stages did run — on a previous attempt.
+    // Say so instead of leaving the checklist empty or faking durations.
+    for (const stage of ["structure", "liquidity", "supply_demand", "multi_timeframe", "news"]) {
+      ctx.emitStage?.({ stage, status: "resumed" });
+    }
   } else {
     // Structure / liquidity / S&D / MTF run concurrently; each degrades to null
     // with its failure CLASSIFIED and recorded (never a silent swallow).
@@ -966,6 +990,9 @@ async function runUnifiedChartAgentInner(
       code: failure.code,
       retryable: failure.retryable,
     });
+    // A silent deadline bypasses captureStage's settle path — close the
+    // stage's checklist row here or it would spin forever in the UI.
+    ctx.emitStage?.({ stage: failure.stage, status: "failed" });
   }
 
   // Deterministic chart geometry — computed ONCE, BEFORE the candidate engine,
@@ -1000,6 +1027,8 @@ async function runUnifiedChartAgentInner(
   // The evidence builder prepares price-valid candidates for the model. It is
   // not a policy gate and it does not own the direction.
   let risk: RiskAgentResult | null = null;
+  ctx.emitStage?.({ stage: "risk", status: "running" });
+  const riskStartedAt = performance.now();
   try {
     risk = await withTimeout(
       runRiskAgent(trackedCtx, {
@@ -1021,6 +1050,11 @@ async function runUnifiedChartAgentInner(
     stageFailures.push(stageFailureFromError("risk", error));
     risk = null;
   }
+  ctx.emitStage?.({
+    stage: "risk",
+    status: risk ? "done" : "failed",
+    durationMs: Math.round(performance.now() - riskStartedAt),
+  });
   if (!risk) {
     const riskFailure = stageFailures.find((f) => f.stage === "risk");
     trackedCtx.emitActivity({
@@ -1129,6 +1163,7 @@ async function runUnifiedChartAgentInner(
   }
 
   const decisionStartedAt = performance.now();
+  ctx.emitStage?.({ stage: "final_decision", status: "running" });
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
@@ -1201,6 +1236,11 @@ async function runUnifiedChartAgentInner(
       message: userMessageForFailure(code, locale),
       metadata: { stage: "final_decision", cause: synthError ? "threw" : "timeout" },
     });
+    ctx.emitStage?.({
+      stage: "final_decision",
+      status: "failed",
+      durationMs: Math.round(performance.now() - decisionStartedAt),
+    });
     return buildAgentFallbackResult(operatorReason, collected, locale, {
       retryable: thrownFailure ? thrownFailure.retryable : true,
       failureStage: "final_decision",
@@ -1229,6 +1269,11 @@ async function runUnifiedChartAgentInner(
       message: userMessageForFailure(code, locale),
       metadata: { stage: "final_decision", kind: failure?.kind ?? "unknown" },
     });
+    ctx.emitStage?.({
+      stage: "final_decision",
+      status: "failed",
+      durationMs: Math.round(performance.now() - decisionStartedAt),
+    });
     return buildAgentFallbackResult(operatorReason, collected, locale, {
       // The provider's raw message rides along to the audit row.
       detail: failure?.detail ?? operatorReason,
@@ -1238,6 +1283,11 @@ async function runUnifiedChartAgentInner(
       traceId: ctx.requestId,
     });
   }
+  ctx.emitStage?.({
+    stage: "final_decision",
+    status: "done",
+    durationMs: Math.round(performance.now() - decisionStartedAt),
+  });
   const finalDecision = synth.result;
   // Attach the significant-gap warning once — every downstream return path
   // (guard blocks, confirmation, final result) reuses finalDecision.riskWarnings.
