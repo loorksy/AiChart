@@ -18,6 +18,13 @@ import {
   dropPending,
 } from "@/hooks/agentChatReducer";
 import { resolveLatestChartCandle } from "@/lib/agent/marketContext/resolveLatestChartCandle";
+import {
+  beginLiveRun,
+  endLiveRun,
+  getLiveRun,
+  subscribeLiveRun,
+  updateLiveRun,
+} from "@/lib/agent/liveRunStore";
 
 export interface AgentChatMessage {
   id: string;
@@ -118,12 +125,81 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
     abortRef.current = null;
     setCurrentTicker(null);
     setRunning(false);
+    // An explicit cancel forgets the live run — nothing to re-attach to.
+    endLiveRun(sessionIdRef.current);
   }, []);
 
-  // Abort any in-flight stream when the hook unmounts (e.g. switching chats).
+  // Navigation persistence (Phase 3): the stream is NOT aborted on unmount.
+  // The loop keeps running (state setters on an unmounted hook are no-ops),
+  // mirrors into the live-run store, and a remounted hook re-attaches below.
+
+  // Re-attach to this chat's live run after a remount, and follow it live.
   useEffect(() => {
-    return () => abortRef.current?.abort();
-  }, []);
+    const chatId = opts.chatId ?? sessionIdRef.current;
+    const sync = () => {
+      const run = getLiveRun(chatId);
+      if (!run) return;
+      if (run.running) {
+        setRunning(true);
+        setStageEvents(run.stageEvents);
+        setCurrentTicker(run.ticker);
+        setMessages((prev) => {
+          const hasPending = prev.some((m) => m.id === run.pendingId);
+          if (hasPending) {
+            return prev.map((m) =>
+              m.id === run.pendingId && m.pending
+                ? { ...m, ticker: run.ticker, streamText: run.streamText }
+                : m,
+            );
+          }
+          // Rebuild the bubble. The user turn was persisted at send time, so
+          // it is usually already in history — only add it when it is not.
+          const lastUser = [...prev].reverse().find((m) => m.role === "user");
+          const needUser = lastUser?.content !== run.userMessage;
+          return [
+            ...prev,
+            ...(needUser
+              ? [{ id: `${run.pendingId}-user`, role: "user" as const, content: run.userMessage }]
+              : []),
+            {
+              id: run.pendingId,
+              role: "assistant" as const,
+              content: "",
+              pending: true,
+              ticker: run.ticker,
+              streamText: run.streamText,
+            },
+          ];
+        });
+        return;
+      }
+      // The run ended while we were away (or just now).
+      if (run.final) {
+        const final = run.final;
+        setMessages((prev) => {
+          // Only the still-live pending bubble is replaced. Without one,
+          // persisted history is authoritative — applying again would
+          // duplicate the answer under a second id.
+          const hasPending = prev.some((m) => m.id === run.pendingId && m.pending);
+          if (!hasPending) return prev;
+          return applyFinal(prev, run.pendingId, {
+            content: final.content,
+            result: final.result,
+            activityEvents: final.activityEvents,
+            options: final.options,
+          });
+        });
+      } else {
+        setMessages((prev) => dropPending(prev, run.pendingId));
+      }
+      setRunning(false);
+      setStageEvents([]);
+      setCurrentTicker(null);
+      endLiveRun(chatId, run.pendingId);
+    };
+    sync();
+    return subscribeLiveRun(chatId, sync);
+  }, [opts.chatId]);
 
   const sendMessage = useCallback(
     async (message: string, sendOpts?: { inputMode?: "text" | "voice" }) => {
@@ -162,6 +238,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       setStageEvents([]);
       setError(null);
       setRunning(true);
+      beginLiveRun({ chatId, pendingId, userMessage: text });
 
       // Persist the user turn (fire-and-forget — never blocks streaming).
       opts.onPersistMessage?.(chatId, {
@@ -240,17 +317,22 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               const item = data as AgentTickerItem;
               setCurrentTicker(item);
               setMessages((prev) => applyTicker(prev, pendingId, item));
+              updateLiveRun(chatId, pendingId, { ticker: item });
             } else if (eventName === "answer_text") {
               // Cumulative sanitized text — replace, never append, so a
               // dropped frame cannot corrupt the rendered answer.
               const text = (data as { text?: string }).text;
               if (typeof text === "string" && text) {
                 setMessages((prev) => applyStreamText(prev, pendingId, text));
+                updateLiveRun(chatId, pendingId, { streamText: text });
               }
             } else if (eventName === "stage") {
               // Live run-stage checklist for the pending bubble; the final
               // result carries the same list for the persisted message.
               setStageEvents((prev) => [...prev, data as AgentStageEvent]);
+              updateLiveRun(chatId, pendingId, {
+                addStageEvent: data as AgentStageEvent,
+              });
             } else if (eventName === "activity") {
               // Live stream only — the server already filtered to visible work.
               setActivityEvents((prev) => [...prev, data as AgentActivityEvent]);
@@ -258,6 +340,19 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               const result = data as AgentFinalResult;
               const turnActivity = result.activityEvents ?? [];
               finalized = true;
+              // Store first: if this instance is unmounted, the subscription
+              // on the next mount claims the final from here.
+              updateLiveRun(chatId, pendingId, {
+                running: false,
+                final: {
+                  result,
+                  content: result.summary,
+                  activityEvents: turnActivity.filter(
+                    (e) => e.visible !== false && e.message.trim().length > 0,
+                  ),
+                  options: result.options ?? [],
+                },
+              });
               // Replace the pending bubble in place — no duplicate assistant
               // message, and the temporary ticker text is discarded.
               setMessages((prev) =>
@@ -342,6 +437,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         // bubble so it never gets stuck showing a ticker.
         if (!finalized) {
           setMessages((prev) => dropPending(prev, pendingId));
+          updateLiveRun(chatId, pendingId, { running: false });
         }
       }
     },
