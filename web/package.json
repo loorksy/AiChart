@@ -15,7 +15,7 @@
     "playwright:setup": "playwright install-deps chromium && playwright install chromium",
     "test:bridge": "npm run test:unit",
     "test:context": "tsx --test --test-force-exit src/lib/agent/context/__tests__/*.test.ts",
-    "test:memory": "tsx --test --test-force-exit src/lib/agent/__tests__/agentMemory.test.ts src/lib/agent/__tests__/agentMemorySchema.test.ts && tsx --test --test-force-exit src/lib/agent/__tests__/agentMemoryDb.test.ts",
+    "test:memory": "tsx --test --test-force-exit src/lib/agent/__tests__/scenarioMemory.test.ts src/lib/agent/__tests__/agentMemory.test.ts src/lib/agent/__tests__/agentMemorySchema.test.ts && tsx --test --test-force-exit src/lib/agent/__tests__/agentMemoryDb.test.ts",
     "test:skills": "tsx --test --test-force-exit src/lib/agent/skills/__tests__/*.test.ts",
     "test:tools": "tsx --test --test-force-exit src/lib/agent/tools/__tests__/*.test.ts",
     "test:trace": "tsx --test --test-force-exit src/lib/agent/__tests__/runTraceSchema.test.ts && tsx --test --test-force-exit src/lib/agent/__tests__/runTraceDb.test.ts",
