@@ -401,6 +401,9 @@ export async function POST(req: NextRequest) {
         spread: null,
         validityCandles: body.validity_candles ?? null,
       });
+      // Verdict distribution at publish (plan §2.4) — the KPI that shows the
+      // far-entry problem shrinking is this counter's shape over time.
+      metrics.tradabilityVerdicts.inc({ verdict: tradability.tradability });
       if (tradability.tradability === "rejected" && FEATURES.tradabilityGateV1()) {
         // The caller's to fix, in one retry: the verdict names the distance in
         // the market's own units so the model re-plans near price instead of

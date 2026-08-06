@@ -531,6 +531,10 @@ ${correction}`
         detail: classified.detail.slice(0, 300),
       });
       if (!classified.retryable || attempt === 2) break;
+      // A retry WILL happen — the rate of these is a monitored decision-quality
+      // number (plan §2.4): rising retries mean the contract and the model are
+      // drifting apart.
+      metrics.synthCorrectiveRetries.inc();
       await new Promise((resolve) => setTimeout(resolve, 700));
     }
   }

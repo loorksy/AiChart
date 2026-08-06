@@ -31,6 +31,10 @@ type Store = {
   hiddenWaitWrites: client.Counter<string>;
   /** Recommendations that arrived without valid levels. */
   invalidLevelRecommendations: client.Counter<string>;
+  /** Reachability verdicts at publish, by verdict (now/soon/watch_only/rejected). */
+  tradabilityVerdicts: client.Counter<string>;
+  /** Decision-model corrective retries — attempt 2 carrying validator objections. */
+  synthCorrectiveRetries: client.Counter<string>;
   recommendationPersistFailures: client.Counter<string>;
   /** CRITICAL: an order attempt without valid mode/authorisation. */
   executionInWrongMode: client.Counter<string>;
@@ -123,6 +127,17 @@ function build(): Store {
     name: "aichart_invalid_level_recommendations_total",
     help: "Buy/sell recommendations arriving without valid levels",
     labelNames: ["source"],
+    registers: [registry],
+  });
+  const tradabilityVerdicts = new client.Counter({
+    name: "aichart_tradability_verdicts_total",
+    help: "Reachability verdicts at recommendation publish, by verdict",
+    labelNames: ["verdict"],
+    registers: [registry],
+  });
+  const synthCorrectiveRetries = new client.Counter({
+    name: "aichart_synth_corrective_retries_total",
+    help: "Decision-model corrective retries (attempt 2 with validator objections)",
     registers: [registry],
   });
   const recommendationPersistFailures = new client.Counter({
@@ -303,6 +318,8 @@ function build(): Store {
     analysisContracts,
     hiddenWaitWrites,
     invalidLevelRecommendations,
+    tradabilityVerdicts,
+    synthCorrectiveRetries,
     recommendationPersistFailures,
     executionInWrongMode,
     staleRevisionDenials,
