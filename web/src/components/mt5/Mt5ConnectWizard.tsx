@@ -1,12 +1,27 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, Link2, Loader2, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  CheckCircle2,
+  ChevronLeft,
+  Link2,
+  Loader2,
+  Search,
+  ShieldCheck,
+  Unlink,
+} from "lucide-react";
 
 import { PageHeader, Surface } from "@/components/foundation";
 import { Button, buttonVariants } from "@/components/squareui/button";
+import { useLocale } from "@/hooks/useLocale";
+import {
+  brokerLogoSlug,
+  brokerMonogram,
+  type BrokerGroup,
+} from "@/lib/mt5/brokerSearch";
 import { cn } from "@/lib/utils";
-import { MT5_CONNECT_SUCCESS_STATUS } from "@/lib/content/docsMt5LinkingCopy";
 
 interface ExistingAccount {
   platform: string;
@@ -15,25 +30,55 @@ interface ExistingAccount {
   state: string | null;
 }
 
-type Step = "server" | "credentials" | "progress" | "done";
-
-const STEPS: { key: Step; label: string }[] = [
-  { key: "server", label: "الخادم" },
-  { key: "credentials", label: "تسجيل الدخول" },
-  { key: "progress", label: "الربط" },
-];
+type Step = "broker" | "login" | "progress" | "done";
 
 const FIELD =
   "min-h-11 w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm";
 
 /**
- * V2-B (#96): the transparent linking wizard.
- *
- * Transparency is a requirement, not a style choice: the user is told in
- * plain words that they are signing in to their REAL MetaTrader account
- * through the MetaApi cloud, what is stored (encrypted) and what happens
- * next. Broker search is live when configured; manual server entry always
- * works as the fallback.
+ * Broker mark, the way the official MT5 app renders one: the broker's
+ * artwork when we have it (an asset drop into /public/brokers — see the
+ * README there), a monogram tile otherwise. Monochrome per DESIGN.md §1:
+ * the mark identifies, it does not decorate.
+ */
+function BrokerMark({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
+  const [logoFailed, setLogoFailed] = useState(false);
+  const slug = brokerLogoSlug(name);
+  const box = size === "lg" ? "size-12" : "size-10";
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        box,
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius)] border border-border bg-muted/50",
+      )}
+    >
+      {logoFailed || !slug ? (
+        <span className="font-mono text-sm font-semibold text-muted-foreground">
+          {brokerMonogram(name)}
+        </span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element -- optional local
+        // asset probed at runtime; next/image would 400 on the missing file
+        // instead of firing onError.
+        <img
+          src={`/brokers/${slug}.png`}
+          alt=""
+          className="size-full object-contain p-1"
+          onError={() => setLogoFailed(true)}
+        />
+      )}
+    </span>
+  );
+}
+
+/**
+ * The MT5-style linking flow: search your BROKER by name, pick it, then sign
+ * in on a screen that already knows every server of that broker. Transparency
+ * stays a requirement, not a style choice — the user is told in plain words
+ * they are signing in to their REAL MetaTrader account through the MetaApi
+ * cloud, what is stored (encrypted), and what happens next. Manual server
+ * entry always works as the fallback when live search is down.
  */
 export function Mt5ConnectWizard({
   enabled,
@@ -42,21 +87,38 @@ export function Mt5ConnectWizard({
   enabled: boolean;
   existing: ExistingAccount | null;
 }) {
-  const [step, setStep] = useState<Step>("server");
-  const [server, setServer] = useState(existing?.server ?? "");
+  const { t } = useLocale();
+
+  // "manage" shows the linked-account card; the wizard proper starts at
+  // "broker". A user with no link lands straight in the wizard.
+  const [view, setView] = useState<"manage" | "wizard">(existing ? "manage" : "wizard");
+  const [step, setStep] = useState<Step>("broker");
+
   const [query, setQuery] = useState("");
-  const [servers, setServers] = useState<string[]>([]);
-  const [searchState, setSearchState] = useState<"idle" | "loading" | "unavailable">("idle");
+  const [brokers, setBrokers] = useState<BrokerGroup[]>([]);
+  const [searchState, setSearchState] = useState<
+    "idle" | "loading" | "empty" | "unavailable"
+  >("idle");
+  const [broker, setBroker] = useState<BrokerGroup | null>(null);
+  const [manualServer, setManualServer] = useState(false);
+
   const [platform, setPlatform] = useState<"mt5" | "mt4">("mt5");
+  const [server, setServer] = useState(existing?.server ?? "");
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState("جارٍ تجهيز الحساب السحابي…");
+  const [status, setStatus] = useState("");
+
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [unlinked, setUnlinked] = useState(false);
+
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (query.trim().length < 2) {
-      setServers([]);
+      setBrokers([]);
+      setSearchState("idle");
       return;
     }
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -64,25 +126,43 @@ export function Mt5ConnectWizard({
       setSearchState("loading");
       fetch(`/api/mt5/brokers?q=${encodeURIComponent(query.trim())}`)
         .then(async (res) => {
-          const data = (await res.json()) as { ok: boolean; servers: string[] };
-          setServers(data.servers ?? []);
-          setSearchState(data.ok ? "idle" : "unavailable");
+          const data = (await res.json()) as {
+            ok: boolean;
+            brokers?: BrokerGroup[];
+          };
+          const list = data.brokers ?? [];
+          setBrokers(list);
+          setSearchState(!data.ok ? "unavailable" : list.length === 0 ? "empty" : "idle");
         })
         .catch(() => setSearchState("unavailable"));
     }, 350);
   }, [query]);
 
+  function chooseBroker(b: BrokerGroup) {
+    setBroker(b);
+    setManualServer(false);
+    setServer(b.servers[0] ?? "");
+    setError(null);
+    setStep("login");
+  }
+
+  function chooseManual() {
+    setBroker(null);
+    setManualServer(true);
+    setServer("");
+    setError(null);
+    setStep("login");
+  }
+
   async function connect() {
     setStep("progress");
     setError(null);
-    setStatus("جارٍ إنشاء الحساب السحابي والاتصال بوسيطك…");
+    setStatus(t("mt5link.status_provisioning"));
     try {
       // /api/mt/connect, not /api/agent/mt/connect. Both hand the same body to
       // the same connectMtAccount; they differ only in who is allowed to call
-      // them. The agent route runs resolveBridgeUserId, which demands a service
-      // token plus a signed X-Aichart-User-Email — headers the MCP bridge sends
-      // and a browser never can, so every submit from this form came back
-      // "توكن الوكيل غير صحيح". This route authenticates the session cookie.
+      // them. The agent route demands bridge-only headers a browser never has —
+      // this route authenticates the session cookie.
       const res = await fetch("/api/mt/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,50 +171,180 @@ export function Mt5ConnectWizard({
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
-        state?: string;
       };
       if (!res.ok || data.ok === false) {
-        setError(data.error ?? "تعذّر الربط — تحقق من البيانات وحاول مجدداً.");
-        setStep("credentials");
+        setError(data.error ?? t("mt5link.error_generic"));
+        setStep("login");
         return;
       }
-      setStatus(MT5_CONNECT_SUCCESS_STATUS);
+      setStatus(t("mt5link.done_status"));
       setStep("done");
     } catch {
-      setError("تعذّر الاتصال بالخادم.");
-      setStep("credentials");
+      setError(t("mt5link.error_network"));
+      setStep("login");
     }
   }
 
+  async function unlink() {
+    setUnlinking(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/mt/connect", { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
+      if (!res.ok || data.ok === false) {
+        setError(t("mt5link.unlink_failed"));
+        return;
+      }
+      setUnlinked(true);
+      setConfirmUnlink(false);
+      setView("wizard");
+      setStep("broker");
+    } catch {
+      setError(t("mt5link.unlink_failed"));
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
+  const header = (
+    <PageHeader
+      title={t("mt5link.page_title")}
+      description={t("mt5link.page_desc")}
+      icon={<Link2 aria-hidden="true" />}
+    />
+  );
+
   if (!enabled) {
     return (
-      <div dir="rtl" className="space-y-6">
-        <PageHeader
-          title="ربط حساب MetaTrader 5"
-          icon={<Link2 aria-hidden="true" />}
-        />
+      <div className="space-y-6">
+        {header}
         <Surface padding="lg">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            الربط السحابي غير مفعَّل بعد على هذه المنصة. سيتاح فور اكتمال إعداده.
+            {t("mt5link.disabled")}
           </p>
         </Surface>
       </div>
     );
   }
 
-  const activeIndex = step === "done" ? STEPS.length - 1 : STEPS.findIndex((s) => s.key === step);
+  // ---- linked-account management card --------------------------------------
+  if (view === "manage" && existing && !unlinked) {
+    const online = existing.state === "DEPLOYED";
+    return (
+      <div className="space-y-6">
+        {header}
+        <Surface as="section" padding="lg" aria-label={t("mt5link.linked_title")}>
+          <div className="flex items-center gap-3">
+            <BrokerMark name={existing.server.split("-")[0] || existing.server} size="lg" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">
+                {existing.platform.toUpperCase()} ·{" "}
+                <span className="font-mono">{existing.login}</span>
+              </p>
+              <p className="truncate font-mono text-xs text-muted-foreground">
+                {existing.server}
+              </p>
+            </div>
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 text-[11px]",
+                online
+                  ? "border-success/35 bg-success/10 text-success"
+                  : "border-border bg-muted text-muted-foreground",
+              )}
+            >
+              {online ? t("mt5link.state_online") : t("mt5link.state_offline")}
+            </span>
+          </div>
+
+          {error && (
+            <p
+              role="alert"
+              className="mt-4 rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {error}
+            </p>
+          )}
+
+          {confirmUnlink ? (
+            <div className="mt-4 space-y-3 rounded-[var(--radius)] bg-muted/50 p-3">
+              <p className="text-sm leading-relaxed">{t("mt5link.unlink_confirm")}</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  variant="destructive"
+                  size="lg"
+                  className="min-h-11"
+                  onClick={unlink}
+                  disabled={unlinking}
+                >
+                  {unlinking ? (
+                    <Loader2
+                      aria-hidden="true"
+                      className="size-4 animate-spin motion-reduce:animate-none"
+                    />
+                  ) : (
+                    <Unlink aria-hidden="true" className="size-4" />
+                  )}
+                  {t("mt5link.unlink_yes")}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  className="min-h-11"
+                  onClick={() => setConfirmUnlink(false)}
+                  disabled={unlinking}
+                >
+                  {t("mt5link.unlink_cancel")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <Button
+                size="lg"
+                className="min-h-11"
+                onClick={() => {
+                  setView("wizard");
+                  setStep("broker");
+                }}
+              >
+                {t("mt5link.link_new")}
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="min-h-11"
+                onClick={() => setConfirmUnlink(true)}
+              >
+                <Unlink aria-hidden="true" className="size-4" />
+                {t("mt5link.unlink")}
+              </Button>
+            </div>
+          )}
+          <p className="type-caption mt-3 text-muted-foreground">
+            {t("mt5link.linked_replace_note")}
+          </p>
+        </Surface>
+      </div>
+    );
+  }
+
+  // ---- the wizard ----------------------------------------------------------
+  const STEPS: { key: Step; label: string }[] = [
+    { key: "broker", label: t("mt5link.step_broker") },
+    { key: "login", label: t("mt5link.step_login") },
+    { key: "progress", label: t("mt5link.step_link") },
+  ];
+  const activeIndex =
+    step === "done" ? STEPS.length - 1 : STEPS.findIndex((s) => s.key === step);
 
   return (
-    <div dir="rtl" className="space-y-6">
-      <PageHeader
-        title="ربط حساب MetaTrader 5"
-        description="ربط شفاف عبر سحابة MetaApi — أنت تسجّل الدخول إلى حسابك الحقيقي لدى وسيطك."
-        icon={<Link2 aria-hidden="true" />}
-      />
+    <div className="space-y-6">
+      {header}
 
-      {/* An ordered list so the wizard's shape is available to a screen reader,
-          not just implied by the colour of three bars. */}
-      <ol className="flex items-center gap-2" aria-label="خطوات الربط">
+      {/* An ordered list so the wizard's shape is available to a screen
+          reader, not just implied by the colour of three bars. */}
+      <ol className="flex items-center gap-2" aria-label={t("mt5link.steps_label")}>
         {STEPS.map((s, i) => {
           const state = i < activeIndex ? "done" : i === activeIndex ? "current" : "todo";
           return (
@@ -160,103 +370,106 @@ export function Mt5ConnectWizard({
         })}
       </ol>
 
-      {existing && step === "server" && (
-        <Surface padding="sm" className="bg-muted/30">
-          <p className="type-caption">
-            حساب مرتبط حالياً: {existing.platform.toUpperCase()} · {existing.login} @{" "}
-            {existing.server} — إكمال المعالج يستبدله.
-          </p>
-        </Surface>
-      )}
-
       <Surface padding="lg">
-        {step === "server" && (
+        {step === "broker" && (
           <div className="space-y-4">
-            <h2 className="type-heading">1 · اختر خادم وسيطك</h2>
+            <h2 className="type-heading">{t("mt5link.search_title")}</h2>
 
             <div className="space-y-1.5">
               <label htmlFor="mt5-broker-search" className="type-caption block font-medium">
-                ابحث عن وسيطك
+                {t("mt5link.search_label")}
               </label>
-              <input
-                id="mt5-broker-search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="مثال: Exness, IC Markets…"
-                className={FIELD}
-              />
+              <div className="relative">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-muted-foreground"
+                />
+                <input
+                  id="mt5-broker-search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("mt5link.search_placeholder")}
+                  autoComplete="off"
+                  className={cn(FIELD, "ps-9")}
+                />
+              </div>
+              <p className="type-caption text-muted-foreground">
+                {t("mt5link.search_hint")}
+              </p>
             </div>
 
             <div aria-live="polite">
               {searchState === "loading" && (
                 <p className="type-caption flex items-center gap-1.5">
-                  <Loader2 aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none" />
-                  جارٍ البحث…
+                  <Loader2
+                    aria-hidden="true"
+                    className="size-3.5 animate-spin motion-reduce:animate-none"
+                  />
+                  {t("mt5link.searching")}
+                </p>
+              )}
+              {searchState === "empty" && (
+                <p className="type-caption">
+                  {t("mt5link.search_empty", { query: query.trim() })}
                 </p>
               )}
               {searchState === "unavailable" && (
-                <p className="type-caption">
-                  البحث اللحظي غير متاح الآن — أدخل اسم الخادم يدوياً كما يظهر في
-                  منصة MT5 لديك (مثال: Exness-MT5Real8).
-                </p>
+                <p className="type-caption">{t("mt5link.search_unavailable")}</p>
               )}
             </div>
 
-            {servers.length > 0 && (
-              <ul className="max-h-48 space-y-1 overflow-y-auto">
-                {servers.map((name) => (
-                  <li key={name}>
+            {brokers.length > 0 && (
+              <ul className="max-h-72 space-y-1.5 overflow-y-auto">
+                {brokers.map((b) => (
+                  <li key={b.name}>
                     <button
-                      onClick={() => {
-                        setServer(name);
-                        setStep("credentials");
-                      }}
-                      className="min-h-11 w-full rounded-[var(--radius)] border border-border px-3 py-2 text-start text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => chooseBroker(b)}
+                      className="flex min-h-11 w-full items-center gap-3 rounded-[var(--radius)] border border-border px-3 py-2 text-start transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {name}
+                      <BrokerMark name={b.name} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">
+                          {b.name}
+                        </span>
+                        <span className="type-caption block text-muted-foreground">
+                          {t("mt5link.servers_count", {
+                            count: String(b.servers.length),
+                          })}
+                        </span>
+                      </span>
+                      <ChevronLeft
+                        aria-hidden="true"
+                        className="size-4 shrink-0 text-muted-foreground ltr:rotate-180"
+                      />
                     </button>
                   </li>
                 ))}
               </ul>
             )}
 
-            <div className="space-y-1.5">
-              <label htmlFor="mt5-server" className="type-caption block font-medium">
-                أو اكتب اسم الخادم يدوياً
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
-                  id="mt5-server"
-                  value={server}
-                  onChange={(e) => setServer(e.target.value)}
-                  placeholder="Exness-MT5Real8"
-                  className={cn(FIELD, "sm:flex-1")}
-                />
-                <Button
-                  size="lg"
-                  className="min-h-11"
-                  onClick={() => server.trim() && setStep("credentials")}
-                  disabled={!server.trim()}
-                >
-                  متابعة
-                </Button>
-              </div>
+            <div className="border-t border-border pt-3">
+              <Button variant="ghost" size="lg" className="min-h-11 -ms-2" onClick={chooseManual}>
+                <Building2 aria-hidden="true" className="size-4" />
+                {t("mt5link.manual_toggle")}
+              </Button>
             </div>
           </div>
         )}
 
-        {step === "credentials" && (
+        {step === "login" && (
           <div className="space-y-4">
-            <h2 className="type-heading">2 · سجّل الدخول إلى حسابك — {server}</h2>
+            <div className="flex items-center gap-3">
+              {broker && <BrokerMark name={broker.name} />}
+              <h2 className="type-heading">
+                {broker
+                  ? t("mt5link.login_title", { broker: broker.name })
+                  : t("mt5link.step_login")}
+              </h2>
+            </div>
 
             <div className="flex gap-2.5 rounded-[var(--radius)] border border-warning/30 bg-warning/10 px-4 py-3 text-xs leading-relaxed text-foreground">
               <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
-              <p>
-                أنت تسجّل الدخول إلى حساب MetaTrader <b>الحقيقي</b> الخاص بك عبر
-                سحابة MetaApi المرخّصة. تُخزَّن بيانات الدخول <b>مشفَّرة</b> (AES-256)
-                وتُستخدم فقط لتشغيل نسخة الطرفية السحابية الخاصة بك. لخفض التكلفة،
-                يُوقَف الاتصال تلقائياً عند مغادرتك المنصة ويعود وحده عند عودتك.
-              </p>
+              <p>{t("mt5link.login_note")}</p>
             </div>
 
             {error && (
@@ -271,7 +484,7 @@ export function Mt5ConnectWizard({
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label htmlFor="mt5-platform" className="type-caption block font-medium">
-                  المنصة
+                  {t("mt5link.platform")}
                 </label>
                 <select
                   id="mt5-platform"
@@ -283,9 +496,41 @@ export function Mt5ConnectWizard({
                   <option value="mt4">MetaTrader 4</option>
                 </select>
               </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="mt5-server" className="type-caption block font-medium">
+                  {manualServer ? t("mt5link.manual_label") : t("mt5link.server")}
+                </label>
+                {broker && !manualServer ? (
+                  <select
+                    id="mt5-server"
+                    value={server}
+                    onChange={(e) => setServer(e.target.value)}
+                    className={cn(FIELD, "font-mono")}
+                  >
+                    {broker.servers.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="mt5-server"
+                    value={server}
+                    onChange={(e) => setServer(e.target.value)}
+                    placeholder="Exness-MT5Real8"
+                    autoComplete="off"
+                    className={cn(FIELD, "font-mono")}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label htmlFor="mt5-login" className="type-caption block font-medium">
-                  رقم الحساب (Login)
+                  {t("mt5link.login")}
                 </label>
                 <input
                   id="mt5-login"
@@ -294,23 +539,22 @@ export function Mt5ConnectWizard({
                   placeholder="123456789"
                   inputMode="numeric"
                   autoComplete="off"
+                  className={cn(FIELD, "font-mono")}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="mt5-password" className="type-caption block font-medium">
+                  {t("mt5link.password")}
+                </label>
+                <input
+                  id="mt5-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  autoComplete="off"
                   className={FIELD}
                 />
               </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="mt5-password" className="type-caption block font-medium">
-                كلمة المرور (Investor أو Master)
-              </label>
-              <input
-                id="mt5-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                autoComplete="off"
-                className={FIELD}
-              />
             </div>
 
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -318,18 +562,21 @@ export function Mt5ConnectWizard({
                 variant="ghost"
                 size="lg"
                 className="min-h-11 sm:-ms-2"
-                onClick={() => setStep("server")}
+                onClick={() => {
+                  setError(null);
+                  setStep("broker");
+                }}
               >
                 <ArrowLeft aria-hidden="true" className="rtl:rotate-180" />
-                تغيير الخادم
+                {t("mt5link.back_to_brokers")}
               </Button>
               <Button
                 size="lg"
                 className="min-h-11"
                 onClick={connect}
-                disabled={!login.trim() || !password}
+                disabled={!server.trim() || !login.trim() || !password}
               >
-                ربط الحساب
+                {t("mt5link.connect")}
               </Button>
             </div>
           </div>
@@ -342,7 +589,7 @@ export function Mt5ConnectWizard({
               className={cn(
                 "flex size-12 items-center justify-center rounded-full border",
                 step === "done"
-                  ? "border-buy/35 bg-buy/10 text-buy"
+                  ? "border-success/35 bg-success/10 text-success"
                   : "border-border bg-muted text-muted-foreground",
               )}
             >
@@ -354,7 +601,7 @@ export function Mt5ConnectWizard({
             </span>
 
             <h2 className="type-heading">
-              {step === "done" ? "تم الربط بنجاح" : "3 · جارٍ الربط…"}
+              {step === "done" ? t("mt5link.done_title") : t("mt5link.connecting")}
             </h2>
 
             {/* The connect call is slow; announce each status change. */}
@@ -367,7 +614,7 @@ export function Mt5ConnectWizard({
                 href="/workspace"
                 className={cn(buttonVariants({ size: "lg" }), "min-h-11 px-6")}
               >
-                الانتقال إلى الشارت
+                {t("mt5link.go_workspace")}
               </a>
             )}
           </div>
