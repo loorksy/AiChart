@@ -44,15 +44,27 @@ const MAX_SYMBOLS_PER_USER = 8;
  * Facts only, each traceable to canonical outcome rows; no advice, no
  * prediction — the decision engine weighs it like any other evidence.
  */
+/**
+ * Below this realized win rate the symbol's record is worth naming as a
+ * weakness. A PERCENT, matching AnalyticsGroup.winRate — the repo-wide
+ * convention is 0–100, not 0–1.
+ */
+const WEAK_SCENARIO_WIN_PCT = 35;
+
 export function buildScenarioBlock(group: AnalyticsGroup): string {
-  const winPct = Math.round(group.winRate * 100);
+  // analytics.group() already returns a percent ((wins / completed) * 100),
+  // so this only rounds it. Scaling again turned a 60% record into "6000%".
+  const winPct = Math.round(group.winRate);
   const avgR = Math.round(group.averageR * 100) / 100;
   const lines = [
     `ملف ${group.key} (من نتائج توصياتك المكتملة):`,
     `- ${group.total} توصية مكتملة: ${group.wins} رابحة و${group.losses} خاسرة (نسبة النجاح ${winPct}%).`,
     `- متوسط العائد المحقق ${avgR}R.`,
   ];
-  if (group.total >= SCENARIO_MIN_OBSERVATIONS && group.winRate <= 0.35) {
+  if (
+    group.total >= SCENARIO_MIN_OBSERVATIONS &&
+    group.winRate <= WEAK_SCENARIO_WIN_PCT
+  ) {
     lines.push(
       `- سجلّك على هذا الرمز أضعف من المعتاد — دليل يستحق وزناً عند بناء خطة جديدة عليه.`,
     );
