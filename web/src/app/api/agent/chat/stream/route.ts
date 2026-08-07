@@ -763,6 +763,9 @@ export async function POST(req: NextRequest) {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        // nginx buffers proxied responses by default, which would hold every
+        // stage event until the run ends and defeat the whole live checklist.
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (err) {
