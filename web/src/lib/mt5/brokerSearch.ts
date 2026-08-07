@@ -11,6 +11,31 @@ export type BrokerGroup = { name: string; servers: string[] };
  * dashless name is its own broker. Grouping is presentation only — what we
  * store and connect with is always the FULL server name.
  */
+/**
+ * MetaApi's known-server search answers with the grouping already done:
+ * `{ "Exness B.V.": ["ExnessBV-MT5Real11", …], "XM Global Limited": [...] }`
+ * — the broker's registered company name mapped to its servers. That is
+ * authoritative, so it is preferred over deriving groups from name prefixes;
+ * `groupServersByBroker` remains for the flat-list shape.
+ *
+ * An unknown query answers `{}`, which is a legitimate empty result, not a
+ * failure — the caller reports "no brokers matched", never a fabricated list.
+ */
+export function parseKnownServers(data: unknown): BrokerGroup[] {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+  const groups: BrokerGroup[] = [];
+  for (const [name, value] of Object.entries(data as Record<string, unknown>)) {
+    if (!Array.isArray(value)) continue;
+    const servers = value.filter(
+      (server): server is string =>
+        typeof server === "string" && server.trim().length > 0,
+    );
+    if (!servers.length) continue;
+    groups.push({ name: name.trim() || "MetaTrader", servers });
+  }
+  return groups;
+}
+
 export function groupServersByBroker(servers: string[]): BrokerGroup[] {
   const groups = new Map<string, BrokerGroup>();
   for (const server of servers) {

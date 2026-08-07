@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { initDb } from "@/lib/db";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
-import { groupServersByBroker } from "@/lib/mt5/brokerSearch";
+import { parseKnownServers } from "@/lib/mt5/brokerSearch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,26 +36,18 @@ export async function GET(req: NextRequest) {
 
   try {
     const upstream = await fetch(
-      `https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/servers/mt5?query=${encodeURIComponent(q)}`,
+      `https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/known-mt-servers/5/search?query=${encodeURIComponent(q)}`,
       { headers: { "auth-token": token }, signal: AbortSignal.timeout(8000) },
     );
     if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
     const data = (await upstream.json()) as unknown;
-    const servers = Array.isArray(data)
-      ? data
-          .map((s) =>
-            typeof s === "string"
-              ? s
-              : ((s as { name?: string }).name ?? null),
-          )
-          .filter((s): s is string => !!s)
-          .slice(0, 60)
-      : [];
+    const brokers = parseKnownServers(data).slice(0, 40);
+    const servers = brokers.flatMap((broker) => broker.servers);
     return NextResponse.json({
       ok: true,
       // Flat list kept for compatibility with anything still reading it.
       servers: servers.slice(0, 20),
-      brokers: groupServersByBroker(servers),
+      brokers,
     });
   } catch {
     // Search failing must not block the wizard — manual entry always works.
