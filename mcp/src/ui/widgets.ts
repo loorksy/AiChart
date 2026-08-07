@@ -89,8 +89,8 @@ const analysis = widgetHtml(
     </div>
   </div>`,
   `
-  var current = { symbol: "", interval: "15m", layout_id: null, data_source: "oanda" };
-  function oandaSym(s){
+  var current = { symbol: "", interval: "15m", layout_id: null, data_source: "metaapi" };
+  function canonSym(s){
     s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     return s.length >= 6 ? s.slice(0, 6) : s;
   }
@@ -127,10 +127,10 @@ const analysis = widgetHtml(
       data = obj(data);
       var snap = pickSnapshot(data);
       var rec = obj(data.recommendation);
-      current.symbol = oandaSym(snap.symbol || rec.symbol || data.symbol || current.symbol);
+      current.symbol = canonSym(snap.symbol || rec.symbol || data.symbol || current.symbol);
       current.interval = snap.interval || data.interval || current.interval;
       current.layout_id = data.layout_id || current.layout_id;
-      current.data_source = data.data_source || data.dataSource || current.data_source || "oanda";
+      current.data_source = data.data_source || data.dataSource || current.data_source || "metaapi";
       var trend = trendClass(AIC, rec.action || snap.trend || data.trend);
       var card = document.getElementById("analysis-card");
       card.className = "card " + trend[0];
@@ -378,10 +378,10 @@ const liveChart = widgetHtml(
   var PLATFORM = "${PLATFORM_URL}";
   var S = { symbol:null, interval:"15m", layoutId:null, url:null, candles:[],
             drawings:[], rec:null, targets:[], lastUpdate:0, paused:false,
-            failures:0, timer:null, booted:false, source:"oanda", warning:null };
+            failures:0, timer:null, booted:false, source:"metaapi", warning:null };
 
-  /* Broker tickers (XAUUSDM, EURUSDm) → OANDA 6-letter key for candle fetch. */
-  function oandaSym(s){
+  /* Broker tickers (XAUUSDM, EURUSDm) → canonical 6-letter key for candle fetch. */
+  function canonSym(s){
     s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     return s.length >= 6 ? s.slice(0, 6) : s;
   }
@@ -406,13 +406,12 @@ const liveChart = widgetHtml(
 
   function applyPayload(d){
     d = d || {};
-    if (d.symbol) S.symbol = oandaSym(d.symbol);
+    if (d.symbol) S.symbol = canonSym(d.symbol);
     if (d.interval) S.interval = String(d.interval);
     if (d.layout_id) S.layoutId = d.layout_id;
     if (d.id && (d.state || d.drawings_count != null)) S.layoutId = d.id;
     if (d.url) S.url = d.url;
-    if (d.data_source === "oanda" || d.dataSource === "oanda") S.source = "oanda";
-    else if (!S.source) S.source = "oanda";
+    if (!S.source) S.source = "metaapi";
     var st = (d.state && typeof d.state === "object") ? d.state : null;
     if (st) {
       if (Array.isArray(st.drawings)) S.drawings = st.drawings;
@@ -426,11 +425,11 @@ const liveChart = widgetHtml(
     var flat = d.data && typeof d.data === "object" ? d.data : d;
     if (ohl) {
       cc = normCandles(ohl);
-      S.source = ohl.source === "metaapi" ? "metaapi" : "oanda";
+      S.source = "metaapi";
       S.warning = ohl.warning || null;
     } else if (Array.isArray(flat.candles)) {
       cc = normCandles(flat);
-      S.source = flat.source === "metaapi" ? "metaapi" : "oanda";
+      S.source = "metaapi";
       S.warning = flat.warning || null;
     }
     if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }
@@ -721,7 +720,7 @@ const liveChart = widgetHtml(
   }
   function tick(){
     if (document.hidden || !S.symbol || !window.AIC) { schedule(); return; }
-    var args = { symbol: oandaSym(S.symbol), interval: S.interval, limit: 120, source: "oanda" };
+    var args = { symbol: canonSym(S.symbol), interval: S.interval, limit: 120 };
     var calls = [window.AIC.callTool("get_ohlc", args)];
     if (S.layoutId) calls.push(window.AIC.callTool("get_chart_state", { layout_id: S.layoutId }));
     Promise.all(calls).then(function (res) {

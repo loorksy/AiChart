@@ -1,6 +1,6 @@
 import { getMtAccount } from "@/lib/store";
 import { getMetaApiAccount } from "@/lib/metaapi/client";
-import { normalizeInterval } from "@/lib/intervals";
+import { barDurationMs, normalizeInterval } from "@/lib/intervals";
 import type { OhlcCandle } from "@/lib/ohlc/fetchOhlc";
 
 /** Timeframes MetaApi serves as history. */
@@ -9,6 +9,8 @@ const METAAPI_INTERVALS = new Set(["1m", "5m", "15m", "30m", "1h", "4h", "1d", "
 const MAX_CANDLES = 1000;
 /** Longer than a healthy broker round-trip, far shorter than the SDK's retries. */
 const HISTORY_TIMEOUT_MS = 12_000;
+/** Range fetches page backward; bounded so one request cannot spiral. */
+const MAX_RANGE_PAGES = 10;
 
 interface MetaApiHistoricalCandle {
   time: string | Date;
@@ -19,16 +21,87 @@ interface MetaApiHistoricalCandle {
   tickVolume?: number;
 }
 
+function toOhlc(raw: MetaApiHistoricalCandle[] | null | undefined): OhlcCandle[] {
+  return (raw ?? [])
+    .map((c) => ({
+      time: new Date(c.time).getTime(),
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close),
+      volume: Number(c.tickVolume ?? 0),
+    }))
+    .filter((c) => Number.isFinite(c.time) && c.time > 0 && Number.isFinite(c.close))
+    .sort((a, b) => a.time - b.time);
+}
+
 /**
- * Candles straight from the user's cloud MetaTrader account.
- *
- * The second pipe, beside the platform's OANDA feed: a MetaApi-linked account
- * has its own broker history, and a trader who links a cloud account expects
- * the chart to show THAT broker's candles — the ones their orders will
- * actually fill against — not a proxy feed.
+ * Whether a candle is closed. MetaApi history carries no complete flag (the
+ * way a REST feed might), but completeness is pure arithmetic: a bar whose window
+ * has fully elapsed is closed; only the newest bar can still be forming.
+ */
+export function isCandleComplete(
+  openTimeMs: number,
+  interval: string,
+  nowMs = Date.now(),
+): boolean {
+  return openTimeMs + barDurationMs(normalizeInterval(interval)) <= nowMs;
+}
+
+async function getHistoryAccount(userId: number) {
+  const account = await getMtAccount(userId);
+  if (!account?.metaapi_account_id || account.metaapi_account_id === "mt5local") {
+    return { mtAccount: null, warning: "لا يوجد حساب MetaTrader مربوط عبر المنصة." };
+  }
+  /*
+   * The ACCOUNT, not the RPC connection.
+   *
+   * getHistoricalCandles is declared on MetatraderAccount
+   * (dist/metaApi/metatraderAccount.d.ts). Asking the connection for it
+   * returned undefined, and this function reported "هذا الحساب لا يوفّر سجل
+   * الشموع" — for an account that serves it perfectly well. That single wrong
+   * object is why a linked cloud account produced an empty chart, empty pair
+   * cards, and a silent fall back to the platform feed.
+   */
+  const mtAccount = await getMetaApiAccount(userId, account.metaapi_account_id);
+  if (typeof mtAccount.getHistoricalCandles !== "function") {
+    return { mtAccount: null, warning: "هذا الحساب لا يوفّر سجل الشموع عبر MetaApi." };
+  }
+  return { mtAccount, warning: undefined };
+}
+
+async function fetchPage(
+  mtAccount: { getHistoricalCandles: (s: string, tf: string, st: Date, l: number) => Promise<MetaApiHistoricalCandle[]> },
+  symbol: string,
+  interval: string,
+  toMs: number,
+  limit: number,
+): Promise<OhlcCandle[]> {
+  /*
+   * Bounded. The SDK retries an unknown symbol for over a minute — a wrong
+   * spelling once cost 75s before answering "Symbol XAUUSDM does not exist",
+   * and the chart has no business hanging that long on a bar request.
+   */
+  const raw = (await Promise.race([
+    mtAccount.getHistoricalCandles(symbol, interval, new Date(toMs), limit),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("مهلة جلب الشموع من حساب MetaApi انتهت.")),
+        HISTORY_TIMEOUT_MS,
+      ),
+    ),
+  ])) as MetaApiHistoricalCandle[];
+  return toOhlc(raw);
+}
+
+/**
+ * Candles straight from the user's cloud MetaTrader account — the ONLY candle
+ * pipe. A trader's chart shows THEIR broker's candles, the ones their orders
+ * will actually fill against; there is no proxy feed to fall back to, so an
+ * unlinked account is reported as exactly that.
  *
  * Older SDK versions expose no history API; that is reported as a warning and
- * the caller falls back rather than pretending the series is empty.
+ * the caller surfaces it rather than pretending the series is empty.
  */
 export async function fetchMetaApiOhlc(
   userId: number,
@@ -41,64 +114,83 @@ export async function fetchMetaApiOhlc(
     return { candles: [], warning: `الإطار ${iv} غير مدعوم من حساب MetaApi.` };
   }
 
-  const account = await getMtAccount(userId);
-  if (!account?.metaapi_account_id || account.metaapi_account_id === "mt5local") {
-    return { candles: [], warning: "لا يوجد حساب MetaTrader مربوط عبر المنصة." };
-  }
-
   try {
-    /*
-     * The ACCOUNT, not the RPC connection.
-     *
-     * getHistoricalCandles is declared on MetatraderAccount
-     * (dist/metaApi/metatraderAccount.d.ts). Asking the connection for it
-     * returned undefined, and this function reported "هذا الحساب لا يوفّر سجل
-     * الشموع" — for an account that serves it perfectly well. That single wrong
-     * object is why a linked cloud account produced an empty chart, empty pair
-     * cards, and a silent fall back to the platform feed.
-     */
-    const mtAccount = await getMetaApiAccount(userId, account.metaapi_account_id);
-    if (typeof mtAccount.getHistoricalCandles !== "function") {
-      return { candles: [], warning: "هذا الحساب لا يوفّر سجل الشموع عبر MetaApi." };
-    }
-
+    const { mtAccount, warning } = await getHistoryAccount(userId);
+    if (!mtAccount) return { candles: [], warning };
     const limit = Math.min(Math.max(opts.limit ?? 300, 10), MAX_CANDLES);
-    /*
-     * Bounded. The SDK retries an unknown symbol for over a minute — a wrong
-     * spelling once cost 75s before answering "Symbol XAUUSDM does not exist",
-     * and the chart has no business hanging that long on a bar request.
-     */
-    const raw = (await Promise.race([
-      mtAccount.getHistoricalCandles(
-        symbol,
-        iv,
-        new Date(opts.toMs ?? Date.now()),
-        limit,
-      ),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("مهلة جلب الشموع من حساب MetaApi انتهت.")),
-          HISTORY_TIMEOUT_MS,
-        ),
-      ),
-    ])) as MetaApiHistoricalCandle[];
-
-    const candles: OhlcCandle[] = (raw ?? [])
-      .map((c) => ({
-        time: new Date(c.time).getTime(),
-        open: Number(c.open),
-        high: Number(c.high),
-        low: Number(c.low),
-        close: Number(c.close),
-        volume: Number(c.tickVolume ?? 0),
-      }))
-      .filter((c) => Number.isFinite(c.time) && c.time > 0 && Number.isFinite(c.close))
-      .sort((a, b) => a.time - b.time);
-
+    const candles = await fetchPage(
+      mtAccount,
+      symbol,
+      iv,
+      opts.toMs ?? Date.now(),
+      limit,
+    );
     return { candles };
   } catch (e) {
     return {
       candles: [],
+      warning:
+        e instanceof Error ? e.message : "تعذّر جلب الشموع من حساب MetaApi.",
+    };
+  }
+}
+
+/**
+ * An inclusive [fromMs, toMs] window, paged backward through the account's
+ * history — what the warehouse backfill needs. MetaApi's history call only
+ * anchors on an END time plus a count, so the range is walked newest-first
+ * until the window's start is covered, the broker runs out of history, or the
+ * page budget is spent (partial coverage is reported honestly via
+ * `reachedStart`).
+ */
+export async function fetchMetaApiOhlcRange(
+  userId: number,
+  symbol: string,
+  interval: string,
+  opts: { fromMs: number; toMs?: number; maxPages?: number },
+): Promise<{ candles: OhlcCandle[]; reachedStart: boolean; warning?: string }> {
+  const iv = normalizeInterval(interval);
+  if (!METAAPI_INTERVALS.has(iv)) {
+    return {
+      candles: [],
+      reachedStart: false,
+      warning: `الإطار ${iv} غير مدعوم من حساب MetaApi.`,
+    };
+  }
+
+  try {
+    const { mtAccount, warning } = await getHistoryAccount(userId);
+    if (!mtAccount) return { candles: [], reachedStart: false, warning };
+
+    const maxPages = Math.min(Math.max(opts.maxPages ?? MAX_RANGE_PAGES, 1), MAX_RANGE_PAGES);
+    const collected = new Map<number, OhlcCandle>();
+    let cursor = opts.toMs ?? Date.now();
+    let reachedStart = false;
+
+    for (let page = 0; page < maxPages; page++) {
+      const batch = await fetchPage(mtAccount, symbol, iv, cursor, MAX_CANDLES);
+      if (batch.length === 0) break;
+      for (const c of batch) {
+        if (c.time >= opts.fromMs && c.time <= cursor) collected.set(c.time, c);
+      }
+      const earliest = batch[0].time;
+      if (earliest <= opts.fromMs) {
+        reachedStart = true;
+        break;
+      }
+      // No progress means the broker has nothing older — stop, don't loop.
+      if (earliest >= cursor) break;
+      cursor = earliest - 1;
+    }
+
+    return {
+      candles: [...collected.values()].sort((a, b) => a.time - b.time),
+      reachedStart,
+    };
+  } catch (e) {
+    return {
+      candles: [],
+      reachedStart: false,
       warning:
         e instanceof Error ? e.message : "تعذّر جلب الشموع من حساب MetaApi.",
     };

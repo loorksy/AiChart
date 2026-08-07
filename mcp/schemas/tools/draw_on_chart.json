@@ -16,7 +16,7 @@
     },
     "dataSource": {
       "type": "string",
-      "const": "oanda"
+      "const": "metaapi"
     },
     "mode": {
       "default": "set",

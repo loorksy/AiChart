@@ -2,19 +2,19 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   isBrokerForexSuffix,
-  toOandaForexSymbol,
+  toCanonicalForexSymbol,
 } from "../forexSymbol.js";
 
-describe("toOandaForexSymbol", () => {
-  it("strips broker M suffix for OANDA candles", () => {
-    assert.equal(toOandaForexSymbol("XAUUSDM"), "XAUUSD");
-    assert.equal(toOandaForexSymbol("EURUSDm"), "EURUSD");
-    assert.equal(toOandaForexSymbol("xauusd.pro"), "XAUUSD");
+describe("toCanonicalForexSymbol", () => {
+  it("strips broker M suffix to the canonical key", () => {
+    assert.equal(toCanonicalForexSymbol("XAUUSDM"), "XAUUSD");
+    assert.equal(toCanonicalForexSymbol("EURUSDm"), "EURUSD");
+    assert.equal(toCanonicalForexSymbol("xauusd.pro"), "XAUUSD");
   });
 
   it("leaves canonical pairs unchanged", () => {
-    assert.equal(toOandaForexSymbol("EURUSD"), "EURUSD");
-    assert.equal(toOandaForexSymbol("XAUUSD"), "XAUUSD");
+    assert.equal(toCanonicalForexSymbol("EURUSD"), "EURUSD");
+    assert.equal(toCanonicalForexSymbol("XAUUSD"), "XAUUSD");
   });
 
   it("detects broker-only tickers", () => {

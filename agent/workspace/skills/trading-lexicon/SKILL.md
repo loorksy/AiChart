@@ -62,7 +62,7 @@ Reading the geometric structure of price action based on collective crowd psycho
 
 ## 3. Platform Scope
 
-Crypto spot, futures, and on-chain tools are **not available**. Analyze **forex pairs and gold** only via MetaTrader 5 / OANDA market data.
+Crypto spot, futures, and on-chain tools are **not available**. Analyze **forex pairs and gold** only via the operator's own MetaTrader 5 account data.
 
 ---
 

@@ -46,7 +46,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_account_symbols",
     domain: "mt5",
     description:
-      "Lists all broker pairs/symbols in the MetaTrader account (the full Market Watch) with bid/ask/spread — every available pair, not a short list. When: the complete broker symbol universe is needed, or a broker-specific ticker must be found (e.g. to learn a symbol's exact broker spelling like XAUUSDm before a trade tool call). Not list_instruments' job — that's the OANDA/platform catalogue, not this account's own book. Defaults: no q filter (returns everything), limit unset (server default, ≤500). read-only. Example: market=forex.",
+      "Lists all broker pairs/symbols in the MetaTrader account (the full Market Watch) with bid/ask/spread — every available pair, not a short list. When: the complete broker symbol universe is needed, or a broker-specific ticker must be found (e.g. to learn a symbol's exact broker spelling like XAUUSDm before a trade tool call). Not list_instruments' job — that's the shared catalogue, not this account's own book. Defaults: no q filter (returns everything), limit unset (server default, ≤500). read-only. Example: market=forex.",
     inputSchema: {
       q: z.string().optional(),
       market: z.literal("forex").optional(),

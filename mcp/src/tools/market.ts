@@ -6,8 +6,8 @@ import { mcpToolConfig } from "./schemas/index.js";
 /**
  * Pass the symbol through as the caller spelled it.
  *
- * The web bridge resolves the market-data pipe per user (OANDA vs linked
- * cloud account). Folding every symbol through toOandaForexSymbol here forced
+ * The web bridge serves every user from their own linked MetaTrader
+ * cloud account). Folding every symbol through toCanonicalForexSymbol here forced
  * XAUUSDm → XAUUSD and then asked MetaApi for an instrument that does not
  * exist — and hid which book the numbers came from.
  */
@@ -157,7 +157,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         limit?: number;
         cursor?: number;
       };
-      // Do not force source=oanda — the bridge picks the user's resolved pipe
+      // No source override — the bridge reads the user's own linked account
       // and returns `source`/`book` on the result.
       return bridgeCall("get_ohlc", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/ohlc", {

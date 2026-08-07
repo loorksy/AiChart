@@ -1,20 +1,10 @@
 import { DEFAULT_MARKET, rejectNonForexMarket } from "@/lib/marketPolicy";
-import {
-  intervalPlan,
-  normalizeInterval,
-  resampleOhlc,
-} from "@/lib/intervals";
+import { normalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { getCached, setCached } from "@/lib/bridge/cache";
 import { freshnessMeta, type FreshnessMeta } from "@/lib/bridge/freshness";
-import {
-  fetchOandaCandles,
-  oandaAccountId,
-  oandaConfigured,
-} from "@/lib/markets/oanda";
-import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
-import { fetchMetaApiOhlc } from "@/lib/ohlc/metaApiOhlc";
+import { fetchMetaApiOhlc, fetchMetaApiOhlcRange } from "@/lib/ohlc/metaApiOhlc";
 
 /** @deprecated Prefer interval-aware {@link ohlcCacheTtlMs}. Kept for callers. */
 export const OHLC_CACHE_TTL_MS = 45_000;
@@ -29,7 +19,8 @@ export interface OhlcCandle {
   volume?: number;
 }
 
-export type OhlcSource = "oanda" | "metaapi";
+/** The one candle pipe: the user's own cloud MetaTrader account. */
+export type OhlcSource = "metaapi";
 
 export interface FetchOhlcResult {
   symbol: string;
@@ -55,12 +46,12 @@ export interface FetchOhlcOptions {
   /** Millisecond open time — fetch candles strictly before this (pagination cursor). */
   cursor?: number;
   skipCache?: boolean;
-  /** Millisecond open time — fetch forex candles strictly before this (OANDA pagination). */
+  /** Millisecond open time — fetch forex candles strictly before this (pagination). */
   beforeMs?: number;
   /** Inclusive range for Pro datafeed (milliseconds). */
   fromMs?: number;
   toMs?: number;
-  /** Forex candle source: the platform's OANDA feed, or the cloud MetaTrader account via MetaApi. */
+  /** Kept for call-site compatibility; the only value is "metaapi". */
   source?: OhlcSource;
 }
 
@@ -68,54 +59,64 @@ export function ohlcCacheResource(symbol: string, interval: string): string {
   return `ohlc:${symbol.toUpperCase()}:${normalizeInterval(interval)}`;
 }
 
-async function fetchForexOhlcLive(
+/**
+ * Candles from whichever MetaTrader link the user has: the MetaApi cloud
+ * account (history API, with range paging), or the self-hosted mt5local
+ * bridge (latest-N bars only). Both are the USER'S OWN account — there is no
+ * platform feed behind them.
+ */
+async function fetchAccountCandles(
+  options: FetchOhlcOptions,
   symbol: string,
   interval: string,
   limit: number,
-  opts?: { beforeMs?: number; fromMs?: number; toMs?: number },
-): Promise<{ candles: OhlcCandle[]; source: OhlcSource; warning?: string; hasMore?: boolean }> {
-  if (!oandaConfigured() || !oandaAccountId()) {
-    return {
-      candles: [],
-      source: "oanda",
-      warning: "OANDA غير مُعدّ — أضف OANDA_API_TOKEN و OANDA_ACCOUNT_ID.",
-      hasMore: false,
-    };
-  }
-  try {
-    // Retry once on a transient OANDA failure (burst-load rate limits return a
-    // momentary error) before surfacing it to the caller.
-    let result: { candles: OhlcCandle[]; hasMore: boolean } | null = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+  toMs: number | undefined,
+): Promise<{ candles: OhlcCandle[]; warning?: string }> {
+  if (options.userId > 0) {
+    const { getMtAccount } = await import("@/lib/store");
+    const account = await getMtAccount(options.userId).catch(() => null);
+    if (account?.metaapi_account_id === "mt5local") {
       try {
-        result = await fetchOandaCandles(symbol, interval, limit, opts);
-        break;
-      } catch (err) {
-        if (attempt >= 1) throw err;
-        await new Promise((r) => setTimeout(r, 350));
+        const { mt5Rates } = await import("@/lib/mt5local/client");
+        const bars = await mt5Rates(symbol, interval, limit, {
+          login: account.login,
+          server: account.server,
+        });
+        return {
+          candles: (bars ?? [])
+            .map((b) => ({
+              // The bridge reports MT5 epoch seconds; candles here are ms.
+              time: b.time < 1e12 ? b.time * 1000 : b.time,
+              open: b.open,
+              high: b.high,
+              low: b.low,
+              close: b.close,
+            }))
+            .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
+            .sort((a, b) => a.time - b.time),
+        };
+      } catch (e) {
+        return {
+          candles: [],
+          warning:
+            e instanceof Error ? e.message : "تعذّر جلب الشموع من حاوية MT5.",
+        };
       }
     }
-    const { candles, hasMore } = result!;
-    if (candles.length > 0) {
-      return {
-        candles: opts?.fromMs != null ? candles : candles.slice(-limit),
-        source: "oanda",
-        hasMore,
-      };
-    }
-    return {
-      candles: [],
-      source: "oanda",
-      warning: "OANDA: لا شموع لهذا الرمز أو الفاصل الزمني.",
-      hasMore: false,
-    };
-  } catch (e) {
-    console.error("[oanda] candles failed", e);
-    throw new Error("OANDA candles unavailable for this symbol/interval.");
   }
+  return options.fromMs != null
+    ? fetchMetaApiOhlcRange(options.userId, symbol, interval, {
+        fromMs: options.fromMs,
+        toMs,
+      })
+    : fetchMetaApiOhlc(options.userId, symbol, interval, { toMs, limit });
 }
 
-/** Fetches OHLC with bridge cache (45s) — forex via OANDA or MetaApi. */
+/**
+ * Fetches OHLC with bridge cache — forex from the user's linked MetaTrader
+ * account via MetaApi, the only pipe. An unlinked user gets an empty series
+ * with a warning naming the missing link, never a substitute feed.
+ */
 export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcResult> {
   const interval = normalizeInterval(options.interval ?? "1h");
   const market = options.market ?? DEFAULT_MARKET;
@@ -129,31 +130,19 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   );
 
   /*
-   * The caller's source wins, and absent one it is the platform feed. Only
-   * two call sites pass a source at all: the chart's klines route, which
-   * takes it from resolveMarketDataSource and therefore never names a pipe
-   * the account has not connected, and the layout route, which hardcodes
-   * "oanda".
+   * Broker feeds answer to the broker's own spelling — and that spelling is
+   * case-sensitive. This line used to uppercase it, which is exactly what the
+   * comment said not to do: Exness serves XAUUSDm, and MetaApi answers
+   * "Symbol XAUUSDM does not exist" for the folded version.
    */
-  const forexSource: OhlcSource = options.source ?? "oanda";
-  let symbol =
-    forexSource === "oanda"
-      ? forexCanonicalKey(options.symbol)
-      : /*
-         * Broker feeds answer to the broker's own spelling — and that spelling
-         * is case-sensitive. This line used to uppercase it, which is exactly
-         * what the comment said not to do: Exness serves XAUUSDm, and MetaApi
-         * answers "Symbol XAUUSDM does not exist" for the folded version.
-         */
-        options.symbol.trim();
-  if (forexSource === "metaapi" && options.userId > 0) {
+  let symbol = options.symbol.trim();
+  if (options.userId > 0) {
     // Canonical chart keys (XAUUSD) must become the account's spelling
     // (XAUUSDm) before the RPC call — built from getSymbols(), never a suffix list.
     const { resolveBrokerSymbol } = await import("@/lib/markets/symbolCatalogue");
     symbol = await resolveBrokerSymbol(options.userId, symbol);
   }
-  const sourceKey = forexSource;
-  const cacheKey = `${ohlcCacheResource(symbol, interval)}:${sourceKey}`;
+  const cacheKey = `${ohlcCacheResource(symbol, interval)}:metaapi`;
   if (
     !options.skipCache &&
     !options.cursor &&
@@ -171,44 +160,24 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
     }
   }
 
-  let candles: OhlcCandle[] = [];
-  let source: OhlcSource = "oanda";
-  const nextCursor: number | null = null;
-  let hasMore = false;
+  const toMs = options.toMs ?? options.beforeMs;
+  const live = await fetchAccountCandles(options, symbol, interval, limit, toMs);
 
-  const live =
-    forexSource === "metaapi"
-      ? {
-          ...(await fetchMetaApiOhlc(options.userId, symbol, interval, {
-            toMs: options.toMs,
-            limit,
-          })),
-          source: "metaapi" as const,
-          hasMore: false,
-        }
-      : await fetchForexOhlcLive(symbol, interval, limit, {
-          beforeMs: options.beforeMs,
-          fromMs: options.fromMs,
-          toMs: options.toMs,
-        });
-  candles =
+  const candles =
     options.fromMs != null ? live.candles : live.candles.slice(-limit);
-  source = live.source;
-  const warning: string | undefined = live.warning;
-  hasMore = live.hasMore ?? false;
 
   const result: FetchOhlcResult = {
     symbol,
     interval,
     market,
     candles,
-    source,
+    source: "metaapi",
     cachedAt: Date.now(),
     ageMs: 0,
     fromCache: false,
-    warning,
-    nextCursor,
-    hasMore,
+    warning: live.warning,
+    nextCursor: null,
+    hasMore: false,
     freshness: freshnessMeta("live", 0),
   };
 

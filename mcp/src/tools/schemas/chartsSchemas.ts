@@ -100,15 +100,15 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "draw_on_chart",
     domain: "charts",
     description:
-      "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. dataSource is OANDA-only (drawings are time-anchored against OANDA-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
+      "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. dataSource is metaapi-only (drawings are time-anchored against the account-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
     inputSchema: {
       layout_id: zLayoutId,
       symbol: zSymbol.optional().describe("Change chart symbol (optional)"),
       interval: zInterval,
-      // oanda only: drawings are time-anchored against warehouse candles, which
-  // are OANDA-sourced. "ea" was advertised, accepted, and silently ignored —
-  // a contract that lies is worse than a narrower one.
-  dataSource: z.literal("oanda").optional(),
+      // metaapi only: drawings are time-anchored against warehouse candles,
+  // which come from users' linked accounts. "ea" was advertised, accepted,
+  // and silently ignored — a contract that lies is worse than a narrower one.
+  dataSource: z.literal("metaapi").optional(),
       mode: z.enum(["set", "add"]).default("set"),
       drawings: z.array(zDrawing).max(24),
       recommendation: zRecommendation.nullable().optional(),
@@ -142,7 +142,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
       market: z.literal("forex").optional(),
-      data_source: z.literal("oanda").optional(),
+      data_source: z.literal("metaapi").optional(),
       layout_id: zLayoutId,
     },
     annotations: {

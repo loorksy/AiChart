@@ -1,7 +1,7 @@
 /**
  * Canonical MCP card translations (Arabic + English). English defines the key
  * set; Arabic must cover every key (enforced by a test). Symbols, numeric
- * prices, and technical abbreviations (RSI/MACD/TP1/SL/OANDA/MT5) are never
+ * prices, and technical abbreviations (RSI/MACD/TP1/SL/MT5) are never
  * translated and therefore have no keys here.
  */
 import type { McpLocale } from "./mcpLocale.js";

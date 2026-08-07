@@ -2,16 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOptionalUser, checkRateLimit, clientKey, handleError } from "@/lib/api";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { changePct, downsample, type PairQuote } from "@/lib/markets/pairQuote";
-import {
-  resolveMarketDataSource,
-  type MarketDataSource,
-} from "@/lib/markets/marketDataSource";
-import {
-  fetchOandaPricing,
-  oandaAccountId,
-  oandaConfigured,
-} from "@/lib/markets/oanda";
-import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { resolveBrokerSymbol } from "@/lib/markets/symbolCatalogue";
 
 /** One card's worth of history: ~a day of hourly closes. */
@@ -28,40 +19,28 @@ const MAX_SYMBOLS = 12;
 /** Upstream is one request per instrument; a few in flight, not twelve. */
 const CONCURRENCY = 4;
 
-/** Live mid from the active pipe — headline price, not the last hourly close. */
-async function liveMid(
-  userId: number,
-  symbol: string,
-  source: MarketDataSource,
-): Promise<number | null> {
+/** Live mid from the user's own account — headline price, not the last hourly close. */
+async function liveMid(userId: number, symbol: string): Promise<number | null> {
   try {
-    if (source === "metaapi" && userId > 0) {
-      const { getMtAccount } = await import("@/lib/store");
-      const account = await getMtAccount(userId);
-      const accountId = account?.metaapi_account_id;
-      if (!accountId || accountId === "mt5local") return null;
-      const brokerSymbol = await resolveBrokerSymbol(userId, symbol);
-      const { getRpcConnection } = await import("@/lib/metaapi/client");
-      const rpc = await getRpcConnection(userId, accountId);
-      const price = await rpc.getSymbolPrice(brokerSymbol, false);
-      const bid = Number(price?.bid);
-      const ask = Number(price?.ask);
-      if (!Number.isFinite(bid) || !Number.isFinite(ask)) return null;
-      return (bid + ask) / 2;
-    }
-    if (!oandaConfigured() || !oandaAccountId()) return null;
-    const [q] = await fetchOandaPricing([forexCanonicalKey(symbol)]);
-    return q?.mid ?? null;
+    if (userId <= 0) return null;
+    const { getMtAccount } = await import("@/lib/store");
+    const account = await getMtAccount(userId);
+    const accountId = account?.metaapi_account_id;
+    if (!accountId || accountId === "mt5local") return null;
+    const brokerSymbol = await resolveBrokerSymbol(userId, symbol);
+    const { getRpcConnection } = await import("@/lib/metaapi/client");
+    const rpc = await getRpcConnection(userId, accountId);
+    const price = await rpc.getSymbolPrice(brokerSymbol, false);
+    const bid = Number(price?.bid);
+    const ask = Number(price?.ask);
+    if (!Number.isFinite(bid) || !Number.isFinite(ask)) return null;
+    return (bid + ask) / 2;
   } catch {
     return null;
   }
 }
 
-async function quoteFor(
-  userId: number,
-  symbol: string,
-  source: MarketDataSource,
-): Promise<PairQuote> {
+async function quoteFor(userId: number, symbol: string): Promise<PairQuote> {
   try {
     const [{ candles }, live] = await Promise.all([
       fetchOhlc({
@@ -69,9 +48,8 @@ async function quoteFor(
         symbol,
         interval: WINDOW_INTERVAL,
         limit: WINDOW_BARS,
-        source,
       }),
-      liveMid(userId, symbol, source),
+      liveMid(userId, symbol),
     ]);
     const closes = candles.map((c) => c.close).filter((n) => Number.isFinite(n));
     const lastClose = closes.length ? closes[closes.length - 1] : null;
@@ -117,24 +95,33 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ quotes: [] });
     }
 
-    // Same rule as the catalogue: only a metaapi-linked account can be quoted
-    // from the trader's own broker; every other connection reads platform data.
-    const { source } = await resolveMarketDataSource(
-      user?.id ?? null,
-      req.nextUrl.searchParams.get("source"),
-    );
+    // The user's own account is the only quotable book; unlinked users get
+    // empty cards plus the requires_link signal, never a substitute feed.
+    const decision = await resolveMarketDataSource(user?.id ?? null, null);
+    if (!user || !decision.available.metaapi) {
+      return NextResponse.json({
+        quotes: symbols.map((symbol) => ({
+          symbol,
+          price: null,
+          changePct: null,
+          series: [],
+          live: false,
+        })),
+        interval: WINDOW_INTERVAL,
+        source: "metaapi",
+        requires_link: true,
+      });
+    }
 
     const quotes: PairQuote[] = [];
     for (let i = 0; i < symbols.length; i += CONCURRENCY) {
       const batch = symbols.slice(i, i + CONCURRENCY);
       quotes.push(
-        ...(await Promise.all(
-          batch.map((symbol) => quoteFor(user?.id ?? 0, symbol, source)),
-        )),
+        ...(await Promise.all(batch.map((symbol) => quoteFor(user.id, symbol)))),
       );
     }
 
-    return NextResponse.json({ quotes, interval: WINDOW_INTERVAL, source });
+    return NextResponse.json({ quotes, interval: WINDOW_INTERVAL, source: "metaapi" });
   } catch (e) {
     return handleError(e);
   }

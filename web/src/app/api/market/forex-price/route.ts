@@ -1,50 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import {
-  fetchOandaPricing,
-  oandaAccountId,
-  oandaConfigured,
-} from "@/lib/markets/oanda";
 import { getMtAccount } from "@/lib/store";
 import { getRpcConnection } from "@/lib/metaapi/client";
-import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { resolveBrokerSymbol } from "@/lib/markets/symbolCatalogue";
 import { spreadFromBidAsk, formatSpreadAr } from "@/lib/spread";
 
-function oandaNotConfigured() {
+/** Ticker fan-out over the account RPC; small, so a slow symbol can't stall the strip. */
+const TICKER_CONCURRENCY = 6;
+
+function requiresLink(symbol: string) {
   return NextResponse.json({
-    source: "oanda",
+    source: "metaapi",
     connected: false,
     online: false,
+    symbol,
     price: null,
-    error: "OANDA غير مُعدّ — أضف OANDA_API_TOKEN و OANDA_ACCOUNT_ID.",
+    requires_link: true,
+    error: "اربط حساب MetaTrader لعرض أسعار وسيطك — البيانات كلها من حسابك أنت.",
   });
 }
 
 /**
- * The trader's own broker quote, when their account is the active pipe.
+ * The trader's own broker quote — the only book there is.
  *
- * A cloud account's bid/ask is the only spread that means anything to them —
- * it is what their order will actually cross. The platform feed's spread is
- * OANDA's book, which they will never trade against.
+ * A cloud account's bid/ask is the only spread that means anything to them:
+ * it is what their order will actually cross. No account linked = no price,
+ * reported as exactly that.
  */
-async function cloudQuote(userId: number, symbol: string) {
-  const account = await getMtAccount(userId);
-  if (!account?.metaapi_account_id || account.metaapi_account_id === "mt5local") {
-    return null;
-  }
+async function cloudQuote(userId: number, accountId: string, symbol: string) {
   /*
    * A symbol arriving here can be stale: a browser that cached its last
    * symbol before case-preservation existed stored it fully uppercased
    * ("XAUUSDM"), and no amount of case normalisation recovers a lowercase
    * letter that was never there. The catalogue is the only source of truth
-   * for what the broker actually calls this instrument — every other
-   * MetaApi caller (instruments/quotes, fetchOhlc, streaming) already
-   * resolves through it; this route was the one place still forwarding the
-   * client's raw spelling straight to getSymbolPrice.
+   * for what the broker actually calls this instrument.
    */
   const brokerSymbol = await resolveBrokerSymbol(userId, symbol);
-  const rpc = await getRpcConnection(userId, account.metaapi_account_id);
+  const rpc = await getRpcConnection(userId, accountId);
   const price = await rpc.getSymbolPrice(brokerSymbol, true);
   const bid = Number(price?.bid);
   const ask = Number(price?.ask);
@@ -52,113 +44,97 @@ async function cloudQuote(userId: number, symbol: string) {
   return { bid, ask, spread: spreadFromBidAsk(bid, ask, brokerSymbol) };
 }
 
-/** Live forex price — the trader's active market-data pipe. */
+/** Live forex price(s) from the user's own linked MetaTrader account. */
 export async function GET(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
     const symbolsParam = req.nextUrl.searchParams.get("symbols");
-    /*
-     * Case preserved: a broker spells XAUUSDm and its quote API is
-     * case-sensitive. Uppercasing here asked for an instrument that does not
-     * exist, the same way it did for candles.
-     */
+    // Case preserved: a broker spells XAUUSDm and its quote API is
+    // case-sensitive, the same way it is for candles.
     const symbolRaw = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
       .trim()
       .replace(/[^A-Za-z0-9._]/g, "");
-    const symbol = symbolRaw.toUpperCase();
 
-    // Single-symbol requests follow the resolved pipe; the multi-symbol ticker
-    // stays on the platform feed, which answers 50 symbols in one call.
-    if (!symbolsParam) {
-      const decision = await resolveMarketDataSource(user.id, null);
-      if (decision.source === "metaapi") {
-        try {
-          const q = await cloudQuote(user.id, symbolRaw);
-          if (q) {
-            return NextResponse.json({
-              source: "metaapi",
-              connected: true,
-              online: true,
-              symbol: symbolRaw,
-              price: q.spread?.mid ?? (q.bid + q.ask) / 2,
-              bid: q.bid,
-              ask: q.ask,
-              spread_raw: q.spread?.spreadRaw ?? null,
-              spread_pips: q.spread?.spreadPips ?? null,
-              spread_label: formatSpreadAr(q.spread),
-              updated_at: new Date().toISOString(),
-            });
-          }
-        } catch {
-          // Fall through to the platform feed rather than leaving the badge
-          // blank: a stale broker connection must not blank the price.
-        }
-      }
-    }
+    const account = await getMtAccount(user.id).catch(() => null);
+    const accountId = account?.metaapi_account_id;
+    const linked = Boolean(accountId && accountId !== "mt5local");
 
-    if (!oandaConfigured() || !oandaAccountId()) {
-      if (symbolsParam) {
-        return NextResponse.json({ source: "oanda", quotes: [] });
-      }
-      return oandaNotConfigured();
-    }
-
+    // Multi-symbol ticker: fan out over the account RPC with bounded
+    // concurrency; failed symbols are simply absent from the answer.
     if (symbolsParam) {
       const symbols = symbolsParam
         .split(",")
-        .map((s) => s.trim().toUpperCase().replace(/[^A-Z0-9.]/g, ""))
+        .map((s) => s.trim().replace(/[^A-Za-z0-9._]/g, ""))
         .filter(Boolean)
         .slice(0, 50);
-      if (symbols.length === 0) {
-        return NextResponse.json({ source: "oanda", quotes: [] });
-      }
-      try {
-        const quotes = await fetchOandaPricing(symbols);
+      if (!linked || symbols.length === 0) {
         return NextResponse.json({
-          source: "oanda",
-          quotes: quotes.map((q) => ({
-            symbol: q.symbol,
-            price: q.mid,
-            bid: q.bid,
-            ask: q.ask,
-            tradeable: q.tradeable,
-          })),
-          updated_at: new Date().toISOString(),
+          source: "metaapi",
+          quotes: [],
+          ...(linked ? {} : { requires_link: true }),
         });
-      } catch {
-        return NextResponse.json({ source: "oanda", quotes: [] });
       }
+      const quotes: Array<{
+        symbol: string;
+        price: number;
+        bid: number;
+        ask: number;
+        tradeable: boolean;
+      }> = [];
+      for (let i = 0; i < symbols.length; i += TICKER_CONCURRENCY) {
+        const batch = symbols.slice(i, i + TICKER_CONCURRENCY);
+        const settled = await Promise.allSettled(
+          batch.map(async (sym) => {
+            const q = await cloudQuote(user.id, accountId!, sym);
+            if (!q) return null;
+            return {
+              symbol: sym,
+              price: q.spread?.mid ?? (q.bid + q.ask) / 2,
+              bid: q.bid,
+              ask: q.ask,
+              tradeable: true,
+            };
+          }),
+        );
+        for (const s of settled) {
+          if (s.status === "fulfilled" && s.value) quotes.push(s.value);
+        }
+      }
+      return NextResponse.json({
+        source: "metaapi",
+        quotes,
+        updated_at: new Date().toISOString(),
+      });
     }
 
+    if (!linked) return requiresLink(symbolRaw);
+
     try {
-      const [q] = await fetchOandaPricing([symbol]);
-      if (q && q.mid != null) {
-        // Same shape from both pipes, so the badge reads one field and the
-        // `source` tells the trader whose book the number came from.
-        const spread = spreadFromBidAsk(Number(q.bid), Number(q.ask), symbol);
+      const q = await cloudQuote(user.id, accountId!, symbolRaw);
+      if (q) {
         return NextResponse.json({
-          source: "oanda",
+          source: "metaapi",
           connected: true,
-          online: q.tradeable,
-          symbol,
-          price: q.mid,
+          online: true,
+          symbol: symbolRaw,
+          price: q.spread?.mid ?? (q.bid + q.ask) / 2,
           bid: q.bid,
           ask: q.ask,
-          spread_raw: spread?.spreadRaw ?? null,
-          spread_pips: spread?.spreadPips ?? null,
-          spread_label: formatSpreadAr(spread),
+          spread_raw: q.spread?.spreadRaw ?? null,
+          spread_pips: q.spread?.spreadPips ?? null,
+          spread_label: formatSpreadAr(q.spread),
           updated_at: new Date().toISOString(),
         });
       }
     } catch {
-      /* below */
+      /* reported below as offline, not as a substitute feed */
     }
 
     return NextResponse.json({
-      source: "oanda",
+      source: "metaapi",
       connected: true,
       online: false,
-      symbol,
+      symbol: symbolRaw,
       price: null,
       updated_at: new Date().toISOString(),
     });
