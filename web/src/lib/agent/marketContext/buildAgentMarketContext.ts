@@ -16,6 +16,8 @@ import {
   backfillCandles,
   triggerBackfill,
 } from "@/lib/candles/candleBackfillService";
+import { recordWarmDemand } from "@/lib/candles/warmDemand";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import {
   getHigherInterval,
   normalizeCanonicalInterval,
@@ -129,10 +131,17 @@ async function refillIfThin(input: {
   if (input.available >= input.required) {
     return { attempted: false, inserted: 0, failed: false };
   }
+  // Three of these run in parallel (current TF, higher TF, daily) inside the
+  // market-data stage's ten-second deadline. Uncapped, each could page ten
+  // times at twelve seconds, so a single cold series — the daily one, most
+  // often, since it is the least likely to be warm — made the whole analysis
+  // fail on time every time. One page here, depth from the cron.
+  void recordWarmDemand({ symbol: input.symbol, interval: input.interval });
   const result = await backfillCandles({
     symbol: input.symbol,
     interval: input.interval,
     limit: input.limit,
+    ...(FEATURES.boundedColdStartV1() ? { maxPages: 1 } : {}),
   });
   return {
     attempted: true,

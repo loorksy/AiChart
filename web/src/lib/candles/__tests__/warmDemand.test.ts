@@ -68,6 +68,35 @@ test("the request path caps its own backfill and registers the series", () => {
   assert.equal(recorded.length, 2, "both cold paths must register demand");
 });
 
+/**
+ * The first pass at this bounded the two paths in warehouseOhlc and missed the
+ * one that was actually failing. buildAgentMarketContext calls backfillCandles
+ * directly — three in parallel, for the current timeframe, the higher one and
+ * the daily — inside the market-data stage's ten-second deadline. The daily
+ * series is the least likely to be warm, so it paged deep and took the whole
+ * analysis down with it. A live run on XAUUSDM 15m failed exactly this way.
+ */
+test("the market-context refill caps its pages too", () => {
+  const source = readFileSync(
+    resolve(process.cwd(), "src/lib/agent/marketContext/buildAgentMarketContext.ts"),
+    "utf8",
+  );
+  assert.match(source, /maxPages: 1/);
+  assert.match(source, /recordWarmDemand\(/);
+});
+
+test("the fault card names the stage the envelope already carries", () => {
+  const source = readFileSync(
+    resolve(process.cwd(), "src/components/agent/AgentEnvelopeStatus.tsx"),
+    "utf8",
+  );
+  // Deriving the sentence from failure_code alone discarded a cause the server
+  // had already identified and written to the audit row.
+  assert.match(source, /envelope\.degraded_stages/);
+  assert.match(source, /envelope\.failure_stage/);
+  assert.match(source, /userMessageForFailure\([\s\S]{0,120}stages,/);
+});
+
 test("the cron warms recorded demand, not just its configured list", () => {
   const source = readFileSync(
     resolve(process.cwd(), "src/app/api/cron/candle-warehouse/route.ts"),

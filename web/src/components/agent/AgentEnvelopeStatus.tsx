@@ -150,7 +150,19 @@ export function AgentPresentationFacts({
 
 export function AgentFaultCard({ envelope }: { envelope: ResultEnvelope }) {
   const { t, locale } = useLocale();
-  const reason = userMessageForFailure(envelope.failure_code ?? "unknown", locale);
+  // The envelope already carries which stage stalled — the server records it in
+  // the audit row and has done all along. Deriving the sentence from the
+  // failure CODE alone threw that away, so the operator read "took longer than
+  // allowed" for a run the server knew had blocked on market data.
+  const stages =
+    envelope.degraded_stages?.length
+      ? envelope.degraded_stages
+      : envelope.failure_stage
+        ? [envelope.failure_stage]
+        : [];
+  const reason = userMessageForFailure(envelope.failure_code ?? "unknown", locale, {
+    stages,
+  });
   const retryHint = envelope.retryable
     ? t("agent.fault.retryable")
     : t("agent.fault.permanent");
