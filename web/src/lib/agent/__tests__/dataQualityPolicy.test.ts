@@ -32,7 +32,7 @@ describe("candle coverage policy", () => {
       currentTfCount: 64,
       higherTfCount: 40,
       dailyCount: 20,
-      source: "warehouse+oanda",
+      source: "warehouse+metaapi",
       refill: {
         current: { attempted: true, inserted: 18, failed: false },
         higher: { attempted: true, inserted: 0, failed: true },

@@ -94,7 +94,8 @@ before(async () => {
   await seedUser(BOB, "bob@t.local", "2026-07-10 08:00:00");
   await seedUser(CAROL, "carol@t.local", "2026-07-20 08:00:00", "pending");
 
-  // pro = $249/mo, lite = $79/mo. Carol never subscribed.
+  // Legacy tier ids on stored rows — both resolve to the one $180 plan.
+  // Carol never subscribed.
   await db.execute(
     `INSERT INTO subscriptions (user_id, tier, status, started_at, current_period_start, current_period_end, updated_at)
      VALUES (?, 'pro', 'active', ?, ?, ?, ?)`,
@@ -186,17 +187,17 @@ describe("overview KPIs over a 7-day window", () => {
   it("computes revenue, cost and profit from real rows", async () => {
     const data = await overview.loadOverview(7, NOW);
 
-    // 249 (alice pro grant) + 79 (bob lite grant) + 50 (alice top-up)
-    assert.equal(data.kpis.revenue_usd.value, 378);
-    assert.equal(data.kpis.revenue_usd.prev, 249);
-    assert.equal(data.kpis.revenue_usd.pct, 51.81);
+    // 180 (alice grant) + 180 (bob grant) + 50 (alice top-up)
+    assert.equal(data.kpis.revenue_usd.value, 410);
+    assert.equal(data.kpis.revenue_usd.prev, 180);
+    assert.equal(data.kpis.revenue_usd.pct, 127.78);
 
     // 10 + 5 (alice) + 100 (bob); the system row and the unpriced row add nothing.
     assert.equal(data.kpis.provider_cost_usd.value, 115);
     assert.equal(data.kpis.provider_cost_usd.prev, 30);
 
-    assert.equal(data.kpis.profit_usd.value, 263);
-    assert.equal(data.kpis.profit_usd.prev, 219);
+    assert.equal(data.kpis.profit_usd.value, 295);
+    assert.equal(data.kpis.profit_usd.prev, 150);
 
     assert.equal(data.range.from, W7_FROM);
     assert.equal(data.range.to, NOW);
@@ -252,9 +253,9 @@ describe("overview series", () => {
 
     assert.deepEqual(byDay.get("2026-07-25"), {
       day: "2026-07-25",
-      revenue: 79,
+      revenue: 180,
       cost: 10,
-      profit: 69,
+      profit: 170,
     });
     // bob's event is stamped 2026-07-26 in UTC — it belongs to 07-27 in Riyadh.
     assert.deepEqual(byDay.get("2026-07-27"), {
@@ -271,9 +272,9 @@ describe("overview series", () => {
     });
     assert.deepEqual(byDay.get("2026-07-31"), {
       day: "2026-07-31",
-      revenue: 249,
+      revenue: 180,
       cost: 5,
-      profit: 244,
+      profit: 175,
     });
 
     const sum = (k: "revenue" | "cost") =>
@@ -292,13 +293,13 @@ describe("overview leaderboard", () => {
       user_id: ALICE,
       email: "alice@t.local",
       tier: "pro",
-      revenue_usd: 299,
+      revenue_usd: 230,
       provider_cost_usd: 15,
-      profit_usd: 284,
+      profit_usd: 215,
       events: 3,
     });
     assert.equal(data.leaders[1].email, "bob@t.local");
-    assert.equal(data.leaders[1].profit_usd, -21, "bob burns more than his tier earns");
+    assert.equal(data.leaders[1].profit_usd, 80, "180 grant − 100 provider cost");
 
     // The client re-sorts these same rows for the «الأكثر خسارة» view.
     const byLoss = [...data.leaders].sort((a: any, b: any) => a.profit_usd - b.profit_usd);
@@ -328,7 +329,7 @@ describe("the two admin money screens agree (R7)", () => {
     assert.equal(data.kpis.profit_usd.value, round2(route.totals.profit_usd));
     assert.equal(data.kpis.system_cost_usd, round2(route.systemCostUsd));
 
-    assert.equal(route.totals.revenue_usd, 627, "2×249 + 50 + 79");
+    assert.equal(route.totals.revenue_usd, 590, "2×180 (alice) + 50 + 180 (bob)");
     assert.equal(route.totals.provider_cost_usd, 145, "45 (alice) + 100 (bob)");
     assert.equal(route.systemCostUsd, 7);
   });
@@ -364,7 +365,9 @@ describe("the two admin money screens agree (R7)", () => {
     for (const g of grants as any[]) {
       const row = ensure(g.user_id);
       if (g.kind === "monthly_grant") {
-        const tier = tiers.TIERS[row.tier ?? ""];
+        // The one deliberate divergence from the pre-extraction body: pricing
+        // goes through tierDef so legacy tier ids resolve to the single plan.
+        const tier = tiers.tierDef(row.tier ?? "");
         row.revenue_usd += (tier?.priceUsd ?? 0) * Number(g.months);
       } else {
         row.gift_months += Number(g.months);
@@ -436,7 +439,7 @@ describe("the two admin money screens agree (R7)", () => {
       subs: [{ user_id: 1, tier: "lite", status: "active" }],
       users: [{ id: 1, email: "pg@t.local" }],
     });
-    assert.equal(result.perUser[0].revenue_usd, 79 * 2 + 25.5);
+    assert.equal(result.perUser[0].revenue_usd, 180 * 2 + 25.5);
     assert.equal(result.perUser[0].provider_cost_usd, 3.5);
     assert.equal(result.perUser[0].events, 7);
     assert.equal(result.systemCostUsd, 1.25);
@@ -461,15 +464,15 @@ describe("overview users table", () => {
     assert.equal(alice.provider_cost_usd, 45);
     assert.equal(alice.retail_burn_usd, 92);
     assert.equal(alice.last_event_ms, TODAY_START + 2 * HOUR);
-    assert.equal(alice.revenue_usd, 548, "2×249 + 50");
-    assert.equal(alice.profit_usd, 503);
+    assert.equal(alice.revenue_usd, 410, "2×180 + 50");
+    assert.equal(alice.profit_usd, 365);
     assert.equal(alice.created_at_ms, Date.UTC(2026, 6, 1, 8, 0, 0));
 
     const bob = byEmail.get("bob@t.local");
     assert.equal(bob.tier, "lite");
     assert.equal(bob.sub_status, "past_due");
     assert.equal(bob.balance_usd, 0, "no credit_balances row is $0, not a guess");
-    assert.equal(bob.profit_usd, -21);
+    assert.equal(bob.profit_usd, 80);
 
     const carol = byEmail.get("carol@t.local");
     assert.equal(carol.status, "pending");

@@ -18,7 +18,7 @@ import {
   klinesClientKey,
 } from "@/lib/ohlc/klinesClientCache";
 
-/** OANDA rejects ranges over ~5000 candles with HTTP 400 — stay safely under. */
+/** Upstream history pulls reject ranges over ~5000 candles — stay safely under. */
 const MAX_BARS_PER_REQUEST = 4000;
 
 /** Build the /api/market/klines query. `fresh` is OMITTED unless explicitly
@@ -136,7 +136,8 @@ export function createAiChartDatafeed(
   market: MarketType = "forex",
   opts: { onLatestCandle?: (candle: TvLatestCandle) => void } = {},
 ): IBasicDataFeed {
-  const exchange = "OANDA";
+  // Every bar is served by the trader's own MetaTrader account.
+  const exchange = CLOUD_EXCHANGE;
   const symbolType = "forex";
   const subscribers = new Map<string, BarSubscription>();
 
@@ -167,7 +168,7 @@ export function createAiChartDatafeed(
       to: opts.to,
       fresh: opts.fresh,
     });
-    // Transient upstream blips (OANDA rate-limit under burst load) are retried
+    // Transient upstream blips (broker rate-limit under burst load) are retried
     // HERE, silently — surfacing onError would flash TV's "network error"
     // badge for a one-off hiccup.
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -201,10 +202,10 @@ export function createAiChartDatafeed(
     },
 
     searchSymbols: async (userInput, exchangeFilter, _symbolType, onResult) => {
-      const wantOanda = !exchangeFilter || exchangeFilter === exchange;
+      const wantExchange = !exchangeFilter || exchangeFilter === exchange;
       const items: SearchSymbolResultItem[] = [];
 
-      if (wantOanda) {
+      if (wantExchange) {
         try {
           const params = new URLSearchParams({ market, q: userInput, wrapped: "1" });
           const res = await fetch(`/api/instruments?${params}`, { cache: "no-store" });
@@ -231,21 +232,15 @@ export function createAiChartDatafeed(
         ? symbolName.split(":").pop()!
         : symbolName;
       /*
-       * Case is only folded for the platform feed's canonical keys. A broker
-       * symbol arrives already spelled the way its catalogue spells it —
-       * XAUUSDm, AAPLm — and uppercasing it here is what reached MetaApi as a
-       * symbol that does not exist. A lowercase letter is the tell: canonical
-       * OANDA keys never carry one.
+       * Case is only folded for canonical chart keys. A broker symbol arrives
+       * already spelled the way its catalogue spells it — XAUUSDm, AAPLm —
+       * and uppercasing it here is what reached MetaApi as a symbol that does
+       * not exist. A lowercase letter is the tell: canonical keys never carry
+       * one.
        */
       const sym = /[a-z]/.test(bare) ? bare : bare.toUpperCase();
-      /*
-       * The header prints this, so it has to name the feed the bars actually
-       * came from. It said OANDA for every symbol, including one served by the
-       * trader's own cloud account — the reported "I picked cloud and it still
-       * says OANDA". Same lowercase tell as above: a broker catalogue spells
-       * XAUUSDm, a canonical platform key never does.
-       */
-      const exch = /[a-z]/.test(sym) ? CLOUD_EXCHANGE : exchange;
+      // Every bar comes over the trader's own MetaTrader account.
+      const exch = exchange;
       const info: LibrarySymbolInfo = {
         name: sym,
         ticker: sym,

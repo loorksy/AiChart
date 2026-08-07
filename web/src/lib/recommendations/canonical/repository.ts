@@ -48,6 +48,7 @@ interface RecommendationRow {
   engine_version: string | null;
   entry_type: string | null;
   legacy_tracking_id: string | null;
+  context_json: string | null;
 }
 
 interface TransitionRow {
@@ -151,6 +152,7 @@ function toCanonical(row: RecommendationRow): CanonicalRecommendation {
     engineVersion: row.engine_version ?? "legacy",
     entryType: row.entry_type ?? undefined,
     legacyTrackingId: row.legacy_tracking_id ?? undefined,
+    contextJson: row.context_json ?? undefined,
   };
 }
 
@@ -188,6 +190,23 @@ export async function createCanonicalRecommendation(
       "RECOMMENDATION_INVALID_INPUT",
       "Recommendations must be created as draft or active and then use the state machine",
     );
+  }
+
+  // Trial cap (single-plan billing): a trial account may create exactly
+  // three recommendations. Claimed HERE — the one choke point every surface
+  // funnels through — with an atomic guarded increment, so two concurrent
+  // creations cannot mint a fourth. Paid/admin pass untouched; legacy imports
+  // are history, not new claims. Dynamic import mirrors the usageMeter
+  // precedent and keeps this persistence layer cycle-free.
+  if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
+    const { claimTrialRecommendation } = await import("@/lib/subscription/entitlement");
+    const claim = await claimTrialRecommendation(input.userId);
+    if (!claim.ok) {
+      throw new RecommendationLifecycleError(
+        "TRIAL_RECOMMENDATION_LIMIT",
+        "انتهت توصيات التجربة المجانية الثلاث — فعّل الاشتراك لمتابعة استقبال التوصيات.",
+      );
+    }
   }
 
   // The Complete Plan Contract, enforced at the single creation choke point so

@@ -2,7 +2,6 @@ import { withBridge } from "@/lib/bridge";
 import { ApiError } from "@/lib/api";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
-import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { marketDataBookLabel } from "@/lib/markets";
 
@@ -23,11 +22,9 @@ export const GET = withBridge(async ({ req, userId }) => {
     userId,
     searchParams.get("source"),
   );
-  // Broker spellings are case-sensitive; only fold for the platform feed.
-  const ohlcSymbol =
-    decision.source === "oanda"
-      ? forexCanonicalKey(symbol.trim())
-      : symbol.trim();
+  // Broker spellings are case-sensitive — never case-fold here; fetchOhlc
+  // resolves the canonical key to the linked account's own spelling.
+  const ohlcSymbol = symbol.trim();
   const limitRaw = searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : 200;
   const cursorRaw = searchParams.get("cursor");

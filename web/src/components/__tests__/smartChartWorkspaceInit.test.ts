@@ -14,7 +14,7 @@ import path from "node:path";
  * The component has no React Testing Library harness in this repo, so this
  * pins the fix at the source level: the localStorage read must be wrapped in
  * normalizeSymbolCase, and dataSource must be reconciled against the server's
- * resolved default rather than trusting the "oanda" paint-time placeholder.
+ * account pipe directly — the retired platform-feed placeholder is gone.
  */
 
 const SRC = readFileSync(
@@ -35,20 +35,12 @@ describe("SmartChartWorkspace initial state matches server truth", () => {
     );
   });
 
-  it("resolves the real data source on mount instead of staying on the oanda placeholder", () => {
-    const stateInit = SRC.slice(
-      SRC.indexOf('useState<MarketDataSource>("oanda")'),
-      SRC.indexOf("const [tradesOpen"),
-    );
+  it("initialises straight on the account pipe — no platform placeholder to reconcile", () => {
     assert.match(
-      stateInit,
-      /fetch\("\/api\/market\/data-source"/,
-      "dataSource must be reconciled against the server's resolved pipe on mount",
+      SRC,
+      /useState<MarketDataSource>\("metaapi"\)/,
+      "the one pipe is the user's own account; there is no paint-time platform placeholder",
     );
-    assert.match(
-      stateInit,
-      /setDataSource\(data\.active\)/,
-      "the resolved active source must actually be applied, not just fetched",
-    );
+    assert.equal(/oanda/i.test(SRC), false, "no trace of the retired platform feed");
   });
 });

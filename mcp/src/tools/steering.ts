@@ -19,7 +19,7 @@
  * one was a true duplicate, not a distinct concern.
  */
 
-import { isBrokerForexSuffix, toOandaForexSymbol } from "../lib/forexSymbol.js";
+import { isBrokerForexSuffix, toCanonicalForexSymbol } from "../lib/forexSymbol.js";
 
 export interface NextStep {
   tool: string;
@@ -104,7 +104,7 @@ export function recoveryFor(errorCode: string | undefined): RecoveryInfo | null 
 // ---------------------------------------------------------------------------
 // adjustments — symbol canonicalization is the one confirmed real coercion
 // (Phase 0 finding §4.3): 5 of 11 market tools silently strip broker suffixes
-// and uppercase via toOandaForexSymbol() before querying, with nothing in the
+// and uppercase via toCanonicalForexSymbol() before querying, with nothing in the
 // response saying so today.
 // ---------------------------------------------------------------------------
 
@@ -124,9 +124,9 @@ export function symbolAdjustments(toolName: string, requestedSymbol: unknown): A
     {
       field: "symbol",
       requested: requestedSymbol,
-      used: toOandaForexSymbol(requestedSymbol),
+      used: toCanonicalForexSymbol(requestedSymbol),
       reason:
-        "Broker suffix stripped and uppercased to the OANDA instrument key this tool actually reads from — never tell the operator the requested spelling was queried verbatim.",
+        "Broker suffix stripped and uppercased to the canonical instrument key this tool actually reads from — never tell the operator the requested spelling was queried verbatim.",
     },
   ];
 }

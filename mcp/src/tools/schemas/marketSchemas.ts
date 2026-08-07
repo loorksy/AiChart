@@ -8,7 +8,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_snapshot",
     domain: "market",
     description:
-      "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the OANDA 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
+      "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol.describe("e.g. EURUSD"),
       interval: zInterval,
@@ -21,7 +21,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_multi_timeframe_snapshot",
     domain: "market",
     description:
-      "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
     inputSchema: {
       symbol: zSymbol.describe("e.g. EURUSD"),
       intervals: z
@@ -38,7 +38,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_price",
     domain: "market",
     description:
-      "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — not for indicators or history, use get_forex_indicators/get_ohlc for those. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. This is also the recovery_tool for a STALE_QUOTE error elsewhere — call it immediately to force a fresh read, don't ask the operator first. read-only. Example: symbol=EURUSD.",
+      "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — not for indicators or history, use get_forex_indicators/get_ohlc for those. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. This is also the recovery_tool for a STALE_QUOTE error elsewhere — call it immediately to force a fresh read, don't ask the operator first. read-only. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol, market: zMarket },
     annotations: READ_ONLY,
   },
@@ -46,7 +46,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_instruments",
     domain: "market",
     description:
-      "Lists tradable forex instruments — from OANDA, or the linked cloud account's own symbols when one is connected — with an optional q search filter. When: browsing or searching for a pair. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
+      "Lists tradable forex instruments — the linked account's own symbols, or the shared broker-seeded catalogue before a link — with an optional q search filter. When: browsing or searching for a pair. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
     inputSchema: {
       market: zMarket,
       q: z.string().max(20).optional().describe("Optional search e.g. EUR or XAU"),
@@ -87,7 +87,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_ohlc",
     domain: "market",
     description:
-      "Returns raw OHLC candles for a symbol and interval from OANDA, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Not for a linked broker's own book/spread — this is always OANDA (source is hardcoded), so a caller asking for their connected broker's own pricing won't get it here. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "Returns raw OHLC candles for a symbol and interval from the user's linked MetaTrader account, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
     inputSchema: {
       symbol: zSymbol.describe("EURUSD"),
       interval: zInterval,
@@ -123,7 +123,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "detect_market_regime",
     domain: "market",
     description:
-      "Classifies the current market regime numerically from ATR/ADX/Bollinger/volume as trend, range, high_volatility, or low_liquidity — not a textual guess. When: before choosing a backtested strategy, so the strategy matches the regime. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, 120-500). read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
+      "Classifies the current market regime numerically from ATR/ADX/Bollinger/volume as trend, range, high_volatility, or low_liquidity — not a textual guess. When: before choosing a backtested strategy, so the strategy matches the regime. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, 120-500). read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,

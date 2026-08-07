@@ -139,7 +139,7 @@ export function isMarketOpenAt(symbol: string, ms: number): boolean {
 /**
  * Should a DAILY bar exist at this open timestamp?
  *
- * OANDA daily candles are aligned to 17:00 America/New_York regardless of
+ * Forex daily candles are aligned to 17:00 America/New_York regardless of
  * DST, giving exactly five bars per normal week (Sun–Thu opens covering the
  * Mon–Fri sessions). Walking "previous + 24h" through isMarketOpenAt cannot
  * express that — the 24h step drifts an hour across each DST transition and

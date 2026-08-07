@@ -11,9 +11,13 @@ function fakeCtx(
 
 describe("newsMacroAgent honesty (no provider configured)", () => {
   it("never claims to review news and returns newsRisk=unknown", async () => {
-    // Ensure no provider keys leak in from the environment.
+    // Ensure no provider keys leak in from the environment — and the keyless
+    // Forex Factory source (default on) is explicitly off, because this test
+    // is about the world where NOTHING is configured.
+    delete process.env.FMP_API_KEY;
     delete process.env.NEWS_API_KEY;
     delete process.env.ECONOMIC_CALENDAR_API_KEY;
+    process.env.FOREX_FACTORY_CALENDAR_V1 = "false";
 
     const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
     const res = await runNewsMacroAgent(fakeCtx(events), {
@@ -37,5 +41,6 @@ describe("newsMacroAgent honesty (no provider configured)", () => {
       events.some((e) => String(e.message).includes("مزوّد الأخبار غير مفعّل")),
       true,
     );
+    delete process.env.FOREX_FACTORY_CALENDAR_V1;
   });
 });

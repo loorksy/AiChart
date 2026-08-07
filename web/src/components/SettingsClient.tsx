@@ -6,6 +6,7 @@ import { Bell, Cable, Moon, Save, Sparkles, Sun, User } from "lucide-react";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
 import { Mt5LinkCard } from "@/components/settings/Mt5LinkCard";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
+import { AgentMemoryPanel } from "@/components/settings/AgentMemoryPanel";
 
 import { PageHeader, Surface } from "@/components/foundation";
 import { Button, buttonVariants } from "@/components/squareui/button";
@@ -181,6 +182,9 @@ export default function SettingsClient({
           >
             {t("settings.manage_account")}
           </Link>
+          {/* Memory transparency (plan Phase 4): everything the agent
+              remembers, visible and revocable, next to the account facts. */}
+          <AgentMemoryPanel />
         </Surface>
       )}
 

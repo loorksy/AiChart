@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
+import { ProviderIcon } from "@/components/agent/ProviderIcon";
 
 interface ModelOption {
   ref: string;
@@ -123,7 +124,8 @@ export function ModelChoiceList({
       </button>
       {Object.entries(grouped).map(([provider, options]) => (
         <div key={provider}>
-          <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <ProviderIcon provider={provider} size={12} />
             {PROVIDER_LABEL[provider] ?? provider}
           </p>
           {options.map((m) => (
@@ -134,8 +136,15 @@ export function ModelChoiceList({
               onClick={() => onChoose(m.ref)}
               className={cn(ROW_CLASS, selected === m.ref && "font-semibold")}
             >
-              <span className="truncate" dir="ltr">
-                {m.label}
+              <span className="flex min-w-0 items-center gap-1.5">
+                <ProviderIcon
+                  provider={provider}
+                  size={13}
+                  className="text-muted-foreground"
+                />
+                <span className="truncate" dir="ltr">
+                  {m.label}
+                </span>
               </span>
               {selected === m.ref && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
             </button>

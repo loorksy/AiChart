@@ -75,6 +75,9 @@ import {
 } from "@/lib/research/client";
 import { buildInformationalConfidence } from "./confidenceSemantics";
 import { runMarketDataAgent } from "./agents/marketDataAgent";
+import { getMacroRegime } from "./macro/fredProvider";
+import { getCotPositioning } from "./macro/cotProvider";
+import { affectedCurrencies } from "@/lib/markets/symbolMapping";
 import { runStructureAgent } from "./agents/structureAgent";
 import { runLiquidityAgent } from "./agents/liquidityAgent";
 import { runSupplyDemandAgent } from "./agents/supplyDemandAgent";
@@ -104,6 +107,12 @@ import { recordDecisionForParity } from "./parityLog";
 import { serializeCostEvidence } from "./marketContext/costEvidence";
 import { barDurationMs } from "@/lib/intervals";
 import { metrics } from "@/lib/metrics";
+import { atr as computeAtr } from "@/lib/indicators";
+import { getCandles } from "@/lib/candles/candleRepository";
+import {
+  assessTradability,
+  type TradabilityAssessment,
+} from "@/lib/recommendations/tradability";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
 import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
@@ -529,7 +538,7 @@ async function runUnifiedChartAgentInner(
   // "preparing a general answer".
   if (isGeneralOnly(intents)) {
     const summary = await withTimeout(
-      answerGeneralQuestion(userMessage, input.conversationContext),
+      answerGeneralQuestion(userMessage, input.conversationContext, ctx.emitAnswerText),
       generalStageTimeoutMs(),
       null,
     );
@@ -672,7 +681,7 @@ async function runUnifiedChartAgentInner(
   if (!wantMarket) {
     // Account-only or platform-help without market context.
     const summary = await withTimeout(
-      answerGeneralQuestion(userMessage, input.conversationContext),
+      answerGeneralQuestion(userMessage, input.conversationContext, ctx.emitAnswerText),
       generalStageTimeoutMs(),
       null,
     );
@@ -692,21 +701,40 @@ async function runUnifiedChartAgentInner(
   // recorded here instead of vanishing into `.catch(() => null)`. The list
   // feeds envelope.degraded_stages and operator diagnostics.
   const stageFailures: AgentStageFailure[] = [];
-  const captureStage = <T,>(stage: AgentStage, promise: Promise<T>): Promise<T | null> =>
-    promise.catch((error) => {
-      const failure = stageFailureFromError(stage, error);
-      stageFailures.push(failure);
-      // Observability (item 9): per-stage failure/timeout rates by taxonomy code.
-      recordStageFailure({
-        stage: failure.stage,
-        code: failure.code,
-        retryable: failure.retryable,
+  const captureStage = <T,>(stage: AgentStage, promise: Promise<T>): Promise<T | null> => {
+    // Live run-stage protocol (Phase 3.1): the client's checklist rides the
+    // stage boundaries that already exist here — names and durations only.
+    ctx.emitStage?.({ stage, status: "running" });
+    const stageStartedAt = performance.now();
+    return promise
+      .then((value) => {
+        ctx.emitStage?.({
+          stage,
+          status: "done",
+          durationMs: Math.round(performance.now() - stageStartedAt),
+        });
+        return value;
+      })
+      .catch((error) => {
+        const failure = stageFailureFromError(stage, error);
+        stageFailures.push(failure);
+        // Observability (item 9): per-stage failure/timeout rates by taxonomy code.
+        recordStageFailure({
+          stage: failure.stage,
+          code: failure.code,
+          retryable: failure.retryable,
+        });
+        ctx.emitStage?.({
+          stage,
+          status: "failed",
+          durationMs: Math.round(performance.now() - stageStartedAt),
+        });
+        return null;
       });
-      return null;
-    });
+  };
 
   // Market Data Agent is CRITICAL: failure → stop, return action_required.
-  // It performs network I/O (warehouse + OANDA), so it uses withDeadline: a
+  // It performs network I/O (warehouse + the linked MetaTrader account), so it uses withDeadline: a
   // cancelled run tears the fetch down immediately instead of holding the burst
   // slot for the remainder of the stage deadline (RELIABILITY_PLAN item 2).
   const market = await withDeadline(
@@ -752,8 +780,8 @@ async function runUnifiedChartAgentInner(
       confidence: 0,
       summary: bilingual(
         locale,
-        "تعذّر تجهيز بيانات السوق من المخزن/OANDA. حاول مرة أخرى بعد قليل.",
-        "Could not prepare market data from the warehouse/OANDA. Try again shortly.",
+        "تعذّر تجهيز بيانات السوق من المخزن/حساب MetaTrader. حاول مرة أخرى بعد قليل.",
+        "Could not prepare market data from the warehouse/your MetaTrader account. Try again shortly.",
       ),
       keyReasons: [
         marketFailure
@@ -780,8 +808,8 @@ async function runUnifiedChartAgentInner(
       confidence: 0,
       summary: bilingual(
         locale,
-        "تعذّر تأكيد أحدث أسعار OANDA الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
-        "Could not confirm the latest OANDA prices right now. Wait a few seconds and ask again — no page refresh needed.",
+        "تعذّر تأكيد أحدث الأسعار من حساب MetaTrader الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
+        "Could not confirm the latest broker prices right now. Wait a few seconds and ask again — no page refresh needed.",
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [
@@ -804,7 +832,7 @@ async function runUnifiedChartAgentInner(
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
               drawingPlanReason: "market sync failed",
-              dataSource: chartContext?.dataSource ?? "oanda",
+              dataSource: chartContext?.dataSource ?? "metaapi",
               marketSync: market.sync,
             }
           : undefined,
@@ -856,7 +884,7 @@ async function runUnifiedChartAgentInner(
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
               drawingPlanReason: "catastrophic open-market candle gaps",
-              dataSource: chartContext?.dataSource ?? "oanda",
+              dataSource: chartContext?.dataSource ?? "metaapi",
               marketSync: market.sync,
             }
           : undefined,
@@ -904,6 +932,11 @@ async function runUnifiedChartAgentInner(
 
   if (resumed) {
     ({ structure, liquidity, supplyDemand, mtf, news } = resumed);
+    // The evidence is real and the stages did run — on a previous attempt.
+    // Say so instead of leaving the checklist empty or faking durations.
+    for (const stage of ["structure", "liquidity", "supply_demand", "multi_timeframe", "news"]) {
+      ctx.emitStage?.({ stage, status: "resumed" });
+    }
   } else {
     // Structure / liquidity / S&D / MTF run concurrently; each degrades to null
     // with its failure CLASSIFIED and recorded (never a silent swallow).
@@ -966,6 +999,9 @@ async function runUnifiedChartAgentInner(
       code: failure.code,
       retryable: failure.retryable,
     });
+    // A silent deadline bypasses captureStage's settle path — close the
+    // stage's checklist row here or it would spin forever in the UI.
+    ctx.emitStage?.({ stage: failure.stage, status: "failed" });
   }
 
   // Deterministic chart geometry — computed ONCE, BEFORE the candidate engine,
@@ -1000,6 +1036,8 @@ async function runUnifiedChartAgentInner(
   // The evidence builder prepares price-valid candidates for the model. It is
   // not a policy gate and it does not own the direction.
   let risk: RiskAgentResult | null = null;
+  ctx.emitStage?.({ stage: "risk", status: "running" });
+  const riskStartedAt = performance.now();
   try {
     risk = await withTimeout(
       runRiskAgent(trackedCtx, {
@@ -1021,6 +1059,11 @@ async function runUnifiedChartAgentInner(
     stageFailures.push(stageFailureFromError("risk", error));
     risk = null;
   }
+  ctx.emitStage?.({
+    stage: "risk",
+    status: risk ? "done" : "failed",
+    durationMs: Math.round(performance.now() - riskStartedAt),
+  });
   if (!risk) {
     const riskFailure = stageFailures.find((f) => f.stage === "risk");
     trackedCtx.emitActivity({
@@ -1111,6 +1154,24 @@ async function runUnifiedChartAgentInner(
       }).catch(() => null)
     : null;
 
+  // Macro (Fed policy / inflation / curve) and weekly COT positioning — the
+  // same rules as every other bundle entry: gathered BEFORE the decision
+  // call with their own timeout, null-degrading, evidence-not-gates. Both
+  // ride the designed additionalEvidence extension point, and the prompt
+  // forbids the model claiming either was checked while its block is null.
+  const [macroRegime, cotPositioning] = await Promise.all([
+    FEATURES.macroEvidenceV1()
+      ? withTimeout(getMacroRegime(), AGENT_TIMEOUTS.news, null).catch(() => null)
+      : Promise.resolve(null),
+    FEATURES.cotEvidenceV1()
+      ? withTimeout(
+          getCotPositioning(affectedCurrencies(market.symbol)),
+          AGENT_TIMEOUTS.news,
+          null,
+        ).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
   const visual = FEATURES.visionDecisionV1()
     ? await collectVisualEvidence({
         userId: ctx.userId,
@@ -1129,6 +1190,7 @@ async function runUnifiedChartAgentInner(
   }
 
   const decisionStartedAt = performance.now();
+  ctx.emitStage?.({ stage: "final_decision", status: "running" });
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
@@ -1149,6 +1211,17 @@ async function runUnifiedChartAgentInner(
           visualSnapshots: visual.snapshots,
           statisticalSupport,
           historicalCases,
+          // The designed extension point: fresh keys reach the model prompt
+          // (and the frozen evidence snapshot) without contract changes.
+          additionalEvidence:
+            macroRegime || cotPositioning
+              ? {
+                  ...(macroRegime ? { macroRegime } : {}),
+                  ...(cotPositioning ? { cotPositioning } : {}),
+                }
+              : null,
+          macroRegime,
+          cotPositioning,
         },
         {
           ...input.synthesizerDeps,
@@ -1198,8 +1271,13 @@ async function runUnifiedChartAgentInner(
     trackedCtx.emitActivity({
       type: "analysis",
       status: "failed",
-      message: userMessageForFailure(code, locale),
+      message: userMessageForFailure(code, locale, { stages: ["final_decision"] }),
       metadata: { stage: "final_decision", cause: synthError ? "threw" : "timeout" },
+    });
+    ctx.emitStage?.({
+      stage: "final_decision",
+      status: "failed",
+      durationMs: Math.round(performance.now() - decisionStartedAt),
     });
     return buildAgentFallbackResult(operatorReason, collected, locale, {
       retryable: thrownFailure ? thrownFailure.retryable : true,
@@ -1229,6 +1307,11 @@ async function runUnifiedChartAgentInner(
       message: userMessageForFailure(code, locale),
       metadata: { stage: "final_decision", kind: failure?.kind ?? "unknown" },
     });
+    ctx.emitStage?.({
+      stage: "final_decision",
+      status: "failed",
+      durationMs: Math.round(performance.now() - decisionStartedAt),
+    });
     return buildAgentFallbackResult(operatorReason, collected, locale, {
       // The provider's raw message rides along to the audit row.
       detail: failure?.detail ?? operatorReason,
@@ -1238,6 +1321,11 @@ async function runUnifiedChartAgentInner(
       traceId: ctx.requestId,
     });
   }
+  ctx.emitStage?.({
+    stage: "final_decision",
+    status: "done",
+    durationMs: Math.round(performance.now() - decisionStartedAt),
+  });
   const finalDecision = synth.result;
   // Attach the significant-gap warning once — every downstream return path
   // (guard blocks, confirmation, final result) reuses finalDecision.riskWarnings.
@@ -1301,7 +1389,7 @@ async function runUnifiedChartAgentInner(
               drawingPlan.selectedZones.length,
           ),
           drawingPlanReason: drawingPlan.reason,
-          dataSource: chartContext?.dataSource ?? "oanda",
+          dataSource: chartContext?.dataSource ?? "metaapi",
           chartSnapshotHash,
           marketSync: market.sync,
         }
@@ -1712,7 +1800,7 @@ async function runUnifiedChartAgentInner(
   const presented = attachMandatoryPresentation({
     summary: finalDecision.summary,
     envelope,
-    source: chartContext?.dataSource ?? "oanda",
+    source: chartContext?.dataSource ?? "metaapi",
     levels,
     locale,
   });
@@ -2052,8 +2140,8 @@ async function trackStoredRecommendation(input: {
       confidence: 0,
       summary: bilingual(
         locale,
-        "تعذّر تأكيد أحدث أسعار OANDA الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
-        "Could not confirm the latest OANDA prices right now. Wait a few seconds and ask again — no page refresh needed.",
+        "تعذّر تأكيد أحدث الأسعار من حساب MetaTrader الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
+        "Could not confirm the latest broker prices right now. Wait a few seconds and ask again — no page refresh needed.",
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [],
@@ -2309,6 +2397,63 @@ function lastClosedBarTime(
   return candles.at(-1)?.time ?? Date.now();
 }
 
+/**
+ * Grade a platform-created plan for reachability, the same way the MCP write
+ * path does: ATR from the plan's own timeframe over closed warehouse candles,
+ * price from the plan's own creation snapshot.
+ *
+ * Never throws and never blocks the write. A verdict that cannot be computed
+ * is reported as one — `assessTradability` fails safe to `watch_only` when the
+ * price or ATR is unknown, which is the honest answer rather than assuming an
+ * entry is reachable.
+ */
+async function assessPlanTradability(
+  active: ActiveRecommendation,
+): Promise<TradabilityAssessment | null> {
+  try {
+    let atr: number | null = null;
+    try {
+      const recent = await getCandles({
+        symbol: active.symbol,
+        interval: active.interval,
+        limit: 30,
+        order: "desc",
+      });
+      atr = computeAtr(recent.filter((candle) => candle.complete));
+    } catch {
+      atr = null;
+    }
+
+    const assessment = assessTradability({
+      direction: active.direction,
+      planType: active.planType,
+      entry: active.entry,
+      currentPrice: active.priceAtCreation ?? null,
+      atr,
+      spread: null,
+      validityCandles: active.validityCandles ?? null,
+    });
+    metrics.tradabilityVerdicts.inc({ verdict: assessment.tradability });
+
+    if (assessment.tradability === "rejected" && FEATURES.tradabilityGateV1()) {
+      metrics.invalidLevelRecommendations.inc({ source: "platform" });
+      log.warn("agent.tradability.downgraded", {
+        symbol: active.symbol,
+        entryDistanceAtr: assessment.entryDistanceAtr,
+      });
+      // The direction survives; only its claim to be an entry does not.
+      return { ...assessment, tradability: "watch_only" };
+    }
+    return assessment;
+  } catch (error) {
+    log.warn("agent.tradability.unavailable", {
+      symbol: active.symbol,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function persistTrackedRecommendation(
   active: ActiveRecommendation,
   userId: number,
@@ -2326,7 +2471,23 @@ async function persistTrackedRecommendation(
       : active.entryType?.includes("limit")
         ? "limit"
         : "pending";
+
+  // Is this entry realistically reachable from the current price?
+  //
+  // The gate shipped wired into the MCP bridge route only, so every plan the
+  // platform itself produced — web chat, /market/analyze, the scanner — was
+  // stored ungraded. That is the surface the far-entry problem was reported
+  // on, so it went on happening there.
+  //
+  // Unlike the MCP route this does NOT refuse: that route answers one tool
+  // call and can demand a corrective retry, while here the operator is mid
+  // stream and a throw would drop an otherwise sound analysis. A plan the
+  // market cannot reach keeps its direction and is graded `watch_only`, which
+  // is what routes it to the watch section instead of an actionable card.
+  const tradability = await assessPlanTradability(active);
+
   await createTrackedRecommendation({
+    tradability,
     id: active.id,
     userId,
     chatId,

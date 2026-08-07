@@ -55,6 +55,8 @@ import { serializeCostEvidence } from "../marketContext/costEvidence";
 import { FEATURES } from "../featureFlags";
 import { metrics } from "@/lib/metrics";
 import type { HistoricalCaseEvidence } from "@/lib/marketMemory/caseQuery";
+import type { MacroRegimeBlock } from "../macro/fredProvider";
+import type { CotPositioning } from "../macro/cotProvider";
 
 const log = createLogger("final-decision");
 
@@ -354,6 +356,7 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - direction: "buy" or "sell". A successful analysis ALWAYS produces one. There is no wait, no neutral, no "unclear".
 - planType: "immediate" (price is in a valid entry area now), "anticipatory" (entering while the structure is still forming — from a triangle's rising lows, a second rejection before the neckline, a range edge, after a liquidity sweep; higher risk, say so), or "conditional" (the entry waits for a stated trigger: a close beyond a level, a rejection from a zone, a better price, or the first move after a release).
 - The direction is mandatory; an entry at the current price is NOT. If price is a poor entry, or the move does not pay for its spread and slippage, keep the direction and make the plan conditional at the price or condition that WOULD make it worth taking. Never invent a weak entry, and never stretch a target or tighten a stop to make the numbers look acceptable.
+- A conditional plan is NOT a license for a distant level. An actionable entry is one the market can realistically reach within validityCandles — near the current price relative to recent volatility. The platform grades every plan's reachability and REFUSES entries too far from the market; when your best level is far away, keep the direction, name the level as what you are WATCHING in the summary and alternativeScenario, and do not dress it as an entry.
 
 ## The charts
 - When chart images are attached, each one arrives immediately after a label naming its timeframe and carrying that timeframe's numbers. Read the picture and the numbers together, and bind each chart to the timeframe it belongs to.
@@ -377,6 +380,7 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - Quote a historical rate ONLY when historicalCases gives you one. A null hitRate means the sample is too small for a percentage: cite the count, or say there is no comparable history. Never turn "3 of 4 similar cases worked" into a number.
 - Never claim statistical support you were not given, and never invent a win rate, a historical count, news, or any number.
 - Never claim news was checked when newsRisk is "unknown".
+- macroRegime (Fed policy rate/trend, inflation, curve) and cotPositioning (weekly speculative positioning, with extremes flagged) are SLOW context: they strengthen or weaken a plan and its confidence, never its existence or direction. An extreme positioning reading is a crowding warning, not a signal. Never claim macro or positioning was checked when its block is absent.
 
 ## Output rules
 - invalidationRule: what specifically kills this idea (a close beyond a level), in plain language.
@@ -430,6 +434,17 @@ export async function runFinalDecisionSynthesizer(
      * is normal on a thin memory and is reported as absent.
      */
     historicalCases?: HistoricalCaseEvidence | null;
+    /**
+     * Extra evidence blocks under fresh keys (macroRegime, cotPositioning…).
+     * Spread into the model context by buildModelContext — the designed
+     * extension point, so new providers reach the prompt without contract
+     * changes. Null blocks are simply absent, never estimated.
+     */
+    additionalEvidence?: Record<string, unknown> | null;
+    /** Fed policy / inflation / curve regime (FRED), for the evidence card. */
+    macroRegime?: MacroRegimeBlock | null;
+    /** Weekly COT speculative positioning, for the evidence card. */
+    cotPositioning?: CotPositioning[] | null;
     /**
      * Live session cost profile, when the sampler has enough data. Carries its
      * own `source` label so a static fallback never masquerades as measured.
@@ -530,6 +545,10 @@ ${correction}`
         detail: classified.detail.slice(0, 300),
       });
       if (!classified.retryable || attempt === 2) break;
+      // A retry WILL happen — the rate of these is a monitored decision-quality
+      // number (plan §2.4): rising retries mean the contract and the model are
+      // drifting apart.
+      metrics.synthCorrectiveRetries.inc();
       await new Promise((resolve) => setTimeout(resolve, 700));
     }
   }
@@ -807,6 +826,8 @@ function applyModelDecision(
     geometry?: GeometrySnapshot | null;
     statisticalSupport?: StatisticalSupport | null;
     historicalCases?: HistoricalCaseEvidence | null;
+    macroRegime?: MacroRegimeBlock | null;
+    cotPositioning?: CotPositioning[] | null;
   },
 ): FinalDecisionResult {
   const confidence = Math.max(0, Math.min(1, parsed.confidence));
@@ -980,6 +1001,8 @@ function applyModelDecision(
       statisticalDetail: input.statisticalSupport?.detail ?? null,
       historicalCases: historicalCaseCard(input.historicalCases, direction),
       newsRisk: input.news?.newsRisk ?? "unknown",
+      macroRegime: input.macroRegime ?? null,
+      cotPositioning: input.cotPositioning ?? null,
       dataSufficient: input.market.dataQuality.sufficient,
       validityCandles: parsed.validityCandles,
     }).dimensions,

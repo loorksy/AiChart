@@ -16,7 +16,7 @@ function fakeCtx(events: Array<Omit<AgentActivityEvent, "id" | "timestamp">>): A
 }
 
 describe("intentRouter", () => {
-  it("general question does not trigger trading/candle/OANDA activity", () => {
+  it("general question does not trigger trading/candle/market-data activity", () => {
     const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
     const intents = routeIntent({
       message: "how is the weather in Istanbul now?",
@@ -25,7 +25,7 @@ describe("intentRouter", () => {
     });
     assert.deepEqual(intents, ["general_question"]);
     assert.ok(isGeneralOnly(intents));
-    assert.equal(events.some((e) => String(e.message).includes("OANDA")), false);
+    assert.equal(events.some((e) => /OANDA|MetaApi/i.test(String(e.message))), false);
     assert.equal(events.some((e) => String(e.message).includes("candle")), false);
   });
 

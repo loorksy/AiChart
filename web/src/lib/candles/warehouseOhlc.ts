@@ -1,11 +1,11 @@
 /**
  * Warehouse-first candle service for /api/market/klines.
  *
- * Reads AiChart's own `market_candles` store first and only reaches OANDA when
- * coverage is missing or stale — OANDA is the upstream provider, not the
- * per-request source. Derived intervals (3m, 45m…) are read/backfilled at their
+ * Reads AiChart's own `market_candles` store first and only reaches the linked
+ * broker account (via MetaApi) when coverage is missing or stale — the broker
+ * is the upstream provider, not the per-request source. Derived intervals (3m, 45m…) are read/backfilled at their
  * native base and resampled here, so the warehouse only ever stores native
- * OANDA candles (no duplicate higher-timeframe rows).
+ * broker candles (no duplicate higher-timeframe rows).
  */
 import { resampleOhlc } from "@/lib/intervals";
 import {
@@ -19,15 +19,17 @@ import {
   type StoredCandle,
   type WarehouseCoverage,
 } from "./candleRepository";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import { backfillCandles, triggerBackfill } from "./candleBackfillService";
+import { recordWarmDemand } from "./warmDemand";
 
 export interface WarehouseOhlcResult {
   candles: StoredCandle[];
   source:
     | "warehouse"
     | "warehouse_partial"
-    | "oanda_backfill"
-    | "oanda_refresh";
+    | "broker_backfill"
+    | "broker_refresh";
   coverage: WarehouseCoverage;
   backfillStatus: "not_needed" | "triggered" | "completed" | "already_running";
   hasMore: boolean;
@@ -44,7 +46,7 @@ export interface WarehouseOhlcParams {
   beforeMs?: number;
 }
 
-/** "Enough" coverage to skip OANDA on a latest-N request. */
+/** "Enough" coverage to skip the broker on a latest-N request. */
 function enoughForLatest(count: number, limit: number): boolean {
   return count >= Math.min(Math.floor(limit * 0.7), 300);
 }
@@ -89,7 +91,7 @@ export async function serveWarehouseOhlc(
 
   const coverage = () => getCoverage({ symbol, interval: base });
 
-  // Fresh refresh: skip the read, pull the latest window from OANDA, then read.
+  // Fresh refresh: skip the read, pull the latest window from the linked broker account, then read.
   if (params.fresh) {
     const bf = await backfillCandles({
       symbol,
@@ -101,7 +103,7 @@ export async function serveWarehouseOhlc(
     const rows = await readWindow();
     return {
       candles: resample(rows, factor),
-      source: "oanda_refresh",
+      source: "broker_refresh",
       coverage: await coverage(),
       backfillStatus: bf.skipped ? "already_running" : "completed",
       hasMore: true,
@@ -128,17 +130,19 @@ export async function serveWarehouseOhlc(
         hasMore: true,
       };
     }
+    void recordWarmDemand({ symbol, interval: base });
     const bf = await backfillCandles({
       symbol,
       interval: base,
       fromMs: params.fromMs,
       toMs: params.beforeMs ?? params.toMs,
       limit: baseLimit,
+      ...(FEATURES.boundedColdStartV1() ? { maxPages: 1 } : {}),
     });
     const after = await readWindow();
     return {
       candles: resample(after, factor),
-      source: "oanda_backfill",
+      source: "broker_backfill",
       coverage: await coverage(),
       backfillStatus: bf.skipped ? "already_running" : "completed",
       hasMore: true,
@@ -169,14 +173,27 @@ export async function serveWarehouseOhlc(
     };
   }
 
-  // Thin coverage: backfill synchronously (bounded) then read.
-  const bf = await backfillCandles({ symbol, interval: base, limit: baseLimit });
+  // Thin coverage — the cold-start path, and the one that was failing.
+  //
+  // This used to page as deep as the range fetcher allowed (10 pages, 12s
+  // each) while the operator waited behind a 10s market-data deadline: the
+  // request could not win, and the abandoned pages kept running for another
+  // two minutes, slowing whatever came next. One page answers the request;
+  // the depth belongs to the cron, so the series is registered for warming
+  // and the next analysis on this pair reads locally.
+  void recordWarmDemand({ symbol, interval: base });
+  const bf = await backfillCandles({
+    symbol,
+    interval: base,
+    limit: baseLimit,
+    ...(FEATURES.boundedColdStartV1() ? { maxPages: 1 } : {}),
+  });
   const after = await readWindow();
   const afterResampled = resample(after, factor);
   if (afterResampled.length > 0) {
     return {
       candles: afterResampled,
-      source: "oanda_backfill",
+      source: "broker_backfill",
       coverage: await coverage(),
       backfillStatus: bf.skipped ? "already_running" : "completed",
       hasMore: true,
@@ -186,7 +203,7 @@ export async function serveWarehouseOhlc(
   // Nothing after backfill (unsupported symbol/interval or market gap).
   return {
     candles: [],
-    source: "oanda_backfill",
+    source: "broker_backfill",
     coverage: await coverage(),
     backfillStatus: bf.skipped ? "already_running" : "completed",
     hasMore: false,

@@ -140,7 +140,7 @@ describe("user-facing failure messages", () => {
       "unknown",
     ] as const) {
       const msg = userMessageForFailure(code, "en");
-      assert.doesNotMatch(msg, /OANDA|openai|gpt|stack|Error:/i);
+      assert.doesNotMatch(msg, /OANDA|MetaApi|openai|gpt|stack|Error:/i);
     }
   });
 

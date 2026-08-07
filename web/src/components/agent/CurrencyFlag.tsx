@@ -58,6 +58,22 @@ function MarkDisc({
   }
 
   if (mark.kind === "metal") {
+    // Real artwork (vendored gold/silver marks) when available; the tinted
+    // Au/Ag disc remains the fallback for metals without a file (XPT/XPD).
+    if (mark.src) {
+      return (
+        <span className={shell} style={style} aria-hidden>
+          <Image
+            src={mark.src}
+            alt=""
+            width={size}
+            height={size}
+            className="h-full w-full object-cover"
+            unoptimized
+          />
+        </span>
+      );
+    }
     return (
       <span
         className={cn(shell, METAL_TINT[mark.tint] ?? METAL_TINT.gold)}

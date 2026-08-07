@@ -11,6 +11,8 @@ export type UserEntitlementRow = {
   plan_status: PlanStatus;
   trial_interactions_used: number;
   trial_in_flight: number;
+  trial_started_at: string | null;
+  trial_recommendations_used: number;
   subscription_expires_at: string | null;
   activated_at: string | null;
   activated_by: number | null;
@@ -37,6 +39,7 @@ export async function ensureEntitlementRow(userId: number): Promise<UserEntitlem
   );
   const row = await queryOne<UserEntitlementRow>(
     `SELECT user_id, plan_status, trial_interactions_used, trial_in_flight,
+            trial_started_at, trial_recommendations_used,
             subscription_expires_at, activated_at, activated_by, note, updated_at
        FROM user_entitlements WHERE user_id = ?`,
     [userId],
@@ -63,8 +66,10 @@ export function resolveEntitlement(
       isAdmin: true,
       hasPaidAccess: true,
       trialUsed: 0,
-      trialRemaining: AICHART_PLAN.trialInteractions,
-      trialLimit: AICHART_PLAN.trialInteractions,
+      trialRemaining: AICHART_PLAN.trialRecommendations,
+      trialLimit: AICHART_PLAN.trialRecommendations,
+      trialStartedAt: null,
+      trialExpiresAt: null,
       expiresAt: null,
       access: "admin",
     };
@@ -76,9 +81,11 @@ export function resolveEntitlement(
       planStatus: "suspended",
       isAdmin: false,
       hasPaidAccess: false,
-      trialUsed: row.trial_interactions_used,
+      trialUsed: row.trial_recommendations_used,
       trialRemaining: 0,
-      trialLimit: AICHART_PLAN.trialInteractions,
+      trialLimit: AICHART_PLAN.trialRecommendations,
+      trialStartedAt: row.trial_started_at,
+      trialExpiresAt: null,
       expiresAt: row.subscription_expires_at,
       access: "blocked",
     };
@@ -95,9 +102,11 @@ export function resolveEntitlement(
       planStatus: "active",
       isAdmin: false,
       hasPaidAccess: true,
-      trialUsed: row.trial_interactions_used,
-      trialRemaining: AICHART_PLAN.trialInteractions,
-      trialLimit: AICHART_PLAN.trialInteractions,
+      trialUsed: row.trial_recommendations_used,
+      trialRemaining: AICHART_PLAN.trialRecommendations,
+      trialLimit: AICHART_PLAN.trialRecommendations,
+      trialStartedAt: row.trial_started_at,
+      trialExpiresAt: null,
       expiresAt: row.subscription_expires_at,
       access: "full",
     };
@@ -109,16 +118,28 @@ export function resolveEntitlement(
       planStatus: "expired",
       isAdmin: false,
       hasPaidAccess: false,
-      trialUsed: row.trial_interactions_used,
+      trialUsed: row.trial_recommendations_used,
       trialRemaining: 0,
-      trialLimit: AICHART_PLAN.trialInteractions,
+      trialLimit: AICHART_PLAN.trialRecommendations,
+      trialStartedAt: row.trial_started_at,
+      trialExpiresAt: null,
       expiresAt: row.subscription_expires_at,
       access: "blocked",
     };
   }
 
-  const used = Math.max(0, row.trial_interactions_used | 0);
-  const remaining = Math.max(0, AICHART_PLAN.trialInteractions - used);
+  // The trial carries EVERY feature but dies on whichever cap hits first:
+  // the one-hour clock (started by the first successful MT link) or the third
+  // recommendation. Before the first link the clock has not started — the
+  // user can sign in, link, and browse; the hour begins at link time.
+  const used = Math.max(0, row.trial_recommendations_used | 0);
+  const remaining = Math.max(0, AICHART_PLAN.trialRecommendations - used);
+  const startedMs = row.trial_started_at ? new Date(row.trial_started_at).getTime() : null;
+  const expiresMs =
+    startedMs != null && Number.isFinite(startedMs)
+      ? startedMs + AICHART_PLAN.trialDurationMs
+      : null;
+  const clockDead = expiresMs != null && Date.now() >= expiresMs;
   return {
     role: "user",
     planStatus: "trial",
@@ -126,10 +147,66 @@ export function resolveEntitlement(
     hasPaidAccess: false,
     trialUsed: used,
     trialRemaining: remaining,
-    trialLimit: AICHART_PLAN.trialInteractions,
+    trialLimit: AICHART_PLAN.trialRecommendations,
+    trialStartedAt: row.trial_started_at,
+    trialExpiresAt: expiresMs != null ? new Date(expiresMs).toISOString() : null,
     expiresAt: null,
-    access: remaining > 0 ? "trial" : "blocked",
+    access: !clockDead && remaining > 0 ? "trial" : "blocked",
   };
+}
+
+/**
+ * Start the trial clock — called exactly once, from the first SUCCESSFUL
+ * MetaTrader link. Idempotent: a second link, a re-link, or a paid account
+ * never move the clock.
+ */
+export async function startTrialClock(userId: number): Promise<void> {
+  await ensureEntitlementRow(userId);
+  await execute(
+    `UPDATE user_entitlements
+        SET trial_started_at = ${nowExpr()}, updated_at = ${nowExpr()}
+      WHERE user_id = ? AND plan_status = 'trial' AND trial_started_at IS NULL`,
+    [userId],
+  );
+}
+
+export type TrialRecommendationClaim =
+  | { ok: true; mode: "admin" | "paid" | "trial" }
+  | { ok: false; reason: "blocked" | "exhausted" };
+
+/**
+ * Reserve one trial recommendation. Paid/admin pass untouched; a trial user
+ * inside the window gets an ATOMIC increment guarded by the cap, so two
+ * concurrent creations cannot mint a fourth recommendation. A failed creation
+ * after a successful claim costs the slot — acceptable for a 3-item trial,
+ * and far simpler than a reservation ledger.
+ *
+ * Takes a bare userId and resolves the REAL role/status itself — callers sit
+ * in persistence layers that only know the id, and guessing the role here
+ * would let an admin burn trial slots (or a suspended user mint one).
+ */
+export async function claimTrialRecommendation(
+  userId: number,
+): Promise<TrialRecommendationClaim> {
+  const user = await queryOne<Pick<PublicUser, "id" | "role" | "status">>(
+    `SELECT id, role, status FROM users WHERE id = ?`,
+    [userId],
+  );
+  if (!user) return { ok: false, reason: "blocked" };
+  const snapshot = resolveEntitlement(user, await ensureEntitlementRow(user.id));
+  if (snapshot.isAdmin) return { ok: true, mode: "admin" };
+  if (snapshot.hasPaidAccess) return { ok: true, mode: "paid" };
+  if (snapshot.access !== "trial") return { ok: false, reason: "blocked" };
+  const res = await execute(
+    `UPDATE user_entitlements
+        SET trial_recommendations_used = trial_recommendations_used + 1,
+            updated_at = ${nowExpr()}
+      WHERE user_id = ? AND plan_status = 'trial'
+        AND trial_recommendations_used < ?`,
+    [user.id, AICHART_PLAN.trialRecommendations],
+  );
+  if (res.changes < 1) return { ok: false, reason: "exhausted" };
+  return { ok: true, mode: "trial" };
 }
 
 export async function getEntitlementForUser(
@@ -141,6 +218,8 @@ export async function getEntitlementForUser(
       plan_status: "active",
       trial_interactions_used: 0,
       trial_in_flight: 0,
+      trial_started_at: null,
+      trial_recommendations_used: 0,
       subscription_expires_at: null,
       activated_at: null,
       activated_by: null,

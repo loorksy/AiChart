@@ -43,21 +43,21 @@ export function SubscribeClient({
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           {isAr
-            ? "السعر الحالي والسعر المعتاد. مدة الاشتراك يحددها المشرف بعد التفعيل."
-            : "Current price and regular price. Entitlement duration is set by an administrator after activation."}
+            ? "اشتراك شهري واحد يفتح كل الميزات."
+            : "One monthly subscription unlocks every feature."}
         </p>
         {mode === "trial" && trialRemaining > 0 ? (
           <p className="mt-3 text-sm text-foreground">
             {isAr
-              ? `متبقي ${trialRemaining} من ${AICHART_PLAN.trialInteractions} تفاعلات تجريبية.`
-              : `${trialRemaining} of ${AICHART_PLAN.trialInteractions} trial interactions remaining.`}
+              ? `تجربتك المجانية: متبقي ${trialRemaining} من ${AICHART_PLAN.trialRecommendations} توصيات، ولمدة ساعة من ربط حسابك.`
+              : `Free trial: ${trialRemaining} of ${AICHART_PLAN.trialRecommendations} recommendations left, within one hour of linking your account.`}
           </p>
         ) : null}
         {mode === "blocked" ? (
           <p className="mt-3 text-sm text-foreground">
             {isAr
-              ? `استهلكت ${AICHART_PLAN.trialInteractions} تفاعلات تجريبية. فعّل الوصول الكامل للمتابعة.`
-              : `You have used your ${AICHART_PLAN.trialInteractions} trial interactions. Activate full access to continue.`}
+              ? "انتهت تجربتك المجانية (ساعة واحدة أو ثلاث توصيات). فعّل الوصول الكامل للمتابعة."
+              : "Your free trial has ended (one hour or three recommendations). Activate full access to continue."}
           </p>
         ) : null}
       </div>
@@ -77,7 +77,7 @@ export function SubscribeClient({
           : `Activation via Telegram @${AICHART_PLAN.telegramHandle}. Opening the link does not activate the subscription.`}
       </p>
       <Link href="/workspace" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
-        {isAr ? "العودة إلى المحادثة التجريبية" : "Back to trial chat"}
+        {isAr ? "العودة إلى المنصة" : "Back to the workspace"}
       </Link>
     </div>
   );

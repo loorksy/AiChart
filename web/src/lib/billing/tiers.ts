@@ -1,12 +1,18 @@
 /**
- * V2-A2 (#91): the four subscription tiers — a LEAF module, no imports.
+ * ONE subscription tier — a LEAF module, no imports.
  *
- * Prices and included credits are PUBLIC product facts (they appear on the
- * pricing page). What is NOT here: the platform's cost margin — that lives in
+ * The four-tier table collapsed into the single $180/month Full Access plan
+ * (the same product AICHART_PLAN describes; that module stays import-free of
+ * this one so both remain leaves). Prices and included credits are PUBLIC
+ * product facts. What is NOT here: the platform's cost margin — that lives in
  * platform_config (BILLING_RETAIL_MULTIPLIER), never in this public repo.
+ *
+ * Legacy tier ids (lite/plus/pro/promax) remain resolvable through
+ * `tierDef()` so stored subscription rows and old Stripe metadata keep
+ * working — they all map onto the one plan.
  */
 
-export type TierId = "lite" | "plus" | "pro" | "promax";
+export type TierId = "full";
 
 export interface TierDef {
   id: TierId;
@@ -27,73 +33,13 @@ export interface TierDef {
 }
 
 export const TIERS: Record<TierId, TierDef> = {
-  lite: {
-    id: "lite",
-    nameEn: "LITE",
-    nameAr: "لايت",
-    priceUsd: 79,
-    includedCreditsUsd: 45,
-    allowedModels: [
-      "openai/gpt-5.6-luna",
-      "anthropic/claude-haiku-4-5",
-    ],
-    features: {
-      mt5Link: false,
-      liveExecution: false,
-      voice: false,
-      scalpEngine: false,
-      prioritySupport: false,
-    },
-  },
-  plus: {
-    id: "plus",
-    nameEn: "PLUS",
-    nameAr: "بلس",
-    priceUsd: 149,
-    includedCreditsUsd: 90,
-    allowedModels: [
-      "openai/gpt-5.6-luna",
-      "openai/gpt-5.6-terra",
-      "anthropic/claude-haiku-4-5",
-      "anthropic/claude-sonnet-5",
-    ],
-    features: {
-      mt5Link: true,
-      liveExecution: false,
-      voice: false,
-      scalpEngine: false,
-      prioritySupport: false,
-    },
-  },
-  pro: {
-    id: "pro",
-    nameEn: "PRO",
-    nameAr: "برو",
-    priceUsd: 249,
-    includedCreditsUsd: 160,
-    allowedModels: [
-      "openai/gpt-5.6-luna",
-      "openai/gpt-5.6-terra",
-      "openai/gpt-5.6-sol",
-      "anthropic/claude-haiku-4-5",
-      "anthropic/claude-sonnet-5",
-      "anthropic/claude-opus-5",
-      "anthropic/claude-opus-4-8",
-    ],
-    features: {
-      mt5Link: true,
-      liveExecution: true,
-      voice: true,
-      scalpEngine: true,
-      prioritySupport: false,
-    },
-  },
-  promax: {
-    id: "promax",
-    nameEn: "PRO MAX",
-    nameAr: "برو ماكس",
-    priceUsd: 399,
-    includedCreditsUsd: 275,
+  full: {
+    id: "full",
+    nameEn: "Full Access",
+    nameAr: "الوصول الكامل",
+    priceUsd: 180,
+    includedCreditsUsd: 120,
+    // Empty = the whole curated model catalogue.
     allowedModels: [],
     features: {
       mt5Link: true,
@@ -105,15 +51,23 @@ export const TIERS: Record<TierId, TierDef> = {
   },
 };
 
-export const TIER_ORDER: TierId[] = ["lite", "plus", "pro", "promax"];
+export const TIER_ORDER: TierId[] = ["full"];
+
+/** Stored rows / Stripe metadata written under the old four-tier table. */
+const LEGACY_TIER_IDS = new Set(["lite", "plus", "pro", "promax"]);
 
 export function tierDef(id: string | null | undefined): TierDef | null {
   if (!id) return null;
-  return (TIERS as Record<string, TierDef>)[id] ?? null;
+  if (id === "full") return TIERS.full;
+  // Every legacy tier resolves to the one plan — renewals and admin panels
+  // keep working for rows written before the collapse.
+  if (LEGACY_TIER_IDS.has(id)) return TIERS.full;
+  return null;
 }
 
-/** Is this model ref usable on the tier? Empty allowlist = everything. */
-export function tierAllowsModel(tier: TierDef, modelRef: string): boolean {
-  if (tier.allowedModels.length === 0) return true;
-  return tier.allowedModels.includes(modelRef.toLowerCase());
+export function tierAllowsModel(id: string, modelRef: string): boolean {
+  const def = tierDef(id);
+  if (!def) return false;
+  if (def.allowedModels.length === 0) return true;
+  return def.allowedModels.includes(modelRef);
 }

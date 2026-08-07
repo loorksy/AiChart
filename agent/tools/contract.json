@@ -210,7 +210,7 @@
     {
       "name": "detect_market_regime",
       "version": "1.1.1",
-      "description": "Classifies the current market regime numerically from ATR/ADX/Bollinger/volume as trend, range, high_volatility, or low_liquidity — not a textual guess. When: before choosing a backtested strategy, so the strategy matches the regime. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, 120-500). read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
+      "description": "Classifies the current market regime numerically from ATR/ADX/Bollinger/volume as trend, range, high_volatility, or low_liquidity — not a textual guess. When: before choosing a backtested strategy, so the strategy matches the regime. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, 120-500). read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -250,7 +250,7 @@
     {
       "name": "draw_on_chart",
       "version": "1.1.1",
-      "description": "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. dataSource is OANDA-only (drawings are time-anchored against OANDA-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
+      "description": "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. dataSource is metaapi-only (drawings are time-anchored against the account-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
       "permission": "chart.write",
       "riskClass": "write",
       "surfaces": [
@@ -331,7 +331,7 @@
     {
       "name": "get_account_symbols",
       "version": "1.1.1",
-      "description": "Lists all broker pairs/symbols in the MetaTrader account (the full Market Watch) with bid/ask/spread — every available pair, not a short list. When: the complete broker symbol universe is needed, or a broker-specific ticker must be found (e.g. to learn a symbol's exact broker spelling like XAUUSDm before a trade tool call). Not list_instruments' job — that's the OANDA/platform catalogue, not this account's own book. Defaults: no q filter (returns everything), limit unset (server default, ≤500). read-only. Example: market=forex.",
+      "description": "Lists all broker pairs/symbols in the MetaTrader account (the full Market Watch) with bid/ask/spread — every available pair, not a short list. When: the complete broker symbol universe is needed, or a broker-specific ticker must be found (e.g. to learn a symbol's exact broker spelling like XAUUSDm before a trade tool call). Not list_instruments' job — that's the shared catalogue, not this account's own book. Defaults: no q filter (returns everything), limit unset (server default, ≤500). read-only. Example: market=forex.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -513,7 +513,7 @@
     {
       "name": "get_market_price",
       "version": "1.1.1",
-      "description": "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — not for indicators or history, use get_forex_indicators/get_ohlc for those. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. This is also the recovery_tool for a STALE_QUOTE error elsewhere — call it immediately to force a fresh read, don't ask the operator first. read-only. Example: symbol=EURUSD.",
+      "description": "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — not for indicators or history, use get_forex_indicators/get_ohlc for those. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. This is also the recovery_tool for a STALE_QUOTE error elsewhere — call it immediately to force a fresh read, don't ask the operator first. read-only. Example: symbol=EURUSD.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -536,7 +536,7 @@
     {
       "name": "get_market_snapshot",
       "version": "1.1.1",
-      "description": "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the OANDA 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
+      "description": "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -577,7 +577,7 @@
     {
       "name": "get_multi_timeframe_snapshot",
       "version": "1.1.1",
-      "description": "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "description": "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -598,7 +598,7 @@
     {
       "name": "get_ohlc",
       "version": "1.1.1",
-      "description": "Returns raw OHLC candles for a symbol and interval from OANDA, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Not for a linked broker's own book/spread — this is always OANDA (source is hardcoded), so a caller asking for their connected broker's own pricing won't get it here. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "description": "Returns raw OHLC candles for a symbol and interval from the user's linked MetaTrader account, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -820,7 +820,7 @@
     {
       "name": "list_instruments",
       "version": "1.1.1",
-      "description": "Lists tradable forex instruments — from OANDA, or the linked cloud account's own symbols when one is connected — with an optional q search filter. When: browsing or searching for a pair. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
+      "description": "Lists tradable forex instruments — the linked account's own symbols, or the shared broker-seeded catalogue before a link — with an optional q search filter. When: browsing or searching for a pair. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [

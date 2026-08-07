@@ -36,7 +36,12 @@ import {
 } from "@/lib/recommendations/activationRule";
 import { deriveExecutionState, type PlanType } from "@/lib/agent/trading/tradePlan";
 import { getUnifiedPrice } from "@/lib/markets";
-import { getLatestClosedCandle } from "@/lib/candles/candleRepository";
+import { getCandles, getLatestClosedCandle } from "@/lib/candles/candleRepository";
+import { atr as computeAtr } from "@/lib/indicators";
+import {
+  assessTradability,
+  type TradabilityAssessment,
+} from "@/lib/recommendations/tradability";
 import { parityKeyFor, recordDecisionForParity } from "@/lib/agent/parityLog";
 import { createHash } from "node:crypto";
 import { createLogger } from "@/lib/logger";
@@ -325,6 +330,7 @@ export async function POST(req: NextRequest) {
     const entryLow = body.entry_low ?? body.entry ?? null;
     const entryHigh = body.entry_high ?? body.entry ?? null;
     let executionState: string | null = null;
+    let tradability: TradabilityAssessment | null = null;
     if (body.action !== "wait" && body.plan_type != null) {
       // getUnifiedPrice reads the operator's BROKER mid, which is 0 whenever
       // no broker connection is live — so every immediate plan created through
@@ -367,6 +373,53 @@ export async function POST(req: NextRequest) {
             : null,
         currentPrice,
       });
+
+      // The Tradability Budget (docs/PLATFORM_AGENT_UPGRADE_PLAN.md Phase 1):
+      // is this entry realistically reachable from the CURRENT price? ATR of
+      // the plan's own timeframe comes from closed warehouse candles; when it
+      // cannot be read the assessment fails safe to watch_only rather than
+      // guessing. This is the check whose absence let "sell from a level
+      // 5 ATR above the market" store as a normal conditional trade.
+      let planAtr: number | null = null;
+      try {
+        const recent = await getCandles({
+          symbol: normalizedSymbol,
+          interval: storedTimeframe,
+          limit: 30,
+          order: "desc",
+        });
+        planAtr = computeAtr(recent.filter((c) => c.complete));
+      } catch {
+        planAtr = null;
+      }
+      tradability = assessTradability({
+        direction: body.action,
+        planType: body.plan_type,
+        entry: body.entry,
+        currentPrice,
+        atr: planAtr,
+        spread: null,
+        validityCandles: body.validity_candles ?? null,
+      });
+      // Verdict distribution at publish (plan §2.4) — the KPI that shows the
+      // far-entry problem shrinking is this counter's shape over time.
+      metrics.tradabilityVerdicts.inc({ verdict: tradability.tradability });
+      if (tradability.tradability === "rejected" && FEATURES.tradabilityGateV1()) {
+        // The caller's to fix, in one retry: the verdict names the distance in
+        // the market's own units so the model re-plans near price instead of
+        // resubmitting the same far level.
+        metrics.invalidLevelRecommendations.inc({ source: "mcp" });
+        const distanceAtr =
+          tradability.entryDistanceAtr != null
+            ? `${tradability.entryDistanceAtr} ATR`
+            : `${(((tradability.entryDistance ?? 0) / (currentPrice ?? 1)) * 100).toFixed(2)}%`;
+        throw new ApiError(
+          409,
+          `Entry ${body.entry} is ${distanceAtr} away from the current price ${currentPrice} — too far to publish as a trade. ` +
+            `Keep the direction and either re-plan with an entry the market can realistically reach inside validity_candles, ` +
+            `or present this level as a market view to watch (not a recommendation).`,
+        );
+      }
     }
 
     const rec = await saveRecommendation(userId, {
@@ -408,6 +461,9 @@ export async function POST(req: NextRequest) {
         statistical_support_detail: supportDetail,
         deployment_state: deployment?.state ?? null,
         market_regime: body.market_regime ?? null,
+        // The reachability verdict rides the context blob (additive, no schema
+        // change) so cards, the tracker, and the calibration job can read it.
+        tradability: tradability ?? null,
         ...buildVisualConfirmationAudit(
           visualConfirmation,
           timeframesReviewed,
@@ -522,6 +578,22 @@ export async function POST(req: NextRequest) {
         note:
           "Audit only. Visual review never grants execution authority — see backtest_evidence.execution_eligible.",
       },
+      // Reachability, stated in the market's own units. `watch_only` plans are
+      // stored and tracked, but MUST be presented as a market view to monitor
+      // — never as an actionable entry.
+      tradability:
+        tradability == null
+          ? null
+          : {
+              verdict: tradability.tradability,
+              entry_distance_atr: tradability.entryDistanceAtr,
+              expected_bars_to_activation: tradability.expectedBarsToActivation,
+              reasons: tradability.reasons,
+              note:
+                tradability.tradability === "watch_only"
+                  ? "Present this as a market view to watch. Do not render it as a ready trade; an entry-approach alert will make it actionable if price comes near."
+                  : null,
+            },
       // Always told, never implied: how much statistical weight is behind this
       // plan, including "none — direct analysis".
       statistical_support: {

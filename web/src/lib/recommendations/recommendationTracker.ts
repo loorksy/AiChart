@@ -1,6 +1,6 @@
 /**
  * Server-side recommendation tracker sweep. Its lifecycle pass is deterministic:
- * pulls candles from the Candle Warehouse (OANDA-backed), evaluates each active
+ * pulls candles from the Candle Warehouse (fed by a linked MetaTrader account), evaluates each active
  * recommendation, and persists status/outcome changes. After that pass, a
  * separate orchestration layer may consume durable re-evaluation claims through
  * the unified brain. Runs independently of any browser session.

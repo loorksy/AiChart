@@ -1,14 +1,15 @@
 /**
- * Canonical OANDA-native intervals + interval-aware cache policy.
+ * Canonical broker-native intervals + interval-aware cache policy.
  *
  * `@/lib/intervals` stays the broad UI/agent interval registry (incl. derived
- * resampled intervals like 3m/45m). This module is the strict subset OANDA
- * serves natively — the Candle Warehouse and backfill pipeline key on these,
- * so every non-native request resolves to a native base first.
+ * resampled intervals like 3m/45m). This module is the strict subset the
+ * user's MetaTrader account serves natively via MetaApi — the Candle
+ * Warehouse and backfill pipeline key on these, so every non-native request
+ * resolves to a native base first.
  */
 import { barDurationMs, DERIVED_INTERVALS } from "@/lib/intervals";
 
-export const CANONICAL_OANDA_INTERVALS = [
+export const CANONICAL_BROKER_INTERVALS = [
   "1m",
   "5m",
   "15m",
@@ -24,9 +25,9 @@ export const CANONICAL_OANDA_INTERVALS = [
   "1M",
 ] as const;
 
-export type CanonicalInterval = (typeof CANONICAL_OANDA_INTERVALS)[number];
+export type CanonicalInterval = (typeof CANONICAL_BROKER_INTERVALS)[number];
 
-const CANONICAL_SET = new Set<string>(CANONICAL_OANDA_INTERVALS);
+const CANONICAL_SET = new Set<string>(CANONICAL_BROKER_INTERVALS);
 
 export function isCanonicalInterval(value: string): value is CanonicalInterval {
   return CANONICAL_SET.has(value);
@@ -52,9 +53,9 @@ const ALIASES: Record<string, CanonicalInterval> = {
 };
 
 /**
- * OANDA-non-native intervals that are NOT in DERIVED_INTERVALS but appear in
- * the UI list (3m, 3d). OANDA has no M3/D3 granularity, so these are resampled
- * from a native base rather than fetched directly.
+ * Non-native intervals that are NOT in DERIVED_INTERVALS but appear in the UI
+ * list (3m, 3d). The broker feed has no M3/D3 granularity, so these are
+ * resampled from a native base rather than fetched directly.
  */
 const EXTRA_RESAMPLE: Record<string, { base: CanonicalInterval; factor: number }> = {
   "3m": { base: "1m", factor: 3 },
@@ -62,15 +63,15 @@ const EXTRA_RESAMPLE: Record<string, { base: CanonicalInterval; factor: number }
 };
 
 export interface CanonicalPlan {
-  /** Native OANDA interval to fetch/store. */
+  /** Native broker interval to fetch/store. */
   base: CanonicalInterval;
   /** How many base candles aggregate into one requested candle (1 = native). */
   factor: number;
 }
 
 /**
- * Resolve any interval to a native OANDA base + resample factor. Native and
- * TV-resolution inputs map 1:1 (factor 1); derived/OANDA-non-native intervals
+ * Resolve any interval to a native broker base + resample factor. Native and
+ * TV-resolution inputs map 1:1 (factor 1); derived/non-native intervals
  * (3m→1m×3, 45m→15m×3, 2d→1d×2…) carry a factor > 1; unknown input falls back.
  */
 export function canonicalPlan(
@@ -93,7 +94,7 @@ export function canonicalPlan(
 
 /**
  * Coerce arbitrary input (canonical, TV resolution, derived interval) to a
- * canonical OANDA interval — the base of {@link canonicalPlan}. Unknown values
+ * canonical broker interval — the base of {@link canonicalPlan}. Unknown values
  * fall back to `fallback`.
  */
 export function normalizeCanonicalInterval(
@@ -158,7 +159,7 @@ export function ohlcCacheTtlMs(interval: string): number {
 
 /**
  * How old the newest stored candle may be before the warehouse must refresh
- * from OANDA. The forming candle keeps `time` = its open, so tolerate up to
+ * from the linked broker account. The forming candle keeps `time` = its open, so tolerate up to
  * two bar durations plus a TTL margin (weekends are judged separately by the
  * market-session check).
  */

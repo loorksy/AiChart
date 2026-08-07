@@ -69,7 +69,7 @@ const PAGES: SeedPage[] = [
     kind: "doc",
     title_ar: "الباقات والرصيد",
     title_en: "Plans & Credits",
-    content_ar: `## كيف تعمل الفوترة\n\n- أربع باقات شهرية: LITE ‏79$، PLUS ‏149$، PRO ‏249$، PRO MAX ‏399$ — كل باقة تمنح رصيد استخدام شهرياً.\n- **الاستهلاك حقيقي**: كل تحليل يُخصم حسب المودل وعدد التوكنات الفعلي؛ ساعات اتصال MT5 تُخصم بالدقيقة.\n- الرصيد الشهري يتجدد كل دورة ولا يترحّل؛ رصيد الشحن الإضافي (20$/50$/100$) لا تنتهي صلاحيته.\n- عند نفاد الرصيد يتوقف التحليل الجديد فقط برسالة واضحة — التصفح وكل بياناتك تبقى متاحة.\n- كشف حركة مفصَّل لكل عملية في **الفوترة والرصيد**، والإلغاء متاح في أي وقت من بوابة الفوترة.`,
+    content_ar: `## كيف تعمل الفوترة\n\n- باقة واحدة: **الوصول الكامل 180$ شهرياً** بكل الميزات، مع تجربة مجانية (ساعة واحدة وثلاث توصيات من لحظة ربط حسابك).\n- **الاستهلاك حقيقي**: كل تحليل يُخصم حسب المودل وعدد التوكنات الفعلي؛ ساعات اتصال MT5 تُخصم بالدقيقة.\n- الرصيد الشهري يتجدد كل دورة ولا يترحّل؛ رصيد الشحن الإضافي (20$/50$/100$) لا تنتهي صلاحيته.\n- عند نفاد الرصيد يتوقف التحليل الجديد فقط برسالة واضحة — التصفح وكل بياناتك تبقى متاحة.\n- كشف حركة مفصَّل لكل عملية في **الفوترة والرصيد**، والإلغاء متاح في أي وقت من بوابة الفوترة.`,
     content_en: `## How billing works\n\n- Four monthly tiers: LITE $79, PLUS $149, PRO $249, PRO MAX $399 — each includes a monthly usage credit.\n- **Real metering**: every analysis burns by model and actual tokens; MT5 connection hours burn by the minute.\n- Monthly credit resets each cycle without rollover; top-up credit ($20/$50/$100) never expires.\n- At zero balance only NEW analysis stops, with a clear message — browsing and all your data stay available.\n- A detailed statement lives in **Billing**, and you can cancel anytime from the billing portal.`,
   },
   {

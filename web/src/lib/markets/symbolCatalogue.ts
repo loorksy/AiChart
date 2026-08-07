@@ -4,7 +4,8 @@
  * The owner's Exness account covers essentially every pair any broker offers.
  * Pulling getSymbols() on link fills gaps so a later user linking a different
  * broker still gets a populated list even if their RPC list is slow or empty.
- * Origin is recorded so a broker-sourced row is never presented as OANDA.
+ * Origin is recorded per row; only broker-origin rows are served — rows left
+ * behind by the retired platform feed are deliberately invisible.
  */
 import { execute, query, queryOne } from "@/lib/db";
 import { forexCanonicalKey } from "./forexCanonical";
@@ -13,7 +14,7 @@ import {
   type BrokerSymbolCatalogueEntry,
 } from "./brokerSymbolResolve";
 
-export type SymbolOrigin = "oanda" | "broker";
+export type SymbolOrigin = "broker";
 
 export type SymbolCatalogueRow = BrokerSymbolCatalogueEntry & {
   origin: SymbolOrigin;

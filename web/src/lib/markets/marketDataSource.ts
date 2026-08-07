@@ -1,39 +1,27 @@
 /**
- * Which of the two pipes serves a user's market data.
+ * The one market-data pipe: the trader's own cloud MetaTrader account.
  *
- *  - **OANDA** is the platform's own feed. It always works, for everyone,
- *    connected or not, and it is what everything falls back to.
- *  - **MetaApi** is the trader's cloud MetaTrader account. Its history comes
- *    over the account's own RPC connection — the broker's candles, the ones
- *    their orders will fill against.
- *
- * The UI cannot tell these apart on its own, so the decision is made here, on
- * the server, from what is actually connected plus the user's own choice —
- * and every endpoint reports the source it really served.
- *
- * The default, with no choice stored: the cloud account when it is linked,
- * otherwise the platform feed. A trader who links a broker account means to
- * see that broker's market.
+ * The platform no longer carries a proxy feed. Linking a broker account is
+ * the platform's first step — candles, quotes and instruments all come over
+ * that account's own connection, the market the trader's orders will actually
+ * fill against. The decision object survives so every endpoint can keep
+ * reporting what it served and — more importantly now — whether the account
+ * is linked at all: an unlinked user is GATED to the link flow, never handed
+ * a substitute feed.
  */
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
-import { getMtAccount, getSettings } from "@/lib/store";
+import { getMtAccount } from "@/lib/store";
 
-export type MarketDataSource = "oanda" | "metaapi";
+export type MarketDataSource = "metaapi";
 
-/** What the user asked for. `auto` (or nothing stored) applies the default. */
+/** Kept for stored-settings compatibility; every value resolves to metaapi. */
 export type MarketDataSourcePreference = MarketDataSource | "auto";
 
 export type MarketDataSourceReason =
-  | "platform_requested"
-  | "oanda_data_only"
   | "no_user"
-  | "user_choice"
   | "auto_metaapi"
-  | "auto_oanda"
   | "metaapi_not_connected";
 
 export interface MarketDataSourceAvailability {
-  oanda: boolean;
   metaapi: boolean;
 }
 
@@ -41,91 +29,46 @@ export interface MarketDataSourceDecision {
   source: MarketDataSource;
   reason: MarketDataSourceReason;
   available: MarketDataSourceAvailability;
-  /** The stored preference, so a UI can show what is pinned vs. derived. */
   preference: MarketDataSourcePreference;
 }
 
-const NOTHING_CONNECTED: MarketDataSourceAvailability = {
-  oanda: true,
-  metaapi: false,
-};
-
 /**
- * Which pipes could serve this user right now.
- *
- * Connection state only. FOREX_DATA_SOURCE used to short-circuit this, which
- * made every non-OANDA row in the picker permanently grey — and grey with the
- * wrong explanation, since the UI reads unavailability as "you have not linked
- * this yet". The deployment default belongs in the `auto` branch below, not in
- * an answer about what the account has connected.
+ * Whether the user's own MetaTrader link can serve market data right now —
+ * a MetaApi cloud account or the self-hosted mt5local bridge both count;
+ * both are the user's own account. Connection state only — there is nothing
+ * else to fall back to.
  */
 export async function marketDataAvailability(
   userId: number | null | undefined,
 ): Promise<MarketDataSourceAvailability> {
-  if (!userId) return NOTHING_CONNECTED;
+  if (!userId) return { metaapi: false };
   const mt = await getMtAccount(userId).catch(() => null);
-  return {
-    oanda: true,
-    metaapi: Boolean(
-      mt?.metaapi_account_id && mt.metaapi_account_id !== "mt5local",
-    ),
-  };
-}
-
-function normalizePreference(raw: string | null | undefined): MarketDataSourcePreference {
-  return raw === "oanda" || raw === "metaapi" ? raw : "auto";
+  return { metaapi: Boolean(mt?.metaapi_account_id) };
 }
 
 /**
- * Resolve the source for one request.
- *
- * `requested` is an explicit per-request override (the chart carrying the
- * source its symbol came from); when absent the user's stored preference
- * decides, and when that is `auto` — or names a pipe that is not connected —
- * the default order applies. It never returns a source that cannot answer, so
- * a caller never waits on a connection that is not there.
+ * Resolve the source for one request. `source` is always "metaapi"; the
+ * signal callers act on is `available.metaapi` / `reason` — an unlinked
+ * account means "link first", and every data endpoint answers with absence
+ * plus that reason instead of substituting a feed.
  */
 export async function resolveMarketDataSource(
   userId: number | null | undefined,
-  requested?: string | null,
+  _requested?: string | null,
 ): Promise<MarketDataSourceDecision> {
   if (!userId) {
     return {
-      source: "oanda",
+      source: "metaapi",
       reason: "no_user",
-      available: NOTHING_CONNECTED,
+      available: { metaapi: false },
       preference: "auto",
     };
   }
-
-  const [available, settings] = await Promise.all([
-    marketDataAvailability(userId),
-    getSettings(userId).catch(() => null),
-  ]);
-  const preference = normalizePreference(settings?.market_data_source);
-  const wanted = normalizePreference(requested) === "auto"
-    ? preference
-    : normalizePreference(requested);
-
-  if (wanted === "oanda") {
-    return { source: "oanda", reason: "platform_requested", available, preference };
-  }
-  if (wanted === "metaapi") {
-    return available.metaapi
-      ? { source: "metaapi", reason: "user_choice", available, preference }
-      : { source: "oanda", reason: "metaapi_not_connected", available, preference };
-  }
-
-  // auto — with no choice of their own, the deployment default decides. This is
-  // where FOREX_DATA_SOURCE belongs: it sets what happens by default, and does
-  // not overrule a trader who has picked a pipe their account is connected to.
-  if (isOandaDataOnly()) {
-    return { source: "oanda", reason: "oanda_data_only", available, preference };
-  }
-  // The cloud account first, because linking one is a statement about which
-  // market the trader wants to see.
-  if (available.metaapi) {
-    return { source: "metaapi", reason: "auto_metaapi", available, preference };
-  }
-  return { source: "oanda", reason: "auto_oanda", available, preference };
+  const available = await marketDataAvailability(userId);
+  return {
+    source: "metaapi",
+    reason: available.metaapi ? "auto_metaapi" : "metaapi_not_connected",
+    available,
+    preference: "auto",
+  };
 }

@@ -8,21 +8,21 @@ import {
 import {
   normalizeCandlesForChart,
   sanitizeCandlesForMarket,
-  toChartSeconds,
 } from "@/lib/ohlc/chartTime";
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 import { normalizeInterval } from "@/lib/intervals";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
-import { FEATURES } from "@/lib/agent/featureFlags";
-import { serveWarehouseOhlc } from "@/lib/candles/warehouseOhlc";
 import type { MarketType } from "@/lib/markets/types";
 
-/** Market UI klines — forex via OANDA or the linked cloud account. */
+/**
+ * Market UI klines — the user's own MetaTrader account is the only feed.
+ * No account, no candles: guests and unlinked users get a typed
+ * `requires_link` answer (absence with its reason), never a substitute feed.
+ */
 export async function GET(req: NextRequest) {
   try {
-    // Public: guests may load candles to browse the chart (rate-limited).
     const user = await getOptionalUser();
     if (!user && !checkRateLimit(`klines:${clientKey(req)}`, 60, 60_000)) {
       return NextResponse.json(
@@ -30,23 +30,16 @@ export async function GET(req: NextRequest) {
         { status: 429 },
       );
     }
-    const userId = user?.id ?? 0;
     /*
-     * Two spellings, because two kinds of feed.
-     *
-     * OANDA answers to a canonical uppercase key. A broker answers to its OWN
-     * spelling, and Exness spells its symbols with a lowercase suffix —
-     * XAUUSDm, EURUSDm, AAPLm. Uppercasing before knowing which pipe would
-     * serve the request turned XAUUSDm into XAUUSDM, and MetaApi replied
-     * "Symbol XAUUSDM does not exist" after ~75s of retries.
-     *
-     * The character filter still runs on both; it just no longer folds case,
-     * and it keeps `_` because broker suffixes use it.
+     * Case preserved end to end: a broker answers to its OWN spelling, and
+     * Exness spells its symbols with a lowercase suffix — XAUUSDm, EURUSDm.
+     * Uppercasing turned XAUUSDm into XAUUSDM, and MetaApi replied "Symbol
+     * XAUUSDM does not exist" after ~75s of retries. The character filter
+     * still runs; it keeps `_` because broker suffixes use it.
      */
     const symbolRaw = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
       .trim()
       .replace(/[^A-Za-z0-9._]/g, "");
-    const symbol = symbolRaw.toUpperCase();
     const intervalRaw = req.nextUrl.searchParams.get("interval") || "1h";
     const interval = normalizeInterval(intervalRaw);
     const market: MarketType = "forex";
@@ -59,12 +52,9 @@ export async function GET(req: NextRequest) {
       OHLC_MAX_LIMIT,
     );
     const fresh = req.nextUrl.searchParams.get("fresh") === "1";
-    const cursorRaw = req.nextUrl.searchParams.get("cursor");
     const beforeRaw = req.nextUrl.searchParams.get("before");
     const fromRaw = req.nextUrl.searchParams.get("from");
     const toRaw = req.nextUrl.searchParams.get("to");
-    const cursor =
-      cursorRaw != null && cursorRaw !== "" ? Number(cursorRaw) : undefined;
     const beforeMs =
       beforeRaw != null && beforeRaw !== "" ? Number(beforeRaw) : undefined;
     const fromMs =
@@ -72,177 +62,53 @@ export async function GET(req: NextRequest) {
     const toMs =
       toRaw != null && toRaw !== "" ? Number(toRaw) : undefined;
 
-    // Second data source: the user's own broker via their linked cloud
-    // account. Only a metaapi-linked account can answer — an unlinked or
-    // mt5local connection reads the platform's candles instead.
-    const requestedSource = req.nextUrl.searchParams.get("source");
-    const dataSource = await resolveMarketDataSource(user?.id ?? null, requestedSource);
-    /*
-     * The RESOLVED source decides, not whether the URL happened to spell one.
-     *
-     * This used to require `requestedSource` to be present, and the chart's
-     * datafeed only ever sets it for the linked cloud account — so picking
-     * it changed the pair catalogue and the quote cards while the chart
-     * kept reading OANDA, right down to "OANDA" in its own header. The resolver
-     * already refuses a pipe the account has not connected, so honouring it
-     * here cannot route anyone at a broker they do not have.
-     */
-    if (dataSource.source !== "oanda") {
-      if (!user) {
-        return NextResponse.json(
-          { error: "بيانات الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },
-          { status: 401 },
-        );
-      }
-      const broker = await fetchOhlc({
-        userId: user.id,
-        // The broker's own spelling, case intact — XAUUSDm, not XAUUSDM.
-        symbol: symbolRaw,
-        interval,
-        limit,
-        source: dataSource.source,
-        fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
-        toMs: Number.isFinite(toMs) ? toMs : undefined,
-      });
-      const normalized = normalizeCandlesForChart(broker.candles);
-      const candles = sanitizeCandlesForMarket(normalized, "forex");
+    const dataSource = await resolveMarketDataSource(user?.id ?? null, null);
+    if (!user || !dataSource.available.metaapi) {
       return NextResponse.json({
         symbol: symbolRaw,
         interval,
-        market: "forex",
-        source: dataSource.source,
-        candles,
-        // Empty WITHOUT a warning = genuine market gap (the broker acked
-        // success) — don't flag pending, or the client burns retries every
-        // weekend.
-        pending: candles.length === 0 && Boolean(broker.warning),
-        ...(broker.warning ? { error: broker.warning } : {}),
-      });
-    }
-
-    // Warehouse-first: serve AiChart's own candle store, backfilling from OANDA
-    // only for missing/stale coverage. Falls through to the legacy direct-OANDA
-    // path when the warehouse is empty for this symbol/interval or the flag is
-    // off. `cursor`-based pagination stays on the legacy path (warehouse uses
-    // from/to/before windows).
-    if (FEATURES.candleWarehouse() && cursor == null) {
-      try {
-        const wh = await serveWarehouseOhlc({
-          symbol,
-          interval,
-          limit,
-          fresh,
-          fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
-          toMs: Number.isFinite(toMs) ? toMs : undefined,
-          beforeMs: Number.isFinite(beforeMs) ? beforeMs : undefined,
-        });
-        if (wh.candles.length > 0) {
-          const normalized = normalizeCandlesForChart(wh.candles);
-          const candles = sanitizeCandlesForMarket(normalized, market);
-          const nextCursor =
-            candles.length > 0
-              ? toChartSeconds(candles[0]!.time) * 1000
-              : null;
-          const res = NextResponse.json({
-            symbol,
-            interval,
-            market,
-            source: wh.source,
-            candles,
-            pending: candles.length === 0,
-            coverage: wh.coverage,
-            backfillStatus: wh.backfillStatus,
-            nextCursor,
-            hasMore: wh.hasMore,
-          });
-          const ttlSec = Math.round(ohlcCacheTtlMs(interval) / 1000);
-          res.headers.set(
-            "Cache-Control",
-            `private, max-age=${Math.min(ttlSec, 30)}, stale-while-revalidate=${ttlSec}`,
-          );
-          return res;
-        }
-        // Empty warehouse result → fall through to legacy direct-OANDA fetch.
-      } catch (whErr) {
-        console.error("[klines] warehouse path failed, falling back", whErr);
-      }
-    }
-
-    try {
-      const result = await fetchOhlc({
-        userId,
-        symbol,
-        interval,
         market,
-        limit,
-        skipCache:
-          fresh ||
-          cursor != null ||
-          beforeMs != null ||
-          fromMs != null ||
-          toMs != null,
-        cursor: Number.isFinite(cursor) ? cursor : undefined,
-        beforeMs: Number.isFinite(beforeMs) ? beforeMs : undefined,
-        fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
-        toMs: Number.isFinite(toMs) ? toMs : undefined,
-      });
-
-      const normalized = normalizeCandlesForChart(result.candles);
-      const candles = sanitizeCandlesForMarket(normalized, market);
-      const trimmed =
-        beforeMs != null && Number.isFinite(beforeMs)
-          ? candles
-          : fromMs != null && Number.isFinite(fromMs)
-            ? candles
-            : candles.slice(-limit);
-
-      if (normalized.length > 0 && candles.length === 0) {
-        return NextResponse.json({
-          symbol: result.symbol,
-          interval: result.interval,
-          market: result.market,
-          candles: [],
-          pending: false,
-          error: "بيانات الشارت غير متوافقة مع الرمز",
-          source: result.source,
-          fromCache: result.fromCache,
-        });
-      }
-
-      const nextCursor =
-        trimmed.length > 0 ? toChartSeconds(trimmed[0]!.time) * 1000 : null;
-
-      const res = NextResponse.json({
-        symbol: result.symbol,
-        interval: result.interval,
-        market: result.market,
-        candles: trimmed,
-        pending: trimmed.length === 0,
-        source: result.source,
-        fromCache: result.fromCache,
-        warning: result.warning,
-        nextCursor,
-        hasMore: result.hasMore ?? false,
-      });
-      res.headers.set(
-        "Cache-Control",
-        result.fromCache
-          ? "private, max-age=30, stale-while-revalidate=60"
-          : "private, max-age=15, stale-while-revalidate=45",
-      );
-      return res;
-    } catch (liveErr) {
-      const message =
-        liveErr instanceof Error ? liveErr.message : "Failed to load candles.";
-      return NextResponse.json({
-        symbol,
-        interval,
-        market,
+        source: "metaapi",
         candles: [],
-        pending: true,
-        error: message,
+        pending: false,
+        requires_link: true,
+        error: user
+          ? "اربط حساب MetaTrader لعرض شموع وسيطك — البيانات كلها من حسابك أنت."
+          : "سجّل الدخول واربط حساب MetaTrader لعرض الشارت.",
       });
     }
+
+    const broker = await fetchOhlc({
+      userId: user.id,
+      symbol: symbolRaw,
+      interval,
+      limit,
+      skipCache: fresh || beforeMs != null || fromMs != null || toMs != null,
+      beforeMs: Number.isFinite(beforeMs) ? beforeMs : undefined,
+      fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
+      toMs: Number.isFinite(toMs) ? toMs : undefined,
+    });
+    const normalized = normalizeCandlesForChart(broker.candles);
+    const candles = sanitizeCandlesForMarket(normalized, market);
+    const res = NextResponse.json({
+      symbol: symbolRaw,
+      interval,
+      market,
+      source: "metaapi",
+      candles,
+      // Empty WITHOUT a warning = genuine market gap (the broker acked
+      // success) — don't flag pending, or the client burns retries every
+      // weekend.
+      pending: candles.length === 0 && Boolean(broker.warning),
+      fromCache: broker.fromCache,
+      ...(broker.warning ? { error: broker.warning } : {}),
+    });
+    const ttlSec = Math.round(ohlcCacheTtlMs(interval) / 1000);
+    res.headers.set(
+      "Cache-Control",
+      `private, max-age=${Math.min(ttlSec, 30)}, stale-while-revalidate=${ttlSec}`,
+    );
+    return res;
   } catch (err) {
     return handleError(err);
   }

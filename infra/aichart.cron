@@ -12,7 +12,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 */5 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep >/dev/null 2>&1
 
 # Candle-warehouse maintenance — every 10 min. Incrementally backfills ~5y of
-# OANDA history, repairs open-market gaps, prunes bars older than 5y, and logs a
+# linked-account broker history, repairs open-market gaps, prunes bars older than 5y, and logs a
 # completeness report (first/last candle + gap counts). GET the same path for a
 # read-only report. Overlap-safe via the route's distributed lease.
 */10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/candle-warehouse >/dev/null 2>&1
@@ -38,6 +38,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
+
+# Nightly tradability calibration report — declared reachability verdicts vs
+# realized activation, per verdict. Read-only; feeds TRADABILITY_LIMITS tuning
+# (docs/PLATFORM_AGENT_UPGRADE_PLAN.md §1.5).
+30 21 * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/tradability-calibration >/dev/null 2>&1
 
 # Weekly rollout report (plan §17) — Sundays 18:00 UTC. Aggregates the critical
 # invariants (hidden WAIT, wrong-mode execution, unexplained parity), 7-day

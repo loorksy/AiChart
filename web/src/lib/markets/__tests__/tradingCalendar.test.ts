@@ -96,7 +96,7 @@ describe("metals daily maintenance break", () => {
   });
 });
 
-describe("expected daily bars (OANDA 17:00 NY alignment)", () => {
+describe("expected daily bars (17:00 NY alignment)", () => {
   function countExpectedDailyBars(fromIso: string, toIso: string): number {
     let count = 0;
     for (let t = ms(fromIso); t < ms(toIso); t += 3_600_000) {

@@ -23,7 +23,6 @@ const INTERVALS: { value: string; label: string }[] = [
 export function ChartChrome({
   symbol,
   interval,
-  dataSource,
   actions,
   onIntervalChange,
   onRefresh,
@@ -31,7 +30,8 @@ export function ChartChrome({
 }: {
   symbol: string;
   interval: string;
-  dataSource?: "oanda" | "metaapi";
+  /** Kept for mount-site compatibility; the linked account is the only pipe. */
+  dataSource?: "metaapi";
   actions?: TvHeaderAction[];
   onIntervalChange?: (interval: string) => void;
   onRefresh?: () => void;
@@ -56,8 +56,9 @@ export function ChartChrome({
         >
           {symbol}
         </span>
+        {/* The user's own MetaTrader account is the only data pipe. */}
         <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {dataSource === "metaapi" ? "MT5" : "OANDA"}
+          MT5
         </span>
         <span className="mx-0.5 h-3 w-px bg-border" aria-hidden />
         <div className="flex items-center gap-0.5" role="group" aria-label={t("layout.timeframe")}>

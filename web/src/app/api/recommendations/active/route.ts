@@ -14,6 +14,10 @@ import {
   type PublicEvidenceProjection,
 } from "@/lib/recommendations/publicEvidenceProjection";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
+import {
+  TRADABILITY_VALUES,
+  type Tradability,
+} from "@/lib/recommendations/tradability";
 
 /**
  * The operator's active recommendations, each carrying its full explainable
@@ -28,6 +32,16 @@ import type { TrackedRecommendation } from "@/lib/recommendations/types";
 
 export interface ActiveRecommendationView extends TrackedRecommendation {
   activationCondition: string | null;
+  /**
+   * The reachability verdict recorded at creation (tradability budget).
+   * `watch_only` plans are market views under watch — the UI must group them
+   * apart from actionable plans, never render them as ready trades.
+   */
+  tradability: {
+    verdict: Tradability;
+    entryDistanceAtr: number | null;
+    expectedBarsToActivation: number | null;
+  } | null;
   evidence: PublicEvidenceProjection | null;
   decisionTrace: Record<string, unknown> | null;
   revisionReason: string | null;
@@ -45,6 +59,45 @@ export interface ActiveRecommendationView extends TrackedRecommendation {
 interface SkipRow {
   dedupe_key: string;
   created_at: number | string;
+}
+
+/** Parse the tradability verdict out of the stored context blob, if present. */
+function tradabilityOf(
+  contextJson: string | null | undefined,
+): ActiveRecommendationView["tradability"] {
+  if (!contextJson) return null;
+  try {
+    const parsed = JSON.parse(contextJson) as {
+      tradability?: {
+        tradability?: unknown;
+        entryDistanceAtr?: unknown;
+        expectedBarsToActivation?: unknown;
+      } | null;
+    };
+    const raw = parsed.tradability;
+    if (!raw || typeof raw !== "object") return null;
+    const verdict = raw.tradability;
+    if (
+      typeof verdict !== "string" ||
+      !(TRADABILITY_VALUES as readonly string[]).includes(verdict)
+    ) {
+      return null;
+    }
+    return {
+      verdict: verdict as Tradability,
+      entryDistanceAtr:
+        typeof raw.entryDistanceAtr === "number" && Number.isFinite(raw.entryDistanceAtr)
+          ? raw.entryDistanceAtr
+          : null,
+      expectedBarsToActivation:
+        typeof raw.expectedBarsToActivation === "number" &&
+        Number.isFinite(raw.expectedBarsToActivation)
+          ? raw.expectedBarsToActivation
+          : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Latest execution_skipped dedupe rows, matched per recommendation id. */
@@ -150,6 +203,7 @@ export async function GET(req: NextRequest) {
         return {
           ...toPublicTrackedRecommendation(rec),
           ...overlayRevision(rec, revision),
+          tradability: tradabilityOf(canonical?.contextJson),
           lastReevaluation: latestTrigger
             ? {
                 reason: latestTrigger.reason,

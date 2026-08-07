@@ -3,7 +3,6 @@ import { getCurrentUser } from "@/lib/auth";
 import { getOrCreateChartLayout } from "@/lib/store";
 import { SmartChartWorkspace } from "@/components/SmartChartWorkspace";
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
-import { TrialChatWorkspace } from "@/components/subscription/TrialChatWorkspace";
 import { SubscribeClient } from "@/components/subscription/SubscribeClient";
 import { isLLMConfiguredAsync } from "@/lib/llm";
 import { initDb } from "@/lib/db";
@@ -32,14 +31,8 @@ export default async function WorkspacePage() {
     );
   }
 
-  if (entitlement.access === "trial") {
-    return (
-      <TrialChatWorkspace
-        trialRemaining={entitlement.trialRemaining}
-        trialUsed={entitlement.trialUsed}
-      />
-    );
-  }
+  // A valid trial gets the FULL workspace — every feature, bounded only by
+  // the one-hour clock and the three-recommendation cap enforced server-side.
 
   const layout = await getOrCreateChartLayout(user.id);
   let initialState: import("@/components/SmartChartWorkspace").ChartLayoutState | null = null;

@@ -17,7 +17,7 @@ export async function requirePaidPage(
   nextPath: string,
 ): Promise<EntitlementSnapshot> {
   const ent = await getEntitlementForUser(user);
-  if (ent.isAdmin || ent.hasPaidAccess) return ent;
+  if (ent.isAdmin || ent.hasPaidAccess || ent.access === "trial") return ent;
   redirect(`/subscribe?next=${encodeURIComponent(nextPath)}`);
 }
 

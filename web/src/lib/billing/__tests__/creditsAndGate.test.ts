@@ -100,7 +100,7 @@ describe("spend gate", () => {
     const ok = await gate.checkSpendAllowed(1);
     assert.equal(ok.allowed, true);
     assert.equal(ok.reason, "subscribed");
-    assert.equal(ok.tier.id, "plus");
+    assert.equal(ok.tier.id, "full"); // legacy "plus" row resolves to the one plan
 
     await ledger.burn(1, 999, "drain");
     const blocked = await gate.checkSpendAllowed(1);
@@ -110,35 +110,24 @@ describe("spend gate", () => {
   });
 });
 
-describe("tiers", () => {
-  it("keeps the hierarchy: every step up costs more and includes more", () => {
-    const order = tiers.TIER_ORDER.map((id: string) => tiers.TIERS[id]);
-    for (let i = 1; i < order.length; i++) {
-      assert.ok(order[i].priceUsd > order[i - 1].priceUsd);
-      assert.ok(order[i].includedCreditsUsd > order[i - 1].includedCreditsUsd);
-      assert.ok(order[i].priceUsd <= 400, "hard price ceiling");
+describe("tiers (single plan)", () => {
+  it("one $180 plan with every feature on and the whole model catalogue", () => {
+    assert.deepEqual(tiers.TIER_ORDER, ["full"]);
+    const plan = tiers.TIERS.full;
+    assert.equal(plan.priceUsd, 180);
+    assert.ok(plan.priceUsd <= 400, "hard price ceiling");
+    assert.ok(plan.includedCreditsUsd > 0);
+    for (const enabled of Object.values(plan.features)) {
+      assert.equal(enabled, true);
     }
+    assert.equal(plan.allowedModels.length, 0);
+    assert.equal(tiers.tierAllowsModel("full", "anthropic/claude-fable-5"), true);
   });
 
-  it("gates models per tier; PRO MAX allows everything", () => {
-    assert.equal(
-      tiers.tierAllowsModel(tiers.TIERS.lite, "openai/gpt-5.6-sol"),
-      false,
-    );
-    assert.equal(
-      tiers.tierAllowsModel(tiers.TIERS.pro, "openai/gpt-5.6-sol"),
-      true,
-    );
-    assert.equal(
-      tiers.tierAllowsModel(tiers.TIERS.promax, "anthropic/claude-fable-5"),
-      true,
-    );
-  });
-
-  it("only PRO and above run live execution and the scalp engine", () => {
-    assert.equal(tiers.TIERS.plus.features.liveExecution, false);
-    assert.equal(tiers.TIERS.pro.features.liveExecution, true);
-    assert.equal(tiers.TIERS.lite.features.mt5Link, false);
-    assert.equal(tiers.TIERS.plus.features.mt5Link, true);
+  it("legacy tier ids keep resolving — stored rows must not orphan", () => {
+    for (const legacy of ["lite", "plus", "pro", "promax"]) {
+      assert.equal(tiers.tierDef(legacy)?.id, "full");
+    }
+    assert.equal(tiers.tierDef("nonsense"), null);
   });
 });

@@ -44,6 +44,7 @@ import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { buildAgentFallbackResult } from "@/lib/agent/fallback";
 import { classifyAgentError, userMessageForFailure } from "@/lib/agent/errorTaxonomy";
 import type { AgentActivityEvent } from "@/lib/agent/types";
+import { unfinishedStages, type AgentStageEvent } from "@/lib/agent/stageEvents";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
@@ -255,7 +256,7 @@ const schema = z.object({
       userDrawings: z.array(serializedUserDrawingSchema).max(50).optional(),
       selectedDrawingId: z.string().max(80).optional(),
       recommendation: chartRecommendationSchema.optional(),
-      dataSource: z.enum(["oanda", "metaapi"]).optional(),
+      dataSource: z.enum(["metaapi"]).optional(),
     })
     .optional(),
   locale: z.enum(["ar", "en"]).optional(),
@@ -403,6 +404,28 @@ export async function POST(req: NextRequest) {
           send("activity", full);
         };
 
+        // Run-stage protocol (Phase 3.1): the orchestrator narrates its own
+        // fleet boundaries; this only forwards them and keeps the run's list
+        // so the final result persists the checklist with the message.
+        const stageEvents: AgentStageEvent[] = [];
+        const emitStage = (ev: Omit<AgentStageEvent, "timestamp">) => {
+          const full: AgentStageEvent = { ...ev, timestamp: Date.now() };
+          stageEvents.push(full);
+          send("stage", full);
+        };
+
+        // Heartbeat: long stages (decision model, captures) must never read as
+        // a dead stream. Unknown SSE event names are ignored by old clients.
+        const heartbeat = setInterval(() => {
+          send("heartbeat", { t: Date.now() });
+        }, 3000);
+
+        // Live answer text (Phase 3.3, general answers): cumulative sanitized
+        // text with REPLACE semantics — the final event remains authoritative.
+        const emitAnswerText = (fullText: string) => {
+          send("answer_text", { text: fullText });
+        };
+
         // --- Live thinking ticker (UI-only, model-generated per run). ---
         // Runs CONCURRENTLY with the agent: the final answer never waits for
         // ticker generation, and if generation fails the ticker is simply
@@ -489,6 +512,8 @@ export async function POST(req: NextRequest) {
                 userId: user.id,
                 sessionId,
                 emitActivity,
+                emitStage,
+                emitAnswerText,
                 emitDebug: () => {},
                 signal: req.signal,
                 session,
@@ -600,6 +625,9 @@ export async function POST(req: NextRequest) {
             ...stripInternalFieldsFromClientResult(result),
             sessionId,
             activityEvents,
+            // The run's stage checklist, persisted with the message so a
+            // reopened chat still shows HOW the answer was produced.
+            stages: stageEvents,
             // Replace static contextual options with the dynamic suggestions.
             options: suggestions,
             suggestions,
@@ -639,7 +667,9 @@ export async function POST(req: NextRequest) {
               symbol: body.chartContext?.symbol,
               interval: body.chartContext?.interval,
               decision: "informational",
-              summary: userMessageForFailure(classified.code, body.locale ?? "ar"),
+              summary: userMessageForFailure(classified.code, body.locale ?? "ar", {
+                stages: unfinishedStages(stageEvents),
+              }),
               metadata: {
                 sessionId,
                 outcome_class: "operational_blocker",
@@ -669,19 +699,27 @@ export async function POST(req: NextRequest) {
                 failureStage: "transport",
                 failureCode: classified.code,
                 traceId: requestId,
+                // Name what actually stalled. The run already emitted a stage
+                // event per step, so the stages left running or failed at the
+                // moment it died ARE the cause — the operator should not have
+                // to open a support ticket to learn which one.
+                degradedStages: unfinishedStages(stageEvents),
               },
             );
             send("final", {
               ...stripInternalFieldsFromClientResult(fallbackResult),
               sessionId,
               activityEvents,
+              stages: stageEvents,
               options: [],
               suggestions: [],
             });
             // Legacy clients still listen for `error` — keep it, without
             // leaking the raw provider message to the operator.
             send("error", {
-              error: userMessageForFailure(classified.code, body.locale ?? "ar"),
+              error: userMessageForFailure(classified.code, body.locale ?? "ar", {
+                stages: unfinishedStages(stageEvents),
+              }),
               code: classified.code,
               trace_id: requestId,
             });
@@ -699,6 +737,7 @@ export async function POST(req: NextRequest) {
             log.error("agent.stream.slo_breach", { requestId, reason: "no_final_event" });
           }
           done = true; // stop any in-flight ticker loop
+          clearInterval(heartbeat);
           // Do not release the burst slot while dependent work is still running
           // (RELIABILITY_PLAN.md item 2): abort the ticker, then wait — briefly
           // and boundedly — for it to unwind. Otherwise the next run could
@@ -733,6 +772,9 @@ export async function POST(req: NextRequest) {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        // nginx buffers proxied responses by default, which would hold every
+        // stage event until the run ends and defeat the whole live checklist.
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (err) {

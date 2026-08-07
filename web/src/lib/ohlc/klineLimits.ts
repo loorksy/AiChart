@@ -1,7 +1,7 @@
 import { normalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 
-/** Default kline count per interval — forex uses OANDA (max 5000/request). */
+/** Default kline count per interval — served by the user's linked MetaTrader account (max 5000/request). */
 export function defaultKlineLimit(
   interval: string,
   _market: MarketType = "forex",

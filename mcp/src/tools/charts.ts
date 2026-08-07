@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
 import { BridgeError, formatBridgeResult } from "../bridge/client.js";
-import { toOandaForexSymbol } from "../lib/forexSymbol.js";
+import { toCanonicalForexSymbol } from "../lib/forexSymbol.js";
 import { bridgeCall } from "./helpers.js";
 import { startJob } from "./jobStore.js";
 import { mcpToolConfig } from "./schemas/index.js";
@@ -63,13 +63,13 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
             "/api/agent/chart/layout",
             {
               id: a.layout_id,
-              symbol: rawSymbol ? toOandaForexSymbol(rawSymbol) : undefined,
+              symbol: rawSymbol ? toCanonicalForexSymbol(rawSymbol) : undefined,
               interval: a.interval,
               mode: a.mode ?? "set",
               drawings: a.drawings ?? [],
               recommendation: a.recommendation,
               targets: a.targets,
-              dataSource: "oanda",
+              dataSource: "metaapi",
             },
             DRAW_TIMEOUT_MS,
           ),
@@ -138,7 +138,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         } catch {
           layout = null;
         }
-        const symbol = toOandaForexSymbol(a.symbol ?? layout?.symbol ?? "");
+        const symbol = toCanonicalForexSymbol(a.symbol ?? layout?.symbol ?? "");
         if (!symbol) {
           throw new BridgeError(
             "حدد symbol أو أنشئ شارتاً أولاً (list_chart_layouts).",
@@ -147,7 +147,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           );
         }
         const interval = a.interval ?? layout?.interval ?? "15m";
-        // OANDA instruments only — strip broker suffixes (XAUUSDM → XAUUSD).
+        // Canonical instrument keys — strip broker suffixes (XAUUSDM → XAUUSD).
         // Route may wrap payload in {ok, data, meta} — unwrap before use.
         const fetchCandles = async (source?: string) => {
           const res = (await bridge.get("/api/agent/market/ohlc", {
@@ -161,7 +161,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
             ? res.data
             : res;
         };
-        let ohlc = await fetchCandles("oanda").catch(
+        let ohlc = await fetchCandles("metaapi").catch(
           () => null as { candles?: unknown[] } | null,
         );
         if (!ohlc) ohlc = { candles: [] };
@@ -171,9 +171,9 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           interval,
           layout_id: layout?.id ?? null,
           url: layout?.url ?? null,
-          ohlc: ohlc ? { ...ohlc, source: "oanda" } : ohlc,
+          ohlc: ohlc ? { ...ohlc, source: "metaapi" } : ohlc,
           state: layout?.state ?? null,
-          data_source: "oanda",
+          data_source: "metaapi",
           at: new Date().toISOString(),
         };
       }, { structured: true });
@@ -189,7 +189,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         interval?: string;
         market?: "forex";
         layout_id?: string;
-        data_source?: "oanda";
+        data_source?: "metaapi";
       };
       // Queued, not awaited: full model reasoning + chart vision can take up
       // to 150s — this call returns well under 500ms regardless, and the
@@ -198,11 +198,11 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         bridge.post(
           "/api/agent/market/analyze",
           {
-            symbol: a.symbol ? toOandaForexSymbol(a.symbol) : undefined,
+            symbol: a.symbol ? toCanonicalForexSymbol(a.symbol) : undefined,
             interval: a.interval ?? "1h",
             market: a.market,
             layout_id: a.layout_id,
-            data_source: a.data_source ?? "oanda",
+            data_source: a.data_source ?? "metaapi",
           },
           ANALYZE_TIMEOUT_MS,
         ),

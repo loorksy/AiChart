@@ -140,7 +140,7 @@ async function repairGaps(input: {
       toMs: gap.toMs + step,
       limit: Math.min(Math.max(gap.missingBars + 4, 10), MAX_BACKFILL),
     });
-    if (result.reason === "oanda_error") {
+    if (result.reason === "provider_error" || result.reason === "no_account") {
       errors.push(`gap repair failed at ${new Date(gap.fromMs).toISOString()}`);
     } else if (!result.skipped && result.inserted > 0) {
       repaired += 1;

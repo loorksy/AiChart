@@ -95,8 +95,8 @@ export interface AgentChartContext {
   selectedDrawingId?: string;
   /** Recommendation currently rendered/restored on the chart, if any. */
   recommendation?: AgentRecommendation;
-  /** oanda (default) or the user's linked cloud MetaTrader account. */
-  dataSource?: "oanda" | "metaapi";
+  /** The user's own linked MetaTrader account — the only market-data pipe. */
+  dataSource?: "metaapi";
 }
 
 /** Short-term, per-session preferences the agent honors within a chart session. */
@@ -122,6 +122,17 @@ export interface AgentRunContext {
   /** Optional internal/debug signal — NEVER shown to the user. Used for
    *  observability (e.g. intent classification) without leaking to the UI. */
   emitDebug?: (event: { type: string; [key: string]: unknown }) => void;
+  /** Emit a run-stage lifecycle event (stage name + status + duration only —
+   *  never evidence or reasoning). Optional: callers without a live client
+   *  simply do not provide it. */
+  emitStage?: (event: {
+    stage: string;
+    status: "running" | "done" | "failed" | "resumed";
+    durationMs?: number;
+  }) => void;
+  /** Live cumulative SANITIZED answer text for the pending bubble (general
+   *  answers only — replace semantics). The final result stays authoritative. */
+  emitAnswerText?: (fullText: string) => void;
   /** Cooperative cancellation from the client (AbortController). */
   signal?: AbortSignal;
   /** Session preferences (educational-only, minimal drawings, no execution…). */
@@ -252,6 +263,9 @@ export interface AgentFinalResult {
   keyReasons: string[];
   riskWarnings: string[];
   activityEvents: AgentActivityEvent[];
+  /** Run-stage lifecycle events (stage names + durations only) — the persisted
+   *  "how this answer was produced" checklist. Attached by the stream route. */
+  stages?: import("./stageEvents").AgentStageEvent[];
   recommendation?: AgentRecommendation;
   drawings?: ChartDrawing[];
   /** User-drawing mutations to apply AFTER the final SSE (idempotent by id). */

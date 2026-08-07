@@ -12,7 +12,7 @@ export interface LotSizingResult {
  * Selects the price used for stop-distance sizing.
  *
  * Market orders must use the latest executable side quote (ask for buys, bid
- * for sells).  The analysed OANDA entry is only a last-resort fallback because
+ * for sells).  The analysed chart entry is only a last-resort fallback because
  * sizing from it can silently exceed the configured risk after broker spread
  * or price movement.  Pending orders are sized from their explicit limit.
  */

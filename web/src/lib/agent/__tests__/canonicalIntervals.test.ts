@@ -45,7 +45,7 @@ describe("markets/intervals", () => {
     assert.equal(getHigherInterval("4h"), "1d");
   });
 
-  it("isCanonicalInterval only accepts native OANDA intervals", () => {
+  it("isCanonicalInterval only accepts native broker intervals", () => {
     assert.ok(isCanonicalInterval("4h"));
     assert.ok(!isCanonicalInterval("3m"));
     assert.ok(!isCanonicalInterval("240"));

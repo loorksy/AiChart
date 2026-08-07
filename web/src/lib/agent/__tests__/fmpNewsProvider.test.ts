@@ -4,6 +4,8 @@ import {
   createFmpProvider,
   clearFmpCache,
 } from "@/lib/agent/news/providers/fmpProvider";
+import { clearForexFactoryCache } from "@/lib/agent/news/providers/forexFactoryProvider";
+import { clearPlatformConfigCache } from "@/lib/platformConfig";
 import { runNewsMacroAgent } from "@/lib/agent/agents/newsMacroAgent";
 import type { AgentActivityEvent, AgentRunContext } from "@/lib/agent/types";
 
@@ -26,7 +28,10 @@ function fakeCtx(
 afterEach(() => {
   globalThis.fetch = realFetch;
   clearFmpCache();
+  clearForexFactoryCache();
   delete process.env.FMP_API_KEY;
+  delete process.env.FOREX_FACTORY_CALENDAR_V1;
+  clearPlatformConfigCache();
 });
 
 describe("fmpProvider", () => {
@@ -88,6 +93,9 @@ describe("fmpProvider", () => {
 
   it("provider failure degrades to unknown honestly", async () => {
     process.env.FMP_API_KEY = "test-key";
+    // The single-source world this test is about: with Forex Factory merged
+    // in, one source surviving is a LEGITIMATE calendar, not a failure.
+    process.env.FOREX_FACTORY_CALENDAR_V1 = "false";
     globalThis.fetch = (async () =>
       new Response("upstream down", { status: 503 })) as typeof fetch;
 

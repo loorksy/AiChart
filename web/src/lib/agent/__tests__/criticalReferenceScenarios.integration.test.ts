@@ -24,7 +24,6 @@ process.env.CASE_MEMORY_V1 = "0";
 process.env.AGENT_RUN_TRACE_V1 = "0";
 delete process.env.DATABASE_URL;
 delete process.env.TELEGRAM_BOT_TOKEN;
-delete process.env.OANDA_API_TOKEN;
 
 let db: typeof import("@/lib/db");
 let userId = 0;
@@ -74,7 +73,7 @@ describe("critical reference scenario integrations", () => {
       chartContext: {
         symbol: "EURUSD",
         interval: "15m",
-        dataSource: "oanda",
+        dataSource: "metaapi",
       },
       requestContext: {
         requestId: "critical-corrupt",

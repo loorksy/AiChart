@@ -58,14 +58,29 @@ const METALS: Record<string, { tint: string; short: string }> = {
 
 export type CurrencyMark =
   | { kind: "flag"; code: string; country: string; src: string }
-  | { kind: "metal"; code: string; tint: string; short: string }
+  /** `src` present = real vendored artwork (nvstly/icons); absent = tint disc. */
+  | { kind: "metal"; code: string; tint: string; short: string; src?: string }
   | { kind: "unknown"; code: string };
+
+/** Metals with real artwork under /public/pairs (vendored, no CDN). */
+const METAL_ARTWORK: Record<string, string> = {
+  XAU: "/pairs/XAU.png",
+  XAG: "/pairs/XAG.png",
+};
 
 /** How a single currency should be drawn. Never throws — unknown is a state. */
 export function currencyMark(currency: string): CurrencyMark {
   const code = currency.trim().toUpperCase();
   const metal = METALS[code];
-  if (metal) return { kind: "metal", code, tint: metal.tint, short: metal.short };
+  if (metal) {
+    return {
+      kind: "metal",
+      code,
+      tint: metal.tint,
+      short: metal.short,
+      src: METAL_ARTWORK[code],
+    };
+  }
   const country = CURRENCY_COUNTRY[code];
   if (country) {
     return {

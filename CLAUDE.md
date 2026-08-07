@@ -17,3 +17,9 @@ Key routing rules:
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
+
+## UI conformance
+
+Any generated or modified UI must follow `web/DESIGN.md` (tokens, component
+patterns, RTL rules, both themes/locales). Do not introduce raw hex colors or
+non-logical spacing classes in components.

@@ -8,6 +8,8 @@ import {
   reconcileAtStartup,
 } from "@/lib/executionKillSwitch";
 
+// OANDA_ENV is retired, but the regression stands: a stale data-era env
+// var on a VPS must never gate real-money execution.
 const ENV_KEYS = ["TRADING_KILL_SWITCH", "LIVE_TRADING_ENABLED", "OANDA_ENV"] as const;
 const saved: Record<string, string | undefined> = {};
 for (const k of ENV_KEYS) saved[k] = process.env[k];

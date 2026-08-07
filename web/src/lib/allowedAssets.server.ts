@@ -1,5 +1,6 @@
 import type { MarketType } from "./markets/types";
-import { fetchOandaInstruments, oandaConfigured, oandaAccountId } from "./markets/oanda";
+import { listBrokerCatalogue } from "./markets/symbolCatalogue";
+import { forexCanonicalKey } from "./markets/forexCanonical";
 import {
   MONITOR_TOP_SYMBOL_LIMIT,
   isOpenAssetsPolicy,
@@ -9,8 +10,10 @@ import {
 } from "./allowedAssets";
 
 /**
- * Server-only scan resolver. Forex universe comes exclusively from OANDA when
- * configured; otherwise returns [] so callers surface a setup state.
+ * Server-only scan resolver. The forex universe comes exclusively from the
+ * broker-seeded symbol catalogue (populated from linked MetaTrader accounts);
+ * when it is empty the resolver returns [] so callers surface a setup state —
+ * never a substitute feed.
  */
 export async function resolveScanAssetsForMarket(
   raw: string,
@@ -26,16 +29,19 @@ export async function resolveScanAssetsForMarket(
     if (isOpenAssetsPolicy(raw, "forex")) {
       const allowed = parseAllowedAssets(raw, "forex");
       if (allowed.length > 0) return allowed.slice(0, topLimit);
-      if (oandaConfigured() && oandaAccountId()) {
-        try {
-          const oanda = await fetchOandaInstruments();
-          const fx = oanda
-            .filter((i) => i.type === "CURRENCY" || i.type === "METAL")
-            .map((i) => i.symbol);
-          if (fx.length > 0) return fx.slice(0, topLimit);
-        } catch {
-          /* empty */
+      try {
+        const rows = await listBrokerCatalogue({ limit: 5000 });
+        const seen = new Set<string>();
+        const fx: string[] = [];
+        for (const row of rows) {
+          const key = forexCanonicalKey(row.broker_symbol);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          fx.push(key);
         }
+        if (fx.length > 0) return fx.slice(0, topLimit);
+      } catch {
+        /* empty */
       }
       return [];
     }

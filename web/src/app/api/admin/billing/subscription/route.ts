@@ -19,7 +19,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 const postSchema = z.object({
   user_id: z.number().int().positive(),
-  tier: z.enum(["lite", "plus", "pro", "promax"]),
+  tier: z.enum(["full", "lite", "plus", "pro", "promax"]),
   months: z.number().int().min(1).max(12).default(1),
   gift: z.boolean().default(false),
 });

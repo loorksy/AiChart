@@ -9,6 +9,9 @@ const dir = mkdtempSync(join(tmpdir(), "aichart-trade-mgmt-"));
 process.env.DB_PATH = join(dir, "mgmt.db");
 process.env.ENCRYPTION_KEY = "0".repeat(64);
 process.env.APP_SECRET = "mgmt-test-secret";
+// The intent rows record which backend would execute them; the stubs in this
+// file answer as metaapi, so the resolved deployment backend must agree.
+process.env.METAAPI_TOKEN = "test-metaapi-token";
 delete process.env.DATABASE_URL;
 
 /**
@@ -35,6 +38,12 @@ before(async () => {
   userId = await db.insertReturningId(
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     ["mgmt@example.com", "x", "user", "active"],
+  );
+  // Lifecycle tests model paying subscribers — the 3-recommendation trial
+  // cap is covered by the subscription suite, not here.
+  await db.execute(
+    "INSERT INTO user_entitlements (user_id, plan_status) VALUES (?, 'active')",
+    [userId],
   );
 });
 

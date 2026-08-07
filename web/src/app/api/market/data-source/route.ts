@@ -21,12 +21,13 @@ export async function GET() {
 }
 
 const schema = z.object({
-  // `auto` hands the choice back to the platform: the cloud account when
-  // linked, else the platform feed.
-  source: z.enum(["auto", "oanda", "metaapi"]),
+  // The user's own linked MetaTrader account is the only pipe; `auto` and
+  // `metaapi` are accepted for stored-settings compatibility and resolve to
+  // the same decision.
+  source: z.enum(["auto", "metaapi"]),
 });
 
-/** Pin the source, or hand the choice back with `auto`. */
+/** Persist the preference; the decision is always the linked account. */
 export async function PUT(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();

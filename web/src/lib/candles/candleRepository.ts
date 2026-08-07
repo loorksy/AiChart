@@ -1,11 +1,12 @@
 /**
  * Candle Warehouse repository — AiChart's own server-side candle store.
  *
- * OANDA is the upstream provider, not the per-request data source: charts and
- * agents read from `market_candles` first; the backfill service tops the table
- * up from OANDA when coverage is missing or stale. Times are candle-open in
- * MILLISECONDS (matching the OANDA adapter); the API layer converts to chart
- * seconds at the boundary like every other candle path.
+ * Users' linked MetaTrader accounts (via MetaApi) are the upstream provider,
+ * not the per-request data source: charts and agents read from
+ * `market_candles` first; the backfill service tops the table up through a
+ * linked account when coverage is missing or stale. Times are candle-open in
+ * MILLISECONDS; the API layer converts to chart seconds at the boundary like
+ * every other candle path.
  */
 import { execute, query, queryOne } from "@/lib/db";
 import { barDurationMs } from "@/lib/intervals";
@@ -32,7 +33,12 @@ export interface WarehouseCoverage {
   count: number;
 }
 
-export const WAREHOUSE_SOURCE = "oanda";
+/**
+ * The provenance tag every warehouse row is written and read under. The
+ * retired platform-feed era's rows sit under their old source label and are deliberately invisible now —
+ * they are a different feed's numbers; retention purges them over time.
+ */
+export const WAREHOUSE_SOURCE = "metaapi";
 /** Raised 10k → 50k with the research export cap: a 15m mass-backtest sample
  *  needs ~35k bars and the repository clamp must not silently truncate it. */
 export const MAX_READ_LIMIT = 50_000;
@@ -162,7 +168,7 @@ export function sanitizeCandles(
  * Detect missing open-market bars while ignoring the FX weekend, the metals
  * daily maintenance break, and DST-shifted daily alignment.
  *
- * Daily series get their own predicate: OANDA daily candles open at 17:00
+ * Daily series get their own predicate: forex daily candles open at 17:00
  * America/New_York, so a fixed 24h step drifts by an hour across every DST
  * transition. `isExpectedDailyBarOpen` counts a candidate as missing only when
  * it lands on a genuine session-open slot (Sun–Thu 17:00 NY — five per week).
@@ -297,7 +303,7 @@ export async function getLatestClosedCandle(params: {
 
 /**
  * Idempotent batch upsert. The forming candle is re-upserted on every refresh
- * until OANDA marks it complete, so re-ingesting a window is always safe.
+ * until the broker feed marks it complete, so re-ingesting a window is always safe.
  * Returns the number of rows written.
  */
 export async function upsertCandles(

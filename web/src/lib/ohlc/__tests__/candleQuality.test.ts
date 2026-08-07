@@ -105,7 +105,7 @@ describe("candle data quality", () => {
     assert.equal(fxGaps[0]?.missingBars, 4);
   });
 
-  it("expects five daily bars per week at OANDA's 17:00-NY alignment", () => {
+  it("expects five daily bars per week at the 17:00-NY alignment", () => {
     // Daily bars open 21:00 UTC in July (17:00 EDT), Sun–Thu. A clean week
     // must report no gaps even though the weekend spacing exceeds 24h.
     const dailyOpens = [

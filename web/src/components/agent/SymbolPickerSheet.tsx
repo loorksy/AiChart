@@ -23,16 +23,16 @@ interface InstrumentRow {
   description?: string;
   /** Server's verdict on the session; the card falls back to its own clock. */
   market_open?: boolean;
-  /** Provenance — broker-seeded rows must not look like the platform feed. */
-  origin?: "oanda" | "broker";
+  /** Every row is broker data — the user's own account or the shared seed. */
+  origin?: "broker";
 }
 
 function favouriteKey(symbol: string): string {
   return symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
-/** The two pipes a pair list can come from. */
-type MarketSource = "oanda" | "metaapi";
+/** The one pipe a pair list can come from: the user's linked MetaTrader account. */
+type MarketSource = "metaapi";
 
 interface InstrumentsResponse {
   instruments?: InstrumentRow[];
@@ -41,16 +41,18 @@ interface InstrumentsResponse {
 }
 
 function normalizeSource(raw: string | undefined): MarketSource {
-  return raw === "metaapi" ? "metaapi" : "oanda";
+  // The server has exactly one pipe to answer with; tolerate any legacy value.
+  void raw;
+  return "metaapi";
 }
 
 /** Matches the server's per-request cap, so one flush is one request. */
 const QUOTE_BATCH = 12;
 /**
- * Cards rendered per page. The catalogue is served whole — an OANDA account
- * lists ~70 pairs, a broker account can list thousands — so it is revealed a
- * page at a time as the user scrolls rather than truncated to a first slice
- * that would put the rest out of reach of anything but search.
+ * Cards rendered per page. The catalogue is served whole — a broker account
+ * can list thousands of symbols — so it is revealed a page at a time as the
+ * user scrolls rather than truncated to a first slice that would put the rest
+ * out of reach of anything but search.
  */
 const PAGE_SIZE = 60;
 const SPARK_W = 140;
@@ -92,12 +94,11 @@ export function SymbolPickerSheet({
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
   const [favourites, setFavourites] = useState<string[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
-  // The client does not choose the pipe. Two can serve the same pair — the
-  // platform feed, or the trader's own cloud account — and which one is
-  // connected and preferred is the server's call. It answers with the
-  // source it really used, and that is what gets displayed and passed on.
+  // The client does not choose the pipe — the trader's own linked MetaTrader
+  // account is the only one. The server answers with the source it really
+  // used, and that is what gets displayed and passed on.
   void brokerConnected;
-  const [served, setServed] = useState<MarketSource>("oanda");
+  const [served, setServed] = useState<MarketSource>("metaapi");
 
   useEffect(() => setMounted(true), []);
 
@@ -200,7 +201,6 @@ export function SymbolPickerSheet({
       while (pending.current.length > 0) {
         const batch = pending.current.splice(0, QUOTE_BATCH);
         const params = new URLSearchParams({ symbols: batch.join(",") });
-        if (served !== "oanda") params.set("source", served);
         try {
           const res = await fetch(`/api/instruments/quotes?${params}`, { cache: "no-store" });
           if (!res.ok) continue;
@@ -218,7 +218,7 @@ export function SymbolPickerSheet({
     } finally {
       draining.current = false;
     }
-  }, [served]);
+  }, []);
 
   const enqueue = useCallback(
     (sym: string) => {
@@ -310,10 +310,7 @@ export function SymbolPickerSheet({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const sourceNote = useMemo(() => {
-    if (served === "metaapi") return t("symbol.picker.source_cloud");
-    return t("symbol.picker.source_platform");
-  }, [served, t]);
+  const sourceNote = t("symbol.picker.source_cloud");
 
   if (!mounted || !open) return null;
 
@@ -422,9 +419,6 @@ export function SymbolPickerSheet({
                 quote={quotes[row.symbol]}
                 selected={row.symbol === symbol}
                 favourite={favouriteKeys.has(favouriteKey(row.symbol))}
-                // Only on the platform list: a broker-seeded gap must not look
-                // like an OANDA instrument. On the cloud list every row is broker.
-                showBrokerOrigin={served === "oanda" && row.origin === "broker"}
                 register={registerCard}
                 onToggleFavourite={() => void toggleFavourite(row.symbol)}
                 onPick={() => {
@@ -482,7 +476,6 @@ function PairCard({
   quote,
   selected,
   favourite,
-  showBrokerOrigin,
   register,
   onToggleFavourite,
   onPick,
@@ -491,7 +484,6 @@ function PairCard({
   quote: PairQuote | undefined;
   selected: boolean;
   favourite: boolean;
-  showBrokerOrigin: boolean;
   register: (symbol: string, el: HTMLElement | null) => void;
   onToggleFavourite: () => void;
   onPick: () => void;
@@ -564,11 +556,6 @@ function PairCard({
           </p>
           <p className="truncate text-[11px] text-muted-foreground">
             {quoteCcy ? `${base} ${t("symbol.card.to")} ${quoteCcy}` : base}
-            {showBrokerOrigin && (
-              <span className="ms-1 text-[10px]">
-                · {t("symbol.card.origin_broker")}
-              </span>
-            )}
           </p>
         </div>
         <PairFlags symbol={row.symbol} size={20} />

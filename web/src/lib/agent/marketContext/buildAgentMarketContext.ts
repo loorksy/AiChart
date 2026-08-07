@@ -16,6 +16,8 @@ import {
   backfillCandles,
   triggerBackfill,
 } from "@/lib/candles/candleBackfillService";
+import { recordWarmDemand } from "@/lib/candles/warmDemand";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import {
   getHigherInterval,
   normalizeCanonicalInterval,
@@ -48,7 +50,7 @@ import { enqueue } from "@/lib/queue";
 
 /**
  * Fire-and-forget gap repair with a per-series cooldown so a chatty session
- * cannot stampede OANDA. The queue's idempotency key (bucketed to the same
+ * cannot stampede the broker feed. The queue's idempotency key (bucketed to the same
  * window) dedupes across processes when Redis is available.
  */
 const GAP_REPAIR_COOLDOWN_MS = 10 * 60 * 1000;
@@ -129,15 +131,24 @@ async function refillIfThin(input: {
   if (input.available >= input.required) {
     return { attempted: false, inserted: 0, failed: false };
   }
+  // Three of these run in parallel (current TF, higher TF, daily) inside the
+  // market-data stage's ten-second deadline. Uncapped, each could page ten
+  // times at twelve seconds, so a single cold series — the daily one, most
+  // often, since it is the least likely to be warm — made the whole analysis
+  // fail on time every time. One page here, depth from the cron.
+  void recordWarmDemand({ symbol: input.symbol, interval: input.interval });
   const result = await backfillCandles({
     symbol: input.symbol,
     interval: input.interval,
     limit: input.limit,
+    ...(FEATURES.boundedColdStartV1() ? { maxPages: 1 } : {}),
   });
   return {
     attempted: true,
     inserted: result.inserted,
-    failed: Boolean(result.reason === "oanda_error"),
+    failed: Boolean(
+      result.reason === "provider_error" || result.reason === "no_account",
+    ),
   };
 }
 
@@ -157,7 +168,7 @@ export async function buildAgentMarketContext(input: {
   const interval = normalizeCanonicalInterval(input.interval);
   const higherInterval = getHigherInterval(interval);
   const analysisKind = input.analysisKind ?? "intraday";
-  const source = "warehouse+oanda";
+  const source = "warehouse+metaapi";
 
   let fresh = await getFreshAgentCandles({
     userId: input.userId,

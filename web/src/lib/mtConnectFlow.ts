@@ -134,6 +134,22 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
 
 /** Connect MT4/MT5 via MetaApi or self-hosted mt5local bridge. */
 export async function connectMtAccount(userId: number, input: MtConnectInput) {
+  const result = await connectMtAccountInner(userId, input);
+  // The free trial's one-hour clock starts at the FIRST successful link —
+  // signup and browsing cost nothing; the hour begins when real data begins.
+  // Idempotent inside startTrialClock; never blocks a successful link.
+  if (result && (result as { ok?: boolean }).ok !== false) {
+    try {
+      const { startTrialClock } = await import("@/lib/subscription/entitlement");
+      await startTrialClock(userId);
+    } catch {
+      /* trial bookkeeping must never fail a successful link */
+    }
+  }
+  return result;
+}
+
+async function connectMtAccountInner(userId: number, input: MtConnectInput) {
   const backend = await resolveForexBackendForUser(userId);
 
   const login = input.login.replace(/\D/g, "");

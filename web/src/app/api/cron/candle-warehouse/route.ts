@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { maintainCandleSeries } from "@/lib/candles/candleBackfillService";
+import {
+  maintainCandleSeries,
+  pickWarehouseFeederUserId,
+} from "@/lib/candles/candleBackfillService";
 import { buildWarehouseCompletenessReport } from "@/lib/candles/candleCompleteness";
 import {
   listWarehouseSeries,
   pruneExpiredCandles,
 } from "@/lib/candles/candleRepository";
+import { listWarmDemand } from "@/lib/candles/warmDemand";
 import { verifyCronSecret } from "@/lib/cronAuth";
 import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
@@ -73,17 +77,38 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * Incrementally fills years of OANDA history, repairs recent open-market gaps,
- * applies 5-year retention, and emits a completeness report (first/last/gaps).
+ * Incrementally fills years of broker history (pulled through a linked
+ * MetaTrader "feeder" account), repairs recent open-market gaps, applies
+ * 5-year retention, and emits a completeness report (first/last/gaps).
  */
 export async function POST(req: NextRequest) {
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // History pulls ride a linked MetaTrader account — there is no platform
+  // feed. Without a feeder account there is nothing to fetch with: skip.
+  if ((await pickWarehouseFeederUserId()) == null) {
+    log.info("no linked MetaTrader feeder account — warehouse run skipped");
+    return NextResponse.json({ ok: true, skipped: "no_feeder_account" });
+  }
+
   const run = await withLock("cron:candle-warehouse", LEADER_LOCK_MS, async () => {
+    // Three sources, in priority order. The operator's pinned list first, then
+    // series the platform was actually asked for but could not serve from the
+    // warehouse, then everything already stored.
+    //
+    // Demand matters because the pinned list is gated on a 17-entry registry
+    // while analysis is open to every symbol the linked broker offers. Without
+    // it, a pair outside the registry whose first cold pull failed outright
+    // would never store a row, never appear in listWarehouseSeries, and so
+    // stay cold on every future analysis.
     const allSeries = dedupeSeries([
       ...configuredSeries(),
+      ...(await listWarmDemand()).map(({ symbol, interval }) => ({
+        symbol,
+        interval,
+      })),
       ...(await listWarehouseSeries()),
     ]);
     const requestedLimit = Number(process.env.CANDLE_SYNC_MAX_SERIES ?? "6");

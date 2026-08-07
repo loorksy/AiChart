@@ -77,6 +77,12 @@ export interface CanonicalRecommendation {
   engineVersion: string;
   entryType?: string;
   legacyTrackingId?: string;
+  /**
+   * The stored context blob (statistical support, tradability verdict, visual
+   * audit). Exposed on reads so projections can surface individual facts —
+   * writers still treat it as append-at-create, never a mutable channel.
+   */
+  contextJson?: string;
 }
 
 export interface CreateCanonicalRecommendationInput {
@@ -275,7 +281,8 @@ export class RecommendationLifecycleError extends Error {
       | "RECOMMENDATION_NOT_FOUND"
       | "RECOMMENDATION_ILLEGAL_TRANSITION"
       | "RECOMMENDATION_INVALID_INPUT"
-      | "RECOMMENDATION_DUPLICATE",
+      | "RECOMMENDATION_DUPLICATE"
+      | "TRIAL_RECOMMENDATION_LIMIT",
     message: string,
   ) {
     super(message);

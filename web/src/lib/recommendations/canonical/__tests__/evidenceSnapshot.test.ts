@@ -62,9 +62,21 @@ before(async () => {
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     [`evidence-owner-${tag}@example.com`, "x", "user", "active"],
   );
+  // Lifecycle tests model paying subscribers — the 3-recommendation trial
+  // cap is covered by the subscription suite, not here.
+  await db.execute(
+    "INSERT INTO user_entitlements (user_id, plan_status) VALUES (?, 'active')",
+    [owner],
+  );
   other = await db.insertReturningId(
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     [`evidence-other-${tag}@example.com`, "x", "user", "active"],
+  );
+  // Lifecycle tests model paying subscribers — the 3-recommendation trial
+  // cap is covered by the subscription suite, not here.
+  await db.execute(
+    "INSERT INTO user_entitlements (user_id, plan_status) VALUES (?, 'active')",
+    [other],
   );
 });
 

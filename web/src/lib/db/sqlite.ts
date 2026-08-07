@@ -46,9 +46,9 @@ const SCHEMA = `
     -- Migration below rewrites any leftover 'ea' value to NULL; resolution
     -- also treats an unrecognised value as NULL, so this is belt and braces.
     forex_backend            TEXT,
-    -- Which pipe the CHARTS and quotes are read from: 'oanda' (platform data)
-    -- or 'metaapi' (their cloud account). NULL/'auto' = the cloud account
-    -- when linked, else the platform.
+    -- Kept for stored-settings compatibility: the user's own linked
+    -- MetaTrader account ('metaapi') is the only pipe now, so every value
+    -- resolves to it.
     market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
     -- platform default. The admin supplies keys, the user picks the brain.
@@ -587,7 +587,7 @@ const SCHEMA = `
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- Candle Warehouse: server-side OANDA candle store. time = candle open (ms).
+  -- Candle Warehouse: server-side broker candle store (fed by a linked MetaTrader account). time = candle open (ms).
   CREATE TABLE IF NOT EXISTS market_candles (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol     TEXT NOT NULL,
@@ -2041,6 +2041,8 @@ function migrate(db: Database.Database) {
       plan_status TEXT NOT NULL DEFAULT 'trial',
       trial_interactions_used INTEGER NOT NULL DEFAULT 0,
       trial_in_flight INTEGER NOT NULL DEFAULT 0,
+      trial_started_at TEXT,
+      trial_recommendations_used INTEGER NOT NULL DEFAULT 0,
       subscription_expires_at TEXT,
       activated_at TEXT,
       activated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -2058,6 +2060,21 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_trial_ledger_user
       ON trial_interaction_ledger(user_id, status);
   `);
+
+  // Timed-trial columns (additive; existing rows keep a null clock until the
+  // user's first MT link starts it).
+  const entCols = db
+    .prepare("PRAGMA table_info(user_entitlements)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  if (!entCols.includes("trial_started_at")) {
+    db.exec("ALTER TABLE user_entitlements ADD COLUMN trial_started_at TEXT");
+  }
+  if (!entCols.includes("trial_recommendations_used")) {
+    db.exec(
+      "ALTER TABLE user_entitlements ADD COLUMN trial_recommendations_used INTEGER NOT NULL DEFAULT 0",
+    );
+  }
 
   // Partial-stage outcomes on the case memory (plan §12). Additive only: rows
   // indexed before these columns existed keep NULLs — their features are

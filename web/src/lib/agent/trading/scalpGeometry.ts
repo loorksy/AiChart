@@ -130,7 +130,10 @@ export function classifyActivation(input: {
   }
   const atrMult = distance / atr;
   if (atrMult <= SCALP_GEOMETRY.immediateMaxAtr) return "immediate";
-  if (atrMult <= SCALP_GEOMETRY.conditionalMaxAtr) return "conditional";
+  // A candidate may legitimately wait for a pullback several ATR away — this
+  // grades INTERNAL candidates only. What reaches the user as an actionable
+  // trade is decided by the publish-side tradability budget
+  // (lib/recommendations/tradability.ts), whose limits are far tighter.
   if (atrMult <= SCALP_GEOMETRY.rejectActivationAtr) return "conditional";
   return "non_executable";
 }

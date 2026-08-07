@@ -4,6 +4,7 @@
  * no Phase 4 write or read path uses it as authority.
  */
 import { execute, query } from "@/lib/db";
+import type { TradabilityAssessment } from "./tradability";
 import {
   createCanonicalRecommendation,
   getCanonicalRecommendationByReference,
@@ -182,6 +183,16 @@ export type CreateTrackedRecommendationInput = Omit<
     evidenceSource?: string | null;
     /** See CreateCanonicalRecommendationInput.legacyImport — migration only. */
     legacyImport?: boolean;
+    /**
+     * Reachability verdict for this plan, stored in the context blob where the
+     * cards, the tracker and the calibration job already read it.
+     *
+     * The MCP bridge route assessed this and the platform's own engine did not,
+     * so a far entry created from web chat was stored as an ordinary trade —
+     * the exact defect the gate exists to prevent, still live on the surface
+     * where it was reported.
+     */
+    tradability?: TradabilityAssessment | null;
   };
 
 function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unknown> {
@@ -340,6 +351,10 @@ export async function createTrackedRecommendation(
   input: CreateTrackedRecommendationInput,
 ): Promise<TrackedRecommendation> {
   const recommendation = await createCanonicalRecommendation({
+    // Same key and nesting the MCP write path uses, so one reader serves both.
+    ...(input.tradability
+      ? { contextJson: JSON.stringify({ tradability: input.tradability }) }
+      : {}),
     legacyImport: input.legacyImport,
     userId: input.userId,
     analysisId: input.analysisId,

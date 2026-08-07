@@ -15,6 +15,11 @@ import { capturePlatformChart } from "@/lib/chart/platformChartCapture";
 import { canonicalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { getUnifiedSnapshot } from "@/lib/markets";
+import {
+  bollinger as bollingerIndicator,
+  macd as macdIndicator,
+  stochastic as stochasticIndicator,
+} from "@/lib/indicators";
 import { fetchOhlc, type OhlcCandle } from "@/lib/ohlc/fetchOhlc";
 import {
   detectNumericMarketRegime,
@@ -253,6 +258,18 @@ export interface TimeframeNumericContext {
   supports: number[];
   resistances: number[];
   candle_count: number | null;
+  /** MACD line/signal/histogram of the same closes the image shows. */
+  macd: { macd: number; signal: number; histogram: number } | null;
+  /** Bollinger read: band levels plus %B (0=lower, 1=upper) and width. */
+  bollinger: {
+    upper: number;
+    middle: number;
+    lower: number;
+    percent_b: number;
+    width_pct: number;
+  } | null;
+  /** Stochastic %K/%D, both 0–100. */
+  stochastic: { k: number; d: number } | null;
   /** Deterministic geometry: trendlines/channel/patterns with state — the
    *  numeric counterpart of the shapes visible in the same-frame image. */
   geometry: GeometrySummary | null;
@@ -348,10 +365,48 @@ export async function buildTimeframeNumericContext(
   let resistances: number[] = [];
   let candleCount: number | null = null;
   let geometry: GeometrySummary | null = null;
+  let macdOut: TimeframeNumericContext["macd"] = null;
+  let bollingerOut: TimeframeNumericContext["bollinger"] = null;
+  let stochasticOut: TimeframeNumericContext["stochastic"] = null;
 
   if (candlesResult.status === "fulfilled") {
     const candles = candlesResult.value;
     candleCount = candles.length;
+
+    // Momentum/volatility oscillators from the SAME closes the image shows —
+    // local math (lib/indicators), null on short windows, never guessed.
+    try {
+      const closes = candles.map((c) => c.close);
+      const m = macdIndicator(closes);
+      if (m) {
+        macdOut = {
+          macd: round(m.macd, 6)!,
+          signal: round(m.signal, 6)!,
+          histogram: round(m.histogram, 6)!,
+        };
+      }
+      const bb = bollingerIndicator(closes);
+      if (bb) {
+        bollingerOut = {
+          upper: round(bb.upper, 6)!,
+          middle: round(bb.middle, 6)!,
+          lower: round(bb.lower, 6)!,
+          percent_b: round(bb.percentB, 3)!,
+          width_pct: round(bb.widthPct, 4)!,
+        };
+      }
+      const st = stochasticIndicator(
+        candles.map((c) => ({ high: c.high, low: c.low, close: c.close })),
+      );
+      if (st) {
+        stochasticOut = { k: round(st.k, 2)!, d: round(st.d, 2)! };
+      }
+      if (macdOut || bollingerOut || stochasticOut) {
+        sources.oscillators = "lib_indicators";
+      }
+    } catch (error) {
+      errors.push(`oscillators: ${errorText(error)}`);
+    }
 
     try {
       const levels = detectStructureLevels(
@@ -414,6 +469,9 @@ export async function buildTimeframeNumericContext(
     supports,
     resistances,
     candle_count: candleCount,
+    macd: macdOut,
+    bollinger: bollingerOut,
+    stochastic: stochasticOut,
     geometry,
     sources,
     ...(errors.length ? { errors } : {}),

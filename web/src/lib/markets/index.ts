@@ -9,9 +9,11 @@ import type { ForexMarketSnapshot } from "./forexSnapshot";
 export { resolveSymbol, marketLabel };
 export type { ResolvedSymbol, UnifiedSnapshot };
 
-/** Human book label — a cost without its book is misleading (48 vs 24 pips on gold). */
-export function marketDataBookLabel(source: "oanda" | "metaapi"): string {
-  return source === "metaapi" ? "broker_cloud" : "platform_oanda";
+/** Human book label — a cost without its book is misleading (spreads differ per broker). */
+export function marketDataBookLabel(source: "metaapi"): string {
+  // The user's own linked MetaTrader account is the only book.
+  void source;
+  return "broker_cloud";
 }
 
 export async function getUnifiedPrice(
@@ -21,7 +23,7 @@ export async function getUnifiedPrice(
 ): Promise<{
   resolved: ResolvedSymbol;
   price: number;
-  source: "oanda" | "metaapi";
+  source: "metaapi";
   book: string;
 }> {
   const resolved = resolveSymbol(query, market);
@@ -46,10 +48,9 @@ export async function getUnifiedSnapshot(
     throw new Error("Forex snapshots require a connected user session.");
   }
   const decision = await resolveMarketDataSource(userId, null);
-  // Preserve broker spelling when the cloud pipe is active — resolveSymbol
-  // already keeps suffixes; folding here would break MetaApi lookups.
-  const symbolForPipe =
-    decision.source === "metaapi" ? query.trim() || resolved.symbol : resolved.symbol;
+  // Preserve broker spelling — resolveSymbol already keeps suffixes; folding
+  // here would break MetaApi lookups.
+  const symbolForPipe = query.trim() || resolved.symbol;
   const snap = await buildForexSnapshot(
     userId,
     symbolForPipe,
