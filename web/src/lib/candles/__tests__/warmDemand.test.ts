@@ -85,6 +85,32 @@ test("the market-context refill caps its pages too", () => {
   assert.match(source, /recordWarmDemand\(/);
 });
 
+/**
+ * Second live failure (request 3702237f, five minutes after a pm2 restart)
+ * exposed the deepest layer: getFreshAgentCandles blocked on a live MetaApi
+ * pull — two attempts, skipCache — BEFORE reading the warehouse. The
+ * connection cache is per-process, so the first analysis after every deploy
+ * paid RPC session establishment (tens of seconds) against a ten-second stage
+ * deadline. The 28ms warehouse read was never reached.
+ */
+test("fresh candles serve the warehouse first when its tail is fresh", () => {
+  const source = readFileSync(
+    resolve(process.cwd(), "src/lib/agent/marketContext/getFreshAgentCandles.ts"),
+    "utf8",
+  );
+  // The warehouse read must come before any blocking live pull...
+  const warehouseFirst = source.indexOf("FEATURES.boundedColdStartV1()");
+  const blockingLive = source.indexOf("for (let attempt = 0");
+  assert.ok(
+    warehouseFirst >= 0 && warehouseFirst < blockingLive,
+    "warehouse-first gate must precede the blocking live loop",
+  );
+  // ...the live refresh happens off the critical path...
+  assert.match(source, /void pullLive\(\)/);
+  // ...and freshness is judged, not assumed.
+  assert.match(source, /candleFreshnessToleranceMs\(interval\)/);
+});
+
 test("the fault card names the stage the envelope already carries", () => {
   const source = readFileSync(
     resolve(process.cwd(), "src/components/agent/AgentEnvelopeStatus.tsx"),
