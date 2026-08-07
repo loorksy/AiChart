@@ -134,6 +134,26 @@ test("the cron warms recorded demand, not just its configured list", () => {
   assert.match(source, /listWarehouseSeries\(\)/);
 });
 
+/**
+ * Third live layer: history cost scales with the TIME SPAN scanned, not the
+ * bar count. Measured on the production feeder (2026-08-07): 1000×15m answers
+ * in ~0.5s, 1000×1d takes ~19s against a 12s page timeout — so a full-size
+ * daily page timed out on EVERY attempt and the 1d series could never warm,
+ * which in turn made the daily refill inside analysis the eternally-cold pull.
+ */
+test("high-timeframe pages are sized to fit inside the page timeout", () => {
+  const source = readFileSync(
+    resolve(process.cwd(), "src/lib/ohlc/metaApiOhlc.ts"),
+    "utf8",
+  );
+  assert.match(source, /function pageSizeFor\(interval: string\)/);
+  assert.match(source, /if \(interval === "1d"\) return 250/);
+  // Both fetch paths must size by interval — a raw MAX_CANDLES page call is
+  // the regression this guards against.
+  const rawPages = source.match(/fetchPage\([^)]*MAX_CANDLES\)/g) ?? [];
+  assert.equal(rawPages.length, 0, "no fetchPage call may pass MAX_CANDLES directly");
+});
+
 test("the deep pull stays uncapped for the cron", () => {
   const source = readFileSync(
     resolve(process.cwd(), "src/lib/candles/candleBackfillService.ts"),

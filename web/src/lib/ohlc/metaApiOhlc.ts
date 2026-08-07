@@ -70,6 +70,22 @@ async function getHistoryAccount(userId: number) {
   return { mtAccount, warning: undefined };
 }
 
+/**
+ * Page size per timeframe. The broker's history cost scales with the TIME SPAN
+ * scanned, not the bar count — measured live on the production feeder account
+ * (2026-08-07): 1000×15m (10 days) answers in ~0.5s, while 1000×1d (4 years)
+ * takes ~19s and 400×1d ~9.6s, both against a 12s page timeout. A full-size
+ * daily page therefore timed out on EVERY attempt, warm or cold, which is why
+ * the 1d series could never be warmed through this path. Smaller pages keep
+ * each request comfortably inside the timeout; the range walker simply takes
+ * more of them.
+ */
+function pageSizeFor(interval: string): number {
+  if (interval === "1w") return 100;
+  if (interval === "1d") return 250;
+  return MAX_CANDLES;
+}
+
 async function fetchPage(
   mtAccount: { getHistoricalCandles: (s: string, tf: string, st: Date, l: number) => Promise<MetaApiHistoricalCandle[]> },
   symbol: string,
@@ -117,7 +133,7 @@ export async function fetchMetaApiOhlc(
   try {
     const { mtAccount, warning } = await getHistoryAccount(userId);
     if (!mtAccount) return { candles: [], warning };
-    const limit = Math.min(Math.max(opts.limit ?? 300, 10), MAX_CANDLES);
+    const limit = Math.min(Math.max(opts.limit ?? 300, 10), pageSizeFor(iv));
     const candles = await fetchPage(
       mtAccount,
       symbol,
@@ -168,7 +184,7 @@ export async function fetchMetaApiOhlcRange(
     let reachedStart = false;
 
     for (let page = 0; page < maxPages; page++) {
-      const batch = await fetchPage(mtAccount, symbol, iv, cursor, MAX_CANDLES);
+      const batch = await fetchPage(mtAccount, symbol, iv, cursor, pageSizeFor(iv));
       if (batch.length === 0) break;
       for (const c of batch) {
         if (c.time >= opts.fromMs && c.time <= cursor) collected.set(c.time, c);
