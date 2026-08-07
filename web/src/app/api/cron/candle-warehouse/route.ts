@@ -8,6 +8,7 @@ import {
   listWarehouseSeries,
   pruneExpiredCandles,
 } from "@/lib/candles/candleRepository";
+import { listWarmDemand } from "@/lib/candles/warmDemand";
 import { verifyCronSecret } from "@/lib/cronAuth";
 import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
@@ -93,8 +94,21 @@ export async function POST(req: NextRequest) {
   }
 
   const run = await withLock("cron:candle-warehouse", LEADER_LOCK_MS, async () => {
+    // Three sources, in priority order. The operator's pinned list first, then
+    // series the platform was actually asked for but could not serve from the
+    // warehouse, then everything already stored.
+    //
+    // Demand matters because the pinned list is gated on a 17-entry registry
+    // while analysis is open to every symbol the linked broker offers. Without
+    // it, a pair outside the registry whose first cold pull failed outright
+    // would never store a row, never appear in listWarehouseSeries, and so
+    // stay cold on every future analysis.
     const allSeries = dedupeSeries([
       ...configuredSeries(),
+      ...(await listWarmDemand()).map(({ symbol, interval }) => ({
+        symbol,
+        interval,
+      })),
       ...(await listWarehouseSeries()),
     ]);
     const requestedLimit = Number(process.env.CANDLE_SYNC_MAX_SERIES ?? "6");

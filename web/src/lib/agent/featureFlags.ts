@@ -75,6 +75,17 @@ export const FEATURES = {
   tradabilityGateV1: () => flag("TRADABILITY_GATE_V1", true),
 
   /**
+   * Cap the cold-start backfill at one history page inside a request, and let
+   * the cron warm the depth from recorded demand.
+   *
+   * ON by default: an uncapped pull could take ~2 minutes behind a 10s
+   * market-data deadline, so it never delivered — it only failed slowly and
+   * left orphaned pages running. OFF restores the old unbounded pull, which is
+   * the rollback valve if one page ever proves too thin to answer with.
+   */
+  boundedColdStartV1: () => flag("BOUNDED_COLD_START_V1", true),
+
+  /**
    * Forex Factory weekly calendar as a news source (no API key). ON by
    * default: it merges with FMP when both exist, and its failure degrades to
    * the other source or to newsRisk=unknown — never fake events. OFF returns
@@ -184,6 +195,7 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     caseMemoryV1: FEATURES.caseMemoryV1(),
     agentDoctrineV3: FEATURES.agentDoctrineV3(),
     tradabilityGateV1: FEATURES.tradabilityGateV1(),
+    boundedColdStartV1: FEATURES.boundedColdStartV1(),
     forexFactoryCalendarV1: FEATURES.forexFactoryCalendarV1(),
     macroEvidenceV1: FEATURES.macroEvidenceV1(),
     cotEvidenceV1: FEATURES.cotEvidenceV1(),

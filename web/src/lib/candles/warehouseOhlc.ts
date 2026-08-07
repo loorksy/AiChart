@@ -19,7 +19,9 @@ import {
   type StoredCandle,
   type WarehouseCoverage,
 } from "./candleRepository";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import { backfillCandles, triggerBackfill } from "./candleBackfillService";
+import { recordWarmDemand } from "./warmDemand";
 
 export interface WarehouseOhlcResult {
   candles: StoredCandle[];
@@ -128,12 +130,14 @@ export async function serveWarehouseOhlc(
         hasMore: true,
       };
     }
+    void recordWarmDemand({ symbol, interval: base });
     const bf = await backfillCandles({
       symbol,
       interval: base,
       fromMs: params.fromMs,
       toMs: params.beforeMs ?? params.toMs,
       limit: baseLimit,
+      ...(FEATURES.boundedColdStartV1() ? { maxPages: 1 } : {}),
     });
     const after = await readWindow();
     return {
@@ -169,8 +173,21 @@ export async function serveWarehouseOhlc(
     };
   }
 
-  // Thin coverage: backfill synchronously (bounded) then read.
-  const bf = await backfillCandles({ symbol, interval: base, limit: baseLimit });
+  // Thin coverage — the cold-start path, and the one that was failing.
+  //
+  // This used to page as deep as the range fetcher allowed (10 pages, 12s
+  // each) while the operator waited behind a 10s market-data deadline: the
+  // request could not win, and the abandoned pages kept running for another
+  // two minutes, slowing whatever came next. One page answers the request;
+  // the depth belongs to the cron, so the series is registered for warming
+  // and the next analysis on this pair reads locally.
+  void recordWarmDemand({ symbol, interval: base });
+  const bf = await backfillCandles({
+    symbol,
+    interval: base,
+    limit: baseLimit,
+    ...(FEATURES.boundedColdStartV1() ? { maxPages: 1 } : {}),
+  });
   const after = await readWindow();
   const afterResampled = resample(after, factor);
   if (afterResampled.length > 0) {

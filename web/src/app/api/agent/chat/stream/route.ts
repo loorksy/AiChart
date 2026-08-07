@@ -44,7 +44,7 @@ import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { buildAgentFallbackResult } from "@/lib/agent/fallback";
 import { classifyAgentError, userMessageForFailure } from "@/lib/agent/errorTaxonomy";
 import type { AgentActivityEvent } from "@/lib/agent/types";
-import type { AgentStageEvent } from "@/lib/agent/stageEvents";
+import { unfinishedStages, type AgentStageEvent } from "@/lib/agent/stageEvents";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
@@ -667,7 +667,9 @@ export async function POST(req: NextRequest) {
               symbol: body.chartContext?.symbol,
               interval: body.chartContext?.interval,
               decision: "informational",
-              summary: userMessageForFailure(classified.code, body.locale ?? "ar"),
+              summary: userMessageForFailure(classified.code, body.locale ?? "ar", {
+                stages: unfinishedStages(stageEvents),
+              }),
               metadata: {
                 sessionId,
                 outcome_class: "operational_blocker",
@@ -697,6 +699,11 @@ export async function POST(req: NextRequest) {
                 failureStage: "transport",
                 failureCode: classified.code,
                 traceId: requestId,
+                // Name what actually stalled. The run already emitted a stage
+                // event per step, so the stages left running or failed at the
+                // moment it died ARE the cause — the operator should not have
+                // to open a support ticket to learn which one.
+                degradedStages: unfinishedStages(stageEvents),
               },
             );
             send("final", {
@@ -710,7 +717,9 @@ export async function POST(req: NextRequest) {
             // Legacy clients still listen for `error` — keep it, without
             // leaking the raw provider message to the operator.
             send("error", {
-              error: userMessageForFailure(classified.code, body.locale ?? "ar"),
+              error: userMessageForFailure(classified.code, body.locale ?? "ar", {
+                stages: unfinishedStages(stageEvents),
+              }),
               code: classified.code,
               trace_id: requestId,
             });

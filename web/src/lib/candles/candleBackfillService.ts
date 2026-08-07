@@ -47,6 +47,14 @@ export interface BackfillParams {
    * anywhere the backfill reports `no_account` instead of inventing data.
    */
   feederUserId?: number;
+  /**
+   * Cap on history pages for THIS pull. Unset means the range fetcher's own
+   * ceiling (10 pages at 12s each) — right for the cron, ruinous inside a
+   * request: a cold series would spend up to two minutes against a stage
+   * deadline of ten seconds, fail for certain, and leave the abandoned pages
+   * running. Request paths pass 1 and leave the depth to the cron.
+   */
+  maxPages?: number;
 }
 
 export interface BackfillResult {
@@ -147,7 +155,7 @@ export async function backfillCandles(
       feeder,
       brokerSymbol,
       interval,
-      { fromMs, toMs },
+      { fromMs, toMs, ...(params.maxPages ? { maxPages: params.maxPages } : {}) },
     );
 
     if (!candles.length) {

@@ -35,6 +35,21 @@ export interface AggregatedStage {
  * appearance. Later events win (running → done/failed), and a terminal status
  * is never demoted back to running by a late duplicate.
  */
+/**
+ * Stages that did not reach a good end — failed outright, or still `running`
+ * when the run stopped, which is what a blown budget looks like from here.
+ *
+ * This is what lets a blocker name its cause instead of saying "took longer
+ * than allowed" and leaving the operator with only a request id.
+ */
+export function unfinishedStages(
+  events: readonly AgentStageEvent[],
+): string[] {
+  return aggregateStageEvents(events)
+    .filter((row) => row.status === "failed" || row.status === "running")
+    .map((row) => row.stage);
+}
+
 export function aggregateStageEvents(
   events: readonly AgentStageEvent[],
 ): AggregatedStage[] {

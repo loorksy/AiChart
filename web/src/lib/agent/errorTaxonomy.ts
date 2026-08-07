@@ -12,7 +12,7 @@
  * - `userMessageFor(...)`: a safe, localized sentence for the operator UI.
  *   It never carries provider payloads, keys, or internal module names.
  */
-import type { AppLocale } from "@/lib/i18n";
+import { t, type AppLocale } from "@/lib/i18n";
 import type { SynthesizerFailureKind } from "./agents/finalDecisionSynthesizer";
 
 export type AgentFailureCode =
@@ -235,11 +235,41 @@ export function failureCodeFromSynthesizerKind(
   }
 }
 
-/** Safe, localized user-facing sentence for a failure code. No internals. */
+/**
+ * The stages that did not finish, named in the operator's language.
+ *
+ * Stage ids are internal, so they are translated through the same
+ * `agent.stage.*` keys the run checklist uses rather than printed raw — the
+ * operator sees "بيانات السوق", not "market_data".
+ */
+function namedStages(stages: readonly string[], locale: AppLocale): string {
+  const seen = [...new Set(stages.filter((stage) => stage.trim()))];
+  if (!seen.length) return "";
+  return seen.map((stage) => t(locale, `agent.stage.${stage}`)).join("، ");
+}
+
+/**
+ * Safe, localized user-facing sentence for a failure code. No internals.
+ *
+ * `cause.stages` turns the generic sentence into the one the doctrine actually
+ * requires. "استغرقت العملية وقتاً أطول من المسموح" names neither the blocker
+ * nor its cause, so an operator hitting it — and the person debugging it —
+ * learned nothing beyond a request id. The orchestrator already tracks which
+ * stages degraded; this is where that knowledge reaches the reader.
+ */
 export function userMessageForFailure(
   code: AgentFailureCode,
   locale: AppLocale,
+  cause?: { stages?: readonly string[] },
 ): string {
+  const stages = cause?.stages?.length ? namedStages(cause.stages, locale) : "";
+  if (stages && (code === "timeout" || code === "insufficient_data")) {
+    return locale === "en"
+      ? `The analysis did not complete: ${stages} did not finish within the allowed time. ` +
+          `Whatever evidence was gathered before that is shown below; nothing has been assumed in its place.`
+      : `لم يكتمل التحليل: ${stages} لم تنتهِ ضمن المهلة المسموحة. ` +
+          `ما جُمع من أدلة قبل ذلك معروض أدناه، ولم يُفترض شيء مكانه.`;
+  }
   const ar: Record<AgentFailureCode, string> = {
     auth: "لا يمكن الاتصال بمزوّد الخدمة بسبب مشكلة صلاحيات — تحتاج مراجعة الإعداد.",
     rate_limit: "مزوّد الخدمة مشغول حالياً — أعد المحاولة بعد قليل.",

@@ -107,6 +107,12 @@ import { recordDecisionForParity } from "./parityLog";
 import { serializeCostEvidence } from "./marketContext/costEvidence";
 import { barDurationMs } from "@/lib/intervals";
 import { metrics } from "@/lib/metrics";
+import { atr as computeAtr } from "@/lib/indicators";
+import { getCandles } from "@/lib/candles/candleRepository";
+import {
+  assessTradability,
+  type TradabilityAssessment,
+} from "@/lib/recommendations/tradability";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
 import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
@@ -1265,7 +1271,7 @@ async function runUnifiedChartAgentInner(
     trackedCtx.emitActivity({
       type: "analysis",
       status: "failed",
-      message: userMessageForFailure(code, locale),
+      message: userMessageForFailure(code, locale, { stages: ["final_decision"] }),
       metadata: { stage: "final_decision", cause: synthError ? "threw" : "timeout" },
     });
     ctx.emitStage?.({
@@ -2391,6 +2397,63 @@ function lastClosedBarTime(
   return candles.at(-1)?.time ?? Date.now();
 }
 
+/**
+ * Grade a platform-created plan for reachability, the same way the MCP write
+ * path does: ATR from the plan's own timeframe over closed warehouse candles,
+ * price from the plan's own creation snapshot.
+ *
+ * Never throws and never blocks the write. A verdict that cannot be computed
+ * is reported as one — `assessTradability` fails safe to `watch_only` when the
+ * price or ATR is unknown, which is the honest answer rather than assuming an
+ * entry is reachable.
+ */
+async function assessPlanTradability(
+  active: ActiveRecommendation,
+): Promise<TradabilityAssessment | null> {
+  try {
+    let atr: number | null = null;
+    try {
+      const recent = await getCandles({
+        symbol: active.symbol,
+        interval: active.interval,
+        limit: 30,
+        order: "desc",
+      });
+      atr = computeAtr(recent.filter((candle) => candle.complete));
+    } catch {
+      atr = null;
+    }
+
+    const assessment = assessTradability({
+      direction: active.direction,
+      planType: active.planType,
+      entry: active.entry,
+      currentPrice: active.priceAtCreation ?? null,
+      atr,
+      spread: null,
+      validityCandles: active.validityCandles ?? null,
+    });
+    metrics.tradabilityVerdicts.inc({ verdict: assessment.tradability });
+
+    if (assessment.tradability === "rejected" && FEATURES.tradabilityGateV1()) {
+      metrics.invalidLevelRecommendations.inc({ source: "platform" });
+      log.warn("agent.tradability.downgraded", {
+        symbol: active.symbol,
+        entryDistanceAtr: assessment.entryDistanceAtr,
+      });
+      // The direction survives; only its claim to be an entry does not.
+      return { ...assessment, tradability: "watch_only" };
+    }
+    return assessment;
+  } catch (error) {
+    log.warn("agent.tradability.unavailable", {
+      symbol: active.symbol,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function persistTrackedRecommendation(
   active: ActiveRecommendation,
   userId: number,
@@ -2408,7 +2471,23 @@ async function persistTrackedRecommendation(
       : active.entryType?.includes("limit")
         ? "limit"
         : "pending";
+
+  // Is this entry realistically reachable from the current price?
+  //
+  // The gate shipped wired into the MCP bridge route only, so every plan the
+  // platform itself produced — web chat, /market/analyze, the scanner — was
+  // stored ungraded. That is the surface the far-entry problem was reported
+  // on, so it went on happening there.
+  //
+  // Unlike the MCP route this does NOT refuse: that route answers one tool
+  // call and can demand a corrective retry, while here the operator is mid
+  // stream and a throw would drop an otherwise sound analysis. A plan the
+  // market cannot reach keeps its direction and is graded `watch_only`, which
+  // is what routes it to the watch section instead of an actionable card.
+  const tradability = await assessPlanTradability(active);
+
   await createTrackedRecommendation({
+    tradability,
     id: active.id,
     userId,
     chatId,

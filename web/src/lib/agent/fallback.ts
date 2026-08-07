@@ -52,13 +52,22 @@ export function buildAgentFallbackResult(
     failureCode?: AgentFailureCode;
     /** Correlation id surfaced to the user for support (request id). */
     traceId?: string;
+    /**
+     * Stages that did not finish. Named in the user summary, because the
+     * doctrine asks for the blocker AND its cause — and "took too long" is
+     * neither. Safe to surface: these are pipeline stage ids translated
+     * through the same labels the run checklist already shows.
+     */
+    degradedStages?: readonly string[];
   } = {},
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({ analysisConfidence: 0 });
   const failureCode = options.failureCode ?? "unknown";
   const retryable = options.retryable ?? isRetryableFailureCode(failureCode);
   // Safe, localized, code-specific message — the ONLY thing the user sees.
-  const safeMessage = userMessageForFailure(failureCode, locale);
+  const safeMessage = userMessageForFailure(failureCode, locale, {
+    stages: options.degradedStages,
+  });
   const summary =
     locale === "en"
       ? `The request could not be completed. ${safeMessage}`
