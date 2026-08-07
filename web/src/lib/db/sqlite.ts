@@ -46,9 +46,9 @@ const SCHEMA = `
     -- Migration below rewrites any leftover 'ea' value to NULL; resolution
     -- also treats an unrecognised value as NULL, so this is belt and braces.
     forex_backend            TEXT,
-    -- Which pipe the CHARTS and quotes are read from: 'oanda' (platform data)
-    -- or 'metaapi' (their cloud account). NULL/'auto' = the cloud account
-    -- when linked, else the platform.
+    -- Kept for stored-settings compatibility: the user's own linked
+    -- MetaTrader account ('metaapi') is the only pipe now, so every value
+    -- resolves to it.
     market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
     -- platform default. The admin supplies keys, the user picks the brain.
@@ -587,7 +587,7 @@ const SCHEMA = `
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- Candle Warehouse: server-side OANDA candle store. time = candle open (ms).
+  -- Candle Warehouse: server-side broker candle store (fed by a linked MetaTrader account). time = candle open (ms).
   CREATE TABLE IF NOT EXISTS market_candles (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol     TEXT NOT NULL,

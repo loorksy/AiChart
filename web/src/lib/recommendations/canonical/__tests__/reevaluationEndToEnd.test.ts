@@ -14,7 +14,6 @@ process.env.CASE_MEMORY_V1 = "0";
 process.env.AGENT_RUN_TRACE_V1 = "0";
 process.env.AUTO_EXECUTION_STAGE = "off";
 delete process.env.DATABASE_URL;
-delete process.env.OANDA_API_TOKEN;
 delete process.env.TELEGRAM_BOT_TOKEN;
 
 let db: typeof import("@/lib/db");
@@ -45,7 +44,7 @@ function weekdayBars(
   while (times.length < count) {
     const day = new Date(cursor).getUTCDay();
     // Keep the fixture tail recent so the source-lock sync guard can accept the
-    // warehouse when no live OANDA key exists; older bars still skip weekends.
+    // warehouse when no live broker feed exists; older bars still skip weekends.
     if (!skipWeekends || times.length === 0 || (day !== 0 && day !== 6)) {
       times.push(cursor);
     }

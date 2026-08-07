@@ -96,20 +96,13 @@ export const en = {
   "account.type.live": "Live account",
   "account.type.unknown": "Account type unknown",
 
-  // Market data source (the two pipes: platform, cloud account)
+  // Market data source (the one pipe: the user's own linked MetaTrader account)
   "data_source.title": "Market data",
-  "data_source.active": "in use",
-  "data_source.auto": "Automatic",
-  "data_source.auto_hint":
-    "Your broker account when it is linked, then platform data.",
   "data_source.metaapi": "Cloud MetaTrader account",
   "data_source.metaapi_hint": "Your broker's own candles and prices, through MetaApi.",
-  "data_source.oanda": "OANDA feed",
-  "data_source.oanda_hint": "The platform's own feed — always available, free.",
-  "data_source.needs_link": "Link a MetaTrader account via “Through the platform” to use it.",
-  "data_source.short.auto": "Automatic",
+  "data_source.needs_link": "Link a MetaTrader account to see live market data.",
+  "data_source.link_cta": "Link account",
   "data_source.short.metaapi": "Cloud account",
-  "data_source.short.oanda": "OANDA",
 
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",
@@ -120,7 +113,6 @@ export const en = {
   // Pair catalogue
   "symbol.picker.title": "Choose a pair",
   "symbol.picker.search": "Search a pair or a currency",
-  "symbol.picker.source_platform": "Platform market data",
   "symbol.picker.source_cloud": "Your cloud MetaTrader account",
   "symbol.picker.none": "No pair matches this search.",
   "symbol.picker.favourites": "Favourites",
@@ -131,7 +123,6 @@ export const en = {
   "symbol.card.closed_note": "This pair's market is closed — it cannot be analysed now.",
   "symbol.card.favourite_add": "Pin to favourites",
   "symbol.card.favourite_remove": "Unpin from favourites",
-  "symbol.card.origin_broker": "Broker catalogue",
   "skills.title": "My skills",
   "skills.description": "Upload your own SKILL.md files to tailor analysis and recommendations to your strategy. Skills are advisory only — they grant no permissions and never override risk or execution controls.",
   "skills.empty": "No custom skills yet — add your first one below.",

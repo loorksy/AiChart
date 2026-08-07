@@ -728,7 +728,7 @@ async function runUnifiedChartAgentInner(
   };
 
   // Market Data Agent is CRITICAL: failure → stop, return action_required.
-  // It performs network I/O (warehouse + OANDA), so it uses withDeadline: a
+  // It performs network I/O (warehouse + the linked MetaTrader account), so it uses withDeadline: a
   // cancelled run tears the fetch down immediately instead of holding the burst
   // slot for the remainder of the stage deadline (RELIABILITY_PLAN item 2).
   const market = await withDeadline(
@@ -774,8 +774,8 @@ async function runUnifiedChartAgentInner(
       confidence: 0,
       summary: bilingual(
         locale,
-        "تعذّر تجهيز بيانات السوق من المخزن/OANDA. حاول مرة أخرى بعد قليل.",
-        "Could not prepare market data from the warehouse/OANDA. Try again shortly.",
+        "تعذّر تجهيز بيانات السوق من المخزن/حساب MetaTrader. حاول مرة أخرى بعد قليل.",
+        "Could not prepare market data from the warehouse/your MetaTrader account. Try again shortly.",
       ),
       keyReasons: [
         marketFailure
@@ -802,8 +802,8 @@ async function runUnifiedChartAgentInner(
       confidence: 0,
       summary: bilingual(
         locale,
-        "تعذّر تأكيد أحدث أسعار OANDA الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
-        "Could not confirm the latest OANDA prices right now. Wait a few seconds and ask again — no page refresh needed.",
+        "تعذّر تأكيد أحدث الأسعار من حساب MetaTrader الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
+        "Could not confirm the latest broker prices right now. Wait a few seconds and ask again — no page refresh needed.",
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [
@@ -826,7 +826,7 @@ async function runUnifiedChartAgentInner(
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
               drawingPlanReason: "market sync failed",
-              dataSource: chartContext?.dataSource ?? "oanda",
+              dataSource: chartContext?.dataSource ?? "metaapi",
               marketSync: market.sync,
             }
           : undefined,
@@ -878,7 +878,7 @@ async function runUnifiedChartAgentInner(
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
               drawingPlanReason: "catastrophic open-market candle gaps",
-              dataSource: chartContext?.dataSource ?? "oanda",
+              dataSource: chartContext?.dataSource ?? "metaapi",
               marketSync: market.sync,
             }
           : undefined,
@@ -1383,7 +1383,7 @@ async function runUnifiedChartAgentInner(
               drawingPlan.selectedZones.length,
           ),
           drawingPlanReason: drawingPlan.reason,
-          dataSource: chartContext?.dataSource ?? "oanda",
+          dataSource: chartContext?.dataSource ?? "metaapi",
           chartSnapshotHash,
           marketSync: market.sync,
         }
@@ -1794,7 +1794,7 @@ async function runUnifiedChartAgentInner(
   const presented = attachMandatoryPresentation({
     summary: finalDecision.summary,
     envelope,
-    source: chartContext?.dataSource ?? "oanda",
+    source: chartContext?.dataSource ?? "metaapi",
     levels,
     locale,
   });
@@ -2134,8 +2134,8 @@ async function trackStoredRecommendation(input: {
       confidence: 0,
       summary: bilingual(
         locale,
-        "تعذّر تأكيد أحدث أسعار OANDA الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
-        "Could not confirm the latest OANDA prices right now. Wait a few seconds and ask again — no page refresh needed.",
+        "تعذّر تأكيد أحدث الأسعار من حساب MetaTrader الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
+        "Could not confirm the latest broker prices right now. Wait a few seconds and ask again — no page refresh needed.",
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [],

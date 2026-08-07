@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { maintainCandleSeries } from "@/lib/candles/candleBackfillService";
+import {
+  maintainCandleSeries,
+  pickWarehouseFeederUserId,
+} from "@/lib/candles/candleBackfillService";
 import { buildWarehouseCompletenessReport } from "@/lib/candles/candleCompleteness";
 import {
   listWarehouseSeries,
@@ -73,12 +76,20 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * Incrementally fills years of OANDA history, repairs recent open-market gaps,
- * applies 5-year retention, and emits a completeness report (first/last/gaps).
+ * Incrementally fills years of broker history (pulled through a linked
+ * MetaTrader "feeder" account), repairs recent open-market gaps, applies
+ * 5-year retention, and emits a completeness report (first/last/gaps).
  */
 export async function POST(req: NextRequest) {
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // History pulls ride a linked MetaTrader account — there is no platform
+  // feed. Without a feeder account there is nothing to fetch with: skip.
+  if ((await pickWarehouseFeederUserId()) == null) {
+    log.info("no linked MetaTrader feeder account — warehouse run skipped");
+    return NextResponse.json({ ok: true, skipped: "no_feeder_account" });
   }
 
   const run = await withLock("cron:candle-warehouse", LEADER_LOCK_MS, async () => {

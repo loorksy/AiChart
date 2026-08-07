@@ -14,7 +14,6 @@ process.env.CASE_MEMORY_V1 = "0";
 process.env.AGENT_RUN_TRACE_V1 = "0";
 process.env.AUTO_EXECUTION_STAGE = "off";
 delete process.env.DATABASE_URL;
-delete process.env.OANDA_API_TOKEN;
 
 let db: typeof import("@/lib/db");
 let candleRepository: typeof import("@/lib/candles/candleRepository");
@@ -188,7 +187,7 @@ describe("reference Platform/MCP surface parity", () => {
           chartContext: {
             symbol: "EURUSD",
             interval: "15m",
-            dataSource: "oanda",
+            dataSource: "metaapi",
           },
           requestContext: {
             requestId: `parity-${surface}`,

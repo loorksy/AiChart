@@ -23,7 +23,6 @@ import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
 import {
   deriveRecommendationReason,
@@ -44,7 +43,7 @@ const schema = z.object({
     "إطار زمني غير مدعوم",
   ),
   market: z.string().optional(),
-  data_source: z.enum(["oanda", "metaapi"]).optional(),
+  data_source: z.enum(["metaapi"]).optional(),
   layout_id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
 });
 
@@ -76,16 +75,7 @@ export async function POST(req: NextRequest) {
     }
     release = slot.release;
 
-    const settings = await getSettings(userId);
     const layout = body.layout_id ? await getChartLayoutById(body.layout_id, userId) : null;
-    let savedSource: "oanda" | "metaapi" | undefined;
-    try {
-      savedSource = layout?.state_json
-        ? (JSON.parse(layout.state_json) as { dataSource?: "oanda" | "metaapi" }).dataSource
-        : undefined;
-    } catch {
-      savedSource = undefined;
-    }
 
     let symbol = (body.symbol ?? layout?.symbol ?? "").toUpperCase().trim();
     if (!symbol) return NextResponse.json({ error: "symbol is required." }, { status: 400 });
@@ -94,12 +84,10 @@ export async function POST(req: NextRequest) {
     if (marketError) return NextResponse.json({ error: marketError }, { status: 400 });
     resolveActiveMarket(body.market ?? DEFAULT_MARKET);
 
-    const dataSource = isOandaDataOnly() || body.data_source === "oanda"
-      ? "oanda"
-      : (body.data_source ?? savedSource ?? "oanda");
-    if (dataSource === "oanda") {
-      symbol = forexCanonicalKey(symbol);
-    }
+    // The user's own linked MetaTrader account is the only data pipe; the
+    // canonical chart key is resolved to the broker's spelling downstream.
+    const dataSource = "metaapi" as const;
+    symbol = forexCanonicalKey(symbol);
 
     // A closed pair is refused BEFORE the spend gate, not after: there is no
     // analysis to be had from a market that is not printing, and the operator

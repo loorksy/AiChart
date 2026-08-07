@@ -40,7 +40,6 @@ process.env.AGENT_RUN_TRACE_V1 = "0";
 process.env.AUTO_EXECUTION_STAGE = "off";
 process.env.REC_LIFECYCLE_ALERTS_V1 = "1";
 delete process.env.DATABASE_URL;
-delete process.env.OANDA_API_TOKEN;
 delete process.env.TELEGRAM_BOT_TOKEN;
 
 let db: typeof import("@/lib/db");
@@ -233,7 +232,7 @@ describe("reference pipeline: candles → decision → canonical → notify", ()
         timeBasis: "replay" as const,
         purpose: "analysis",
         userMessage: "Analyze EURUSD from the clear_trend reference fixture.",
-        chartContext: { symbol, interval: "15m", dataSource: "oanda" },
+        chartContext: { symbol, interval: "15m", dataSource: "metaapi" },
         requestContext: {
           requestId: "reference-clear-trend",
           userId,

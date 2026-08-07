@@ -52,7 +52,7 @@ describe("fault: market provider rate limit (429)", () => {
       if (calls === 1) return jsonResponse(429, { error: "slow down" }, { "retry-after": "0" });
       return jsonResponse(200, { candles: [] });
     });
-    const res = await resilientFetch("oanda-test", "https://x.test/candles", {}, {
+    const res = await resilientFetch("candles-test", "https://x.test/candles", {}, {
       maxRetries: 2,
       baseBackoffMs: 1,
       maxBackoffMs: 2,

@@ -566,7 +566,7 @@ const SCHEMA = `
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
-  -- Candle Warehouse: server-side OANDA candle store. time = candle open (ms).
+  -- Candle Warehouse: server-side broker candle store (fed by a linked MetaTrader account). time = candle open (ms).
   CREATE TABLE IF NOT EXISTS market_candles (
     id         BIGSERIAL PRIMARY KEY,
     symbol     TEXT NOT NULL,

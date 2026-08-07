@@ -48,7 +48,7 @@ import { enqueue } from "@/lib/queue";
 
 /**
  * Fire-and-forget gap repair with a per-series cooldown so a chatty session
- * cannot stampede OANDA. The queue's idempotency key (bucketed to the same
+ * cannot stampede the broker feed. The queue's idempotency key (bucketed to the same
  * window) dedupes across processes when Redis is available.
  */
 const GAP_REPAIR_COOLDOWN_MS = 10 * 60 * 1000;
@@ -137,7 +137,9 @@ async function refillIfThin(input: {
   return {
     attempted: true,
     inserted: result.inserted,
-    failed: Boolean(result.reason === "oanda_error"),
+    failed: Boolean(
+      result.reason === "provider_error" || result.reason === "no_account",
+    ),
   };
 }
 
@@ -157,7 +159,7 @@ export async function buildAgentMarketContext(input: {
   const interval = normalizeCanonicalInterval(input.interval);
   const higherInterval = getHigherInterval(interval);
   const analysisKind = input.analysisKind ?? "intraday";
-  const source = "warehouse+oanda";
+  const source = "warehouse+metaapi";
 
   let fresh = await getFreshAgentCandles({
     userId: input.userId,

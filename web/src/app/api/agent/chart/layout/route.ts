@@ -14,7 +14,6 @@ import { profileForInterval } from "@/lib/analysisProfile";
 import { normalizeInterval } from "@/lib/intervals";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 
 const pointSchema = z.object({
   price: z.number(),
@@ -53,7 +52,7 @@ const postSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
   symbol: z.string().min(3).max(20).optional(),
   interval: z.string().min(2).max(4).optional(),
-  dataSource: z.enum(["oanda", "metaapi"]).optional(),
+  dataSource: z.enum(["metaapi"]).optional(),
   mode: z.enum(["set", "add", "clear"]).default("set"),
   drawings: z.array(drawingSchema).max(24).optional(),
   recommendation: recommendationSchema.nullable().optional(),
@@ -136,7 +135,8 @@ export async function POST(req: NextRequest) {
     const symbol = forexCanonicalKey(rawSymbol);
     const interval = normalizeInterval(body.interval ?? layout.interval);
     const state = parseState(layout.state_json);
-    state.dataSource = "oanda";
+    // The user's own linked MetaTrader account is the only data pipe.
+    state.dataSource = "metaapi";
 
     if (body.mode === "clear") {
       state.drawings = [];
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
           interval,
           market: "forex",
           limit: 300,
-          source: "oanda",
+          source: "metaapi",
         }).catch(() => ({ candles: [] as never[] }));
         const decision = body.recommendation?.action ?? "wait";
         processed = processAgentDrawings(body.drawings as ChartDrawing[], {
@@ -177,8 +177,6 @@ export async function POST(req: NextRequest) {
       }
       if (body.targets !== undefined) state.targets = body.targets;
     }
-    if (body.dataSource === "oanda" || isOandaDataOnly()) state.dataSource = "oanda";
-
     await saveChartLayout(layout.id, userId, {
       symbol,
       interval,

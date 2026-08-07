@@ -1,7 +1,7 @@
 "use client";
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
-import { normalizeSymbolCase, isBrokerSpelledSymbol } from "@/lib/markets/symbolCase";
+import { normalizeSymbolCase } from "@/lib/markets/symbolCase";
 import {
   forwardRef,
   useCallback,
@@ -201,7 +201,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     overlays,
     drawings,
     headerActions,
-    dataSource = "oanda",
+    dataSource = "metaapi",
     locale = "ar",
     direction = "rtl",
     theme = "dark",
@@ -271,7 +271,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       if (!w || !readyRef.current) return normalizeSymbolCase(symbol);
       try {
         const s = w.activeChart().symbol();
-        // Strip any exchange namespace (e.g. OANDA:) — analysis wants the bare pair.
+        // Strip any exchange namespace (e.g. MT5 CLOUD:) — analysis wants the bare pair.
         const ticker = s.includes(":") ? s.split(":").pop()! : s;
         return normalizeSymbolCase(ticker);
       } catch {
@@ -491,12 +491,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             clearLatestCandle();
             const s = chart.symbol();
             const ticker = (s.includes(":") ? s.split(":").pop()! : s);
-            // Broker-spelled (lowercase) symbols come from the linked cloud
-            // account; canonical uppercase keys come from the platform feed.
-            onSymbolChangeRef.current?.(
-              ticker,
-              isBrokerSpelledSymbol(ticker) ? "metaapi" : "oanda",
-            );
+            // Every symbol is served by the user's own linked account.
+            onSymbolChangeRef.current?.(ticker, "metaapi");
           });
           chart.onIntervalChanged().subscribe(null, (res: ResolutionString) => {
             if (pushSyncRef.current) return;
@@ -540,9 +536,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       const currentBare = normalizeSymbolCase(
         current.includes(":") ? current.split(":").pop()! : current,
       );
-      const currentIsCloud = isBrokerSpelledSymbol(currentBare);
-      const wantCloud = dataSource === "metaapi";
-      if (currentBare !== normalizeSymbolCase(symbol) || currentIsCloud !== wantCloud) {
+      if (currentBare !== normalizeSymbolCase(symbol)) {
         clearLatestCandle();
         pushSyncRef.current = true;
         chart.setSymbol(normalizeSymbolCase(symbol), () => {

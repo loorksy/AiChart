@@ -84,7 +84,7 @@ const DEFAULT_SYMBOL = "XAUUSD";
 /** Persisted layout state (drawings + recommendation) for refresh survival. */
 export interface ChartLayoutState extends ChartHydrateSnapshot {
   targets?: number[];
-  /** Candle source for the active symbol: OANDA or the user's linked broker. */
+  /** Candle source for the active symbol: the user's linked broker account. */
   dataSource?: MarketDataSource;
 }
 
@@ -200,10 +200,9 @@ function SmartChartWorkspaceInner({
      * that still folds case — sits in localStorage forever otherwise: this is
      * the one read every returning browser hits before any picker interaction
      * corrects it, and the broker quote for the wrong-case spelling simply
-     * fails silently (cloudQuote's catch falls back to the platform feed with
-     * no error surfaced). That is what an uppercased "XAUUSDM" leftover from
-     * an earlier session looked like: OANDA candles under a broker-labelled
-     * chart, and the spread badge blank because MetaApi never recognised it.
+     * fails silently (cloudQuote's catch surfaced no error). That is what an
+     * uppercased "XAUUSDM" leftover from an earlier session looked like: a
+     * blank spread badge because MetaApi never recognised the spelling.
      */
     return normalizeSymbolCase(localStorage.getItem(LS_SYMBOL) ?? DEFAULT_SYMBOL);
   });
@@ -214,38 +213,8 @@ function SmartChartWorkspaceInner({
     return localStorage.getItem(LS_INTERVAL) ?? "15m";
   });
 
-  const [dataSource, setDataSource] = useState<MarketDataSource>("oanda");
-
-  /*
-   * "oanda" above is a paint-time placeholder, not the account's actual pipe.
-   * Nothing else in this component ever asked the server which source a
-   * linked account resolves to on first load — dataSource only ever changed
-   * once the trader manually picked a symbol through handleSymbolChange. A
-   * cloud-linked account therefore rendered as OANDA (wrong legend badge,
-   * N10's MetaApi streaming never subscribed) until an unrelated user action
-   * happened to correct it. This asks once, the same GET DataSourceChoice
-   * already uses, and only overwrites the placeholder — never a source the
-   * trader has since chosen explicitly.
-   */
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const res = await fetch("/api/market/data-source", { cache: "no-store" });
-        if (!res.ok || !alive) return;
-        const data = (await res.json()) as { active?: MarketDataSource };
-        if (alive && (data.active === "oanda" || data.active === "metaapi")) {
-          setDataSource(data.active);
-        }
-      } catch {
-        /* stays on the oanda placeholder */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The user's own linked MetaTrader account is the only market-data pipe.
+  const [dataSource, setDataSource] = useState<MarketDataSource>("metaapi");
 
   const [tradesOpen, setTradesOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
@@ -443,9 +412,6 @@ function SmartChartWorkspaceInner({
         if (savePendingRef.current) return;
         if (d.state) {
           hydrateFromSnapshot(d.state);
-          if (d.state.dataSource === "oanda") {
-            setDataSource("oanda");
-          }
         }
         if (d.symbol && d.symbol !== symbol) setSymbol(normalizeSymbolCase(d.symbol));
         if (d.interval && d.interval !== interval) {
@@ -467,7 +433,7 @@ function SmartChartWorkspaceInner({
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
-  const handleSymbolChange = useCallback((s: string, source: MarketDataSource = "oanda") => {
+  const handleSymbolChange = useCallback((s: string, source: MarketDataSource = "metaapi") => {
     setSymbol(normalizeSymbolCase(s));
     setDataSource(source);
   }, []);

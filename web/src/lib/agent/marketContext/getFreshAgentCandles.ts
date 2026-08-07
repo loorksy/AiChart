@@ -21,10 +21,9 @@ export async function getFreshAgentCandles(input: {
   const symbol = forexCanonicalKey(input.symbol);
   const interval = normalizeCanonicalInterval(input.interval);
   const limit = Math.min(Math.max(input.limit ?? 1500, 10), 5000);
-  // Analysis is intentionally source-locked to OANDA. The chart may display
-  // broker candles, but MT5 data is execution evidence (spread/fills), not
-  // an alternate analytical history.
-  const source = "oanda" as const;
+  // The user's own linked MetaTrader account is the only pipe — analysis
+  // reads the same tape the trader's orders would fill against.
+  const source = "metaapi" as const;
 
   let liveCandles: AgentCandle[] = [];
   let liveError: string | null = null;

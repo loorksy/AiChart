@@ -54,11 +54,11 @@ export const LIVE_ENABLED_FLAG = "live_trading_enabled";
  * Is this execution going to a real-money account?
  *
  * IMPORTANT — this deliberately takes the BROKER'S REPORTED account type, not
- * an environment variable. An earlier version of this file read `OANDA_ENV`,
- * which was simply the wrong signal: on an MT5 deployment OANDA is only the
- * chart DATA source, so `OANDA_ENV=practice` said nothing about where orders
- * actually go. The protection silently never engaged on exactly the setup it
- * was meant to guard. Callers now pass the value resolved from the live broker
+ * an environment variable. An earlier version of this file read a data-feed
+ * environment variable, which was simply the wrong signal: a chart DATA
+ * source setting says nothing about where orders actually go. The protection
+ * silently never engaged on exactly the setup it was meant to guard. Callers
+ * now pass the value resolved from the live broker
  * connection (`getResolvedExecutionEnv`).
  *
  * `null` means the broker has not reported an account type. That is treated as

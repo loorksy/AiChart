@@ -1,6 +1,6 @@
 /**
  * General (non-trading) question answerer. Uses the shared LLM layer with the
- * Smart Chart Agent persona but NO market/OANDA/MT5 tools — a general question
+ * Smart Chart Agent persona but NO market/broker/MT5 tools — a general question
  * must never trigger trading activity or candle fetches.
  */
 import { callLLM, callLLMStream, isLLMConfigured } from "@/lib/llm";

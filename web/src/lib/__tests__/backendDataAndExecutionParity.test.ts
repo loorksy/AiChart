@@ -1,12 +1,12 @@
 /**
- * The two ways an account can be connected — OANDA platform data, and the
- * server-side backends (MetaApi / self-hosted MT5) — against a real
- * database.
+ * The user's own MetaTrader link — the only market-data pipe — against a
+ * real database.
  *
  * Two invariants are pinned here:
  *
- *  1. Broker market data is served from the cloud account ONLY when one is
- *     actually linked. An unlinked account reads platform data instead.
+ *  1. Market data is served ONLY when an account is actually linked. An
+ *     unlinked user is reported as exactly that (metaapi_not_connected) —
+ *     there is no substitute feed to fall back to.
  *  2. The broker's own account type — demo or real — is read from the
  *     account link itself. A real-money MetaApi account that resolves to
  *     "unknown" is a live-execution protection that silently does not
@@ -50,56 +50,25 @@ before(async () => {
 });
 
 describe("market data source", () => {
-  it("keeps platform data as the default while the deployment says OANDA", async () => {
-    delete process.env.FOREX_DATA_SOURCE;
+  it("reports an unlinked user as not connected — never a substitute feed", async () => {
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
     const decision = await resolveMarketDataSource(unlinkedUser, null);
-    assert.equal(decision.source, "oanda");
-    assert.equal(decision.reason, "oanda_data_only");
-  });
-
-  it("falls back for the honest reason when the cloud pipe is not connected", async () => {
-    delete process.env.FOREX_DATA_SOURCE;
-    const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
-    const decision = await resolveMarketDataSource(unlinkedUser, "metaapi");
-    assert.equal(decision.source, "oanda");
+    assert.equal(decision.source, "metaapi");
     assert.equal(decision.reason, "metaapi_not_connected");
     assert.equal(decision.available.metaapi, false);
   });
 
-  it("never claims a cloud pipe that is not there", async () => {
+  it("guests are no_user, with nothing available", async () => {
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
-
-    // A request that did not ask for broker data is platform data, full stop.
-    assert.equal((await resolveMarketDataSource(unlinkedUser, null)).source, "oanda");
-    assert.equal((await resolveMarketDataSource(unlinkedUser, "oanda")).source, "oanda");
-
-    // metaapi asked for but nothing linked yet: platform data, and it says why.
-    const unlinked = await resolveMarketDataSource(unlinkedUser, "metaapi");
-    assert.equal(unlinked.source, "oanda");
-    assert.equal(unlinked.reason, "metaapi_not_connected");
-    assert.equal(unlinked.available.metaapi, false);
-
-    // Guests get platform data rather than a 401 they cannot act on.
-    assert.equal((await resolveMarketDataSource(null, "metaapi")).source, "oanda");
+    const guest = await resolveMarketDataSource(null, null);
+    assert.equal(guest.source, "metaapi");
+    assert.equal(guest.reason, "no_user");
+    assert.equal(guest.available.metaapi, false);
   });
 
-  it("defaults to the cloud account once it is linked, and honours a pin", async () => {
-    // The deployment default must allow the cloud pipe for this scenario —
-    // "oanda" (the platform's own default) would short-circuit every case
-    // below to platform data regardless of what is linked or pinned.
-    process.env.FOREX_DATA_SOURCE = "metaapi";
+  it("serves the account's own pipe once it is linked", async () => {
     const store = await import("@/lib/store");
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
-
-    // Nothing linked yet: platform data even with no pin.
-    await store.updateSettings(unlinkedUser, { market_data_source: "auto" });
-    const noAccount = await resolveMarketDataSource(unlinkedUser);
-    assert.equal(noAccount.source, "oanda");
-    assert.equal(noAccount.reason, "auto_oanda");
-
-    // A linked cloud account wins over the platform feed, per the product
-    // rule: linking a broker is a statement about which market you want to see.
     await store.saveMtAccount(cloudUser, {
       platform: "mt5",
       server: "Broker-Demo",
@@ -109,24 +78,10 @@ describe("market data source", () => {
       state: "DEPLOYED",
       connectionStatus: "CONNECTED",
     });
-    await store.updateSettings(cloudUser, { market_data_source: "auto" });
     const cloudAuto = await resolveMarketDataSource(cloudUser);
     assert.equal(cloudAuto.source, "metaapi");
     assert.equal(cloudAuto.reason, "auto_metaapi");
     assert.equal(cloudAuto.available.metaapi, true);
-
-    // A pin is obeyed — the free platform feed stays one tap away.
-    await store.updateSettings(cloudUser, { market_data_source: "oanda" });
-    const pinned = await resolveMarketDataSource(cloudUser);
-    assert.equal(pinned.source, "oanda");
-    assert.equal(pinned.preference, "oanda");
-
-    // A pin on a pipe that is not connected never strands the user.
-    await store.updateSettings(unlinkedUser, { market_data_source: "metaapi" });
-    const impossible = await resolveMarketDataSource(unlinkedUser);
-    assert.equal(impossible.source, "oanda");
-    assert.equal(impossible.reason, "metaapi_not_connected");
-    await store.updateSettings(unlinkedUser, { market_data_source: "auto" });
   });
 });
 

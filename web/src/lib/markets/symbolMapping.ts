@@ -3,7 +3,6 @@
  * called" per subsystem:
  *   canonical — platform-wide compact key (EURUSD, XAUUSD): warehouse, cache,
  *               recommendations. Matches forexCanonicalKey used everywhere.
- *   oanda     — OANDA v20 instrument (EUR_USD, XAU_USD): candle/pricing calls.
  *   display   — human form (EUR/USD).
  *   mt5       — broker symbol for MT5 execution. Static best-effort here
  *               (env override per symbol); a linked broker's own suffixed
@@ -14,16 +13,8 @@ import { forexCanonicalKey } from "./forexCanonical";
 
 export interface SymbolMapping {
   canonical: string;
-  oanda: string;
   display: string;
   mt5: string;
-}
-
-/** EURUSD → EUR_USD. Non 6-letter symbols pass through unchanged. */
-function toUnderscorePair(compact: string): string {
-  return /^[A-Z]{6}$/.test(compact)
-    ? `${compact.slice(0, 3)}_${compact.slice(3)}`
-    : compact;
 }
 
 /** EURUSD → EUR/USD. Non 6-letter symbols pass through unchanged. */
@@ -42,7 +33,6 @@ export function normalizeSymbol(raw: string): SymbolMapping {
   const envOverride = process.env[`MT5_${canonical}_SYMBOL`];
   return {
     canonical,
-    oanda: toUnderscorePair(canonical),
     display: toDisplayPair(canonical),
     mt5: envOverride || canonical,
   };

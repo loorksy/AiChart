@@ -95,19 +95,13 @@ export const ar: Record<TranslationKey, string> = {
   "account.type.live": "حساب حقيقي",
   "account.type.unknown": "نوع الحساب غير معروف",
 
-  // مصدر بيانات السوق (قناتان: المنصة، حسابك السحابي)
+  // مصدر بيانات السوق (قناة واحدة: حساب MetaTrader المربوط للمستخدم)
   "data_source.title": "مصدر بيانات السوق",
-  "data_source.active": "المستخدم الآن",
-  "data_source.auto": "تلقائي",
-  "data_source.auto_hint": "حساب الوسيط عند ربطه، ثم بيانات المنصة.",
   "data_source.metaapi": "حساب MetaTrader السحابي",
   "data_source.metaapi_hint": "شموع وأسعار وسيطك نفسه عبر MetaApi.",
-  "data_source.oanda": "تغذية OANDA",
-  "data_source.oanda_hint": "تغذية المنصة الخاصة — متاحة دائماً ومجاناً.",
-  "data_source.needs_link": "اربط حساب MetaTrader بطريقة «عبر المنصّة» لاستخدامه.",
-  "data_source.short.auto": "تلقائي",
+  "data_source.needs_link": "اربط حساب MetaTrader لعرض بيانات السوق الحية.",
+  "data_source.link_cta": "اربط الحساب",
   "data_source.short.metaapi": "الحساب السحابي",
-  "data_source.short.oanda": "OANDA",
 
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
   "composer.more": "خيارات إضافية",
@@ -118,7 +112,6 @@ export const ar: Record<TranslationKey, string> = {
   // كتالوج الأزواج
   "symbol.picker.title": "اختر الزوج",
   "symbol.picker.search": "ابحث عن زوج أو عملة",
-  "symbol.picker.source_platform": "بيانات السوق من المنصة",
   "symbol.picker.source_cloud": "حساب MetaTrader السحابي لديك",
   "symbol.picker.none": "لا يوجد زوج يطابق هذا البحث.",
   "symbol.picker.favourites": "المفضلة",
@@ -129,7 +122,6 @@ export const ar: Record<TranslationKey, string> = {
   "symbol.card.closed_note": "سوق هذا الزوج مغلق — لا يمكن تحليله الآن.",
   "symbol.card.favourite_add": "تثبيت في المفضلة",
   "symbol.card.favourite_remove": "إزالة من المفضلة",
-  "symbol.card.origin_broker": "كتالوج الوسيط",
   "skills.title": "مهاراتي",
   "skills.description": "أضف ملفات SKILL.md خاصة بك لتخصيص أسلوب التحليل والتوصيات حسب استراتيجيتك. المهارات إرشادية فقط — لا تمنح صلاحيات ولا تتجاوز ضوابط المخاطر والتنفيذ.",
   "skills.empty": "لا توجد مهارات مخصّصة بعد — أضف أول مهارة أدناه.",

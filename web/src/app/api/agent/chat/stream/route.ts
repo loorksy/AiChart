@@ -256,7 +256,7 @@ const schema = z.object({
       userDrawings: z.array(serializedUserDrawingSchema).max(50).optional(),
       selectedDrawingId: z.string().max(80).optional(),
       recommendation: chartRecommendationSchema.optional(),
-      dataSource: z.enum(["oanda", "metaapi"]).optional(),
+      dataSource: z.enum(["metaapi"]).optional(),
     })
     .optional(),
   locale: z.enum(["ar", "en"]).optional(),
