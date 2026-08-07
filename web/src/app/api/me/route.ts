@@ -45,6 +45,8 @@ export async function GET() {
       planStatus: entitlement.planStatus,
       trialUsed: entitlement.trialUsed,
       trialRemaining: entitlement.trialRemaining,
+      trialStartedAt: entitlement.trialStartedAt,
+      trialExpiresAt: entitlement.trialExpiresAt,
       trialLimit: entitlement.trialLimit,
       expiresAt: entitlement.expiresAt,
       plan: {

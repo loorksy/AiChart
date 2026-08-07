@@ -91,9 +91,10 @@ describe("applyStripeEvent", () => {
     assert.equal(await webhook.applyStripeEvent(event), "duplicate_skipped");
 
     const balance = await ledger.getBalance(7);
-    assert.equal(balance.monthlyUsd, 90, "PLUS grants $90 once, not twice");
+    assert.equal(balance.monthlyUsd, 120, "the plan grants $120 once, not twice");
     const sub = await db.queryOne("SELECT * FROM subscriptions WHERE user_id = 7");
-    assert.equal(sub.tier, "plus");
+    // Legacy Stripe metadata ("plus") normalizes to the one plan at write time.
+    assert.equal(sub.tier, "full");
     assert.equal(sub.status, "active");
     assert.equal(sub.stripe_customer_id, "cus_1");
   });
@@ -120,7 +121,7 @@ describe("applyStripeEvent", () => {
     };
     assert.equal(await webhook.applyStripeEvent(first), "first_invoice_skipped");
 
-    await ledger.burn(7, 90, "spend-the-month");
+    await ledger.burn(7, 120, "spend-the-month");
     const renewal = {
       id: "evt_inv_cycle",
       type: "invoice.payment_succeeded",
@@ -128,7 +129,7 @@ describe("applyStripeEvent", () => {
     };
     assert.equal(await webhook.applyStripeEvent(renewal), "renewal_granted");
     const balance = await ledger.getBalance(7);
-    assert.equal(balance.monthlyUsd, 90, "fresh month replaces the drained bucket");
+    assert.equal(balance.monthlyUsd, 120, "fresh month replaces the drained bucket");
     assert.equal(balance.topupUsd, 50, "topup untouched");
   });
 

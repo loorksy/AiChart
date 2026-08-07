@@ -281,7 +281,8 @@ export class RecommendationLifecycleError extends Error {
       | "RECOMMENDATION_NOT_FOUND"
       | "RECOMMENDATION_ILLEGAL_TRANSITION"
       | "RECOMMENDATION_INVALID_INPUT"
-      | "RECOMMENDATION_DUPLICATE",
+      | "RECOMMENDATION_DUPLICATE"
+      | "TRIAL_RECOMMENDATION_LIMIT",
     message: string,
   ) {
     super(message);

@@ -1824,6 +1824,8 @@ async function migratePg(client: PoolClient) {
       plan_status TEXT NOT NULL DEFAULT 'trial',
       trial_interactions_used INTEGER NOT NULL DEFAULT 0,
       trial_in_flight INTEGER NOT NULL DEFAULT 0,
+      trial_started_at TIMESTAMPTZ,
+      trial_recommendations_used INTEGER NOT NULL DEFAULT 0,
       subscription_expires_at TIMESTAMPTZ,
       activated_at TIMESTAMPTZ,
       activated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -1843,6 +1845,12 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
   await client.query(
     "CREATE INDEX IF NOT EXISTS idx_trial_ledger_user ON trial_interaction_ledger(user_id, status)",
+  ).catch(() => {});
+  await client.query(
+    "ALTER TABLE user_entitlements ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ",
+  ).catch(() => {});
+  await client.query(
+    "ALTER TABLE user_entitlements ADD COLUMN IF NOT EXISTS trial_recommendations_used INTEGER NOT NULL DEFAULT 0",
   ).catch(() => {});
 
   // Idempotent entitlement backfill (counts only; no private payloads).

@@ -1,4 +1,4 @@
-import { TIERS, type TierId } from "./tiers";
+import { tierDef } from "./tiers";
 
 /**
  * V2-A6 (#95): the ONE revenue/cost/profit reducer for every admin money screen.
@@ -89,7 +89,10 @@ export interface ProfitModelInput {
 
 /** List price of a tier id; unknown / missing subscription = $0, never a guess. */
 export function tierPriceUsd(tier: string | null | undefined): number {
-  return TIERS[(tier ?? "") as TierId]?.priceUsd ?? 0;
+  // Through tierDef, not direct indexing: legacy tier ids (lite/plus/pro/
+  // promax) written before the single-plan collapse must reprice at the one
+  // plan, not silently count $0.
+  return tierDef(tier)?.priceUsd ?? 0;
 }
 
 export function reduceProfit(input: ProfitModelInput): ProfitModelResult {

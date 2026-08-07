@@ -75,7 +75,7 @@ type ProfitSortKey =
 
 const usd = (v: number) => `$${v.toFixed(2)}`;
 
-const TIERS = ["lite", "plus", "pro", "promax"] as const;
+const TIERS = ["full"] as const;
 
 /**
  * V2-A6 (#95, بند 12): the money tab — per-user profitability, manual

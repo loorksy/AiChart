@@ -22,7 +22,7 @@ const FEATURE_KEYS = [
   "prioritySupport",
 ] as const;
 
-/** Compact 4-tier pricing summary — the full comparison lives on /pricing. */
+/** Single-plan pricing summary — one card, every feature, plus the trial note. */
 export function LandingPricing() {
   const { locale, dir } = useLocale();
   const isAr = locale === "ar";
@@ -49,9 +49,9 @@ export function LandingPricing() {
           </p>
         </div>
 
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mx-auto mt-10 grid max-w-md gap-4">
           {tiers.map((tier) => {
-            const highlight = tier.id === "pro";
+            const highlight = true;
             const enabled = FEATURE_KEYS.filter((key) => tier.features[key]);
             return (
               <Surface

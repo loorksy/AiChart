@@ -2041,6 +2041,8 @@ function migrate(db: Database.Database) {
       plan_status TEXT NOT NULL DEFAULT 'trial',
       trial_interactions_used INTEGER NOT NULL DEFAULT 0,
       trial_in_flight INTEGER NOT NULL DEFAULT 0,
+      trial_started_at TEXT,
+      trial_recommendations_used INTEGER NOT NULL DEFAULT 0,
       subscription_expires_at TEXT,
       activated_at TEXT,
       activated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -2058,6 +2060,21 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_trial_ledger_user
       ON trial_interaction_ledger(user_id, status);
   `);
+
+  // Timed-trial columns (additive; existing rows keep a null clock until the
+  // user's first MT link starts it).
+  const entCols = db
+    .prepare("PRAGMA table_info(user_entitlements)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  if (!entCols.includes("trial_started_at")) {
+    db.exec("ALTER TABLE user_entitlements ADD COLUMN trial_started_at TEXT");
+  }
+  if (!entCols.includes("trial_recommendations_used")) {
+    db.exec(
+      "ALTER TABLE user_entitlements ADD COLUMN trial_recommendations_used INTEGER NOT NULL DEFAULT 0",
+    );
+  }
 
   // Partial-stage outcomes on the case memory (plan §12). Additive only: rows
   // indexed before these columns existed keep NULLs — their features are

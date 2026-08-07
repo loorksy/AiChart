@@ -192,6 +192,23 @@ export async function createCanonicalRecommendation(
     );
   }
 
+  // Trial cap (single-plan billing): a trial account may create exactly
+  // three recommendations. Claimed HERE — the one choke point every surface
+  // funnels through — with an atomic guarded increment, so two concurrent
+  // creations cannot mint a fourth. Paid/admin pass untouched; legacy imports
+  // are history, not new claims. Dynamic import mirrors the usageMeter
+  // precedent and keeps this persistence layer cycle-free.
+  if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
+    const { claimTrialRecommendation } = await import("@/lib/subscription/entitlement");
+    const claim = await claimTrialRecommendation(input.userId);
+    if (!claim.ok) {
+      throw new RecommendationLifecycleError(
+        "TRIAL_RECOMMENDATION_LIMIT",
+        "انتهت توصيات التجربة المجانية الثلاث — فعّل الاشتراك لمتابعة استقبال التوصيات.",
+      );
+    }
+  }
+
   // The Complete Plan Contract, enforced at the single creation choke point so
   // no surface can store a plan another surface would refuse. Only a legacy
   // import is exempt: a row written before the contract existed is history to

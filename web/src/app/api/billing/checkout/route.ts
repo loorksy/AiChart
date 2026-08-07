@@ -14,7 +14,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const schema = z.union([
-  z.object({ tier: z.enum(["lite", "plus", "pro", "promax"]) }),
+  // Legacy tier ids stay ACCEPTED (an open pricing tab from before the
+  // collapse must not 400) — they all resolve to the one plan below.
+  z.object({ tier: z.enum(["full", "lite", "plus", "pro", "promax"]) }),
   z.object({ topup_usd: z.number().refine((v) => TOPUP_USD_OPTIONS.includes(v as 20 | 50 | 100), "invalid top-up amount") }),
 ]);
 
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
         ? await createSubscriptionCheckout({
             userId: user.id,
             email: user.email,
-            tier: parsed.data.tier,
+            tier: "full",
             appUrl,
           })
         : await createTopupCheckout({

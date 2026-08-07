@@ -86,9 +86,9 @@ export function PricingCards({
           {error}
         </p>
       )}
-      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mx-auto grid max-w-md gap-6">
         {tiers.map((tier, i) => {
-          const highlight = tier.id === "pro";
+          const highlight = true;
           const headingId = `tier-${tier.id}`;
           return (
             <Surface

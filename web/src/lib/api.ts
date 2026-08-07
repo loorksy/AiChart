@@ -106,7 +106,10 @@ export async function requirePaidAccess(): Promise<PublicUser> {
   const { getEntitlementForUser } = await import("@/lib/subscription/entitlement");
   const { subscriptionRequiredMessage } = await import("@/lib/subscription/trialQuota");
   const ent = await getEntitlementForUser(user);
-  if (ent.isAdmin || ent.hasPaidAccess) return user;
+  // A VALID trial (inside its hour, recommendations remaining) carries every
+  // feature — the trial's caps are enforced where they bind (the clock in the
+  // resolver, the count at recommendation creation), not by feature walls.
+  if (ent.isAdmin || ent.hasPaidAccess || ent.access === "trial") return user;
   throw new ApiError(403, subscriptionRequiredMessage("ar"));
 }
 
