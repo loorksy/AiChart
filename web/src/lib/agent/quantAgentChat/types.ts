@@ -21,8 +21,18 @@ export interface QuantAgentMemoryCandidate {
   content: string;
 }
 
+/**
+ * Two flavors of a persisted proposal now that `generate_strategy` defaults
+ * to the sandboxed-code path (plan §4/§5) while the DSL path stays fully
+ * present as an alternative, still-usable mechanism. Discriminated on
+ * `mode`, which mirrors `strategy.generation_mode` from the server 1:1 —
+ * kept snake_case-free but otherwise undecorated here (not camelCased) for
+ * the same reason `GeneratedQuantStrategyRecord` itself isn't: this shape
+ * composes the server's fields directly rather than re-mapping them.
+ */
 export type QuantAgentStrategyProposal =
-  | { status: "persisted"; strategy: GeneratedQuantStrategyRecord; spec: GeneratedStrategySpec }
+  | { status: "persisted"; mode: "declarative"; strategy: GeneratedQuantStrategyRecord; spec: GeneratedStrategySpec }
+  | { status: "persisted"; mode: "sandboxed_code"; strategy: GeneratedQuantStrategyRecord; code: string }
   | { status: "invalid"; errors: GenerateValidateQuantStrategyError[] };
 
 export interface QuantAgentChatTurnResult {

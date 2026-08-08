@@ -1,12 +1,16 @@
 "use client";
 
 /**
- * Strategy proposal artifact (plan §4) — no Lonora equivalent. Rendered
+ * Strategy proposal artifact (plan §4/§5) — no Lonora equivalent. Rendered
  * inline in the message flow when `generate_strategy` succeeds: a decision-
- * card summary of the DATA specification the LLM drafted and the platform
- * already validated and persisted disabled. "Enable this strategy" is the
- * only path that makes it live — this component never invents or edits a
- * number, it only displays what the server already stored.
+ * card summary of what the LLM drafted and the platform already validated
+ * and persisted disabled. Two render modes, discriminated on
+ * `proposal.mode`: `"sandboxed_code"` (now the chat intent's default) shows
+ * the generated Python via the shared `CodeBlock`; `"declarative"` (the DSL
+ * path, kept as an alternative mechanism) shows the condition-tree text
+ * summary. "Enable this strategy" is the only path that makes it live — this
+ * component never invents or edits a number, it only displays what the
+ * server already stored.
  */
 import { useState } from "react";
 import { ArrowDownRight, ArrowUpRight, CheckCircle2, XCircle } from "lucide-react";
@@ -14,18 +18,12 @@ import { useLocale } from "@/hooks/useLocale";
 import { Surface } from "@/components/foundation";
 import { Button } from "@/components/squareui/button";
 import { cn } from "@/lib/utils";
-import type {
-  GenerateValidateQuantStrategyError,
-  GeneratedQuantStrategyRecord,
-  GeneratedStrategySpec,
-  QuantConditionLeaf,
-  QuantConditionNode,
-} from "@/lib/quantAgent/types";
+import type { QuantConditionLeaf, QuantConditionNode } from "@/lib/quantAgent/types";
+import type { QuantAgentStrategyProposal } from "@/lib/agent/quantAgentChat/types";
+import { CodeBlock } from "./CodeBlock";
 
 export type QuantAgentStrategyProposalCardProps = {
-  proposal:
-    | { status: "persisted"; strategy: GeneratedQuantStrategyRecord; spec: GeneratedStrategySpec }
-    | { status: "invalid"; errors: GenerateValidateQuantStrategyError[] };
+  proposal: QuantAgentStrategyProposal;
 };
 
 function describeLeaf(leaf: QuantConditionLeaf): string {
@@ -91,9 +89,21 @@ export function QuantAgentStrategyProposalCard({ proposal }: QuantAgentStrategyP
     );
   }
 
-  const { spec, strategy } = proposal;
+  const { strategy } = proposal;
   const strategyId = strategy.id ?? strategy.strategy_id;
-  const regimeAffinity = spec.regime_affinity ?? [];
+  const isCodeMode = proposal.mode === "sandboxed_code";
+  const displayName = isCodeMode ? strategy.display_name : proposal.spec.display_name;
+  const description = isCodeMode
+    ? typeof strategy.description === "string"
+      ? strategy.description
+      : undefined
+    : proposal.spec.description;
+  const regimeAffinity: string[] = isCodeMode
+    ? typeof strategy.regime_affinity === "string" && strategy.regime_affinity
+      ? [strategy.regime_affinity]
+      : []
+    : (proposal.spec.regime_affinity ?? []);
+  const direction = isCodeMode ? undefined : proposal.spec.direction;
 
   async function handleEnable() {
     setEnabling(true);
@@ -117,20 +127,27 @@ export function QuantAgentStrategyProposalCard({ proposal }: QuantAgentStrategyP
     <Surface padding="sm" className="mt-2">
       <div dir={dir} className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 text-sm font-bold",
-              spec.direction === "buy" ? "text-buy" : "text-sell",
-            )}
-          >
-            {spec.direction === "buy" ? (
-              <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <ArrowDownRight className="h-4 w-4" aria-hidden="true" />
-            )}
-            {t(`decision.${spec.direction}`)}
-          </span>
-          <span className="text-sm font-semibold text-foreground">{spec.display_name}</span>
+          {direction ? (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-sm font-bold",
+                direction === "buy" ? "text-buy" : "text-sell",
+              )}
+            >
+              {direction === "buy" ? (
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ArrowDownRight className="h-4 w-4" aria-hidden="true" />
+              )}
+              {t(`decision.${direction}`)}
+            </span>
+          ) : null}
+          <span className="text-sm font-semibold text-foreground">{displayName}</span>
+          {isCodeMode ? (
+            <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-foreground">
+              {t("qa.chat.strategy.sandboxed_code_badge")}
+            </span>
+          ) : null}
           {regimeAffinity.map((regime) => (
             <span
               key={regime}
@@ -144,22 +161,28 @@ export function QuantAgentStrategyProposalCard({ proposal }: QuantAgentStrategyP
           </span>
         </div>
 
-        {spec.description ? <p className="text-[12px] text-muted-foreground">{spec.description}</p> : null}
+        {description ? <p className="text-[12px] text-muted-foreground">{description}</p> : null}
 
-        <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 font-mono text-[11px] text-foreground/80">
-          {describeNode(spec.entry_conditions) || t("qa.chat.strategy.no_conditions")}
-        </div>
+        {isCodeMode ? (
+          <CodeBlock language="python" code={proposal.code} />
+        ) : (
+          <>
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 font-mono text-[11px] text-foreground/80">
+              {describeNode(proposal.spec.entry_conditions) || t("qa.chat.strategy.no_conditions")}
+            </div>
 
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] sm:grid-cols-3">
-          <div>
-            <dt className="text-[11px] text-muted-foreground">{t("qa.chat.strategy.stop")}</dt>
-            <dd className="font-mono text-foreground">{spec.stop_loss_atr_multiple}× ATR</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] text-muted-foreground">{t("qa.chat.strategy.targets")}</dt>
-            <dd className="font-mono text-foreground">{spec.take_profit_r_multiples.join(", ")}R</dd>
-          </div>
-        </dl>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] sm:grid-cols-3">
+              <div>
+                <dt className="text-[11px] text-muted-foreground">{t("qa.chat.strategy.stop")}</dt>
+                <dd className="font-mono text-foreground">{proposal.spec.stop_loss_atr_multiple}× ATR</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-muted-foreground">{t("qa.chat.strategy.targets")}</dt>
+                <dd className="font-mono text-foreground">{proposal.spec.take_profit_r_multiples.join(", ")}R</dd>
+              </div>
+            </dl>
+          </>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {enabled ? (

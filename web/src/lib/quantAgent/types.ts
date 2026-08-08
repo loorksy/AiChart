@@ -146,7 +146,31 @@ export interface GenerateValidateQuantStrategyError {
   message: string;
 }
 
-/** Persisted (always `enabled: false` on creation — the DB row shape, loosely typed). */
+/**
+ * Sandboxed-code strategy generation params (plan §4/§5) — the request body
+ * for `POST /internal/quant-agent/strategies/generate-validate-code`. The
+ * LLM only ever drafts the `evaluate(features)` CODE; the quant-agent
+ * service's AST/regex sandbox + isolated-subprocess discovery run is the
+ * only thing that decides whether it gets persisted (always `enabled: false`
+ * on creation, exactly like the DSL path).
+ */
+export interface GenerateQuantStrategyCodeParams {
+  strategyId: string;
+  version: string;
+  displayName: string;
+  description: string;
+  /** Single regime string per the sandboxed-code contract (not an array like the DSL spec's `regime_affinity`). */
+  regimeAffinity: string;
+  code: string;
+}
+
+/**
+ * Persisted (always `enabled: false` on creation — the DB row shape, loosely
+ * typed). Fields mirror the wire response directly (snake_case, no camelCase
+ * mapping) — `generation_mode`/`source_code` follow that same existing
+ * convention rather than introducing a one-off `generationMode`/`sourceCode`
+ * pair here.
+ */
 export interface GeneratedQuantStrategyRecord {
   id?: string;
   strategy_id: string;
@@ -154,6 +178,10 @@ export interface GeneratedQuantStrategyRecord {
   display_name: string;
   enabled: boolean;
   source_generated: boolean;
+  /** "declarative" (DSL path, default) | "sandboxed_code" (LLM-generated Python, plan §3). */
+  generation_mode?: "declarative" | "sandboxed_code";
+  /** Only non-null for `generation_mode: "sandboxed_code"` rows. */
+  source_code?: string | null;
   [key: string]: unknown;
 }
 

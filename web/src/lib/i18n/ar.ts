@@ -874,6 +874,7 @@ export const ar: Record<TranslationKey, string> = {
   "qa.chat.sidebar.empty": "لا توجد محادثات بعد.",
   "qa.chat.sidebar.delete": "حذف المحادثة",
   "qa.chat.strategy.invalid_title": "تعذّر إنشاء الاستراتيجية",
+  "qa.chat.strategy.sandboxed_code_badge": "كود معزول (sandbox)",
   "qa.chat.strategy.disabled_badge": "معطّلة — بانتظار تفعيلك",
   "qa.chat.strategy.no_conditions": "لا توجد شروط دخول محدَّدة.",
   "qa.chat.strategy.stop": "وقف الخسارة",

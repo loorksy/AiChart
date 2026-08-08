@@ -6,6 +6,7 @@ import {
 } from "./serviceErrors";
 import type {
   GenerateQuantRecommendationInput,
+  GenerateQuantStrategyCodeParams,
   GenerateValidateQuantStrategyResult,
   GeneratedQuantStrategyRecord,
   GeneratedStrategySpec,
@@ -265,6 +266,40 @@ export async function generateAndValidateQuantStrategy(
     {
       method: "POST",
       body: JSON.stringify({ spec }),
+    },
+  );
+}
+
+/**
+ * Quant Agent Chat's sandboxed-code `generate_strategy` flow (plan §4/§5 —
+ * the chat intent's now-default mechanism, matching QuantDinger technically).
+ * Sends `evaluate(features)` Python the LLM drafted to the quant-agent
+ * service, which runs the full regex/AST safety check plus an isolated-
+ * subprocess compile/discovery pass before ever persisting it — no `eval`/
+ * `exec` here in `web/`, and the service alone decides whether it gets
+ * stored. On success the row is `enabled=false, generation_mode:
+ * "sandboxed_code"`; on failure nothing is written and `errors` describes
+ * exactly what to fix. Mirrors `generateAndValidateQuantStrategy`'s request/
+ * error-handling shape exactly (same `serviceRequest` call, same
+ * `QuantAgentServiceError` / transient-retry path).
+ */
+export async function generateAndValidateQuantStrategyCode(
+  context: QuantAgentCallerContext,
+  params: GenerateQuantStrategyCodeParams,
+): Promise<GenerateValidateQuantStrategyResult> {
+  return serviceRequest<GenerateValidateQuantStrategyResult>(
+    context,
+    "/internal/quant-agent/strategies/generate-validate-code",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        strategy_id: params.strategyId,
+        version: params.version,
+        display_name: params.displayName,
+        description: params.description,
+        regime_affinity: params.regimeAffinity,
+        code: params.code,
+      }),
     },
   );
 }

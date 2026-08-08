@@ -6,13 +6,19 @@
  * `chatStore` (agentId-scoped), and the read-only Quant Agent Service client.
  *
  * Hard architectural rule (carried through every branch below): this chat LLM
- * never invents a trade number and never writes to any recommendation table.
- * It may only (a) read + explain existing Quant Agent recommendations via the
- * existing read-only client functions, (b) trigger the EXISTING deterministic
- * recommendation-generation endpoint (never called from chat directly in v1 —
- * see `/api/quant-agent/recommendations` for that), or (c) produce a strategy
- * PROPOSAL as validated DATA — never code — via
- * `generateAndValidateQuantStrategy`, which always persists disabled.
+ * never invents a trade number directly usable by real execution and never
+ * writes to any recommendation table. It may only (a) read + explain
+ * existing Quant Agent recommendations via the existing read-only client
+ * functions, (b) trigger the EXISTING deterministic recommendation-
+ * generation endpoint (never called from chat directly in v1 — see
+ * `/api/quant-agent/recommendations` for that), or (c) produce a strategy
+ * PROPOSAL — either as validated declarative DATA via
+ * `generateAndValidateQuantStrategy` (kept as an alternative, safer
+ * mechanism), or, as of plan's sandbox-parity revision, as `evaluate()`
+ * CODE via `generateAndValidateQuantStrategyCode` (now the chat intent's
+ * default — see `generateQuantStrategyCodeFromDescription` below). Either
+ * way validation is server-side and the row always persists `enabled:
+ * false` until a human explicitly enables it.
  */
 import { randomUUID } from "node:crypto";
 import type { AppLocale } from "@/lib/i18n";
@@ -27,10 +33,12 @@ import { quantAgentIdentityCore } from "@/lib/agent/quantAgentIdentity";
 import { createQuantAgentSkillRegistry } from "@/lib/agent/skills/quantAgentRegistry";
 import {
   generateAndValidateQuantStrategy,
+  generateAndValidateQuantStrategyCode,
   getQuantRecommendation as clientGetQuantRecommendation,
   listQuantRecommendations as clientListQuantRecommendations,
 } from "@/lib/quantAgent/client";
 import type {
+  GenerateQuantStrategyCodeParams,
   GenerateValidateQuantStrategyError,
   GenerateValidateQuantStrategyResult,
   GeneratedQuantStrategyRecord,
@@ -76,6 +84,10 @@ export interface QuantAgentChatDeps {
     context: QuantAgentCallerContext,
     spec: GeneratedStrategySpec,
   ) => Promise<GenerateValidateQuantStrategyResult>;
+  generateAndValidateCode: (
+    context: QuantAgentCallerContext,
+    params: GenerateQuantStrategyCodeParams,
+  ) => Promise<GenerateValidateQuantStrategyResult>;
   callLLM: typeof callLLM;
   callLLMStream: typeof callLLMStream;
   appendMessage: typeof chatStoreAppendMessage;
@@ -87,6 +99,7 @@ const defaultDeps: QuantAgentChatDeps = {
   listRecommendations: clientListQuantRecommendations,
   getRecommendation: clientGetQuantRecommendation,
   generateAndValidate: generateAndValidateQuantStrategy,
+  generateAndValidateCode: generateAndValidateQuantStrategyCode,
   callLLM,
   callLLMStream,
   appendMessage: chatStoreAppendMessage,
@@ -121,6 +134,14 @@ function extractJsonObject(raw: string): string {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start >= 0 && end > start) return text.slice(start, end + 1);
+  return text;
+}
+
+/** Analogous to `extractJsonObject` but for a fenced (or raw) Python code block. */
+function extractCodeBlock(raw: string): string {
+  const text = raw.trim();
+  const fenced = text.match(/```(?:python)?\s*([\s\S]*?)```/);
+  if (fenced?.[1]) return fenced[1].trim();
   return text;
 }
 
@@ -284,8 +305,12 @@ async function repairStrategySpec(
 
 export interface QuantAgentStrategyGenerationOutcome {
   status: "persisted" | "invalid";
+  /** "declarative" (DSL path) | "sandboxed_code" (LLM-generated Python, now the chat intent's default — plan §4). */
+  mode: "declarative" | "sandboxed_code";
   strategy?: GeneratedQuantStrategyRecord;
   spec?: GeneratedStrategySpec;
+  /** Only set when `mode === "sandboxed_code"`. */
+  code?: string;
   errors?: GenerateValidateQuantStrategyError[];
   /** Whether the (single) repair attempt ran. */
   repaired: boolean;
@@ -311,6 +336,7 @@ export async function generateQuantStrategyFromDescription(
   } catch (error) {
     return {
       status: "invalid",
+      mode: "declarative",
       errors: [
         {
           path: "$",
@@ -325,7 +351,7 @@ export async function generateQuantStrategyFromDescription(
 
   const firstValidation = await deps.generateAndValidate(context, spec);
   if (firstValidation.status === "persisted") {
-    return { status: "persisted", strategy: firstValidation.strategy, spec, repaired: false };
+    return { status: "persisted", mode: "declarative", strategy: firstValidation.strategy, spec, repaired: false };
   }
 
   // Exactly one repair attempt — no further retries on failure.
@@ -338,6 +364,7 @@ export async function generateQuantStrategyFromDescription(
     });
     return {
       status: "invalid",
+      mode: "declarative",
       errors: firstValidation.errors ?? [{ path: "$", message: "Repair drafting failed." }],
       spec,
       repaired: false,
@@ -348,6 +375,7 @@ export async function generateQuantStrategyFromDescription(
   if (repairedValidation.status === "persisted") {
     return {
       status: "persisted",
+      mode: "declarative",
       strategy: repairedValidation.strategy,
       spec: repairedSpec,
       repaired: true,
@@ -355,8 +383,190 @@ export async function generateQuantStrategyFromDescription(
   }
   return {
     status: "invalid",
+    mode: "declarative",
     errors: repairedValidation.errors ?? [],
     spec: repairedSpec,
+    repaired: true,
+  };
+}
+
+// --- generate_strategy (sandboxed code — plan §4, now the chat intent's default) ---
+
+const STRATEGY_CODE_SCHEMA_PROMPT = `You write the body of ONE Python function that implements a trading strategy: \`def evaluate(features):\`. This code will run inside a sandboxed, isolated subprocess (regex + AST safety checks, then a time-limited execution) — write it exactly to this contract, nothing more.
+
+Signature: \`def evaluate(features):\` — exactly one module-level function named \`evaluate\`, taking one parameter \`features\`.
+
+\`features\` is a plain read-only dict with these keys:
+- \`ema20\`, \`ema50\`, \`ema200\`: list[float | None] — EMA series, aligned to bar index.
+- \`rsi14\`: list[float | None] — RSI(14) series.
+- \`macd_line\`, \`macd_signal\`, \`macd_hist\`: list[float | None] — MACD series.
+- \`atr14\`: list[float | None] — ATR(14) series.
+- \`bb_lower\`, \`bb_middle\`, \`bb_upper\`: list[float | None] — Bollinger Band series.
+- \`adx14\`: list[float | None] — ADX(14) series.
+- \`closes\`: list[float] — closing prices.
+- \`regime\`: one of "trend" | "range" | "high_volatility" | "low_liquidity".
+- \`last\`: int — the index of the latest bar in every series above (read \`features["ema20"][features["last"]]\` for the current value; earlier values may be \`None\` during warmup, always check before using).
+
+Return value: either \`None\` (no signal this bar) or a dict with EXACTLY these keys:
+- \`"direction"\`: "buy" | "sell"
+- \`"stop_loss_atr_multiple"\`: float, between 0.1 and 10
+- \`"take_profit_r_multiples"\`: list of 1 to 5 positive floats, STRICTLY ASCENDING
+- \`"rationale"\`: short string explaining why
+
+Allowed imports — ONLY these, and only these: \`math\`, \`statistics\`, \`datetime\`, \`collections\`, \`functools\`, \`itertools\`, \`decimal\`, \`fractions\`. No other import will be accepted.
+
+Absolutely forbidden — the sandbox rejects all of this before your code ever runs: \`eval\`, \`exec\`, \`open\`, \`getattr\`, \`setattr\`, \`__import__\`, any \`os\`/\`sys\`/\`subprocess\`/\`socket\` access, any network or file access, any dunder/attribute trickery to reach outside the sandbox. Do not attempt any of this — write straightforward numeric logic only.
+
+Respond with ONLY a single Python code block containing the complete \`evaluate\` function definition (imports, if any, above it) — no prose, no explanation, no JSON, no markdown outside the one code fence.`;
+
+/**
+ * Design choice (documented per plan §4): the LLM is asked ONLY for the
+ * `evaluate(features)` code body — strategy_id/version/display_name/
+ * description/regime_affinity are derived here in code from the user's
+ * description text instead of asking the LLM for a second JSON envelope.
+ * This is simpler (one LLM call, one extraction step, mirroring
+ * `extractCodeBlock`/`extractJsonObject` 1:1) and more robust: it avoids the
+ * failure mode where the LLM has to correctly JSON-escape a multi-line
+ * Python string inside a JSON envelope.
+ */
+function deriveStrategyMetadataFromDescription(description: string): Omit<GenerateQuantStrategyCodeParams, "code"> {
+  const trimmed = description.trim();
+  const displayName = (trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed) || "Generated strategy";
+  const slugBase =
+    trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40) || "strategy";
+  const strategyId = `${slugBase}_${Date.now().toString(36)}`.slice(0, 64);
+  const lower = trimmed.toLowerCase();
+  const regimeAffinity = /\brange|ranging|sideways\b/.test(lower)
+    ? "range"
+    : /\bvolatil/.test(lower)
+      ? "high_volatility"
+      : /\billiquid|low.liquidity\b/.test(lower)
+        ? "low_liquidity"
+        : "trend";
+  return {
+    strategyId,
+    version: "1.0.0",
+    displayName,
+    description: trimmed.slice(0, 500) || "LLM-generated sandboxed-code strategy.",
+    regimeAffinity,
+  };
+}
+
+async function draftStrategyCode(deps: QuantAgentChatDeps, description: string): Promise<string> {
+  const res = await deps.callLLM(
+    {
+      system: `${quantAgentIdentityCore()}\n\n${STRATEGY_CODE_SCHEMA_PROMPT}`,
+      messages: [{ role: "user", content: `Write the evaluate(features) function for: ${description}` }],
+      maxTokens: 1200,
+    },
+    { tier: "deep" },
+  );
+  return extractCodeBlock(extractText(res));
+}
+
+/**
+ * Exactly one repair attempt (plan's hard no-loop rule), mirroring
+ * `repairStrategySpec` — the validator's error message plus the original
+ * code are handed back so the model fixes only what's listed.
+ */
+async function repairStrategyCode(
+  deps: QuantAgentChatDeps,
+  description: string,
+  previousCode: string,
+  errors: GenerateValidateQuantStrategyError[],
+): Promise<string> {
+  const res = await deps.callLLM(
+    {
+      system: `${quantAgentIdentityCore()}\n\n${STRATEGY_CODE_SCHEMA_PROMPT}\n\nBe exact and deterministic: fix ONLY the listed problems below, changing nothing else about the code.`,
+      messages: [
+        { role: "user", content: `Original request: ${description}` },
+        { role: "assistant", content: "```python\n" + previousCode + "\n```" },
+        {
+          role: "user",
+          content: `Validation rejected this code. Fix EXACTLY these problems and return only the corrected Python code block:\n${JSON.stringify(errors)}`,
+        },
+      ],
+      maxTokens: 1200,
+    },
+    { tier: "deep" },
+  );
+  return extractCodeBlock(extractText(res));
+}
+
+/**
+ * The sandboxed-code equivalent of `generateQuantStrategyFromDescription`:
+ * draft code → validate (safety + isolated-subprocess discovery, service-
+ * side) → on failure, exactly ONE repair attempt → re-validate → done. Used
+ * by both the `generate_strategy` chat intent branch (now the default —
+ * plan §4) and the direct `/api/quant-agent/chat/generate-strategy` endpoint.
+ */
+export async function generateQuantStrategyCodeFromDescription(
+  userId: number,
+  description: string,
+  deps: QuantAgentChatDeps = defaultDeps,
+  requestId: string = randomUUID(),
+): Promise<QuantAgentStrategyGenerationOutcome> {
+  const context: QuantAgentCallerContext = { userId, requestId };
+  const meta = deriveStrategyMetadataFromDescription(description);
+
+  let code: string;
+  try {
+    code = await draftStrategyCode(deps, description);
+  } catch (error) {
+    return {
+      status: "invalid",
+      mode: "sandboxed_code",
+      errors: [
+        {
+          path: "$",
+          message: `Could not draft strategy code: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      ],
+      repaired: false,
+    };
+  }
+
+  const firstValidation = await deps.generateAndValidateCode(context, { ...meta, code });
+  if (firstValidation.status === "persisted") {
+    return { status: "persisted", mode: "sandboxed_code", strategy: firstValidation.strategy, code, repaired: false };
+  }
+
+  // Exactly one repair attempt — no further retries on failure.
+  let repairedCode: string;
+  try {
+    repairedCode = await repairStrategyCode(deps, description, code, firstValidation.errors ?? []);
+  } catch (error) {
+    log.warn("quant_agent_chat.generate_strategy_code.repair_draft_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      status: "invalid",
+      mode: "sandboxed_code",
+      errors: firstValidation.errors ?? [{ path: "$", message: "Repair drafting failed." }],
+      code,
+      repaired: false,
+    };
+  }
+
+  const repairedValidation = await deps.generateAndValidateCode(context, { ...meta, code: repairedCode });
+  if (repairedValidation.status === "persisted") {
+    return {
+      status: "persisted",
+      mode: "sandboxed_code",
+      strategy: repairedValidation.strategy,
+      code: repairedCode,
+      repaired: true,
+    };
+  }
+  return {
+    status: "invalid",
+    mode: "sandboxed_code",
+    errors: repairedValidation.errors ?? [],
+    code: repairedCode,
     repaired: true,
   };
 }
@@ -447,20 +657,24 @@ export async function runQuantAgentChatTurn(
       input.onDelta,
     );
   } else if (intent === "generate_strategy") {
-    const outcome = await generateQuantStrategyFromDescription(userId, message, deps, requestId);
-    if (outcome.status === "persisted" && outcome.strategy && outcome.spec) {
-      strategyProposal = { status: "persisted", strategy: outcome.strategy, spec: outcome.spec };
+    // The chat intent's default mechanism is now the sandboxed-code path
+    // (plan §4: technical parity with QuantDinger) — the DSL functions above
+    // stay fully present and exported as an alternative, still-safer path,
+    // just no longer wired to this branch.
+    const outcome = await generateQuantStrategyCodeFromDescription(userId, message, deps, requestId);
+    if (outcome.status === "persisted" && outcome.strategy && outcome.code) {
+      strategyProposal = { status: "persisted", mode: "sandboxed_code", strategy: outcome.strategy, code: outcome.code };
       const summarySystem = `${identity}\n\n${untrustedDataBlock(
-        "Persisted (disabled) strategy specification",
-        JSON.stringify(outcome.spec),
-      )}\n\nSummarize this newly proposed strategy in plain language for the user: its direction, regime affinity, entry logic in readable terms, and stop/target R-multiples. State clearly that it was saved DISABLED and requires the user's explicit action to enable it.`;
+        "Persisted (disabled) strategy — generated Python code",
+        outcome.code,
+      )}\n\nSummarize in plain language what this newly proposed strategy does: the market condition it looks for, its stop/target logic if apparent from the code, and its regime affinity. Do not reproduce the raw code in your summary — the user can already see it separately. State clearly that it was saved DISABLED and requires the user's explicit action to enable it.`;
       reply = await finalAnswer(deps, summarySystem, [{ role: "user", content: message }], input.onDelta);
     } else {
       strategyProposal = { status: "invalid", errors: outcome.errors ?? [] };
       const failureSystem = `${identity}\n\n${untrustedDataBlock(
         "Strategy validation errors",
         JSON.stringify(outcome.errors ?? []),
-      )}\n\nExplain clearly and briefly why the proposed strategy could not be created, in plain language (not raw error paths). Do not offer to retry — a single repair attempt already failed.`;
+      )}\n\nExplain clearly and briefly why the proposed strategy could not be created, in plain language (not raw error paths or sandbox internals). Do not offer to retry — a single repair attempt already failed.`;
       reply = await finalAnswer(deps, failureSystem, [{ role: "user", content: message }], input.onDelta);
     }
   } else {

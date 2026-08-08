@@ -876,6 +876,7 @@ export const en = {
   "qa.chat.sidebar.empty": "No chats yet.",
   "qa.chat.sidebar.delete": "Delete chat",
   "qa.chat.strategy.invalid_title": "Could not create the strategy",
+  "qa.chat.strategy.sandboxed_code_badge": "Sandboxed code",
   "qa.chat.strategy.disabled_badge": "Disabled — awaiting your enable",
   "qa.chat.strategy.no_conditions": "No entry conditions specified.",
   "qa.chat.strategy.stop": "Stop loss",

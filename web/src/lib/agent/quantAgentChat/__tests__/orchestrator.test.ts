@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  generateQuantStrategyFromDescription,
+  generateQuantStrategyCodeFromDescription,
   runQuantAgentChatTurn,
   type QuantAgentChatDeps,
 } from "@/lib/agent/quantAgentChat/orchestrator";
@@ -59,6 +59,7 @@ function buildDeps(overrides: Partial<QuantAgentChatDeps> = {}): {
     listRecommendations: async () => [],
     getRecommendation: async () => null,
     generateAndValidate: async () => ({ status: "persisted" }) as GenerateValidateQuantStrategyResult,
+    generateAndValidateCode: async () => ({ status: "persisted" }) as GenerateValidateQuantStrategyResult,
     callLLM: (async () => textResponse("stub reply")) as QuantAgentChatDeps["callLLM"],
     callLLMStream: (async (_params, handlers) => {
       handlers?.onTextDelta?.("stub ");
@@ -133,33 +134,32 @@ test("explain_recommendation branch: fetches recommendations and passes them thr
   assert.equal(result.recommendations[0]!.id, "rec_1");
 });
 
+// Chat's generate_strategy intent now defaults to the sandboxed-code path
+// (plan §4: technical parity with QuantDinger) — `callLLM` is expected to
+// return a fenced Python code block (the `evaluate(features)` body), not a
+// JSON spec, and `generateAndValidateCode` (not `generateAndValidate`) is
+// the validation hook exercised below.
+
+const VALID_EVALUATE_CODE = "```python\ndef evaluate(features):\n    return None\n```";
+
 test("generate_strategy branch: first attempt persists — no repair call made", async () => {
   let validateCalls = 0;
   const { deps } = buildDeps({
-    callLLM: (async () =>
-      textResponse(
-        JSON.stringify({
-          strategy_id: "trend_follow_v1",
-          version: "1.0.0",
-          display_name: "Trend Follow",
-          direction: "buy",
-          regime_affinity: ["trend"],
-          entry_conditions: { all: [{ type: "ema_relation", fast_period: 20, slow_period: 50, relation: "above" }] },
-          stop_loss_atr_multiple: 1.5,
-          take_profit_r_multiples: [1, 2],
-        }),
-      )) as QuantAgentChatDeps["callLLM"],
-    generateAndValidate: async () => {
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async (_ctx, params) => {
       validateCalls += 1;
+      assert.equal(params.code, "def evaluate(features):\n    return None");
       return {
         status: "persisted",
         strategy: {
           id: "strat_1",
-          strategy_id: "trend_follow_v1",
-          version: "1.0.0",
-          display_name: "Trend Follow",
+          strategy_id: params.strategyId,
+          version: params.version,
+          display_name: params.displayName,
           enabled: false,
           source_generated: true,
+          generation_mode: "sandboxed_code",
+          source_code: params.code,
         },
       } as GenerateValidateQuantStrategyResult;
     },
@@ -173,74 +173,72 @@ test("generate_strategy branch: first attempt persists — no repair call made",
   assert.ok(result.strategyProposal);
   assert.equal(result.strategyProposal!.status, "persisted");
   if (result.strategyProposal!.status === "persisted") {
+    assert.equal(result.strategyProposal!.mode, "sandboxed_code");
     assert.equal(result.strategyProposal!.strategy.enabled, false);
+    if (result.strategyProposal!.mode === "sandboxed_code") {
+      assert.match(result.strategyProposal!.code, /def evaluate\(features\)/);
+    }
   }
-});
-
-const VALID_SPEC_JSON = JSON.stringify({
-  strategy_id: "trend_follow_v1",
-  version: "1.0.0",
-  display_name: "Trend Follow",
-  direction: "buy",
-  regime_affinity: ["trend"],
-  entry_conditions: { all: [{ type: "ema_relation", fast_period: 20, slow_period: 50, relation: "above" }] },
-  stop_loss_atr_multiple: 1.5,
-  take_profit_r_multiples: [1, 2],
 });
 
 test("generate_strategy: invalid first attempt repairs exactly once, then succeeds", async () => {
   let validateCalls = 0;
   const { deps } = buildDeps({
-    callLLM: (async () => textResponse(VALID_SPEC_JSON)) as QuantAgentChatDeps["callLLM"],
-    generateAndValidate: async () => {
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async (_ctx, params) => {
       validateCalls += 1;
       if (validateCalls === 1) {
         return {
           status: "invalid",
-          errors: [{ path: "stop_loss_atr_multiple", message: "must be positive" }],
+          errors: [{ path: "code", message: "stop_loss_atr_multiple must be positive" }],
         } as GenerateValidateQuantStrategyResult;
       }
       return {
         status: "persisted",
         strategy: {
-          strategy_id: "trend_follow_v1",
-          version: "1.0.0",
-          display_name: "Trend Follow",
+          strategy_id: params.strategyId,
+          version: params.version,
+          display_name: params.displayName,
           enabled: false,
           source_generated: true,
+          generation_mode: "sandboxed_code",
+          source_code: params.code,
         },
       } as GenerateValidateQuantStrategyResult;
     },
   });
-  const outcome = await generateQuantStrategyFromDescription(1, "build a strategy", deps, "req_1");
+  const outcome = await generateQuantStrategyCodeFromDescription(1, "build a strategy", deps, "req_1");
   assert.equal(validateCalls, 2);
   assert.equal(outcome.status, "persisted");
+  assert.equal(outcome.mode, "sandboxed_code");
   assert.equal(outcome.repaired, true);
 });
 
 test("generate_strategy: repair also fails — exactly one repair, no further loop", async () => {
   let validateCalls = 0;
   const { deps } = buildDeps({
-    callLLM: (async () => textResponse(VALID_SPEC_JSON)) as QuantAgentChatDeps["callLLM"],
-    generateAndValidate: async () => {
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async () => {
       validateCalls += 1;
       return {
         status: "invalid",
-        errors: [{ path: "direction", message: "must be buy or sell" }],
+        errors: [{ path: "code", message: "disallowed import: os" }],
       } as GenerateValidateQuantStrategyResult;
     },
   });
-  const outcome = await generateQuantStrategyFromDescription(1, "build a strategy", deps, "req_1");
+  const outcome = await generateQuantStrategyCodeFromDescription(1, "build a strategy", deps, "req_1");
   assert.equal(validateCalls, 2, "exactly two validate calls: original + one repair, never a loop");
   assert.equal(outcome.status, "invalid");
+  assert.equal(outcome.mode, "sandboxed_code");
   assert.equal(outcome.repaired, true);
 });
 
 test("generate_strategy chat branch surfaces the failure explanation without offering a retry", async () => {
   const { deps, appended } = buildDeps({
-    generateAndValidate: async () => ({
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async () => ({
       status: "invalid",
-      errors: [{ path: "direction", message: "must be buy or sell" }],
+      errors: [{ path: "code", message: "disallowed import: os" }],
     }) as GenerateValidateQuantStrategyResult,
   });
   const result = await runQuantAgentChatTurn(
