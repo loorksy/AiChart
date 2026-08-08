@@ -40,9 +40,17 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from app.sandbox.safe_exec import (
     build_safe_builtins,
+    safe_exec_isolated_batch,
     timeout_context,
     validate_code_safety,
 )
+
+# Backtest-only batch execution bounds (app/engine/backtest/ is the sole
+# caller) -- deliberately separate from EVALUATE_TIMEOUT_SECONDS/
+# DISCOVERY_TIMEOUT_SECONDS above, which govern the live per-call path this
+# batch path never touches. See `run_evaluate_batch_in_sandbox`'s docstring.
+BACKTEST_BATCH_TIMEOUT_SECONDS = 90
+BACKTEST_PER_BAR_TIMEOUT_SECONDS = 1
 
 # Same bounds as app.engine.strategies.generated.schema.GeneratedStrategySpec
 # -- one v1 target mechanism (ATR-multiple stop, R-multiple ladder) shared
@@ -234,6 +242,57 @@ def run_evaluate_in_sandbox(
     if not response.get("success"):
         return False, None, str(response.get("error") or "sandboxed execution failed")
     return True, response.get("result"), None
+
+
+def run_evaluate_batch_in_sandbox(
+    code: str,
+    features_views: list[dict[str, Any]],
+    *,
+    wall_clock_timeout_seconds: int = BACKTEST_BATCH_TIMEOUT_SECONDS,
+    per_bar_timeout_seconds: int = BACKTEST_PER_BAR_TIMEOUT_SECONDS,
+    max_memory_mb: int = SANDBOX_MAX_MEMORY_MB,
+) -> tuple[bool, list[dict[str, Any] | None] | None, str | None]:
+    """Backtest-only sibling of `run_evaluate_in_sandbox`: calls
+    `evaluate()` once per entry in `features_views`, all inside ONE isolated
+    subprocess for the whole batch, instead of one fresh subprocess per bar
+    (see `safe_exec_isolated_batch`'s docstring for why -- subprocess spawn
+    overhead alone makes a per-bar-fresh-process replay of thousands of
+    historical bars impractical for an interactive chat flow).
+
+    `run_evaluate_in_sandbox` (the live path, used by
+    `GeneratedCodeStrategy.evaluate` and `compile_and_discover`) is NOT
+    modified and NOT called by this function -- they are independent
+    siblings sharing only the safety validator and builtins, not each
+    other's execution mechanics.
+
+    Returns `(success, outputs_or_None, error_or_None)`. On success,
+    `outputs` is aligned 1:1 with `features_views` UNLESS the batch was
+    truncated by its wall-clock budget, in which case it is a strict prefix
+    (shorter than the input) -- callers must handle a short list, not assume
+    full-length output. Each entry is `None` ("no signal that bar") or a raw
+    dict that the caller must still validate as `GeneratedCodeOutput`
+    (mirrors `run_evaluate_in_sandbox`, which returns the same raw,
+    unvalidated shape for its own single call)."""
+    result = safe_exec_isolated_batch(
+        code,
+        features_views,
+        wall_clock_timeout=wall_clock_timeout_seconds,
+        per_call_timeout=per_bar_timeout_seconds,
+        max_memory_mb=max_memory_mb,
+    )
+    if not result.get("success"):
+        return False, None, str(result.get("error") or "sandboxed batch execution failed")
+
+    payload = result.get("result") or {}
+    outputs = payload.get("outputs")
+    if not isinstance(outputs, list):
+        return False, None, "sandboxed batch execution returned an unexpected shape"
+
+    for output in outputs:
+        if output is not None and not isinstance(output, dict):
+            return False, None, "evaluate() must return None or a dict"
+
+    return True, outputs, None
 
 
 def compile_and_discover(code: str) -> tuple[bool, str | None]:

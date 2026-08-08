@@ -544,6 +544,180 @@ def safe_exec_isolated(
         parent_conn.close()
 
 
+# --- Batch subprocess isolation (backtest-only) ---
+
+
+def safe_exec_isolated_batch(
+    code: str,
+    per_call_inputs: list[dict[str, Any]],
+    wall_clock_timeout: int = 90,
+    per_call_timeout: int = 1,
+    max_memory_mb: int = 500,
+) -> dict[str, Any]:
+    """Run `evaluate(features)` many times inside ONE isolated subprocess.
+
+    This is the backtest-only sibling of `safe_exec_isolated`, which spawns a
+    fresh subprocess PER CALL -- correct for a single live per-bar decision,
+    but far too slow to replay thousands of historical bars (subprocess
+    spawn overhead alone would dominate). Here, one subprocess is spawned for
+    the whole batch: `exec()` runs once to define `evaluate`, then the child
+    calls it once per entry in `per_call_inputs`, each call individually
+    bounded by `per_call_timeout` (a SIGALRM-based interrupt, same mechanism
+    as `timeout_context`) so one pathological bar cannot silently consume the
+    whole batch budget. The child also checks a wall-clock deadline before
+    each call and stops early (returning whatever it already computed, with
+    `truncated: True`) rather than relying solely on the parent's hard kill.
+    The parent still enforces `wall_clock_timeout` as the ultimate backstop
+    via `proc.join()` + `proc.kill()`, identical in spirit to
+    `safe_exec_isolated`'s own timeout handling.
+
+    Known, deliberate semantic difference from the live per-call path: this
+    reuses ONE exec'd namespace across every call in the batch, whereas live
+    evaluation gives every single call a brand-new subprocess with zero
+    carried state. `evaluate(features)` is already required to be a pure
+    function of the full `features` history it's handed each call (live and
+    batch alike), so this does not change what CORRECT strategy code can
+    observe -- but code that (incorrectly) binds a mutable module-level
+    global would accumulate state across a batch that could never
+    accumulate across independent live calls. This is intentionally left as
+    a documented asymmetry rather than a new AST restriction: the existing
+    safety validation already governs what the code may DO, not how many
+    times a well-behaved `evaluate()` may be called against the same
+    interpreter state.
+
+    Args:
+        code: source defining a module-level `evaluate(features)` function.
+        per_call_inputs: one dict per bar, passed as `features` to `evaluate`.
+        wall_clock_timeout: hard ceiling (seconds) for the ENTIRE batch.
+        per_call_timeout: ceiling (seconds) for a SINGLE `evaluate()` call.
+        max_memory_mb: memory limit for the one child process (Linux only).
+
+    Returns:
+        dict with 'success', 'error', and on success 'result':
+        {'outputs': list[dict | None] (aligned 1:1 with per_call_inputs,
+        shorter than the input if truncated), 'truncated': bool}.
+    """
+    import multiprocessing
+
+    is_safe, err = validate_code_safety(code)
+    if not is_safe:
+        return {'success': False, 'error': f"Unsafe code rejected: {err}", 'result': None}
+
+    def _worker(
+        code: str,
+        per_call_inputs: list[dict[str, Any]],
+        wall_clock_timeout: int,
+        per_call_timeout: int,
+        max_memory_mb: int,
+        result_pipe: Any,
+    ) -> None:
+        try:
+            if sys.platform != 'win32':
+                try:
+                    import resource
+                    mem = max_memory_mb * 1024 * 1024
+                    resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
+                except Exception:  # noqa: S110 - best-effort memory cap, not fatal if unsupported
+                    pass
+
+            exec_env: dict[str, Any] = {'__builtins__': build_safe_builtins()}
+            _sanitize_exec_namespace(exec_env)
+            exec(code, exec_env)  # noqa: S102 - the sandbox itself; validated above
+
+            evaluate_fn = exec_env.get('evaluate')
+            if not callable(evaluate_fn):
+                result_pipe.send({
+                    'success': False,
+                    'error': "Code does not define a callable 'evaluate' function",
+                    'result': None,
+                })
+                return
+
+            deadline = time.monotonic() + max(0.001, float(wall_clock_timeout))
+            outputs: list[Any] = []
+            truncated = False
+            for features_view in per_call_inputs:
+                if time.monotonic() >= deadline:
+                    truncated = True
+                    break
+                try:
+                    with timeout_context(per_call_timeout):
+                        output = evaluate_fn(features_view)
+                except Exception:
+                    # Contract parity with the live path: a single bar's
+                    # failure (including a per-call timeout) never aborts
+                    # the batch -- it's recorded as "no signal" for that
+                    # bar, exactly as GeneratedCodeStrategy.evaluate() never
+                    # raises to its own caller.
+                    output = None
+                outputs.append(output)
+
+            result_pipe.send({
+                'success': True,
+                'error': None,
+                'result': {'outputs': outputs, 'truncated': truncated},
+            })
+        except Exception as e:
+            result_pipe.send({
+                'success': False,
+                'error': f"{type(e).__name__}: {e}",
+                'result': None,
+            })
+        finally:
+            result_pipe.close()
+
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    proc = multiprocessing.Process(
+        target=_worker,
+        args=(
+            code,
+            per_call_inputs,
+            wall_clock_timeout,
+            per_call_timeout,
+            max_memory_mb,
+            child_conn,
+        ),
+        daemon=True,
+    )
+    proc.start()
+    child_conn.close()
+
+    # Grace period beyond the child's own wall-clock self-check, so a clean
+    # early-return (truncated batch) has time to reach the pipe before the
+    # parent resorts to a hard kill.
+    proc.join(timeout=wall_clock_timeout + 10)
+
+    if proc.is_alive():
+        proc.kill()
+        proc.join(timeout=5)
+        return {
+            'success': False,
+            'error': (
+                f"Batch execution timed out after {wall_clock_timeout} seconds; "
+                "subprocess terminated"
+            ),
+            'result': None,
+        }
+
+    if proc.exitcode != 0 and not parent_conn.poll():
+        return {
+            'success': False,
+            'error': f"Subprocess exited abnormally (exit code: {proc.exitcode})",
+            'result': None,
+        }
+
+    try:
+        if parent_conn.poll(timeout=1):
+            received: dict[str, Any] = parent_conn.recv()
+            return received
+        return {'success': False, 'error': "Subprocess returned no result", 'result': None}
+    except Exception as e:
+        return {'success': False, 'error': f"Failed to read subprocess result: {e}", 'result': None}
+    finally:
+        parent_conn.close()
+
+
 # --- Static validation ---
 
 
