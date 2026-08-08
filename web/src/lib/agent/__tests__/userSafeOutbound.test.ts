@@ -50,6 +50,35 @@ describe("userSafeOutbound", () => {
     assert.doesNotMatch(serialized, /Trading DNA|trading_dna/i);
   });
 
+  it("only claims a confidence nudge when one was actually applied", () => {
+    const base = bundle({
+      historicalEvidenceTendency: 0.04,
+      contributions: [
+        {
+          system: "trading_dna",
+          status: "used",
+          reason: "strength_support",
+          reasonDetail: "n=40",
+          evidenceTendency: 0.04,
+        },
+      ],
+      usedSystems: ["trading_dna"],
+    });
+    const claimed = toUserSafeResearchProjection(base, {
+      confidenceNudgeApplied: 0.04,
+    });
+    assert.ok(
+      claimed.notes.some((n) => /nudged confidence slightly higher/i.test(n)),
+    );
+    const clampedAway = toUserSafeResearchProjection(base, {
+      confidenceNudgeApplied: 0,
+    });
+    assert.ok(
+      !clampedAway.notes.some((n) => /nudged confidence/i.test(n)),
+      JSON.stringify(clampedAway.notes),
+    );
+  });
+
   it("detects leakage and provides bilingual fallback", () => {
     const hits = scanForInternalLeakage("Used Trading DNA and Backtest job_abc");
     assert.ok(hits.length >= 2);

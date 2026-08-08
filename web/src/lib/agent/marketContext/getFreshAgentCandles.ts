@@ -1,5 +1,10 @@
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { getCandles, upsertCandles } from "@/lib/candles/candleRepository";
+import {
+  backfillCandles,
+  pickWarehouseFeederUserId,
+} from "@/lib/candles/candleBackfillService";
+import { recordWarmDemand } from "@/lib/candles/warmDemand";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import {
   candleFreshnessToleranceMs,
@@ -22,25 +27,9 @@ export interface FreshAgentCandlesResult {
 /**
  * Candles for the analysis's own timeframe — warehouse first, live second.
  *
- * This used to block on a live MetaApi pull (two attempts, skipCache) BEFORE
- * reading the warehouse. On a warm connection that is a quick tail refresh; on
- * a cold one — every first analysis after a deploy or pm2 restart, because the
- * connection cache is per-process — establishing the RPC session alone takes
- * tens of seconds, and the market-data stage deadline (now 28s; previously
- * 10s, which was below MetaApi's own 12s page timeout) killed the run before
- * the 28ms warehouse read was ever reached. Request 3702237f
- * (2026-08-07 18:05, five minutes after a restart) failed exactly this way.
- *
- * Order now: read the warehouse (fast, local). If its tail is within the
- * interval's freshness tolerance — or the market is closed, when no newer
- * candle can exist — serve it and let the live pull run in the BACKGROUND,
- * which also warms the connection for the next request. Only a stale-or-empty
- * warehouse with an open market still blocks on the live pull, because then
- * the live tape is the only honest source.
- *
- * No fabrication risk: downstream freshness is computed from the candles' own
- * timestamps (buildAgentMarketContext), so if this serves data that is too
- * old the quality gate still says so.
+ * Cold MetaApi connect/deploy waits (up to 120s) must never sit on the request
+ * path inside the market-data stage deadline. Prefer warehouse + one bounded
+ * feeder page; refresh the operator's own tape in the background.
  */
 export async function getFreshAgentCandles(input: {
   userId?: number;
@@ -52,8 +41,6 @@ export async function getFreshAgentCandles(input: {
   const symbol = forexCanonicalKey(input.symbol);
   const interval = normalizeCanonicalInterval(input.interval);
   const limit = Math.min(Math.max(input.limit ?? 1500, 10), 5000);
-  // The user's own linked MetaTrader account is the only pipe — analysis
-  // reads the same tape the trader's orders would fill against.
   const source = "metaapi" as const;
 
   const pullLive = async (): Promise<AgentCandle[]> => {
@@ -73,52 +60,112 @@ export async function getFreshAgentCandles(input: {
     return candles;
   };
 
+  const backgroundLive = () => {
+    void pullLive().catch((error) => {
+      log.debug("background live refresh failed", {
+        symbol,
+        interval,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
+
   if (FEATURES.boundedColdStartV1()) {
-    const warehouse = (await getCandles({ symbol, interval, limit })) as AgentCandle[];
+    const warehouse = (await getCandles({
+      symbol,
+      interval,
+      limit,
+    })) as AgentCandle[];
     const tailTime = warehouse.at(-1)?.time ?? null;
     const tailFresh =
-      tailTime != null && Date.now() - tailTime <= candleFreshnessToleranceMs(interval);
-    if (warehouse.length && (tailFresh || !isForexMarketOpen(symbol))) {
-      // Fresh enough to decide on; refresh the tail off the critical path.
-      // This is also what warms a cold RPC connection without a user waiting
-      // behind it.
-      void pullLive().catch((error) => {
-        log.debug("background live refresh failed", {
+      tailTime != null &&
+      Date.now() - tailTime <= candleFreshnessToleranceMs(interval);
+
+    // Nonempty warehouse: serve it. Fresh or closed-market → background refresh.
+    // Stale + open market → still serve (quality/sync gates report honestly)
+    // and deepen via feeder/background instead of blocking on cold RPC.
+    if (warehouse.length) {
+      void recordWarmDemand({ symbol, interval });
+      backgroundLive();
+      if (!tailFresh && isForexMarketOpen(symbol)) {
+        void backfillCandles({
           symbol,
           interval,
-          error: error instanceof Error ? error.message : String(error),
+          limit,
+          maxPages: 1,
+          feederUserId: input.userId,
+        }).catch(() => {
+          // Best-effort deepen; analysis already has bars to reason on.
         });
+      }
+      return {
+        currentTfCandles: warehouse,
+        liveCandles: [],
+        liveError: null,
+      };
+    }
+
+    // Empty warehouse: one bounded feeder page, then re-read. Avoids dual
+    // live retries that stack past the market-data deadline on cold connect.
+    void recordWarmDemand({ symbol, interval });
+    const feeder =
+      (input.userId && input.userId > 0
+        ? input.userId
+        : await pickWarehouseFeederUserId()) ?? undefined;
+    try {
+      await backfillCandles({
+        symbol,
+        interval,
+        limit,
+        maxPages: 1,
+        feederUserId: feeder,
       });
-      return { currentTfCandles: warehouse, liveCandles: [], liveError: null };
+    } catch (error) {
+      log.debug("feeder backfill failed on empty warehouse", {
+        symbol,
+        interval,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const after = (await getCandles({
+      symbol,
+      interval,
+      limit,
+    })) as AgentCandle[];
+    if (after.length) {
+      backgroundLive();
+      return { currentTfCandles: after, liveCandles: [], liveError: null };
     }
   }
 
+  // Last resort: a single live pull (not two) when warehouse is still empty.
   let liveCandles: AgentCandle[] = [];
   let liveError: string | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      liveCandles = await pullLive();
-      liveError = null;
-      break;
-    } catch (error) {
-      liveError = error instanceof Error ? error.message : String(error);
-      if (attempt === 0) continue;
-    }
+  try {
+    liveCandles = await pullLive();
+  } catch (error) {
+    liveError = error instanceof Error ? error.message : String(error);
   }
 
-  const currentTfCandles = await (async () => {
-    const warehouse = (await getCandles({ symbol, interval, limit })) as AgentCandle[];
-    if (!liveCandles.length || !warehouse.length) return warehouse.length ? warehouse : liveCandles;
-    const liveLast = liveCandles[liveCandles.length - 1]!;
-    const aligned = warehouse.slice();
-    const whLast = aligned[aligned.length - 1]!;
-    if (whLast.time === liveLast.time) {
-      aligned[aligned.length - 1] = liveLast;
-    } else if (whLast.time < liveLast.time) {
-      aligned.push(liveLast);
-    }
-    return aligned;
-  })();
-
-  return { currentTfCandles, liveCandles, liveError };
+  const warehouse = (await getCandles({
+    symbol,
+    interval,
+    limit,
+  })) as AgentCandle[];
+  if (!liveCandles.length || !warehouse.length) {
+    return {
+      currentTfCandles: warehouse.length ? warehouse : liveCandles,
+      liveCandles,
+      liveError,
+    };
+  }
+  const liveLast = liveCandles[liveCandles.length - 1]!;
+  const aligned = warehouse.slice();
+  const whLast = aligned[aligned.length - 1]!;
+  if (whLast.time === liveLast.time) {
+    aligned[aligned.length - 1] = liveLast;
+  } else if (whLast.time < liveLast.time) {
+    aligned.push(liveLast);
+  }
+  return { currentTfCandles: aligned, liveCandles, liveError };
 }

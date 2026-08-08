@@ -97,7 +97,7 @@ export function LandingBenefits() {
                   <p className="text-sm font-medium text-foreground">{c.panelTitle}</p>
                   <p className="mt-2 text-sm text-muted-foreground">{c.panelBody}</p>
                   <Link
-                    href={LANDING_ROUTES.chart}
+                    href={LANDING_ROUTES.console}
                     className="mt-4 inline-flex min-h-11 items-center gap-1 rounded-[var(--radius)] text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
                   >
                     {c.panelCta}

@@ -23,6 +23,10 @@ import {
   type DeepAnalysisRun,
 } from "./store";
 import type { DeepAnalysisAllowReason } from "./triggers";
+import {
+  MAX_BACKTEST_BARS,
+  pipelineDateRange,
+} from "@/lib/strategies/pipeline";
 
 const log = createLogger("deepAnalysis.enqueue");
 
@@ -107,12 +111,16 @@ export async function enqueueDeepAnalysis(
     };
   }
 
+  // Same depth budget as the strategy pipeline — not a shallow 2k-bar sample.
+  const { fromMs, toMs } = pipelineDateRange(timeframe);
   let envelope;
   try {
     envelope = await exportAiChartCandleWarehouse({
       symbol: input.strategyInput.symbol,
       timeframe,
-      limit: 2000,
+      fromMs,
+      toMs,
+      limit: MAX_BACKTEST_BARS,
     });
   } catch (err) {
     log.warn("warehouse export failed", {
@@ -146,6 +154,13 @@ export async function enqueueDeepAnalysis(
           accountCurrency: "USD",
           seed: 42,
           intrabarPolicy: "worst_case",
+          startTime: new Date(fromMs).toISOString(),
+          endTime: new Date(toMs).toISOString(),
+        },
+        limits: {
+          maxRows: MAX_BACKTEST_BARS,
+          maxSymbols: 1,
+          maxDateRangeDays: Math.ceil((toMs - fromMs) / 86_400_000) + 1,
         },
         timeoutSeconds: 300,
       },

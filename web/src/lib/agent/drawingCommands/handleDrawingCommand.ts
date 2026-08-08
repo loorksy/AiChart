@@ -49,6 +49,7 @@ export async function handleDrawingCommand(input: {
       riskWarnings: [],
       activityEvents: [],
       drawings: [],
+      clearAgentDrawings: true,
       analysisId,
     };
   }

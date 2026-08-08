@@ -217,4 +217,42 @@ describe("progress UX", () => {
     assert.doesNotMatch(start.text, /verifying_history|job_created|almost_ready/);
     assert.ok(start.text.includes("أراجع"));
   });
+
+  it("deep analysis enqueue uses pipeline-scale candle depth helpers", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "src/lib/agent/deepAnalysis/enqueue.ts"),
+      "utf8",
+    );
+    assert.match(src, /MAX_BACKTEST_BARS/);
+    assert.match(src, /pipelineDateRange/);
+    assert.doesNotMatch(src, /limit:\s*2000/);
+  });
+
+  it("conflict completion uses confirm/revise/invalidate — never analytical WAIT/suspend", () => {
+    const projection = {
+      version: "1.0.0",
+      historicalAgreement: "conflicts" as const,
+      sampleSizeBand: "moderate" as const,
+      historicalStability: "unstable" as const,
+      evidenceDirection: "weakens" as const,
+      deeperVerification: "completed" as const,
+      notes: [],
+    };
+    const ar = composeDeepAnalysisUpdate({
+      locale: "ar",
+      phase: "completion",
+      projection,
+    });
+    const en = composeDeepAnalysisUpdate({
+      locale: "en",
+      phase: "completion",
+      projection,
+    });
+    assert.doesNotMatch(ar.text, /نُعلّق|نعلق التوصية/);
+    assert.match(ar.text, /تأكيد|تعديل|إبطال/);
+    assert.doesNotMatch(en.text, /suspend the recommendation/i);
+    assert.match(en.text, /confirm|revise|invalidate/i);
+  });
 });

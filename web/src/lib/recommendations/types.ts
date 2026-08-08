@@ -95,6 +95,8 @@ export interface TrackedRecommendation {
   expiredAt?: number;
   priceAtCreation?: number;
   lastCheckedAt?: number;
+  /** Serialized chart drawings captured with the plan (JSON string). */
+  chartDrawingsJson?: string;
 }
 
 /** True when a record is finished and must never be re-evaluated. */

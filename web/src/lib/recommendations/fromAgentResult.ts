@@ -8,7 +8,9 @@
  * recommendation card — callers should render a lighter market-view instead.
  */
 import type { AgentFinalResult } from "@/lib/agent/types";
-import { intervalMs } from "@/lib/agent/trading/tradePlan";
+import { computeRecommendationExpiry } from "@/lib/agent/sessionRecommendation";
+import { resolveValidity } from "@/lib/agent/trading/tradePlan";
+import { spanStyleForInterval } from "@/lib/agent/trading/scalpGeometry";
 import type { TrackedEntryType, TrackedRecommendation } from "./types";
 
 function mapEntryType(entryType?: string): TrackedEntryType {
@@ -83,13 +85,20 @@ export function trackedRecommendationFromResult(
   const snapshot = snapshotContext(result);
   const marketSync = result.debugDecisionFlow?.marketSync;
   const createdAt = Date.now();
-  // Real validity window instead of a born-expired card. Mirrors the server
-  // default (validityCandles ?? 6) and its 96-candle ceiling.
-  const validityCandles = Math.max(
-    1,
-    Math.min(Math.round(rec.validityCandles ?? 6), 96),
-  );
   const interval = active?.interval || snapshot.interval || "";
+  // Same ceiling as storeFinalRecommendation: candle validity capped by
+  // timeframe/style expiry — never a raw candles×interval that outlives the
+  // server plan (or a silent 30m scalp ceiling for every frame).
+  const expiresAt = resolveValidity({
+    validityCandles: rec.validityCandles ?? 6,
+    interval,
+    maxExpiresAt: computeRecommendationExpiry({
+      interval,
+      scalp: spanStyleForInterval(interval) === "scalp",
+      from: createdAt,
+    }),
+    now: createdAt,
+  }).expiresAt;
 
   return {
     id,
@@ -118,7 +127,7 @@ export function trackedRecommendationFromResult(
     invalidationLevel: rec.invalidationLevel ?? rec.stop_loss,
     createdAt,
     createdCandleTime: createdAt,
-    expiresAt: createdAt + validityCandles * intervalMs(interval),
+    expiresAt,
     triggeredAt: triggered ? createdAt : undefined,
     priceAtCreation:
       snapshot.currentPrice ??

@@ -103,7 +103,7 @@ function composeCompletionAr(
     return "انتهت المراجعة التاريخية: الأدلة تدعم الأطروحة الحالية مع حذر مناسب في التنفيذ.";
   }
   if (projection.historicalAgreement === "conflicts") {
-    return "انتهت المراجعة التاريخية: الأدلة تتعارض مع الأطروحة — نُعلّق التوصية حتى يتضح إعداد أوضح.";
+    return "انتهت المراجعة التاريخية: الأدلة تتعارض مع الأطروحة — نراجع التوصية صراحةً (تأكيد / تعديل / إبطال) دون تعليق تحليلي.";
   }
   if (projection.historicalAgreement === "insufficient") {
     return "انتهت المراجعة التاريخية دون عينة كافية — نبقي القرار السابق بحذر.";
@@ -121,7 +121,7 @@ function composeCompletionEn(
     return "Historical review finished: evidence supports the current thesis, with appropriate execution caution.";
   }
   if (projection.historicalAgreement === "conflicts") {
-    return "Historical review finished: evidence conflicts with the thesis — we suspend the recommendation until a clearer setup appears.";
+    return "Historical review finished: evidence conflicts with the thesis — we will confirm, revise, or invalidate the recommendation explicitly, never park it as an analytical wait.";
   }
   if (projection.historicalAgreement === "insufficient") {
     return "Historical review finished without a sufficient sample — we keep the earlier decision with caution.";

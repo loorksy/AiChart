@@ -15,11 +15,12 @@ import { normalizeInterval } from "@/lib/intervals";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import type { MarketType } from "@/lib/markets/types";
+import { FEATURES } from "@/lib/agent/featureFlags";
+import { serveWarehouseOhlc } from "@/lib/candles/warehouseOhlc";
 
 /**
- * Market UI klines — the user's own MetaTrader account is the only feed.
- * No account, no candles: guests and unlinked users get a typed
- * `requires_link` answer (absence with its reason), never a substitute feed.
+ * Market UI klines — warehouse first when enabled, MetaApi as the upstream
+ * writer. Guests and unlinked users get a typed `requires_link` answer.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -78,6 +79,42 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    if (FEATURES.candleWarehouse()) {
+      const warehouse = await serveWarehouseOhlc({
+        symbol: symbolRaw,
+        interval,
+        limit,
+        fresh,
+        beforeMs: Number.isFinite(beforeMs) ? beforeMs : undefined,
+        fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
+        toMs: Number.isFinite(toMs) ? toMs : undefined,
+      });
+      const normalized = normalizeCandlesForChart(warehouse.candles);
+      const candles = sanitizeCandlesForMarket(normalized, market);
+      const res = NextResponse.json({
+        symbol: symbolRaw,
+        interval,
+        market,
+        source: warehouse.source.startsWith("warehouse")
+          ? "warehouse"
+          : "metaapi",
+        candles,
+        pending:
+          candles.length === 0 &&
+          warehouse.backfillStatus !== "completed" &&
+          warehouse.backfillStatus !== "not_needed",
+        fromCache: warehouse.source === "warehouse",
+        warehouseSource: warehouse.source,
+        backfillStatus: warehouse.backfillStatus,
+      });
+      const ttlSec = Math.round(ohlcCacheTtlMs(interval) / 1000);
+      res.headers.set(
+        "Cache-Control",
+        `private, max-age=${Math.min(ttlSec, 30)}, stale-while-revalidate=${ttlSec}`,
+      );
+      return res;
+    }
+
     const broker = await fetchOhlc({
       userId: user.id,
       symbol: symbolRaw,
@@ -96,9 +133,6 @@ export async function GET(req: NextRequest) {
       market,
       source: "metaapi",
       candles,
-      // Empty WITHOUT a warning = genuine market gap (the broker acked
-      // success) — don't flag pending, or the client burns retries every
-      // weekend.
       pending: candles.length === 0 && Boolean(broker.warning),
       fromCache: broker.fromCache,
       ...(broker.warning ? { error: broker.warning } : {}),

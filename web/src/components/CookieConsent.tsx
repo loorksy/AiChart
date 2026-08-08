@@ -36,7 +36,6 @@ export function CookieConsent() {
 
   return (
     <div
-      dir="rtl"
       role="dialog"
       aria-label="موافقة ملفات تعريف الارتباط"
       className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-xl rounded-[var(--radius-lg)] border border-border bg-card/95 p-4 elevation-3 backdrop-blur-md"

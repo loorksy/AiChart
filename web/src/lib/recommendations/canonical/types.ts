@@ -83,6 +83,8 @@ export interface CanonicalRecommendation {
    * writers still treat it as append-at-create, never a mutable channel.
    */
   contextJson?: string;
+  /** Serialized agent chart drawings captured at creation. */
+  chartDrawingsJson?: string;
   planType?: string | null;
   /**
    * The LIVE execution state on the row itself. Revisions keep the state each

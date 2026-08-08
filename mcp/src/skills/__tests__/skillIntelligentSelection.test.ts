@@ -175,7 +175,7 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
     assert.ok(r.selected.some((s) => s.name === "cards"), JSON.stringify(r));
   });
 
-  it("No hardcoded skill-name routing remains in selector source contract", async () => {
+  it("keeps capability scoring; only atlas/strategy score pins are name-keyed (web parity)", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const src = fs.readFileSync(
@@ -183,9 +183,57 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
       "utf8",
     );
     assert.doesNotMatch(src, /metadata\.name === ["']trading-lexicon["']/);
-    assert.doesNotMatch(src, /metadata\.name === ["']trading-strategies["']/);
     assert.doesNotMatch(src, /metadata\.name === ["']cards["']/);
+    // Intentional parity pins with web skillSelector (not general name routing).
+    assert.match(src, /pattern-atlas/);
+    assert.match(src, /trading-strategies/);
     assert.match(src, /skillCapabilityTokens|capability/);
+  });
+
+  it("pins trading-strategies for analysis intents and pattern-atlas for detected patterns", () => {
+    const { skills } = discoverSkills();
+    const analysis = selectMcpSkills(skills, {
+      request: "look at EURUSD",
+      intents: ["analysis"],
+      market: "forex",
+      availableTools: ["render_cards"],
+      maxSkills: 3,
+    });
+    assert.ok(
+      analysis.selected.some((s) => s.name === "trading-strategies"),
+      JSON.stringify(analysis.selected.map((s) => s.name)),
+    );
+    assert.ok(
+      analysis.candidates.some(
+        (c) =>
+          c.name === "trading-strategies" &&
+          c.matchReasons.includes("analysis_strategy_doctrine_pin"),
+      ),
+    );
+
+    const withPattern = selectMcpSkills(skills, {
+      request: "chart structure",
+      intents: ["analysis"],
+      market: "forex",
+      detectedPatterns: ["ascending_triangle"],
+      availableTools: ["render_cards"],
+      maxSkills: 3,
+    });
+    const atlas = withPattern.candidates.find((c) => c.name === "pattern-atlas");
+    assert.ok(atlas, "pattern-atlas should be a candidate");
+    assert.ok(atlas!.matchReasons.includes("detected_pattern_atlas_pin"));
+  });
+
+  it("defaults maxSkills to 3 (parity with resolve_agent_skills handler)", () => {
+    const { skills } = discoverSkills();
+    const r = selectMcpSkills(skills, {
+      request: "Analyze EURUSD structure liquidity and recommendation",
+      intents: ["analysis", "recommendation"],
+      market: "forex",
+      availableTools: ["render_cards"],
+    });
+    assert.ok(r.selected.length <= 3);
+    assert.ok(r.selected.length >= 1);
   });
 
   it("Latency: discovery + selection + lazy load stay bounded; discovery caches path", () => {

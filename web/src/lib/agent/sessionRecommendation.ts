@@ -1,4 +1,5 @@
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import {
   cancelTrackedRecommendation,
@@ -145,6 +146,7 @@ export async function getActiveRecommendation(
         (!symbol || normalizeSymbol(item.symbol) === normalizeSymbol(symbol)),
     );
     if (match) {
+      const drawings = parseChartDrawingsJson(match.chartDrawingsJson);
       rec = {
         id: match.id,
         userId,
@@ -156,7 +158,14 @@ export async function getActiveRecommendation(
         createdCandleTime: match.createdCandleTime,
         expiresAt: match.expiresAt,
         direction: match.direction,
+        planType: match.planType,
+        executionState: match.executionState,
+        statisticalSupport: match.statisticalSupport,
         entry: match.entry,
+        entryZone:
+          match.entryLow != null && match.entryHigh != null
+            ? { low: match.entryLow, high: match.entryHigh }
+            : undefined,
         entryType:
           match.entryType === "market"
             ? "market"
@@ -168,14 +177,21 @@ export async function getActiveRecommendation(
         takeProfit: match.targets[0],
         rr: match.rr,
         status: match.status as RecommendationStatus,
-        triggerCondition: "canonical recommendation entry condition",
+        // Prefer the stored condition; never invent a generic trigger sentence.
+        triggerCondition: match.triggerCondition,
+        activationRule: match.activationRule,
         invalidationLevel: match.invalidationLevel ?? match.stopLoss,
-        invalidationRule: "canonical recommendation invalidation rule",
+        invalidationRule:
+          match.invalidationRule ??
+          "canonical recommendation invalidation rule",
+        alternativeScenario: match.alternativeScenario,
+        validityCandles: match.validityCandles,
         setupType: match.setupType,
         summary: "Canonical recommendation",
         keyReasons: [],
         riskWarnings: [],
         publicReasoningSummary: [],
+        drawings: drawings.length ? drawings : undefined,
         priceAtCreation: match.priceAtCreation,
       };
       await rememberActiveRecommendation(rec);
@@ -183,9 +199,22 @@ export async function getActiveRecommendation(
   }
   if (!rec) return null;
   if (rec.expiresAt && Date.now() > rec.expiresAt && !isTerminal(rec.status)) {
-    const expired = { ...rec, status: "expired" as const };
-    await rememberActiveRecommendation(expired);
-    return expired;
+    // Soft-expire must reach the DB too — otherwise the panel dies in memory
+    // while the tracker still shows an active plan.
+    await rememberActiveRecommendation(rec);
+    try {
+      await updateActiveRecommendationStatus(
+        rec.id,
+        "expired",
+        "validity window elapsed",
+      );
+    } catch {
+      await rememberActiveRecommendation({ ...rec, status: "expired" });
+    }
+    return (store.get(rec.id) as ActiveRecommendation | undefined) ?? {
+      ...rec,
+      status: "expired",
+    };
   }
   return rec;
 }
