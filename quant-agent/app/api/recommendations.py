@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from app.engine.combine import combine_signals
 from app.engine.features import compute_features
 from app.engine.planner import build_no_signal_response, build_recommendation
-from app.engine.strategies.registry import registered_strategies
+from app.engine.strategies.registry import registered_strategies_with_generated
 from app.errors import ServiceError, require
 from app.security import require_internal_auth
 from app.storage.models import (
@@ -50,7 +50,8 @@ async def create_recommendation(
     )
 
     features = compute_features(body.symbol, body.market, body.interval, body.bars)
-    signals = [strategy.evaluate(features) for strategy in registered_strategies()]
+    strategies = await registered_strategies_with_generated(store)
+    signals = [strategy.evaluate(features) for strategy in strategies]
     combine_result = combine_signals(signals, features.regime)
 
     recommendation = build_recommendation(

@@ -117,6 +117,8 @@ class StrategyDef(BaseModel):
     description: str
     enabled: bool = True
     regime_affinity: str | None = None
+    source_generated: bool = False
+    params_json: str | None = None
     created_at: str
     updated_at: str
 
@@ -149,3 +151,27 @@ class HealthResponse(BaseModel):
     status: str
     service: str = "aichart-quant-agent"
     version: str = "0.1.0"
+
+
+class GenerateValidateRequest(BaseModel):
+    """Body for `POST /internal/quant-agent/strategies/generate-validate`.
+
+    `web/` obtains `spec` from an LLM elsewhere and posts it here; this
+    service makes no outbound network/LLM call of its own — it only
+    validates the already-generated spec against
+    `app.engine.strategies.generated.schema.GeneratedStrategySpec` and, on
+    success, persists it (plan section 5)."""
+
+    model_config = ConfigDict(extra="forbid")
+    spec: dict[str, Any]
+
+
+class GenerateValidateResponse(BaseModel):
+    status: Literal["persisted", "invalid"]
+    strategy: StrategyDef | None = None
+    errors: list[dict[str, str]] = Field(default_factory=list)
+
+
+class EnableStrategyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool

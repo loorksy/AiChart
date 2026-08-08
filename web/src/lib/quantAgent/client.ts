@@ -6,6 +6,9 @@ import {
 } from "./serviceErrors";
 import type {
   GenerateQuantRecommendationInput,
+  GenerateValidateQuantStrategyResult,
+  GeneratedQuantStrategyRecord,
+  GeneratedStrategySpec,
   ListQuantRecommendationsParams,
   QuantAgentCallerContext,
   QuantRecommendation,
@@ -239,6 +242,52 @@ export async function listQuantRecommendations(
   );
   const list = Array.isArray(raw) ? raw : (raw.recommendations ?? []);
   return list.map(normalizeQuantRecommendation);
+}
+
+/**
+ * Quant Agent Chat's `generate_strategy` flow (plan §3/§5). Sends a
+ * declarative strategy specification the LLM drafted to the quant-agent
+ * service for pydantic validation — no `eval`/`exec` anywhere, and the
+ * service is the only thing that decides whether it gets persisted. On
+ * success the row is stored `enabled=false, source_generated=true`; on
+ * failure nothing is written and `errors` describes exactly what to fix.
+ * Mirrors `generateQuantRecommendation`'s request/error-handling shape
+ * exactly (same `QuantAgentServiceError` / transient-retry path via
+ * `serviceRequest`).
+ */
+export async function generateAndValidateQuantStrategy(
+  context: QuantAgentCallerContext,
+  spec: GeneratedStrategySpec | Record<string, unknown>,
+): Promise<GenerateValidateQuantStrategyResult> {
+  return serviceRequest<GenerateValidateQuantStrategyResult>(
+    context,
+    "/internal/quant-agent/strategies/generate-validate",
+    {
+      method: "POST",
+      body: JSON.stringify({ spec }),
+    },
+  );
+}
+
+/**
+ * Enables (or disables) a strategy the generator persisted. Restricted
+ * server-side to `source_generated=true` rows only (plan §5) — this can
+ * never touch the platform's two fixed built-in strategies. The only path
+ * that makes a generated strategy live.
+ */
+export async function setQuantStrategyEnabled(
+  context: QuantAgentCallerContext,
+  strategyId: string,
+  enabled: boolean,
+): Promise<{ strategy: GeneratedQuantStrategyRecord }> {
+  return serviceRequest<{ strategy: GeneratedQuantStrategyRecord }>(
+    context,
+    `/internal/quant-agent/strategies/${encodeURIComponent(strategyId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    },
+  );
 }
 
 /** Returns null on 404 (not found) instead of throwing, mirroring §4's "or 404". */

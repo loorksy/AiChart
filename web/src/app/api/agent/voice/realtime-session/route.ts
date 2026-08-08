@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid_request" }, { status: 400 });
     }
 
-    const chat = await getChat(user.id, chatId);
+    const chat = await getChat(user.id, chatId, "lonora");
     if (!chat) {
       return NextResponse.json({ error: "chat_not_found" }, { status: 404 });
     }

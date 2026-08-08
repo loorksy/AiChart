@@ -14,9 +14,9 @@ export async function GET(
   try {
     const user = await requireUser();
     const { chatId } = await ctx.params;
-    const session = await getChat(user.id, chatId);
+    const session = await getChat(user.id, chatId, "lonora");
     if (!session) throw new ApiError(404, "المحادثة غير موجودة.");
-    const messages = await getMessages(user.id, chatId);
+    const messages = await getMessages(user.id, chatId, "lonora");
     return NextResponse.json({ session, messages });
   } catch (err) {
     return handleError(err);
@@ -31,7 +31,7 @@ export async function DELETE(
   try {
     const user = await requireUser();
     const { chatId } = await ctx.params;
-    const ok = await deleteChat(user.id, chatId);
+    const ok = await deleteChat(user.id, chatId, "lonora");
     if (!ok) throw new ApiError(404, "المحادثة غير موجودة.");
     return NextResponse.json({ ok: true });
   } catch (err) {

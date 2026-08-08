@@ -5,9 +5,18 @@
  */
 export type AgentChatLanguage = "ar" | "en";
 
+/**
+ * Which chat-capable agent owns a session/message. This is a hard isolation
+ * boundary (see chatStore.ts) — a Quant Agent chat must never be readable or
+ * appendable via a Lonora-scoped call and vice versa, even if the caller
+ * knows the chatId.
+ */
+export type AgentChatAgentId = "lonora" | "quant_agent";
+
 export interface AgentChatSession {
   id: string;
   userId: number;
+  agentId: AgentChatAgentId;
   title: string;
   symbol?: string;
   interval?: string;
@@ -33,6 +42,7 @@ export interface AgentChatMessageRecord {
 
 /** Payload accepted when appending a message (id/createdAt are server-filled). */
 export interface AppendAgentChatMessageInput {
+  agentId: AgentChatAgentId;
   role: "user" | "assistant";
   content: string;
   result?: unknown;

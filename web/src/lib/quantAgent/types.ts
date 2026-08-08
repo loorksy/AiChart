@@ -101,3 +101,65 @@ export interface ListQuantRecommendationsParams {
   symbol?: string;
   state?: QuantLifecycleState | string;
 }
+
+/**
+ * Declarative strategy specification shape (Quant Agent Chat's
+ * `generate_strategy` flow — plan §3/§5). The LLM only ever DRAFTS this JSON;
+ * the quant-agent service's pydantic schema is the actual source of truth and
+ * the only thing that decides whether a spec is accepted. Kept loose here
+ * (not a mirrored strict schema) since web never validates it itself — it
+ * only builds the object and relays whatever the service decides.
+ */
+export type QuantConditionLeafType =
+  | "ema_relation"
+  | "rsi_threshold"
+  | "macd"
+  | "bollinger_touch"
+  | "adx_threshold"
+  | "regime";
+
+export interface QuantConditionLeaf {
+  type: QuantConditionLeafType;
+  [key: string]: unknown;
+}
+
+export interface QuantConditionNode {
+  all?: (QuantConditionNode | QuantConditionLeaf)[];
+  any?: (QuantConditionNode | QuantConditionLeaf)[];
+  not?: QuantConditionNode | QuantConditionLeaf;
+}
+
+export interface GeneratedStrategySpec {
+  strategy_id: string;
+  version: string;
+  display_name: string;
+  description?: string;
+  regime_affinity?: string[];
+  direction: QuantDirection;
+  entry_conditions: QuantConditionNode;
+  stop_loss_atr_multiple: number;
+  take_profit_r_multiples: number[];
+}
+
+export interface GenerateValidateQuantStrategyError {
+  path: string;
+  message: string;
+}
+
+/** Persisted (always `enabled: false` on creation — the DB row shape, loosely typed). */
+export interface GeneratedQuantStrategyRecord {
+  id?: string;
+  strategy_id: string;
+  version: string;
+  display_name: string;
+  enabled: boolean;
+  source_generated: boolean;
+  [key: string]: unknown;
+}
+
+/** Response contract for `POST /internal/quant-agent/strategies/generate-validate` (frozen). */
+export interface GenerateValidateQuantStrategyResult {
+  status: "persisted" | "invalid";
+  strategy?: GeneratedQuantStrategyRecord;
+  errors?: GenerateValidateQuantStrategyError[];
+}

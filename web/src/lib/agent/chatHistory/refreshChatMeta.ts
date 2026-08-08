@@ -7,16 +7,18 @@ import {
   isDefaultChatTitle,
 } from "./composeChatMeta";
 import { getChat, getMessages, updateChatMeta } from "./chatStore";
+import type { AgentChatAgentId } from "./types";
 
 export async function refreshChatMetaAfterAssistantTurn(
   userId: number,
   chatId: string,
+  agentId: AgentChatAgentId,
 ): Promise<void> {
   try {
-    const chat = await getChat(userId, chatId);
+    const chat = await getChat(userId, chatId, agentId);
     if (!chat) return;
 
-    const messages = await getMessages(userId, chatId, 40);
+    const messages = await getMessages(userId, chatId, agentId, 40);
     const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!lastAssistant || !lastUser) return;
@@ -30,7 +32,7 @@ export async function refreshChatMetaAfterAssistantTurn(
 
     // Preserve non-default titles (AI-set or manually edited); always refresh hook.
     const nextTitle = isDefaultChatTitle(chat.title) ? meta.title : chat.title;
-    await updateChatMeta(userId, chatId, {
+    await updateChatMeta(userId, chatId, agentId, {
       title: nextTitle,
       hook: meta.hook,
     });

@@ -830,6 +830,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS agent_chats (
     id                   TEXT PRIMARY KEY,
     user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    agent_id             TEXT NOT NULL DEFAULT 'lonora',
     title                TEXT NOT NULL DEFAULT 'محادثة جديدة',
     symbol               TEXT,
     interval             TEXT,
@@ -846,6 +847,7 @@ const SCHEMA = `
     id                TEXT PRIMARY KEY,
     chat_id           TEXT NOT NULL REFERENCES agent_chats(id) ON DELETE CASCADE,
     user_id           INTEGER NOT NULL,
+    agent_id          TEXT NOT NULL DEFAULT 'lonora',
     role              TEXT NOT NULL,
     content           TEXT NOT NULL,
     result_json       TEXT,
@@ -1524,6 +1526,25 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_recommendations_lifecycle
       ON recommendations (user_id, status, created_at DESC)
+  `).catch(() => {});
+
+  // Second chat-capable agent (Quant Agent) support: existing rows default to
+  // 'lonora' so every pre-migration chat/message stays exactly where it was.
+  await client.query(`
+    ALTER TABLE agent_chats
+      ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT 'lonora'
+  `).catch(() => {});
+  await client.query(`
+    ALTER TABLE agent_chat_messages
+      ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT 'lonora'
+  `).catch(() => {});
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_agent_chats_user_agent
+      ON agent_chats (user_id, agent_id, updated_at DESC)
+  `).catch(() => {});
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat_agent
+      ON agent_chat_messages (chat_id, agent_id, created_at)
   `).catch(() => {});
 
   await client.query(`

@@ -816,6 +816,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS agent_chats (
     id                   TEXT PRIMARY KEY,
     user_id              INTEGER NOT NULL,
+    agent_id             TEXT NOT NULL DEFAULT 'lonora',
     title                TEXT NOT NULL DEFAULT 'محادثة جديدة',
     symbol               TEXT,
     interval             TEXT,
@@ -833,6 +834,7 @@ const SCHEMA = `
     id                TEXT PRIMARY KEY,
     chat_id           TEXT NOT NULL,
     user_id           INTEGER NOT NULL,
+    agent_id          TEXT NOT NULL DEFAULT 'lonora',
     role              TEXT NOT NULL,
     content           TEXT NOT NULL,
     result_json       TEXT,
@@ -1319,6 +1321,33 @@ function migrate(db: Database.Database) {
   if (!dpCols.some((c) => c.name === "kind")) {
     db.exec("ALTER TABLE dynamic_pages ADD COLUMN kind TEXT NOT NULL DEFAULT 'page'");
   }
+
+  // Second chat-capable agent (Quant Agent) support: existing rows default to
+  // 'lonora' so every pre-migration chat/message stays exactly where it was.
+  // Indexed here, not in SCHEMA: on a database that predates the column the
+  // schema pass runs before this migration, so indexing it there would fail
+  // and take the whole initDb with it (same reasoning as decision_parity below).
+  const agentChatsCols = db
+    .prepare("PRAGMA table_info(agent_chats)")
+    .all() as Array<{ name: string }>;
+  if (!agentChatsCols.some((c) => c.name === "agent_id")) {
+    db.exec("ALTER TABLE agent_chats ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'lonora'");
+  }
+  const agentChatMessagesCols = db
+    .prepare("PRAGMA table_info(agent_chat_messages)")
+    .all() as Array<{ name: string }>;
+  if (!agentChatMessagesCols.some((c) => c.name === "agent_id")) {
+    db.exec(
+      "ALTER TABLE agent_chat_messages ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'lonora'",
+    );
+  }
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_agent_chats_user_agent ON agent_chats (user_id, agent_id, updated_at DESC)",
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat_agent ON agent_chat_messages (chat_id, agent_id, created_at)",
+  );
+
   if (!recCols.some((c) => c.name === "factors")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN factors TEXT");
   }

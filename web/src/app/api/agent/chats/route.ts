@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   try {
     const user = await requireUser();
     const limit = Number(req.nextUrl.searchParams.get("limit") ?? 50);
-    const sessions = await listChats(user.id, Number.isFinite(limit) ? limit : 50);
+    const sessions = await listChats(user.id, "lonora", Number.isFinite(limit) ? limit : 50);
     return NextResponse.json({ sessions });
   } catch (err) {
     return handleError(err);
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
     const body = createSchema.parse(await req.json().catch(() => ({})));
     const session = await createChat({
       userId: user.id,
+      agentId: "lonora",
       symbol: body.symbol,
       interval: body.interval,
       language: body.language,

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Natural-language description of the desired trading strategy"
+    }
+  },
+  "required": [
+    "description"
+  ]
+}

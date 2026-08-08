@@ -108,10 +108,30 @@ class SqliteQuantStore:
                     );
                     """
                 )
+                self._migrate_strategy_defs_columns(connection)
         try:
             self.path.chmod(0o600)
         except OSError:
             pass
+
+    @staticmethod
+    def _migrate_strategy_defs_columns(connection: sqlite3.Connection) -> None:
+        """First schema evolution this table has needed (plan section 5) —
+        add the two columns the declarative strategy generator needs, if an
+        existing database predates them. `PRAGMA table_info` + conditional
+        `ALTER TABLE` is the simplest correct migration for a single-file
+        SQLite store with no prior migration framework."""
+        existing = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(quant_strategy_defs)").fetchall()
+        }
+        if "source_generated" not in existing:
+            connection.execute(
+                "ALTER TABLE quant_strategy_defs "
+                "ADD COLUMN source_generated INTEGER NOT NULL DEFAULT 0"
+            )
+        if "params_json" not in existing:
+            connection.execute("ALTER TABLE quant_strategy_defs ADD COLUMN params_json TEXT")
 
     # ------------------------------------------------------------------
     # recommendations
@@ -277,6 +297,87 @@ class SqliteQuantStore:
                 ).fetchall()
                 return [self._row_to_strategy_def(row) for row in rows]
 
+    async def upsert_generated_strategy_def(self, strategy_def: StrategyDef) -> StrategyDef | None:
+        """Insert or replace a `source_generated=True` row keyed by
+        `strategy_id`. Returns `None` (rather than clobbering it) if a row
+        with the same `strategy_id` already exists and is *not*
+        `source_generated` — this is the defense that keeps a generated spec
+        from ever overwriting `ema_trend_v1`/`rsi_reversion_v1`'s seeded
+        rows, on top of the API layer's own check."""
+        async with self._lock:
+            with self._connect() as connection:
+                existing = connection.execute(
+                    "SELECT source_generated FROM quant_strategy_defs WHERE strategy_id=?",
+                    (strategy_def.strategy_id,),
+                ).fetchone()
+                if existing is not None and not bool(existing["source_generated"]):
+                    return None
+                now = utc_now_iso()
+                if existing is not None:
+                    connection.execute(
+                        """UPDATE quant_strategy_defs SET
+                            version=?, display_name=?, description=?, enabled=?,
+                            regime_affinity=?, source_generated=1, params_json=?, updated_at=?
+                        WHERE strategy_id=?""",
+                        (
+                            strategy_def.version,
+                            strategy_def.display_name,
+                            strategy_def.description,
+                            1 if strategy_def.enabled else 0,
+                            strategy_def.regime_affinity,
+                            strategy_def.params_json,
+                            now,
+                            strategy_def.strategy_id,
+                        ),
+                    )
+                else:
+                    connection.execute(
+                        """INSERT INTO quant_strategy_defs (
+                            strategy_id, version, display_name, description, enabled,
+                            regime_affinity, source_generated, params_json, created_at, updated_at
+                        ) VALUES (?,?,?,?,?,?,1,?,?,?)""",
+                        (
+                            strategy_def.strategy_id,
+                            strategy_def.version,
+                            strategy_def.display_name,
+                            strategy_def.description,
+                            1 if strategy_def.enabled else 0,
+                            strategy_def.regime_affinity,
+                            strategy_def.params_json,
+                            strategy_def.created_at,
+                            now,
+                        ),
+                    )
+                row = connection.execute(
+                    "SELECT * FROM quant_strategy_defs WHERE strategy_id=?",
+                    (strategy_def.strategy_id,),
+                ).fetchone()
+                return self._row_to_strategy_def(row)
+
+    async def set_generated_strategy_enabled(
+        self, strategy_id: str, enabled: bool
+    ) -> StrategyDef | None:
+        """Toggle `enabled` for a `source_generated=True` row only. Returns
+        `None` if no such row exists or the row is not `source_generated`
+        (the hardcoded strategies must never be reachable through this
+        path)."""
+        async with self._lock:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT * FROM quant_strategy_defs WHERE strategy_id=?", (strategy_id,)
+                ).fetchone()
+                if row is None or not bool(row["source_generated"]):
+                    return None
+                now = utc_now_iso()
+                connection.execute(
+                    "UPDATE quant_strategy_defs SET enabled=?, updated_at=? WHERE strategy_id=?",
+                    (1 if enabled else 0, now, strategy_id),
+                )
+                updated = self._row_to_strategy_def(row)
+                updated.enabled = enabled
+                updated.updated_at = now
+                return updated
+
     async def available(self) -> bool:
         try:
             async with self._lock:
@@ -387,6 +488,9 @@ class SqliteQuantStore:
 
     @staticmethod
     def _row_to_strategy_def(row: sqlite3.Row) -> StrategyDef:
+        # `source_generated`/`params_json` are always present by the time any
+        # row is read through this store, since `initialize()` runs the
+        # migration unconditionally before any query executes.
         return StrategyDef(
             strategy_id=row["strategy_id"],
             version=row["version"],
@@ -394,6 +498,8 @@ class SqliteQuantStore:
             description=row["description"],
             enabled=bool(row["enabled"]),
             regime_affinity=row["regime_affinity"],
+            source_generated=bool(row["source_generated"]),
+            params_json=row["params_json"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

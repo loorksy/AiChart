@@ -900,6 +900,46 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "quant_agent_chat_history",
+      "version": "1.1.1",
+      "description": "Reads the message history of a session on AiChart's separate, independent Quant Agent chat assistant — NOT Lonora's chat: a completely different conversation history, session store, and persona. Not Lonora's chat history — that lives in a completely different store; this only ever returns Quant Agent chat turns. read-only. When: reviewing what a Quant Agent chat session has said so far, e.g. before continuing it with quant_agent_chat_send. Example: chatId=qac_01h....",
+      "permission": "quant_agent.chat",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_chat_history.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_chat_send",
+      "version": "1.1.1",
+      "description": "Sends a message to AiChart's separate, independent Quant Agent chat assistant — NOT Lonora's chat: a completely different conversation history, session store, and persona. Can explain existing Quant Agent recommendations, trigger the deterministic recommendation engine, or propose a new declarative (data-only, never executable) strategy specification that is persisted disabled until the user explicitly enables it. When: continuing or starting a conversation with the Quant Agent assistant specifically — never use this to talk to Lonora, and never use create_recommendation-style tools expecting this to write a canonical recommendation itself. side-effect: appends a user+assistant turn to the Quant Agent chat store and may, as a side effect of the assistant's reply, persist a new disabled strategy proposal — never a live/enabled one, and never a canonical recommendation. Omit chatId to start a new Quant Agent chat session.",
+      "permission": "quant_agent.chat",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_chat_send.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "quant_agent_generate_recommendation",
       "version": "1.1.1",
       "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: the operator explicitly wants a Quant Agent read on a symbol — triggers the engine to evaluate its deterministic strategies against fresh candles and, if one fires, persist a new Quant Agent recommendation in its own isolated store; a \"no signal\" result is a valid, expected outcome, not an error. Not for recording Lonora's own analysis — that is create_recommendation, a completely separate table, id space, and lifecycle. side-effect: writes a new record to Quant Agent's own store only — never places, modifies, or touches any broker order or account.",
@@ -915,6 +955,26 @@
       "timeoutMs": 30000,
       "telemetry": "server-audit-log",
       "inputSchemaRef": "mcp/schemas/tools/quant_agent_generate_recommendation.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_generate_strategy",
+      "version": "1.1.1",
+      "description": "Generates a new candidate trading strategy for Quant Agent from a natural-language description. The result is a validated, DATA-ONLY declarative specification (never executable code) persisted as DISABLED — it never runs live until the operator explicitly enables it via a separate action. NOT Lonora's analysis; produces no trade recommendation itself, and is not the same conversation as AiChart's separate, independent Quant Agent chat assistant — NOT Lonora's chat: a completely different conversation history, session store, and persona. When: the operator has a strategy idea in plain language and wants Quant Agent to turn it into a validated, disabled strategy definition for later review/enable — not for asking about an existing recommendation, use quant_agent_chat_send or quant_agent_get_recommendation for that. side-effect: writes a new DISABLED row to Quant Agent's own strategy-definitions store only — never executes generated code, never enables itself, and never touches the canonical recommendation lifecycle or any broker account.",
+      "permission": "quant_agent.generate_strategy",
+      "riskClass": "recommendation",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_generate_strategy.json",
       "outputValidation": "bridge-envelope",
       "aliases": [],
       "requiredFeatureFlags": []

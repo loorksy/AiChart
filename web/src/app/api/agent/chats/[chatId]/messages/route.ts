@@ -22,7 +22,7 @@ export async function GET(
   try {
     const user = await requireUser();
     const { chatId } = await ctx.params;
-    const messages = await getMessages(user.id, chatId);
+    const messages = await getMessages(user.id, chatId, "lonora");
     return NextResponse.json({ messages });
   } catch (err) {
     return handleError(err);
@@ -38,11 +38,11 @@ export async function POST(
     const user = await requireUser();
     const { chatId } = await ctx.params;
     const body = appendSchema.parse(await req.json());
-    const message = await appendMessage(user.id, chatId, body);
+    const message = await appendMessage(user.id, chatId, { ...body, agentId: "lonora" });
     if (!message) throw new ApiError(404, "المحادثة غير موجودة.");
     // AI title/hook after assistant turns — never delay the response.
     if (body.role === "assistant") {
-      void refreshChatMetaAfterAssistantTurn(user.id, chatId);
+      void refreshChatMetaAfterAssistantTurn(user.id, chatId, "lonora");
     }
     return NextResponse.json({ message }, { status: 201 });
   } catch (err) {

@@ -29,7 +29,8 @@ type Permission =
   | "recommendation.read" | "recommendation.write" | "trade.recommend"
   | "trade.execute" | "trade.manage" | "memory.read" | "memory.write"
   | "settings.write" | "notify.send" | "research.run" | "ui.render" | "web.browse"
-  | "quant_agent.read" | "quant_agent.recommend";
+  | "quant_agent.read" | "quant_agent.recommend"
+  | "quant_agent.chat" | "quant_agent.generate_strategy";
 type RiskClass = "read" | "write" | "recommendation" | "execution";
 
 interface Override {
@@ -120,6 +121,20 @@ const OVERRIDES: Record<string, Override> = {
   },
   quant_agent_list_recommendations: { permission: "quant_agent.read" },
   quant_agent_get_recommendation: { permission: "quant_agent.read" },
+  // — quant agent chat (second, independent conversational assistant next to
+  // Lonora's chat — own session store, own agent_id, never shares Lonora's
+  // canonical recommendation lifecycle) —
+  quant_agent_chat_send: { permission: "quant_agent.chat", riskClass: "write" },
+  quant_agent_chat_history: { permission: "quant_agent.chat" },
+  // Mirrors quant_agent_generate_recommendation's "recommendation" riskClass:
+  // both write a new record to Quant Agent's own isolated store as their
+  // primary effect. Unlike generate_recommendation, the record here is a
+  // DISABLED, data-only quant_strategy_defs row — never executable code and
+  // never live until an explicit separate enable action.
+  quant_agent_generate_strategy: {
+    permission: "quant_agent.generate_strategy",
+    riskClass: "recommendation",
+  },
 };
 
 /** Research Swarm policy allowlist names → canonical mapping. */

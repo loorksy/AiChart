@@ -4,6 +4,7 @@ import { hasPlatformAccess } from "@/lib/platformAccess";
 import { displayNameForUser } from "@/lib/displayName";
 import { AppConsoleShell } from "@/components/shell/AppConsoleShell";
 import { requirePaidPage } from "@/lib/subscription/guards";
+import { QuantAgentTabs } from "@/components/quantAgent/QuantAgentTabs";
 
 /** Quant Agent lives inside the unified app shell (one nav), same as Journal/Performance. */
 export default async function QuantAgentLayout({
@@ -24,7 +25,10 @@ export default async function QuantAgentLayout({
       role={user.role === "admin" ? "admin" : "user"}
       displayName={displayNameForUser(user)}
     >
-      {children}
+      <div className="mx-auto w-full max-w-6xl">
+        <QuantAgentTabs />
+      </div>
+      <div className="mt-4">{children}</div>
     </AppConsoleShell>
   );
 }
