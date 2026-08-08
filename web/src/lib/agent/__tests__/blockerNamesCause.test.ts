@@ -48,6 +48,23 @@ test("codes that are already specific are left alone", () => {
   assert.match(closed, /سوق هذا الزوج مغلق/);
 });
 
+test("insufficient_data with stages is not phrased as a timeout", () => {
+  // Coverage/gap blockers used to reuse the timeout sentence, so thin
+  // warehouse looked identical to a MetaApi deadline miss.
+  const ar = userMessageForFailure("insufficient_data", "ar", {
+    stages: ["market_data"],
+  });
+  assert.match(ar, /بيانات السوق/);
+  assert.match(ar, /غير كافية/);
+  assert.doesNotMatch(ar, /ضمن المهلة المسموحة/);
+
+  const en = userMessageForFailure("insufficient_data", "en", {
+    stages: ["market_data"],
+  });
+  assert.match(en, /enough historical coverage/i);
+  assert.doesNotMatch(en, /within the allowed time/i);
+});
+
 test("unfinished stages are the failed ones and the ones still running", () => {
   const stages = unfinishedStages([
     { stage: "market_data", status: "done", timestamp: 1 },

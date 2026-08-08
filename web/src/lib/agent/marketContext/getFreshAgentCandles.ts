@@ -26,8 +26,9 @@ export interface FreshAgentCandlesResult {
  * reading the warehouse. On a warm connection that is a quick tail refresh; on
  * a cold one — every first analysis after a deploy or pm2 restart, because the
  * connection cache is per-process — establishing the RPC session alone takes
- * tens of seconds, and the market-data stage's ten-second deadline killed the
- * run before the 28ms warehouse read was ever reached. Request 3702237f
+ * tens of seconds, and the market-data stage deadline (now 28s; previously
+ * 10s, which was below MetaApi's own 12s page timeout) killed the run before
+ * the 28ms warehouse read was ever reached. Request 3702237f
  * (2026-08-07 18:05, five minutes after a restart) failed exactly this way.
  *
  * Order now: read the warehouse (fast, local). If its tail is within the

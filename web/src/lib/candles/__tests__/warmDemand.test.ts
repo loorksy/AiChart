@@ -72,9 +72,11 @@ test("the request path caps its own backfill and registers the series", () => {
  * The first pass at this bounded the two paths in warehouseOhlc and missed the
  * one that was actually failing. buildAgentMarketContext calls backfillCandles
  * directly — three in parallel, for the current timeframe, the higher one and
- * the daily — inside the market-data stage's ten-second deadline. The daily
- * series is the least likely to be warm, so it paged deep and took the whole
- * analysis down with it. A live run on XAUUSDM 15m failed exactly this way.
+ * the daily — inside the market-data stage deadline. The daily series is the
+ * least likely to be warm, so it paged deep and took the whole analysis down
+ * with it. A live run on XAUUSDM 15m failed exactly this way. Thin-but-nonempty
+ * series must deepen off the critical path so coverage can report honestly
+ * without killing the run.
  */
 test("the market-context refill caps its pages too", () => {
   const source = readFileSync(
@@ -83,6 +85,9 @@ test("the market-context refill caps its pages too", () => {
   );
   assert.match(source, /maxPages: 1/);
   assert.match(source, /recordWarmDemand\(/);
+  // Non-empty thin series must not await MetaApi inside the stage.
+  assert.match(source, /available > 0/);
+  assert.match(source, /void backfillCandles\(/);
 });
 
 /**
@@ -90,8 +95,8 @@ test("the market-context refill caps its pages too", () => {
  * exposed the deepest layer: getFreshAgentCandles blocked on a live MetaApi
  * pull — two attempts, skipCache — BEFORE reading the warehouse. The
  * connection cache is per-process, so the first analysis after every deploy
- * paid RPC session establishment (tens of seconds) against a ten-second stage
- * deadline. The 28ms warehouse read was never reached.
+ * paid RPC session establishment (tens of seconds) against a stage deadline
+ * that used to be only ten seconds. The 28ms warehouse read was never reached.
  */
 test("fresh candles serve the warehouse first when its tail is fresh", () => {
   const source = readFileSync(
