@@ -200,13 +200,19 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         const discoverStarted = Date.now();
         const { skills, root } = discoverSkills();
         const discoveryMs = Date.now() - discoverStarted;
+        // Default the intent for bare market questions: skill metadata is
+        // mostly English tokens, so an Arabic request with no declared intents
+        // scored zero and EVERY skill came back "not_relevant_to_request" on
+        // the product's primary locale.
+        const effectiveIntents =
+          intents?.length ? intents : ["analysis"];
         const selection = selectMcpSkills(skills, {
           request,
-          intents,
+          intents: effectiveIntents,
           locale,
           market: market ?? "forex",
           availableTools: ["render_cards"],
-          maxSkills: maxSkills ?? 2,
+          maxSkills: maxSkills ?? 3,
           allowExecutionSkills: allowExecutionSkills === true,
         });
         return {

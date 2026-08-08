@@ -138,6 +138,67 @@
         ]
       }
     },
+    "studies": {
+      "description": "Chart indicators to enable (native TV studies) — omit to leave the current set untouched",
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 24,
+            "description": "Stable study id (e.g. 'agent-rsi') — repeats replace, not stack"
+          },
+          "name": {
+            "type": "string",
+            "enum": [
+              "RSI",
+              "EMA",
+              "SMA",
+              "MACD",
+              "BB",
+              "ATR",
+              "Stochastic",
+              "VWAP"
+            ],
+            "description": "Indicator: RSI | EMA | SMA | MACD | BB (Bollinger) | ATR | Stochastic | VWAP"
+          },
+          "inputs": {
+            "description": "Named study inputs, e.g. {length: 50} — omit for TradingView defaults",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "pane": {
+            "description": "overlay = price pane, separate = own pane — omit for the study's natural pane",
+            "type": "string",
+            "enum": [
+              "overlay",
+              "separate"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
     "recommendation": {
       "anyOf": [
         {

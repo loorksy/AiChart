@@ -67,6 +67,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
               interval: a.interval,
               mode: a.mode ?? "set",
               drawings: a.drawings ?? [],
+              studies: a.studies,
               recommendation: a.recommendation,
               targets: a.targets,
               dataSource: "metaapi",

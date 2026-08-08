@@ -23,6 +23,7 @@ import {
   meetsExecutableGeometry,
   roundToTick,
   scoreCandidateQuality,
+  tradeSpanFor,
   type GeometryActivationClass,
   type SymbolGeometryMeta,
 } from "./scalpGeometry";
@@ -42,6 +43,12 @@ export type TradeCandidate = {
     | "sell_limit"
     | "sell_stop";
   stop_loss: number;
+  /**
+   * The raw structural invalidation (zone edge) the stop protects. `stop_loss`
+   * = this level + the per-style volatility buffer; surfacing both lets the
+   * card show "الإبطال الهيكلي 4393.52 → الوقف 4401.79".
+   */
+  structuralStop?: number;
   targets: number[];
   poi: {
     type: "demand" | "supply" | "retest";
@@ -149,7 +156,12 @@ export function buildTradeCandidates(
         spread: input.spread,
         atr,
         meta,
+        interval: input.interval,
       });
+      const structuralStop = roundToTick(
+        action === "buy" ? zone.low : zone.high,
+        meta,
+      );
       const stopRaw =
         action === "buy" ? zone.low - buffer : zone.high + buffer;
       const stop = roundToTick(stopRaw, meta);
@@ -165,13 +177,18 @@ export function buildTradeCandidates(
         atr,
         spread: input.spread,
         meta,
+        interval: input.interval,
       });
       if (!targets.tp1) {
         zoneReject = "لا يوجد هدف هيكلي حقيقي فوق/تحت الدخول في هذه المنطقة.";
         continue;
       }
 
-      const targetList = [targets.tp1, ...(targets.tp2 != null ? [targets.tp2] : [])];
+      const targetList = [
+        targets.tp1,
+        ...(targets.tp2 != null ? [targets.tp2] : []),
+        ...(targets.tp3 != null ? [targets.tp3] : []),
+      ];
       const geometry = meetsExecutableGeometry({
         action,
         entry,
@@ -274,6 +291,7 @@ export function buildTradeCandidates(
             ? "market"
             : entryType,
         stop_loss: stop,
+        structuralStop,
         targets: targetList,
         poi: { type: zone.type, low: zone.low, high: zone.high, score: poiScore },
         rr: geometry.grossTp1R,
@@ -296,6 +314,14 @@ export function buildTradeCandidates(
           ...poiScore.reasons,
           `دخول ${entryOpt.style}`,
           `صافي R للهدف الأول ≈ ${geometry.netTp1R.toFixed(2)}`,
+          `الوقف = الإبطال الهيكلي ${structuralStop} + هامش تقلب ${roundToTick(buffer, meta)}`,
+          ...(targets.tp1Projected
+            ? ["الهدف الأول مُسقط بمدى التقلب — لا مستوى هيكلي مرسوم على هذه المسافة."]
+            : []),
+          ...(targets.tp2Projected
+            ? ["الهدف الثاني مُسقط بمدى التقلب — لا مستوى هيكلي مرسوم على هذه المسافة."]
+            : []),
+          ...(targets.tp3 != null ? ["هدف ثالث هيكلي متاح."] : []),
           ...(pathToEntry ? [pathToEntry.summary] : []),
         ],
         warnings,
@@ -529,8 +555,17 @@ function selectTargets(input: {
   atr: number;
   spread?: number | null;
   meta?: SymbolGeometryMeta | null;
-}): { tp1: number | null; tp2: number | null; structuralCount: number } {
+  interval?: string;
+}): {
+  tp1: number | null;
+  tp2: number | null;
+  tp3: number | null;
+  structuralCount: number;
+  tp1Projected: boolean;
+  tp2Projected: boolean;
+} {
   const side = input.action === "buy" ? 1 : -1;
+  const span = tradeSpanFor(input.interval);
   const unique = [...new Set(input.structuralPool.map((p) => roundToTick(p, input.meta)))]
     .filter((level) =>
       input.action === "buy" ? level > input.entry : level < input.entry,
@@ -548,65 +583,83 @@ function selectTargets(input: {
     });
     return { level, net };
   });
+  const distance = (level: number) => Math.abs(level - input.entry);
 
-  // Prefer the nearest structural target that pays for its own costs. When none
-  // does, fall back to the best real target available rather than discarding the
-  // zone: the weak net R travels with the candidate as a warning, and the model
-  // decides what to do about it (§12 of the plan) instead of losing the setup.
-  const tp1 =
-    scored.find((s) => s.net + 1e-9 >= SCALP_GEOMETRY.minNetTp1R)?.level ??
-    scored.reduce<{ level: number; net: number } | null>(
-      (best, s) => (best == null || s.net > best.net ? s : best),
-      null,
-    )?.level ??
+  // Span floors (product rule): a plan must span a real swing of the analyzed
+  // timeframe, not the first shelf a few points away. The nearest-first pick
+  // below therefore runs on the pool BEYOND the floor — "nearest structural
+  // level past the span floor", not "nearest structural level".
+  const floor1 = input.atr > 0 ? input.atr * span.minTp1Atr : 0;
+  const floor2 = input.atr > 0 ? input.atr * span.minTp2Atr : 0;
+
+  const beyondFloor1 = scored.filter((s) => distance(s.level) + 1e-9 >= floor1);
+  // Nearest beyond-floor structural target that pays its own costs; else the
+  // nearest beyond-floor one (the weak net R travels as a warning); else an
+  // ATR projection AT the floor, labelled as projected — the span contract
+  // holds even on a chart with no mapped structure that far.
+  let tp1 =
+    beyondFloor1.find((s) => s.net + 1e-9 >= SCALP_GEOMETRY.minNetTp1R)?.level ??
+    beyondFloor1[0]?.level ??
     null;
+  let tp1Projected = false;
+  if (tp1 == null && input.atr > 0) {
+    tp1 = roundToTick(input.entry + side * floor1, input.meta);
+    tp1Projected = true;
+  }
   if (tp1 == null) {
-    return { tp1: null, tp2: null, structuralCount: unique.length };
-  }
-
-  const tp2 =
-    scored.find(
-      (s) =>
-        s.level !== tp1 &&
-        s.net + 1e-9 >= SCALP_GEOMETRY.preferredTp2MinR &&
-        s.net <= SCALP_GEOMETRY.preferredTp2MaxR + 0.75,
-    )?.level ??
-    scored.find(
-      (s) =>
-        s.level !== tp1 &&
-        s.net + 1e-9 >= SCALP_GEOMETRY.preferredTp2MinR,
-    )?.level ??
-    null;
-
-  // Optional ATR projection only when it lands near an existing structural level.
-  if (tp2 == null && input.atr > 0) {
-    const projected = roundToTick(
-      input.entry + side * input.atr * SCALP_GEOMETRY.preferredTp2MinR,
-      input.meta,
-    );
-    const nearStructural = unique.find(
-      (level) => Math.abs(level - projected) <= input.atr * 0.35,
-    );
-    if (nearStructural && nearStructural !== tp1) {
-      const net = computeNetR({
-        action: input.action,
-        entry: input.entry,
-        stop: input.stop,
-        target: nearStructural,
-        spread: input.spread,
-        meta: input.meta,
-      });
-      if (net + 1e-9 >= SCALP_GEOMETRY.preferredTp2MinR) {
-        return {
-          tp1,
-          tp2: nearStructural,
-          structuralCount: unique.length,
-        };
-      }
+    // No ATR and no structural pool in range: nothing honest to offer.
+    const fallback =
+      scored.find((s) => s.net + 1e-9 >= SCALP_GEOMETRY.minNetTp1R)?.level ??
+      scored.reduce<{ level: number; net: number } | null>(
+        (best, s) => (best == null || s.net > best.net ? s : best),
+        null,
+      )?.level ??
+      null;
+    if (fallback == null) {
+      return {
+        tp1: null,
+        tp2: null,
+        tp3: null,
+        structuralCount: unique.length,
+        tp1Projected: false,
+        tp2Projected: false,
+      };
     }
+    tp1 = fallback;
   }
 
-  return { tp1, tp2, structuralCount: unique.length };
+  // TP2 is REQUIRED (product rule: at least two targets). Structural level
+  // beyond both the TP2 floor and TP1 when one exists; otherwise an
+  // unconditional ATR projection — previously the projection only survived
+  // when it happened to land near structure, which is how cards shipped with
+  // a single 10-point target.
+  const beyondTp1 = (level: number) => (side > 0 ? level > tp1! : level < tp1!);
+  let tp2 =
+    scored.find((s) => beyondTp1(s.level) && distance(s.level) + 1e-9 >= floor2)
+      ?.level ?? null;
+  let tp2Projected = false;
+  if (tp2 == null && input.atr > 0) {
+    const projectedDistance = Math.max(floor2, distance(tp1) + input.atr);
+    tp2 = roundToTick(input.entry + side * projectedDistance, input.meta);
+    tp2Projected = true;
+  }
+
+  // TP3 when structure provides one: the next mapped level beyond TP2. Never
+  // projected — a third target is a bonus the chart must earn.
+  const tp3 =
+    tp2 != null
+      ? (scored.find((s) => (side > 0 ? s.level > tp2! : s.level < tp2!))?.level ??
+        null)
+      : null;
+
+  return {
+    tp1,
+    tp2,
+    tp3,
+    structuralCount: unique.length,
+    tp1Projected,
+    tp2Projected,
+  };
 }
 
 function buildTriggerCondition(input: {
@@ -658,11 +711,17 @@ export function stopBuffer(input: {
   spread?: number | null;
   atr?: number | null;
   meta?: SymbolGeometryMeta | null;
+  interval?: string | null;
 }): number {
   const minTick = inferTickSize(input.symbolPrice, input.meta);
+  // Product rule: the stop never sits ON the structural level. The old floor
+  // (0.1 ATR — one point on gold) was a stop-hunt donation; the per-style
+  // buffer puts it a real volatility margin beyond the invalidation
+  // (structural 4393.52 → stop ≈ 4401.79 on a gold intraday plan).
+  const span = tradeSpanFor(input.interval);
   return Math.max(
     input.spread && input.spread > 0 ? input.spread * 2 : 0,
-    input.atr && input.atr > 0 ? input.atr * 0.1 : 0,
+    input.atr && input.atr > 0 ? input.atr * span.stopBufferAtr : 0,
     minTick * MIN_TICK_MULTIPLIER,
   );
 }

@@ -20,6 +20,8 @@ import "@/styles/klinecharts-pro-aichart.css";
 import { createAiChartDatafeed } from "@/lib/chart/tv/tvDatafeed";
 import type { TvLatestCandle } from "@/lib/chart/tv/tvDatafeed";
 import { TvDrawingManager } from "@/lib/chart/tv/tvDrawingAdapter";
+import { TvStudyManager } from "@/lib/chart/tv/tvStudyAdapter";
+import type { ChartStudy } from "@/lib/chart/studies";
 import {
   applyUserDrawingMutations,
   readSelectedUserDrawingId,
@@ -154,6 +156,8 @@ interface Props {
   targets?: number[];
   overlays?: ChartOverlay[];
   drawings?: ChartDrawing[];
+  /** Agent-enabled indicators (RSI/EMA/…) mirrored as native TV studies. */
+  studies?: ChartStudy[];
   /** Platform actions embedded in the TV header toolbar. */
   headerActions?: TvHeaderAction[];
   /** Active data source for the current symbol. */
@@ -200,6 +204,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     targets = [],
     overlays,
     drawings,
+    studies,
     headerActions,
     dataSource = "metaapi",
     locale = "ar",
@@ -215,6 +220,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<IChartingLibraryWidget | null>(null);
   const managerRef = useRef<TvDrawingManager | null>(null);
+  const studyManagerRef = useRef<TvStudyManager | null>(null);
   const spreadLinesRef = useRef<SpreadPriceLines | null>(null);
   const readyRef = useRef(false);
   const [ready, setReady] = useState(false);
@@ -475,6 +481,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           readyRef.current = true;
           const chart = w.activeChart();
           managerRef.current = new TvDrawingManager(chart);
+          studyManagerRef.current = new TvStudyManager(chart);
           spreadLinesRef.current = new SpreadPriceLines(chart);
           setReady(true);
           // Re-anchor drawings after fresh history lands (frame/pair switch).
@@ -512,6 +519,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       void spreadLinesRef.current?.clear();
       spreadLinesRef.current = null;
       managerRef.current = null;
+      studyManagerRef.current = null;
       headerButtonsRef.current.clear();
       try {
         widgetRef.current?.remove();
@@ -598,6 +606,17 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     if (!ready) return;
     applyDrawings();
   }, [ready, drawings, overlays, recommendation, targets, applyDrawings]);
+
+  // Agent indicators → native TV studies. The manager diffs by fingerprint, so
+  // the 4s layout poll re-delivering the same list is a no-op (no flicker).
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      studyManagerRef.current?.apply(studies ?? []);
+    } catch {
+      /* widget mid-teardown — next apply reconciles */
+    }
+  }, [ready, studies]);
 
   // Frame/symbol changed → drawings survive; re-anchor once fresh data lands
   // (drawing on a still-loading chart can silently drop shapes).

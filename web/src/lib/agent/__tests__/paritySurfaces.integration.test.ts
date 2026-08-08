@@ -73,7 +73,7 @@ function fixtureBars(
 function modelAnswer(user: string): string {
   const context = JSON.parse(user) as {
     currentPrice: number;
-    tradeCandidates?: Array<{ id: string; action: "buy" | "sell" }>;
+    tradeCandidates?: Array<{ id: string; action: "buy" | "sell"; entry?: number }>;
     evidenceLevels?: Array<{ price: number }>;
   };
   const candidate = context.tradeCandidates?.[0];
@@ -111,6 +111,12 @@ function modelAnswer(user: string): string {
     selectedTradeCandidateId = null;
   }
 
+  // The machine-checkable twin of the sentence below, anchored to the same
+  // entry the answer selects — a conditional plan without one is a contract
+  // violation the synthesizer now rejects.
+  const activationLevel =
+    candidate?.entry ?? proposedLevels?.preferredEntry ?? context.currentPrice;
+
   return JSON.stringify({
     direction,
     planType: "conditional",
@@ -118,6 +124,11 @@ function modelAnswer(user: string): string {
     proposedLevels,
     timeframeRoles: { lead: "15m", context: "1h", timing: "15m" },
     activationCondition: "Wait for a confirming close at the selected entry.",
+    activationRule: {
+      kind: direction === "buy" ? "candle_close_above" : "candle_close_below",
+      level: activationLevel,
+      timeframe: "15m",
+    },
     invalidationRule: "A close beyond the selected stop invalidates the plan.",
     alternativeScenario: "Switch only after the opposite structure break.",
     validityCandles: 7,

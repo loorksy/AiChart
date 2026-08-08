@@ -167,6 +167,49 @@ const FinalDecisionModelSchema = z.object({
    * whitelist, on a separate budget; a failed capture keeps this first decision.
    */
   requestExtraTimeframe: z.string().max(8).nullable().optional(),
+}).superRefine((value, ctx) => {
+  // Cross-field coherence, enforced where the retry loop can feed the exact
+  // violation back to the model. The persist-time plan contract enforces the
+  // same facts, but a violation there throws AFTER the analysis — the operator
+  // sees a failure instead of a corrected answer.
+  if (value.planType !== "immediate") {
+    if (!value.activationRule) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["activationRule"],
+        message: `a ${value.planType} plan must carry the machine-checkable activationRule for its activationCondition — without it the tracker would fill the plan on a bare entry touch`,
+      });
+    }
+    if (!value.activationCondition?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["activationCondition"],
+        message: `a ${value.planType} plan must state its activation condition in plain language`,
+      });
+    }
+  }
+  // rejection_confirmed.direction is the side the candle must CLOSE on. A
+  // bearish rejection that arms a SELL closes back BELOW the level; a bullish
+  // rejection arming a BUY closes back ABOVE. The inverted combination is a
+  // rule the market can only satisfy by moving against the plan — permanently
+  // unsatisfiable in practice, which is how a met condition never activates.
+  const leaves =
+    value.activationRule?.kind === "composite"
+      ? value.activationRule.rules
+      : value.activationRule
+        ? [value.activationRule]
+        : [];
+  for (const leaf of leaves) {
+    if (leaf.kind !== "rejection_confirmed") continue;
+    const required = value.direction === "sell" ? "below" : "above";
+    if (leaf.direction !== required) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["activationRule"],
+        message: `rejection_confirmed.direction is the side the candle must CLOSE on: a rejection arming a ${value.direction} must use direction:"${required}"`,
+      });
+    }
+  }
 });
 
 export type FinalDecisionModelOutput = z.infer<typeof FinalDecisionModelSchema>;
@@ -369,6 +412,9 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - If no candidate fits your plan (e.g. you want a better price), set selectedTradeCandidateId null and fill proposedLevels using ONLY prices that appear in evidenceLevels. Any price not on that menu is rejected and your plan loses its numbers — so quote the menu, never a number you computed yourself.
 - Geometry must hold: buy → stop < entry < targets; sell → targets < entry < stop.
 - A candidate carrying a weak-net-R warning is still a real option: take it and say the return is thin, or plan a better price instead. Do not silently ignore it.
+- SPAN CONTRACT (product rule): a plan spans a REAL swing of the analyzed timeframe — TP1 sits several ATR from the entry (roughly 30 candles of travel), never the first shelf a few points away. Candidates already respect this; when you propose your own levels, hold yourself to the same floor.
+- TARGETS: always at least TWO. A third target when the structure genuinely offers one beyond TP2 — never invented.
+- STOP: the structural invalidation level plus a real volatility buffer BEYOND it — never exactly ON the level (a stop at 4393.52 belongs at ≈4401.79 on a gold intraday plan). Candidates carry this buffer already (structuralStop vs stop_loss); when proposing levels, pick the evidence level past the invalidation, not the invalidation itself. Never tighten a stop to flatter the R ratio.
 
 ## Evidence, not gates
 - Structure, liquidity, patterns, historical cases, backtests, costs, and news STRENGTHEN or WEAKEN a plan. None of them decides whether a plan exists.
@@ -379,13 +425,15 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - historicalCases carries what followed structurally similar moments, for BOTH directions, measured before you chose one. Read both sides. A memory leaning the other way is a real argument to weigh, not a veto — and when both sides are thin the memory simply has nothing to say.
 - Quote a historical rate ONLY when historicalCases gives you one. A null hitRate means the sample is too small for a percentage: cite the count, or say there is no comparable history. Never turn "3 of 4 similar cases worked" into a number.
 - Never claim statistical support you were not given, and never invent a win rate, a historical count, news, or any number.
+- statisticalSupport is your validated arsenal for THIS symbol and timeframe: its level (strong/moderate/weak/unavailable), the best deployment's calibrated confidence, and a deployments list of matching backtested strategies. When level is not "unavailable", weigh it and CITE it (strategy, calibrated confidence, live sample) in your reasoning; when a listed strategy's conditions match your setup, say so. When it is "unavailable", say plainly the plan rests on direct analysis. It informs confidence — never the existence of the direction.
+- executionCost is the cost evidence: whenever executionCost.source is anything other than "unavailable" (observed_quote, live_cost_profile, session_profile, static_fallback), cite its spread figure (observed_spread_pips, naming the source when it is a fallback) in your cost reasoning — never say the spread is unavailable; you may only claim the spread/slippage is unavailable when executionCost.source === "unavailable".
 - Never claim news was checked when newsRisk is "unknown".
 - macroRegime (Fed policy rate/trend, inflation, curve) and cotPositioning (weekly speculative positioning, with extremes flagged) are SLOW context: they strengthen or weaken a plan and its confidence, never its existence or direction. An extreme positioning reading is a crowding warning, not a signal. Never claim macro or positioning was checked when its block is absent.
 
 ## Output rules
 - invalidationRule: what specifically kills this idea (a close beyond a level), in plain language.
 - activationCondition: required for conditional and anticipatory plans — the exact event that turns the plan on. null for immediate.
-- activationRule: the SAME condition as data, so the tracker can check it. Required whenever activationCondition is set; null for immediate. Pick the kind that matches what you actually wrote — price_touch ONLY if a bare touch really is enough. candle_close_above/below need level + timeframe (and closes when you demand more than one). breakout_confirmed needs level + direction. retest_confirmed needs the retestZone price band you expect the pullback into. rejection_confirmed means a wick through the level and a close back. Use composite {operator:"all"|"any"} for two conditions. Never state a rule looser than your sentence: if you wrote "close above", do not emit price_touch.
+- activationRule: the SAME condition as data, so the tracker can check it. Required whenever activationCondition is set; null for immediate. Pick the kind that matches what you actually wrote — price_touch ONLY if a bare touch really is enough. candle_close_above/below need level + timeframe (and closes when you demand more than one). breakout_confirmed needs level + direction. retest_confirmed needs the retestZone price band you expect the pullback into. rejection_confirmed means a wick through the level and a close back — its "direction" is the side the candle must CLOSE on: a bearish rejection of resistance that arms a SELL is direction:"below"; a bullish rejection of support that arms a BUY is direction:"above". Use composite {operator:"all"|"any"} for two conditions. Never state a rule looser than your sentence: if you wrote "close above", do not emit price_touch. A rule whose direction contradicts your trade side can never be satisfied — the plan would wait forever.
 - validityCandles: how many candles of THIS timeframe the plan stays meaningful.
 - alternativeScenario: the runner-up scenario and what would make you switch to it.
 - decisionTrace: the scenarios you weighed, what supported and opposed each, why this one won, and why this plan type. Operator-readable, no internal jargon.
@@ -484,12 +532,17 @@ export async function runFinalDecisionSynthesizer(
   // two different ways of seeing, and so two different answers to the same
   // question. Same images, same interleaving, same rules on both surfaces now.
   const visualBlocks = buildVisualBlocks(input.visualSnapshots ?? []);
+  // The degradation contract (visualEvidence.ts): a missing view degrades the
+  // read, it never kills the analysis. When the active model rejects image
+  // input, the retry drops the images instead of failing the whole decision.
+  let includeVisuals = true;
   const callModel =
     deps.callModel ??
     (async (system: string, userMsg: string) => {
-      const content: ContentBlock[] = visualBlocks.length
-        ? [{ type: "text", text: userMsg }, ...visualBlocks]
-        : [{ type: "text", text: userMsg }];
+      const content: ContentBlock[] =
+        includeVisuals && visualBlocks.length
+          ? [{ type: "text", text: userMsg }, ...visualBlocks]
+          : [{ type: "text", text: userMsg }];
       const res = await callLLM({
         system,
         messages: [{ role: "user", content }],
@@ -544,6 +597,25 @@ ${correction}`
         interval: input.market.interval,
         detail: classified.detail.slice(0, 300),
       });
+      // A text-only model rejecting the image blocks is not a dead end: retry
+      // once WITHOUT the charts. `provider_bad_request` is otherwise final,
+      // which turned "model lacks vision" into a failed analysis instead of a
+      // numbers-only one.
+      const detailText = `${classified.detail} ${String((error as Error)?.message ?? "")}`;
+      const imagesRejected =
+        classified.kind === "provider_bad_request" &&
+        includeVisuals &&
+        visualBlocks.length > 0 &&
+        /image|vision|multimodal|الرؤية|صور/i.test(detailText);
+      if (imagesRejected && attempt < 2) {
+        includeVisuals = false;
+        log.warn("model rejected chart images — retrying without visual evidence", {
+          symbol: input.market.symbol,
+          interval: input.market.interval,
+        });
+        metrics.synthCorrectiveRetries.inc();
+        continue;
+      }
       if (!classified.retryable || attempt === 2) break;
       // A retry WILL happen — the rate of these is a monitored decision-quality
       // number (plan §2.4): rising retries mean the contract and the model are
@@ -926,9 +998,12 @@ function applyModelDecision(
         netRr,
         netRrTp2: selected?.netRrTp2,
         activationClass,
+        // An immediate plan never inherits the candidate's conditional text:
+        // a card whose header says "valid now" must not carry a body sentence
+        // saying "only executable if price returns to the zone".
         triggerCondition:
           sanitizePublicText(parsed.activationCondition ?? "").slice(0, 400) ||
-          selected?.triggerCondition,
+          (planType === "immediate" ? undefined : selected?.triggerCondition),
         // Carried only when the model actually stated one. A plan with no
         // machine-checkable rule keeps entry semantics rather than inheriting
         // a condition it never expressed.

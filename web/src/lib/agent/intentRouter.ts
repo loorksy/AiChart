@@ -150,6 +150,60 @@ const MANAGEMENT_WORDS = [
 
 const DRAW_WORDS = ["draw", "ارسم", "رسم", "علّم", "علم على الشارت"];
 
+// --- Indicator (study) enabling: "شغّل RSI" / "enable RSI" / "أضف مؤشر" ---
+// Needs BOTH an enable-style verb and an indicator mention, so "ما هو RSI؟"
+// (a question) stays a general question and never toggles chart studies.
+// Short Latin tokens are boundary-matched: plain `includes` would light up on
+// "ema" inside "demand" or "sma" inside "small".
+const INDICATOR_TOKEN_RE = /(^|[^a-z])(rsi|ema|sma|macd|atr|vwap)([^a-z]|$)/;
+
+const INDICATOR_WORDS = [
+  "الماكد",
+  "ماكد",
+  "bollinger",
+  "بولينجر",
+  "بولنجر",
+  "stochastic",
+  "ستوكاستك",
+  "استوكاستك",
+  "فيواب",
+  "moving average",
+  "متوسط متحرك",
+  "المتوسط المتحرك",
+  "موفينج",
+  "مؤشر",
+  "indicator",
+];
+
+function mentionsIndicator(text: string): boolean {
+  return INDICATOR_TOKEN_RE.test(text) || hasAny(text, INDICATOR_WORDS);
+}
+
+const INDICATOR_ENABLE_WORDS = [
+  "شغل",
+  "شغّل",
+  "فعّل",
+  "فعل ال",
+  "أضف",
+  "اضف",
+  "ضيف",
+  "أظهر",
+  "اظهر",
+  "اعرض",
+  "حط",
+  "enable",
+  "add",
+  "turn on",
+  "activate",
+  "show",
+  "apply",
+  "put",
+  // "Draw the RSI" means enable it — an indicator is not a shape, and letting
+  // it fall through to draw_on_chart is exactly the bogus-trendline bug.
+  "ارسم",
+  "draw",
+];
+
 const DRAW_TRENDLINE_PHRASES = [
   "draw trendline",
   "draw trend line",
@@ -351,6 +405,12 @@ export function routeIntent(input: {
   if (hasPhrase(text, DRAW_TRENDLINE_PHRASES)) intents.push("draw_trendline");
   if (hasPhrase(text, DRAW_SUPPORT_RESISTANCE_PHRASES)) intents.push("draw_support_resistance");
 
+  // Enable chart indicators — claimed BEFORE the generic draw check so
+  // "أضف مؤشر RSI" becomes studies on the chart, not a bogus trendline.
+  if (hasAny(text, INDICATOR_ENABLE_WORDS) && mentionsIndicator(text)) {
+    intents.push("enable_indicators");
+  }
+
   // A user-drawing edit/discuss/delete must never fall through to execution,
   // management, or a new trade — even though wording like "عدّل" overlaps.
   if (hasAny(text, EXECUTION_WORDS) && !editsUserDrawing) intents.push("trade_execution");
@@ -361,6 +421,7 @@ export function routeIntent(input: {
       "draw_active_recommendation",
       "draw_trendline",
       "draw_support_resistance",
+      "enable_indicators",
       "clear_agent_drawings",
       "explain_chart_drawings",
       "discuss_user_drawing",
@@ -381,6 +442,7 @@ export function routeIntent(input: {
     "draw_trendline",
     "draw_support_resistance",
     "draw_poi_zones",
+    "enable_indicators",
     "clear_agent_drawings",
     "track_active_recommendation",
     "explain_active_recommendation",
@@ -427,6 +489,7 @@ function intentFamily(intent: AgentIntent): IntentFamily | null {
   if (["draw_active_recommendation", "explain_active_recommendation", "track_active_recommendation", "cancel_active_recommendation", "modify_active_recommendation"].includes(intent)) return "recommendation";
   if ([
     "draw_on_chart", "draw_trendline", "draw_support_resistance", "draw_poi_zones",
+    "enable_indicators",
     "clear_agent_drawings", "explain_chart_drawings", "discuss_user_drawing",
     "modify_user_drawing", "move_user_drawing", "delete_user_drawing",
     "clarify_drawing_reference",
@@ -486,6 +549,7 @@ export function isDrawingOnly(intents: AgentIntent[]): boolean {
       "draw_trendline",
       "draw_support_resistance",
       "draw_poi_zones",
+      "enable_indicators",
       "clear_agent_drawings",
       "explain_chart_drawings",
       "discuss_user_drawing",

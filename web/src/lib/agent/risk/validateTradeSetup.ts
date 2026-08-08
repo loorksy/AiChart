@@ -3,6 +3,7 @@ import {
   computeNetR,
   meetsExecutableGeometry,
   SCALP_GEOMETRY,
+  tradeSpanFor,
 } from "../trading/scalpGeometry";
 
 export interface ProposedTrade {
@@ -27,6 +28,9 @@ export interface TradeValidationInput {
   /** Precomputed net TP1 R when available from the candidate engine. */
   netRr?: number | null;
   activationClass?: "immediate" | "conditional" | "non_executable";
+  /** ATR + interval of the analyzed timeframe — enables the span-floor warnings. */
+  atr?: number | null;
+  interval?: string | null;
 }
 
 export interface TradeValidationResult {
@@ -93,6 +97,22 @@ export function validateTradeSetup(input: TradeValidationInput): TradeValidation
     warnings.push(
       `العائد الصافي للهدف الأول ضعيف (≈${netRr.toFixed(2)}R بعد التكاليف، دون المفضّل ${SCALP_GEOMETRY.minNetTp1R}R).`,
     );
+  }
+
+  // Span-contract annotations (warn, never reject — the model owns the plan):
+  // a single-target plan and a TP1 short of the style's span floor are both
+  // facts the operator must see on the card.
+  if (targets.length < 2) {
+    warnings.push("الخطة تحمل هدفاً واحداً فقط — العقد يطلب هدفين على الأقل.");
+  }
+  if (input.atr != null && input.atr > 0) {
+    const span = tradeSpanFor(input.interval);
+    const tp1Distance = Math.abs(targets[0]! - entry);
+    if (tp1Distance + 1e-9 < input.atr * span.minTp1Atr) {
+      warnings.push(
+        `الهدف الأول أقصر من مدى الأسلوب (${(tp1Distance / input.atr).toFixed(1)} ATR بينما الحد ${span.minTp1Atr} ATR) — الصفقة لا تغطي تأرجحاً حقيقياً.`,
+      );
+    }
   }
 
   if (input.activationClass === "non_executable") {

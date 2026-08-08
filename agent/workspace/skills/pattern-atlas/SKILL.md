@@ -5,7 +5,7 @@ category: analysis
 riskLevel: analysis
 supportedLocales: ["ar", "en"]
 allowedMarkets: ["forex"]
-tags: ["patterns", "chart", "candlesticks", "structure", "liquidity", "atlas"]
+tags: ["patterns", "chart", "candlesticks", "structure", "liquidity", "atlas", "نموذج", "نماذج", "شموع", "شارت", "مثلث", "قمة", "قاع"]
 description: Chart pattern, candlestick, structure and liquidity reference — formation stages, confirmation, invalidation, entries, stops, targets, hybrid and unclassified structures.
 ---
 

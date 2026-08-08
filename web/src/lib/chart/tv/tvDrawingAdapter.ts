@@ -371,6 +371,9 @@ export class TvDrawingManager {
       this.multi(pts.slice(0, 2), "trend_line", {
         ...ov,
         showLabel: Boolean(label),
+        // Project the line to the current bar — a structural trendline that
+        // dies at its second pivot reads as history, not as a live level.
+        extendRight: true,
       }, label);
       return;
     }

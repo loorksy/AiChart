@@ -188,6 +188,52 @@ describe("intentRouter", () => {
     assert.equal(intents.includes("new_trade_analysis"), false);
   });
 
+  it("Arabic enable-indicator wording routes to enable_indicators, never a trendline", () => {
+    for (const message of ["شغّل RSI", "أضف مؤشر الماكد", "فعّل مؤشر بولينجر على الشارت", "ارسم مؤشر RSI"]) {
+      const intents = routeIntent({
+        message,
+        chartContext: { symbol: "XAUUSD", interval: "15m" },
+        ctx: fakeCtx([]),
+      });
+      assert.ok(intents.includes("enable_indicators"), message);
+      assert.equal(intents.includes("draw_on_chart"), false, message);
+      assert.equal(intents.includes("new_trade_analysis"), false, message);
+      assert.ok(isDrawingOnly(intents), message);
+    }
+  });
+
+  it("English enable-indicator wording routes to enable_indicators", () => {
+    for (const message of ["enable RSI", "add indicator EMA 50", "turn on the macd", "add vwap to the chart"]) {
+      const intents = routeIntent({
+        message,
+        chartContext: { symbol: "EURUSD", interval: "15m" },
+        ctx: fakeCtx([]),
+      });
+      assert.ok(intents.includes("enable_indicators"), message);
+      assert.equal(intents.includes("draw_on_chart"), false, message);
+      assert.equal(intents.includes("new_trade_analysis"), false, message);
+    }
+  });
+
+  it("an indicator question without an enable verb stays a general question", () => {
+    const intents = routeIntent({
+      message: "ما هو RSI؟",
+      chartContext: { symbol: "EURUSD", interval: "15m" },
+      ctx: fakeCtx([]),
+    });
+    assert.equal(intents.includes("enable_indicators"), false);
+  });
+
+  it("'add a demand zone' never becomes an indicator request", () => {
+    const intents = routeIntent({
+      message: "draw a demand zone",
+      chartContext: { symbol: "EURUSD", interval: "15m" },
+      ctx: fakeCtx([]),
+    });
+    assert.equal(intents.includes("enable_indicators"), false);
+    assert.ok(intents.includes("draw_on_chart"));
+  });
+
   it("'cancel the previous and analyze again' cancels AND analyzes", () => {
     const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
     const intents = routeIntent({

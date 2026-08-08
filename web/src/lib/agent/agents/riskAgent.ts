@@ -194,6 +194,8 @@ export async function runRiskAgent(
       candidate?.activationClass === "non_executable"
         ? "non_executable"
         : candidate?.activationClass,
+    atr: market.atr,
+    interval: market.interval,
   });
 
   // Account-level gate (separate from single-trade validation).

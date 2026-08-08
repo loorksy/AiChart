@@ -646,6 +646,12 @@ export const en = {
   "drawing.invalid_price":
     "That price looks off for this chart, so I didn't move anything. Give me a price near the current range and I'll adjust it.",
 
+  // Chart indicators (studies) the agent can enable on the visible chart.
+  "indicator.enabled":
+    "Done — enabled {list} on your chart. No trade recommendation was issued.",
+  "indicator.which":
+    "Which indicator should I enable? I support RSI, EMA, SMA, MACD, Bollinger Bands, ATR, Stochastic, and VWAP — for example: \"enable RSI\" or \"add EMA 50\".",
+
   // Real-time voice conversation
   "voice.start": "Start voice conversation",
   "voice.requesting_permission": "Requesting microphone access",
@@ -714,10 +720,11 @@ export const en = {
   "rec.badge.hit": "Hit",
   "rec.badge.pending": "Not reached",
   "rec.footer.valid_now": "The recommendation is live now.",
-  "rec.footer.awaiting": "Waiting for the activation conditions.",
+  "rec.footer.awaiting_activation": "Waiting for the activation conditions.",
   "rec.footer.expired": "The recommendation expired before completing.",
   "rec.footer.invalidated": "The recommendation was invalidated by a structure change.",
   "rec.footer.blocked": "Blocked by an execution obstacle — not a market verdict.",
+  "rec.footer.cancelled": "The recommendation was cancelled before completing.",
   "rec.footer.closed_win": "Position closed after the target was hit.",
   "rec.footer.closed_loss": "Position closed at the stop loss.",
   "rec.support.label": "Statistical support",
@@ -729,6 +736,11 @@ export const en = {
   "rec.plan_type.immediate": "Immediate",
   "rec.plan_type.anticipatory": "Anticipatory",
   "rec.plan_type.conditional": "Conditional",
+  "rec.setup_type.scalp": "Scalp",
+  "rec.setup_type.trend_continuation": "Trend continuation",
+  "rec.setup_type.reversal_after_sweep": "Reversal after sweep",
+  "rec.setup_type.range_boundary": "Range boundary",
+  "rec.setup_type.breakout_retest": "Breakout retest",
   "rec.detail.execution_state": "Execution state",
   "rec.exec_state.valid_now": "Valid now",
   "rec.exec_state.awaiting_activation": "Awaiting activation",

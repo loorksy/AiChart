@@ -18,6 +18,11 @@ export {
   geometryAtr,
   zigzagPivots,
 } from "./pivots";
+export {
+  detectTrendlines,
+  evaluateTrendlineCandidates,
+  MAX_ANCHOR_AGE_BARS,
+} from "./trendlines";
 export type {
   ChannelGeometry,
   GeometryCandle,

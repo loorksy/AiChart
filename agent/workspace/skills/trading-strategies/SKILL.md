@@ -5,7 +5,7 @@ category: analysis
 riskLevel: analysis
 supportedLocales: ["ar", "en"]
 allowedMarkets: ["forex"]
-tags: ["forex", "scalping", "structure", "momentum", "liquidity"]
+tags: ["forex", "scalping", "structure", "momentum", "liquidity", "تحليل", "استراتيجية", "مضاربة", "تداول", "توصية", "الذهب", "شارت"]
 description: Evidence catalogue for Forex scalping analysis; never a deterministic decision engine.
 ---
 

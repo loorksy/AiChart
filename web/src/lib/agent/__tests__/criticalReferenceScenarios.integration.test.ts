@@ -296,6 +296,7 @@ describe("critical reference scenario integrations", () => {
               targets: [4010],
             },
             activationCondition: "عودة السعر إلى 3992 حيث يغطي الهدف التكاليف.",
+            activationRule: { kind: "price_touch", level: 3992, timeframe: "5m" },
             invalidationRule: "إغلاق تحت 3990 يبطل الفكرة.",
             alternativeScenario: "كسر 3990 يقلب المشهد.",
             validityCandles: 6,

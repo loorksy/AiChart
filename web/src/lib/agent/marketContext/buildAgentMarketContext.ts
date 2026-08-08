@@ -80,6 +80,15 @@ export interface DataFreshness {
 }
 
 import { resolveCostEvidence, type CostEvidence } from "./costEvidence";
+import { getForexLiveQuote } from "@/lib/markets/forexPrice";
+
+/**
+ * How long the builder will wait for a live bid/ask before analysing without
+ * one. Short on purpose: the quote upgrades the cost evidence to rung 1
+ * (observed_quote), but a slow broker RPC must never stall the market-data
+ * stage — past the deadline the ladder simply resolves from its lower rungs.
+ */
+const LIVE_QUOTE_TIMEOUT_MS = 1_800;
 
 export interface AgentMarketContext {
   symbol: string;
@@ -169,6 +178,28 @@ export async function buildAgentMarketContext(input: {
   const higherInterval = getHigherInterval(interval);
   const analysisKind = input.analysisKind ?? "intraday";
   const source = "warehouse+metaapi";
+
+  // Rung 1 of the cost ladder needs a real bid/ask, and no production entry
+  // point ever supplied one — which is how the platform showed a live spread
+  // in its ticker while telling the decision engine the spread was
+  // unavailable. When the caller did not hand us a quote (or a spread), fetch
+  // one from the operator's own broker feed — the same call the forex-price
+  // ticker route makes — bounded and started HERE so it overlaps the candle
+  // I/O below. Failure degrades silently to the ladder's lower rungs.
+  const callerQuote =
+    input.observedQuote && input.observedQuote.bid > 0 && input.observedQuote.ask > 0
+      ? input.observedQuote
+      : null;
+  const liveQuotePromise: Promise<{
+    bid: number;
+    ask: number;
+    observedAt?: number;
+  } | null> =
+    callerQuote == null && input.spread == null && input.userId
+      ? getForexLiveQuote(input.userId, symbol, {
+          timeoutMs: LIVE_QUOTE_TIMEOUT_MS,
+        }).catch(() => null)
+      : Promise.resolve(null);
 
   let fresh = await getFreshAgentCandles({
     userId: input.userId,
@@ -325,14 +356,13 @@ export async function buildAgentMarketContext(input: {
 
   const atr = calculateAtr(currentTfCandles);
   // Resolved before the sync guard so every consumer sees the same object.
+  // The caller's own quote wins; otherwise the live fetch started above has
+  // had the whole candle phase to answer inside its own timeout.
   const costEvidence = await resolveCostEvidence({
     userId: input.userId,
     symbol,
     referencePrice: currentPrice,
-    observedOverride:
-      input.observedQuote && input.observedQuote.bid > 0 && input.observedQuote.ask > 0
-        ? input.observedQuote
-        : null,
+    observedOverride: callerQuote ?? (await liveQuotePromise),
   });
   const sync = evaluateMarketSync({
     symbol,

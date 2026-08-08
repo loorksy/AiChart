@@ -14,10 +14,12 @@ import {
   listRecommendationTransitions,
   recordRecommendationOutcome,
   transitionRecommendation,
+  updateCanonicalExecutionState,
   type CanonicalRecommendation,
   type RecommendationOutcome,
   type RecommendationStatus as CanonicalStatus,
 } from "./canonical";
+import type { ActivationEvidence } from "./activationRule";
 import type {
   TrackedRecommendation,
   TrackedRecommendationOutcome,
@@ -58,6 +60,18 @@ interface LegacyTrackedRow {
 }
 
 const migratedLegacyScopes = new Set<string>();
+
+function asExecutionState(
+  value: string | null | undefined,
+): TrackedRecommendation["executionState"] {
+  return value === "valid_now" ||
+    value === "awaiting_activation" ||
+    value === "expired" ||
+    value === "invalidated" ||
+    value === "blocked"
+    ? value
+    : undefined;
+}
 
 function legacyTargets(raw: string): number[] {
   try {
@@ -326,14 +340,13 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
       effective?.planType === "conditional"
         ? effective.planType
         : undefined,
+    // LIVE state from the row first (the tracker moves it as the market makes
+    // the plan executable); the revision only keeps what it DECLARED at
+    // creation. Reading the revision here is how a plan whose condition was
+    // satisfied kept its card on "بانتظار التفعيل" forever.
     executionState:
-      effective?.executionState === "valid_now" ||
-      effective?.executionState === "awaiting_activation" ||
-      effective?.executionState === "expired" ||
-      effective?.executionState === "invalidated" ||
-      effective?.executionState === "blocked"
-        ? effective.executionState
-        : undefined,
+      asExecutionState(recommendation.executionState) ??
+      asExecutionState(effective?.executionState),
     entryLow: effective?.entryLow ?? undefined,
     entryHigh: effective?.entryHigh ?? undefined,
     triggerCondition: effective?.activationCondition ?? undefined,
@@ -475,6 +488,14 @@ export interface TrackedStatusPatch {
   expiredAt?: number;
   lastCheckedAt?: number;
   reason?: string;
+  /**
+   * The LIVE execution state derived by the tracker from the market. Written to
+   * the recommendation row (revisions stay append-only) — omitting it leaves
+   * the stored state untouched.
+   */
+  executionState?: TrackedRecommendation["executionState"];
+  /** Which candle satisfied the activation rule — recorded as the trigger reason. */
+  activationEvidence?: ActivationEvidence;
 }
 
 async function move(
@@ -550,8 +571,18 @@ export async function updateTrackedRecommendation(
     recommendation = await ensureTriggered(
       recommendation,
       patch.triggeredAt ?? now,
-      patch.reason,
+      // The proof beats the generic reason: "3 إغلاق تحت 4348.27 على 15m"
+      // tells the operator WHICH candle satisfied the rule.
+      patch.activationEvidence?.detail ?? patch.reason,
     );
+  }
+  if (patch.executionState) {
+    await updateCanonicalExecutionState(
+      userId,
+      recommendation.recommendationId,
+      patch.executionState,
+    ).catch(() => undefined);
+    recommendation = { ...recommendation, executionState: patch.executionState };
   }
   if (patch.tp1HitAt) {
     await appendTrackerOutcome(recommendation, "TP1", patch.tp1HitAt, 1);

@@ -13,6 +13,7 @@ import { processAgentDrawings } from "@/lib/chart/processDrawings";
 import { profileForInterval } from "@/lib/analysisProfile";
 import { normalizeInterval } from "@/lib/intervals";
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import type { ChartStudy } from "@/lib/chart/studies";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 
 const pointSchema = z.object({
@@ -39,6 +40,15 @@ const drawingSchema = z.object({
   meta: z.record(z.string(), z.unknown()).optional(),
 });
 
+const studySchema = z.object({
+  id: z.string().max(24),
+  name: z.enum(["RSI", "EMA", "SMA", "MACD", "BB", "ATR", "Stochastic", "VWAP"]),
+  inputs: z
+    .record(z.string(), z.union([z.number(), z.string(), z.boolean()]))
+    .optional(),
+  pane: z.enum(["overlay", "separate"]).optional(),
+});
+
 const recommendationSchema = z.object({
   action: z.enum(["buy", "sell", "wait"]),
   entry: z.number().nullable().optional(),
@@ -51,16 +61,20 @@ const recommendationSchema = z.object({
 const postSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
   symbol: z.string().min(3).max(20).optional(),
-  interval: z.string().min(2).max(4).optional(),
+  // min(1): TvChart accepts single-letter intervals ("D"/"W") — min(2) rejected
+  // them before normalizeInterval ever saw them.
+  interval: z.string().min(1).max(4).optional(),
   dataSource: z.enum(["metaapi"]).optional(),
   mode: z.enum(["set", "add", "clear"]).default("set"),
   drawings: z.array(drawingSchema).max(24).optional(),
+  studies: z.array(studySchema).max(8).optional(),
   recommendation: recommendationSchema.nullable().optional(),
   targets: z.array(z.number()).max(6).optional(),
 });
 
 type LayoutState = Record<string, unknown> & {
   drawings?: ChartDrawing[];
+  studies?: ChartStudy[];
   recommendation?: unknown;
   targets?: number[];
   dataSource?: string;
@@ -141,6 +155,7 @@ export async function POST(req: NextRequest) {
     if (body.mode === "clear") {
       state.drawings = [];
       state.overlays = [];
+      state.studies = [];
       state.recommendation = null;
       state.targets = [];
     } else {
@@ -170,6 +185,21 @@ export async function POST(req: NextRequest) {
         body.mode === "add"
           ? [...((state.drawings as ChartDrawing[]) ?? []), ...processed]
           : processed;
+      // Studies: only touched when the caller sends them — a drawings-only
+      // "set" must not silently strip the indicators already on the chart.
+      if (body.studies !== undefined) {
+        const incoming = body.studies as ChartStudy[];
+        if (body.mode === "add") {
+          const prev = Array.isArray(state.studies) ? state.studies : [];
+          const replaced = new Set(incoming.map((s) => s.id));
+          state.studies = [
+            ...prev.filter((s) => !replaced.has(s.id)),
+            ...incoming,
+          ].slice(0, 8);
+        } else {
+          state.studies = incoming;
+        }
+      }
       if (body.recommendation !== undefined) {
         state.recommendation = body.recommendation
           ? { ...body.recommendation, symbol }
@@ -189,6 +219,7 @@ export async function POST(req: NextRequest) {
       symbol,
       interval,
       drawings_count: Array.isArray(state.drawings) ? state.drawings.length : 0,
+      studies_count: Array.isArray(state.studies) ? state.studies.length : 0,
       url: `/chart/${layout.id}?symbol=${encodeURIComponent(symbol)}`,
     });
   } catch (e) {

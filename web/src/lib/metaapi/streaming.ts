@@ -8,6 +8,9 @@
  */
 import { getMetaApi } from "./client";
 import { resolveBrokerSymbol } from "@/lib/markets/symbolCatalogue";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { spreadFromBidAsk } from "@/lib/spread";
+import { sessionAt } from "@/lib/strategies/sessionSpread";
 
 export type StreamTick = {
   symbol: string;
@@ -64,6 +67,41 @@ type UserStream = {
 
 const streams = new Map<number, UserStream>();
 
+/**
+ * Throttled `cost_samples` writer — the live-cost profile's only production
+ * feeder since the EA bridge was removed. One sample per canonical symbol per
+ * minute, taken from ticks the stream is already receiving for open charts,
+ * so the session profiles (cost ladder rungs 2–3) fill without any extra
+ * broker round trip. Fire-and-forget: a failed insert must never disturb the
+ * tick fan-out.
+ */
+const COST_SAMPLE_INTERVAL_MS = 60_000;
+const costSampleLastAt = new Map<string, number>();
+
+function recordCostSample(tick: StreamTick): void {
+  const canonical = forexCanonicalKey(tick.symbol);
+  if (!canonical) return;
+  const now = Date.now();
+  const last = costSampleLastAt.get(canonical) ?? 0;
+  if (now - last < COST_SAMPLE_INTERVAL_MS) return;
+  costSampleLastAt.set(canonical, now);
+  const info = spreadFromBidAsk(tick.bid, tick.ask, canonical);
+  // An implausible pips figure (wrong pip convention for the instrument)
+  // must not poison the measured profile — skip it, the throttle stamp above
+  // stands so the symbol is retried next minute.
+  if (!info || !Number.isFinite(info.spreadPips) || info.spreadPips < 0) return;
+  if (info.spreadPipsReliable === false) return;
+  void (async () => {
+    const { execute } = await import("@/lib/db");
+    await execute(
+      "INSERT INTO cost_samples (symbol, session, spread_pips, observed_at) VALUES (?,?,?,?)",
+      [canonical, sessionAt(new Date(now)), Number(info.spreadPips.toFixed(3)), now],
+    );
+  })().catch(() => {
+    /* failure-safe by contract */
+  });
+}
+
 function tickTimeMs(raw: number | string | Date | undefined): number {
   if (raw instanceof Date) return raw.getTime();
   if (typeof raw === "number" && Number.isFinite(raw)) {
@@ -99,6 +137,9 @@ async function ensureStream(userId: number, metaapiAccountId: string): Promise<U
           mid: (bid + ask) / 2,
           time: tickTimeMs(price.time),
         };
+        // Feed the live-cost profile before the fan-out: a tick with no SSE
+        // listener left is still a real observation of the broker's book.
+        recordCostSample(tick);
         const listeners = entry.symbolListeners.get(symbol);
         if (!listeners) return;
         for (const fn of listeners) {

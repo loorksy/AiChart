@@ -409,7 +409,9 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   {m.result.riskWarnings.map((w, i) => (
                     <li key={i} className="flex items-start gap-1.5">
                       <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span>{w}</span>
+                      {/* min-w-0: long Arabic warnings must wrap inside the
+                          320px chat pane instead of pushing the bubble wide. */}
+                      <span className="min-w-0 break-words">{w}</span>
                     </li>
                   ))}
                 </ul>

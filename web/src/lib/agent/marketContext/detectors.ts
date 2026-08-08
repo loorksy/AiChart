@@ -55,7 +55,11 @@ export function calculateAtr(candles: AgentCandle[]): number | null {
   return last14.reduce((a, b) => a + b, 0) / last14.length;
 }
 
-/** Fractal swing points (2 bars each side). Returns the most recent ~80. */
+/**
+ * Fractal swing points (2 bars each side). Returns the most recent ~80.
+ * Left-strict / right-inclusive: an equal high (or low) plateau still
+ * registers, on the FIRST bar of the equal run.
+ */
 export function detectSwings(candles: AgentCandle[]): Swing[] {
   const swings: Swing[] = [];
   for (let i = 2; i < candles.length - 2; i++) {
@@ -63,13 +67,13 @@ export function detectSwings(candles: AgentCandle[]): Swing[] {
     const isHigh =
       c.high > candles[i - 1]!.high &&
       c.high > candles[i - 2]!.high &&
-      c.high > candles[i + 1]!.high &&
-      c.high > candles[i + 2]!.high;
+      c.high >= candles[i + 1]!.high &&
+      c.high >= candles[i + 2]!.high;
     const isLow =
       c.low < candles[i - 1]!.low &&
       c.low < candles[i - 2]!.low &&
-      c.low < candles[i + 1]!.low &&
-      c.low < candles[i + 2]!.low;
+      c.low <= candles[i + 1]!.low &&
+      c.low <= candles[i + 2]!.low;
     if (isHigh) swings.push({ type: "high", time: c.time, price: c.high });
     if (isLow) swings.push({ type: "low", time: c.time, price: c.low });
   }

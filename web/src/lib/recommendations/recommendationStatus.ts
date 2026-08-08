@@ -55,6 +55,16 @@ export interface EvaluateInput {
     | "activationRule"
   >;
   candles: TrackerCandle[];
+  /**
+   * Candles of the ACTIVATION RULE's own timeframe, when it differs from the
+   * plan's. A 15m close-below rule on a 5m plan must be graded on 15m closes —
+   * grading it on 5m candles satisfies a condition the operator never stated.
+   * When present, the rule is replayed over THIS series and the fill loop only
+   * opens after the qualifying rule candle has CLOSED (`time + activationBarMs`).
+   */
+  activationCandles?: TrackerCandle[];
+  /** Bar duration of `activationCandles` in ms — converts open time → close time. */
+  activationBarMs?: number;
   now?: number;
 }
 
@@ -139,6 +149,24 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     !triggered && r.activationRule ? createActivationEvaluator(r.activationRule) : null;
   let activationEvidence: ActivationEvidence | undefined;
 
+  // Cross-timeframe rules: replay the rule over ITS OWN series up front. The
+  // fill loop below then gates on the resulting timestamp instead of feeding
+  // the evaluator plan-timeframe candles it was never written about.
+  const crossTf = Boolean(activation && input.activationCandles && input.activationBarMs);
+  let activationReadyAt: number | null = null;
+  if (activation && crossTf) {
+    const ruleCandles = [...input.activationCandles!]
+      .filter((c) => c.time > r.createdCandleTime)
+      .sort((a, b) => a.time - b.time);
+    for (const candle of ruleCandles) {
+      if (activation.observe(candle).activated) {
+        // The condition is only knowable once the qualifying candle CLOSED.
+        activationReadyAt = candle.time + input.activationBarMs!;
+        break;
+      }
+    }
+  }
+
   const finalize = (
     status: TrackedRecommendationStatus,
     outcome: TrackedRecommendationOutcome,
@@ -176,7 +204,11 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
       // condition demanded a close, a confirmed break, a retest or a rejection
       // filled on the first wick that grazed the entry — satisfying none of
       // them. The rule gates; the entry still has to be reached to fill.
-      const conditionMet = activation ? activation.observe(candle).activated : true;
+      const conditionMet = activation
+        ? crossTf
+          ? activationReadyAt != null && candle.time >= activationReadyAt
+          : activation.observe(candle).activated
+        : true;
       if (conditionMet && entryTouched(dir, candle, r.entry)) {
         triggered = true;
         triggeredAt = candle.time;

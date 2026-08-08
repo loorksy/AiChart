@@ -59,6 +59,7 @@ const answer = JSON.stringify({
   selectedTradeCandidateId: null,
   proposedLevels: null,
   activationCondition: "x",
+  activationRule: { kind: "candle_close_above", level: 1.1005, timeframe: "5m" },
   invalidationRule: "إغلاق تحت 1.09.",
   alternativeScenario: "كسر 1.09.",
   validityCandles: 6,

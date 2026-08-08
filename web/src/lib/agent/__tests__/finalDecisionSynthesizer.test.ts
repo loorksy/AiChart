@@ -144,6 +144,7 @@ describe("AI final decision authority", () => {
           planType: "conditional",
           selectedTradeCandidateId: "buy-1",
           activationCondition: "بعد انتهاء الحركة الأولى للخبر واستعادة 1.10.",
+          activationRule: { kind: "candle_close_above", level: 1.1, timeframe: "5m" },
           confidence: 0.95,
         }),
     });
@@ -172,6 +173,7 @@ describe("AI final decision authority", () => {
           planType: "conditional",
           selectedTradeCandidateId: null,
           activationCondition: "رفض صاعد من 1.095.",
+          activationRule: { kind: "rejection_confirmed", level: 1.095, direction: "above", timeframe: "5m" },
           proposedLevels: {
             entryLow: 1.095,
             entryHigh: 1.1,
@@ -193,6 +195,8 @@ describe("AI final decision authority", () => {
         model({
           direction: "buy",
           planType: "conditional",
+          activationCondition: "رفض صاعد من 1.095.",
+          activationRule: { kind: "rejection_confirmed", level: 1.095, direction: "above", timeframe: "5m" },
           proposedLevels: {
             preferredEntry: 1.0777,
             stopLoss: 1.0501,

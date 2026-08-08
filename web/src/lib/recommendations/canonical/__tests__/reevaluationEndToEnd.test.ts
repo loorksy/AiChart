@@ -123,6 +123,14 @@ function modelAnswer(user: string): string {
     proposedLevels,
     timeframeRoles: { lead: "15m", context: "1h", timing: "15m" },
     activationCondition: "Wait for a confirming close at the selected entry.",
+    // The synthesizer schema now refuses a conditional plan whose condition
+    // has no machine-checkable rule — the exact defect that let plans fill on
+    // a bare touch. The scripted model must honour the same contract.
+    activationRule: {
+      kind: direction === "buy" ? "candle_close_above" : "candle_close_below",
+      level: proposedLevels?.preferredEntry ?? context.currentPrice,
+      timeframe: "15m",
+    },
     invalidationRule: "A close beyond the selected stop invalidates the plan.",
     alternativeScenario: "Switch only after the opposite structure break.",
     validityCandles: 7,

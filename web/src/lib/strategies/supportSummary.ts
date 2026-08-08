@@ -17,7 +17,7 @@
  * strategy is labelled "unavailable" and goes out exactly the same.
  */
 import { query, queryOne } from "@/lib/db";
-import { canonicalStrategySymbol } from "./matchingKeys";
+import { canonicalStrategySymbol, canonicalStrategyTimeframe } from "./matchingKeys";
 
 export type SupportLevel = "strong" | "moderate" | "weak" | "unavailable";
 
@@ -30,6 +30,18 @@ export interface StatisticalSupport {
   confidenceInterval?: [number, number];
   deploymentState?: string;
   liveSampleSize?: number;
+  /**
+   * The matching deployments themselves (top few), so the decision model sees
+   * its arsenal — which validated strategies fit this symbol/timeframe and
+   * how well — instead of a single opaque grade.
+   */
+  deployments?: Array<{
+    strategyId: string;
+    state: string;
+    calibratedConfidence: number;
+    confidenceInterval: [number, number];
+    liveSampleSize: number;
+  }>;
 }
 
 interface DeploymentRow {
@@ -60,16 +72,41 @@ export async function getStatisticalSupport(input: {
   symbol: string;
   timeframe: string;
 }): Promise<StatisticalSupport> {
-  if (input.userId == null) return UNAVAILABLE;
+  const symbol = canonicalStrategySymbol(input.symbol);
+  // Canonicalize here, not just at the call site: a caller passing "M15"/"15"
+  // silently read "unavailable" forever — the exact class of mismatch
+  // matchingKeys exists to prevent.
+  const timeframe = canonicalStrategyTimeframe(input.timeframe) ?? input.timeframe;
 
-  const rows = await query<DeploymentRow>(
-    `SELECT strategy_id, state, calibrated_confidence, confidence_low, confidence_high,
-            live_sample_size, suspended_reason, updated_at
-       FROM strategy_deployments
-      WHERE user_id = ? AND symbol = ? AND timeframe = ?
-      ORDER BY updated_at DESC`,
-    [input.userId, canonicalStrategySymbol(input.symbol), input.timeframe],
-  ).catch(() => []);
+  let rows: DeploymentRow[] =
+    input.userId == null
+      ? []
+      : await query<DeploymentRow>(
+          `SELECT strategy_id, state, calibrated_confidence, confidence_low, confidence_high,
+                  live_sample_size, suspended_reason, updated_at
+             FROM strategy_deployments
+            WHERE user_id = ? AND symbol = ? AND timeframe = ?
+            ORDER BY updated_at DESC`,
+          [input.userId, symbol, timeframe],
+        ).catch(() => []);
+
+  // Platform fallback: the backtest pipeline runs under ONE configured user
+  // (STRATEGY_PIPELINE_USER_ID) and writes per-user rows, so every other
+  // operator read "unavailable" forever despite the factory's evidence.
+  // Validated strategy statistics are platform evidence, not personal data —
+  // fall back to the newest rows regardless of owner and say so.
+  let shared = false;
+  if (!rows.length) {
+    rows = await query<DeploymentRow>(
+      `SELECT strategy_id, state, calibrated_confidence, confidence_low, confidence_high,
+              live_sample_size, suspended_reason, updated_at
+         FROM strategy_deployments
+        WHERE symbol = ? AND timeframe = ?
+        ORDER BY updated_at DESC`,
+      [symbol, timeframe],
+    ).catch(() => []);
+    shared = rows.length > 0;
+  }
 
   if (!rows.length) return UNAVAILABLE;
 
@@ -107,12 +144,20 @@ export async function getStatisticalSupport(input: {
       `استراتيجية ${best.strategy_id} (${best.state === "active" ? "مفعّلة" : "قيد التتبع"}): ` +
       `ثقة ${best.calibrated_confidence.toFixed(1)}% ` +
       `[${best.confidence_low.toFixed(1)}–${best.confidence_high.toFixed(1)}]` +
-      (best.live_sample_size > 0 ? `، ${best.live_sample_size} نتيجة حية.` : "."),
+      (best.live_sample_size > 0 ? `، ${best.live_sample_size} نتيجة حية` : "") +
+      (shared ? "، من سجل التحقق المشترك للمنصة." : "."),
     strategyId: best.strategy_id,
     calibratedConfidence: best.calibrated_confidence,
     confidenceInterval: [best.confidence_low, best.confidence_high],
     deploymentState: best.state,
     liveSampleSize: best.live_sample_size,
+    deployments: usable.slice(0, 4).map((row) => ({
+      strategyId: row.strategy_id,
+      state: row.state,
+      calibratedConfidence: row.calibrated_confidence,
+      confidenceInterval: [row.confidence_low, row.confidence_high],
+      liveSampleSize: row.live_sample_size,
+    })),
   };
 }
 
