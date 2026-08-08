@@ -86,7 +86,13 @@ const DEADLINE_HIT = Symbol("deadline");
 
 /** Suggested per-agent deadlines (ms). If Risk times out → decision must be wait. */
 export const AGENT_TIMEOUTS = {
-  marketData: 10_000,
+  // Must stay ABOVE MetaApi's HISTORY_TIMEOUT_MS (12s). The old 10s budget
+  // made every cold/live history pull a structural timeout — a single page
+  // race already outlived the whole market-data stage, so operators saw
+  // "بيانات السوق لم تنتهِ ضمن المهلة" on first analysis after restart and
+  // on any thin-warehouse symbol. 28s fits one page timeout + one retry
+  // (or a slow warm connect) without crowding the final-decision budget.
+  marketData: 28_000,
   structure: 5_000,
   liquidity: 5_000,
   supplyDemand: 5_000,
@@ -117,8 +123,11 @@ export const AGENT_TIMEOUTS = {
  * three-state envelope instead of a transport timeout with no result. The web
  * route's own `maxDuration` (180s) stays above this, leaving room to compose
  * and send the final event after the budget trips.
+ *
+ * Raised with marketData (10→28s) so the worst serial chain still fits:
+ * 28 + 8 (fleet) + 5 (risk) + 95 (final) + 5 (drawing) = 141s < 145s.
  */
-export const TOTAL_RUN_BUDGET_MS = 135_000;
+export const TOTAL_RUN_BUDGET_MS = 145_000;
 
 /** MCP's client-side wait for run_market_analysis — the ceiling we stay under. */
 export const MCP_ANALYZE_TIMEOUT_MS = 150_000;

@@ -263,11 +263,23 @@ export function userMessageForFailure(
   cause?: { stages?: readonly string[] },
 ): string {
   const stages = cause?.stages?.length ? namedStages(cause.stages, locale) : "";
-  if (stages && (code === "timeout" || code === "insufficient_data")) {
+  // Timeout and insufficient_data both carry stage ids, but they are different
+  // faults. Folding insufficient_data into the "did not finish in time"
+  // sentence made coverage/gap blockers look like MetaApi deadlines — which is
+  // exactly the "بيانات السوق لم تنتهِ ضمن المهلة" operators kept seeing when
+  // the warehouse was simply thin.
+  if (stages && code === "timeout") {
     return locale === "en"
       ? `The analysis did not complete: ${stages} did not finish within the allowed time. ` +
           `Whatever evidence was gathered before that is shown below; nothing has been assumed in its place.`
       : `لم يكتمل التحليل: ${stages} لم تنتهِ ضمن المهلة المسموحة. ` +
+          `ما جُمع من أدلة قبل ذلك معروض أدناه، ولم يُفترض شيء مكانه.`;
+  }
+  if (stages && code === "insufficient_data") {
+    return locale === "en"
+      ? `The analysis did not complete: ${stages} does not have enough historical coverage yet. ` +
+          `Whatever evidence was gathered before that is shown below; nothing has been assumed in its place.`
+      : `لم يكتمل التحليل: تغطية ${stages} التاريخية غير كافية بعد. ` +
           `ما جُمع من أدلة قبل ذلك معروض أدناه، ولم يُفترض شيء مكانه.`;
   }
   const ar: Record<AgentFailureCode, string> = {

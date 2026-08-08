@@ -140,12 +140,29 @@ async function refillIfThin(input: {
   if (input.available >= input.required) {
     return { attempted: false, inserted: 0, failed: false };
   }
-  // Three of these run in parallel (current TF, higher TF, daily) inside the
-  // market-data stage's ten-second deadline. Uncapped, each could page ten
-  // times at twelve seconds, so a single cold series — the daily one, most
-  // often, since it is the least likely to be warm — made the whole analysis
-  // fail on time every time. One page here, depth from the cron.
+  // Three of these used to run in parallel (current TF, higher TF, daily)
+  // inside the market-data stage. Uncapped, each could page ten times at
+  // twelve seconds, so a single cold series — the daily one, most often —
+  // made the whole analysis fail on time every time. One page here, depth
+  // from the cron.
+  //
+  // When the warehouse already has SOME bars, awaiting MetaApi again is what
+  // still produces the recurring "بيانات السوق لم تنتهِ ضمن المهلة" fault:
+  // coverage can report honestly as thin while analysis proceeds, and the
+  // cron / background backfill deepens the series. Only an EMPTY series still
+  // blocks — without any bars there is nothing to reason on.
   void recordWarmDemand({ symbol: input.symbol, interval: input.interval });
+  if (FEATURES.boundedColdStartV1() && input.available > 0) {
+    void backfillCandles({
+      symbol: input.symbol,
+      interval: input.interval,
+      limit: input.limit,
+      maxPages: 1,
+    }).catch(() => {
+      // Background deepen is best-effort; coverage already reflects thinness.
+    });
+    return { attempted: true, inserted: 0, failed: false };
+  }
   const result = await backfillCandles({
     symbol: input.symbol,
     interval: input.interval,
