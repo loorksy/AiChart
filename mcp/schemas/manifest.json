@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-08-08T00:21:11.712Z",
-  "toolCount": 55,
+  "exportedAt": "2026-08-08T17:48:03.037Z",
+  "toolCount": 58,
   "tools": [
     {
       "name": "get_account_overview",
@@ -551,6 +551,36 @@
         "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false
+      }
+    },
+    {
+      "name": "quant_agent_generate_recommendation",
+      "domain": "quantAgent",
+      "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: the operator explicitly wants a Quant Agent read on a symbol — triggers the engine to evaluate its deterministic strategies against fresh candles and, if one fires, persist a new Quant Agent recommendation in its own isolated store; a \"no signal\" result is a valid, expected outcome, not an error. Not for recording Lonora's own analysis — that is create_recommendation, a completely separate table, id space, and lifecycle. side-effect: writes a new record to Quant Agent's own store only — never places, modifies, or touches any broker order or account.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "quant_agent_list_recommendations",
+      "domain": "quantAgent",
+      "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: browsing or filtering Quant Agent's own recommendation feed by symbol and/or lifecycle state. Not Lonora's recommendation history — that lives in a completely different store; this only ever returns Quant Agent output. read-only. Example: symbol=EURUSD&state=active.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "quant_agent_get_recommendation",
+      "domain": "quantAgent",
+      "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: fetching one specific Quant Agent recommendation by its id, e.g. to check its current lifecycle state or full plan. Not for Lonora recommendation ids — Quant Agent ids live in a completely separate id space and store. read-only. Example: id=qr_01h....",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
       }
     }
   ]

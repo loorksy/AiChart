@@ -2,6 +2,7 @@ import { CHARTS_TOOL_DEFINITIONS } from "./chartsSchemas.js";
 import { CORE_TOOL_DEFINITIONS } from "./coreSchemas.js";
 import { MARKET_TOOL_DEFINITIONS } from "./marketSchemas.js";
 import { MT5_TOOL_DEFINITIONS } from "./mt5Schemas.js";
+import { QUANT_AGENT_TOOL_DEFINITIONS } from "./quantAgentSchemas.js";
 import { toolConfig } from "../registry.js";
 import type { ToolDefinition } from "./types.js";
 
@@ -10,6 +11,7 @@ export const TOOL_CATALOG: ToolDefinition[] = [
   ...MARKET_TOOL_DEFINITIONS,
   ...MT5_TOOL_DEFINITIONS,
   ...CHARTS_TOOL_DEFINITIONS,
+  ...QUANT_AGENT_TOOL_DEFINITIONS,
 ];
 
 export const TOOL_BY_NAME: Record<string, ToolDefinition> = Object.fromEntries(

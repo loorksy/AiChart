@@ -825,6 +825,29 @@ export const ar: Record<TranslationKey, string> = {
   "journal.no_data": "لا بيانات كافية بعد.",
   "journal.outcome": "النتيجة",
 
+  // Quant Agent — محرك توصيات ثانٍ ومستقل تمامًا (استشاري فقط، لا يمر أبدًا
+  // عبر خط أنابيب التوصية القانوني)
+  "nav.quant_agent": "Quant Agent",
+  "qa.page.title": "Quant Agent",
+  "qa.page.subtitle":
+    "توصيات آلية من محرك قرار مستقل تمامًا — للعلم فقط، ومنفصل عن تحليل Lonora.",
+  "qa.page.badge": "Quant Agent — محرك مستقل",
+  "qa.page.refresh": "تحديث",
+  "qa.page.empty": "لا توجد توصيات نشطة من Quant Agent حاليًا.",
+  "qa.page.error": "تعذّر تحميل توصيات Quant Agent.",
+  "qa.page.disabled": "خدمة Quant Agent غير مفعّلة في هذه البيئة.",
+  "qa.card.entry": "الدخول",
+  "qa.card.stop_loss": "وقف الخسارة",
+  "qa.card.take_profit": "جني الأرباح",
+  "qa.card.targets": "الأهداف",
+  "qa.card.confidence": "الثقة",
+  "qa.card.strategy": "الاستراتيجية",
+  "qa.card.regime": "نظام السوق",
+  "qa.card.rationale": "المبرر",
+  "qa.card.validity": "صالحة حتى",
+  "qa.card.updated": "آخر تحديث",
+  "qa.card.no_expiry": "بدون تاريخ انتهاء",
+
   // Admin
   "nav.admin_diagnostics": "التشخيص",
 };

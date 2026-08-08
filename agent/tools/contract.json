@@ -900,6 +900,66 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "quant_agent_generate_recommendation",
+      "version": "1.1.1",
+      "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: the operator explicitly wants a Quant Agent read on a symbol — triggers the engine to evaluate its deterministic strategies against fresh candles and, if one fires, persist a new Quant Agent recommendation in its own isolated store; a \"no signal\" result is a valid, expected outcome, not an error. Not for recording Lonora's own analysis — that is create_recommendation, a completely separate table, id space, and lifecycle. side-effect: writes a new record to Quant Agent's own store only — never places, modifies, or touches any broker order or account.",
+      "permission": "quant_agent.recommend",
+      "riskClass": "recommendation",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_generate_recommendation.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_get_recommendation",
+      "version": "1.1.1",
+      "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: fetching one specific Quant Agent recommendation by its id, e.g. to check its current lifecycle state or full plan. Not for Lonora recommendation ids — Quant Agent ids live in a completely separate id space and store. read-only. Example: id=qr_01h....",
+      "permission": "quant_agent.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_get_recommendation.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_list_recommendations",
+      "version": "1.1.1",
+      "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: browsing or filtering Quant Agent's own recommendation feed by symbol and/or lifecycle state. Not Lonora's recommendation history — that lives in a completely different store; this only ever returns Quant Agent output. read-only. Example: symbol=EURUSD&state=active.",
+      "permission": "quant_agent.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_list_recommendations.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "record_exit_decision",
       "version": "1.1.1",
       "description": "Records an exit-management decision (hold | close | adjust_sl) with its reason in the audit trail; it documents the decision only and never closes or modifies the position itself. When: after evaluate_trade, once a management decision has been made — follow with close_trade or modify_sl_tp to act on it. Not the tool that acts — recording decision:close or decision:adjust_sl does nothing to the position by itself; the corresponding call is a separate, required step. side-effect: records decision. Does not auto-close.",

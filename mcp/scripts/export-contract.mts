@@ -28,7 +28,8 @@ type Permission =
   | "market.read" | "chart.read" | "chart.write" | "account.read"
   | "recommendation.read" | "recommendation.write" | "trade.recommend"
   | "trade.execute" | "trade.manage" | "memory.read" | "memory.write"
-  | "settings.write" | "notify.send" | "research.run" | "ui.render" | "web.browse";
+  | "settings.write" | "notify.send" | "research.run" | "ui.render" | "web.browse"
+  | "quant_agent.read" | "quant_agent.recommend";
 type RiskClass = "read" | "write" | "recommendation" | "execution";
 
 interface Override {
@@ -109,6 +110,16 @@ const OVERRIDES: Record<string, Override> = {
   // — skills —
   list_agent_skills: { permission: "memory.read" },
   load_agent_skill: { permission: "memory.read" },
+  // — quant agent (separate, independent strategy engine — not Lonora's
+  // recommendation lifecycle; writes only to its own isolated store, never
+  // touches a broker, so it is classed "recommendation" like
+  // create_recommendation, never "execution") —
+  quant_agent_generate_recommendation: {
+    permission: "quant_agent.recommend",
+    riskClass: "recommendation",
+  },
+  quant_agent_list_recommendations: { permission: "quant_agent.read" },
+  quant_agent_get_recommendation: { permission: "quant_agent.read" },
 };
 
 /** Research Swarm policy allowlist names → canonical mapping. */

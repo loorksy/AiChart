@@ -22,6 +22,8 @@ services:
       - RESEARCH_SERVICE_INTERNAL_TOKEN=${RESEARCH_SERVICE_INTERNAL_TOKEN:-}
       - RESEARCH_SWARM_ENABLED=${RESEARCH_SWARM_ENABLED:-0}
       - RESEARCH_SWARM_PRESETS_ENABLED=${RESEARCH_SWARM_PRESETS_ENABLED:-0}
+      - QUANT_AGENT_SERVICE_URL=http://quant-agent:8091
+      - QUANT_AGENT_SERVICE_INTERNAL_TOKEN=${QUANT_AGENT_SERVICE_INTERNAL_TOKEN:-}
     volumes:
       - aichart-data:/app/data
     depends_on:
@@ -31,6 +33,7 @@ services:
     networks:
       - default
       - research-internal
+      - quant-agent-internal
 
   # Loopback ingress for the pm2 deployment layout, where web/worker run on
   # the HOST (RESEARCH_SERVICE_URL=http://127.0.0.1:8090) rather than as
@@ -95,6 +98,55 @@ services:
     restart: unless-stopped
     networks:
       - research-internal
+
+  # Loopback ingress for the pm2 deployment layout, where web/worker run on
+  # the HOST (QUANT_AGENT_SERVICE_URL=http://127.0.0.1:8091) rather than as
+  # compose services. The quant-agent service itself stays on the
+  # INTERNAL-only network (no egress — docker cannot and must not publish
+  # its ports directly); this proxy bridges default ⇄ quant-agent-internal
+  # and binds strictly to 127.0.0.1.
+  quant-agent-ingress:
+    profiles: ["quant-agent"]
+    image: alpine/socat:1.8.0.0
+    command: TCP-LISTEN:8091,fork,reuseaddr TCP:quant-agent:8091
+    ports:
+      - "127.0.0.1:8091:8091"
+    depends_on:
+      - quant-agent
+    networks:
+      - default
+      - quant-agent-internal
+    restart: unless-stopped
+
+  quant-agent:
+    profiles: ["quant-agent"]
+    build:
+      context: ../quant-agent
+      dockerfile: Dockerfile
+    expose:
+      - "8091"
+    environment:
+      - QUANT_AGENT_ENV=production
+      - QUANT_AGENT_INTERNAL_TOKEN=${QUANT_AGENT_SERVICE_INTERNAL_TOKEN:-}
+      - QUANT_AGENT_WORK_DIR=/var/lib/aichart-quant-agent/work
+      - QUANT_AGENT_STORAGE=sqlite
+      - QUANT_AGENT_DB_PATH=/var/lib/aichart-quant-agent/work/quant-agent.sqlite3
+      - QUANT_AGENT_NETWORK_MODE=disabled
+    volumes:
+      - quant-agent-work:/var/lib/aichart-quant-agent/work
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.00
+    restart: unless-stopped
+    networks:
+      - quant-agent-internal
 
   mt5:
     build:
@@ -166,8 +218,11 @@ volumes:
   mt5-data:
   research-artifacts:
   research-work:
+  quant-agent-work:
   redis-data:
 
 networks:
   research-internal:
+    internal: true
+  quant-agent-internal:
     internal: true

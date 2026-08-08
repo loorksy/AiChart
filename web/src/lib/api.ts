@@ -117,28 +117,31 @@ export function handleError(err: unknown): NextResponse {
   if (err instanceof ApiError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
-  // Surface Research Service failures with code + HTTP status (never opaque).
+  // Surface Research / Quant Agent Service failures with code + HTTP status
+  // (never opaque) — both isolated services share this error shape.
   if (
     err &&
     typeof err === "object" &&
     "name" in err &&
-    (err as { name?: string }).name === "ResearchServiceError"
+    ((err as { name?: string }).name === "ResearchServiceError" ||
+      (err as { name?: string }).name === "QuantAgentServiceError")
   ) {
-    const researchErr = err as unknown as {
+    const serviceErr = err as unknown as {
+      name: string;
       message: string;
       code?: string;
       status?: number;
     };
     const status =
-      typeof researchErr.status === "number" &&
-      researchErr.status >= 400 &&
-      researchErr.status < 600
-        ? researchErr.status
+      typeof serviceErr.status === "number" && serviceErr.status >= 400 && serviceErr.status < 600
+        ? serviceErr.status
         : 502;
+    const fallbackCode =
+      serviceErr.name === "QuantAgentServiceError" ? "QUANT_AGENT_SERVICE_ERROR" : "RESEARCH_SERVICE_ERROR";
     return NextResponse.json(
       {
-        error: researchErr.message,
-        code: researchErr.code ?? "RESEARCH_SERVICE_ERROR",
+        error: serviceErr.message,
+        code: serviceErr.code ?? fallbackCode,
         status,
       },
       { status },

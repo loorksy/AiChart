@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "description": "e.g. EURUSD",
+      "type": "string"
+    },
+    "state": {
+      "description": "Quant Agent lifecycle state filter",
+      "type": "string",
+      "enum": [
+        "active",
+        "expired",
+        "invalidated",
+        "superseded"
+      ]
+    }
+  }
+}

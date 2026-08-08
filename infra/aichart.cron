@@ -50,4 +50,10 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # sends one Telegram message per operator. GET the same path for a preview.
 0 18 * * 0 root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/weekly-report >/dev/null 2>&1
 
+# Quant Agent scan — every 15 min. A second, fully independent recommendation
+# engine (isolated quant-agent service, recommend-only, no trade execution).
+# Loops QUANT_AGENT_WATCHLIST symbols x a fixed interval set, no-ops cleanly
+# when QUANT_AGENT_SERVICE_ENABLED is not 1. Overlap-safe via a lease lock.
+*/15 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/quant-agent-scan >/dev/null 2>&1
+
 # than 14 days so stale history never bloats disk or future context.

@@ -827,6 +827,29 @@ export const en = {
   "journal.no_data": "Not enough data yet.",
   "journal.outcome": "Outcome",
 
+  // Quant Agent — second, independent recommendation engine (advisory only,
+  // never routed through the canonical recommendation pipeline)
+  "nav.quant_agent": "Quant Agent",
+  "qa.page.title": "Quant Agent",
+  "qa.page.subtitle":
+    "Automated recommendations from a separate, independent decision engine — informational only, distinct from Lonora's analysis.",
+  "qa.page.badge": "Quant Agent — independent engine",
+  "qa.page.refresh": "Refresh",
+  "qa.page.empty": "No active Quant Agent recommendations right now.",
+  "qa.page.error": "Could not load Quant Agent recommendations.",
+  "qa.page.disabled": "Quant Agent Service is not enabled on this deployment.",
+  "qa.card.entry": "Entry",
+  "qa.card.stop_loss": "Stop loss",
+  "qa.card.take_profit": "Take profit",
+  "qa.card.targets": "Targets",
+  "qa.card.confidence": "Confidence",
+  "qa.card.strategy": "Strategy",
+  "qa.card.regime": "Regime",
+  "qa.card.rationale": "Rationale",
+  "qa.card.validity": "Valid until",
+  "qa.card.updated": "Updated",
+  "qa.card.no_expiry": "No expiry set",
+
   // Admin
   "nav.admin_diagnostics": "Diagnostics",
 } as const;

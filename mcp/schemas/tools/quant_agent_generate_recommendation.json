@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "e.g. EURUSD"
+    },
+    "market": {
+      "type": "string",
+      "const": "forex"
+    },
+    "interval": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required timeframe, e.g. 1h, 15m, 4h"
+    }
+  },
+  "required": [
+    "symbol",
+    "interval"
+  ]
+}
