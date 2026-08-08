@@ -15,7 +15,8 @@ export const INDICATORS_CACHE_TTL_MS = 45_000;
 export interface ForexIndicatorsResult {
   symbol: string;
   interval: string;
-  computedFrom: OhlcSource;
+  /** "metaapi" for the trader's linked account; a neutral reference-feed label when analysis-only fallback served it. */
+  computedFrom: OhlcSource | "reference_feed";
   rsi14: number | null;
   macd: { macd: number; signal: number; histogram: number } | null;
   sma20: number | null;
@@ -58,7 +59,7 @@ export function computeForexIndicators(
   symbol: string,
   interval: string,
   candles: OhlcCandle[],
-  computedFrom: OhlcSource,
+  computedFrom: OhlcSource | "reference_feed",
 ): ForexIndicatorsResult {
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);

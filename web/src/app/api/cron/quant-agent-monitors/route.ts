@@ -5,7 +5,7 @@ import { verifyCronSecret } from "@/lib/cronAuth";
 import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
 import { generateQuantRecommendation, quantAgentServiceEnabled } from "@/lib/quantAgent/client";
-import { fetchQuantAgentBars, QuantAgentMarketFeedError } from "@/lib/quantAgent/marketFeed";
+import { fetchQuantAgentAnalysisBars, QuantAgentMarketFeedError } from "@/lib/quantAgent/marketFeed";
 import { isMonitorDue, shouldFireForRecommendation } from "@/lib/quantAgent/monitorDue";
 import { dispatchMonitorNotification } from "@/lib/quantAgent/monitorNotify";
 import {
@@ -85,10 +85,12 @@ export async function POST(req: NextRequest) {
   }
 
   const outcome = await withLock("cron:quant-agent-monitors", MONITOR_LOCK_MS, async () => {
-    // Candle feed is always the single-operator identity, same convention
-    // quant-agent-scan already uses — recommendations are symbol-scoped, not
-    // account-scoped, so this never reads any individual monitor owner's
-    // broker account.
+    // Candle feed no longer reads any single-operator's linked MT account —
+    // recommendations are symbol-scoped, not account-scoped, and the
+    // analysis-only feed has no per-user concept at all (plan §4).
+    // `resolveAgentUserId()` is kept only for `owner_user_id` attribution on
+    // the generated recommendation row below, which still needs SOME
+    // identity value; it never reaches the candle fetch anymore.
     const userId = await resolveAgentUserId();
 
     let groupsChecked = 0;
@@ -109,8 +111,7 @@ export async function POST(req: NextRequest) {
       groupsChecked += 1;
       const requestId = randomUUID();
       try {
-        const feed = await fetchQuantAgentBars({
-          userId,
+        const feed = await fetchQuantAgentAnalysisBars({
           symbol: group.symbol,
           market: group.market,
           interval: group.interval,

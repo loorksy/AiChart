@@ -3,6 +3,8 @@ import { getCached, setCached } from "@/lib/bridge/cache";
 import { ApiError } from "@/lib/api";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
+import { fetchAnalysisCandleFeed } from "@/lib/markets/analysisCandleFeed";
 import {
   computeForexIndicators,
   INDICATORS_CACHE_TTL_MS,
@@ -31,6 +33,31 @@ export const GET = withBridge(async ({ req, userId }) => {
       cachedAt: hit.cachedAt,
       ageMs: hit.ageMs,
       fromCache: true,
+    };
+  }
+
+  const decision = await resolveMarketDataSource(userId, null);
+
+  // No linked account to read from — analysis-only reference data instead of
+  // an error (plan §5: get_forex_indicators is analysis-only, no account tie-in).
+  if (!decision.available.metaapi) {
+    const fed = await fetchAnalysisCandleFeed(symbol, interval, 200);
+    if (fed.candles.length < 20) {
+      throw new ApiError(
+        503,
+        "لا تتوفر شموع كافية لحساب المؤشرات — أعد المحاولة لاحقاً أو جرّب interval أطول.",
+      );
+    }
+    const indicators = computeForexIndicators(fed.symbol, fed.interval, fed.candles, "reference_feed");
+    await setCached(userId, cacheKey, indicators, INDICATORS_CACHE_TTL_MS);
+    return {
+      ...indicators,
+      ohlcSource: "reference_feed",
+      candleCount: fed.candles.length,
+      cachedAt: Date.now(),
+      ageMs: 0,
+      fromCache: false,
+      warning: fed.warning,
     };
   }
 

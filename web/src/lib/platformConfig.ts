@@ -146,6 +146,15 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
    * The panel could not configure the pipes the platform runs on.
    */
   {
+    key: "OANDA_API_TOKEN",
+    label: "توكن OANDA",
+    labelEn: "OANDA_API_TOKEN",
+    group: "markets",
+    secret: true,
+    plainStorage: false,
+    placeholder: "من OANDA ← Manage API Access",
+  },
+  {
     key: "FRED_API_KEY",
     label: "مفتاح FRED (بيانات الفيدرالي والماكرو)",
     labelEn: "FRED_API_KEY",
@@ -153,6 +162,26 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     secret: true,
     plainStorage: false,
     placeholder: "مفتاح مجاني من fred.stlouisfed.org",
+  },
+  {
+    key: "OANDA_ACCOUNT_ID",
+    label: "رقم حساب OANDA",
+    labelEn: "OANDA_ACCOUNT_ID",
+    group: "markets",
+    secret: false,
+    plainStorage: false,
+    placeholder: "101-001-1234567-001",
+  },
+  {
+    // practice | live — the DATA environment only. It has no say over where
+    // orders go; executionKillSwitch deliberately stopped reading it.
+    key: "OANDA_ENV",
+    label: "بيئة بيانات OANDA",
+    labelEn: "OANDA_ENV",
+    group: "markets",
+    secret: false,
+    plainStorage: false,
+    placeholder: "practice أو live — الافتراضي practice",
   },
   {
     key: "METAAPI_TOKEN",

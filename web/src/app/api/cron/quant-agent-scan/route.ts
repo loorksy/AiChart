@@ -5,7 +5,7 @@ import { verifyCronSecret } from "@/lib/cronAuth";
 import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
 import { generateQuantRecommendation, quantAgentServiceEnabled } from "@/lib/quantAgent/client";
-import { fetchQuantAgentBars, QuantAgentMarketFeedError } from "@/lib/quantAgent/marketFeed";
+import { fetchQuantAgentAnalysisBars, QuantAgentMarketFeedError } from "@/lib/quantAgent/marketFeed";
 
 export const runtime = "nodejs";
 export const maxDuration = 290;
@@ -58,10 +58,11 @@ export async function POST(req: NextRequest) {
   }
 
   const outcome = await withLock("cron:quant-agent-scan", SCAN_LOCK_MS, async () => {
-    // Candle feed is always the user's own linked MetaTrader account — the
-    // watchlist scan borrows the platform's single-operator resolution
-    // (AICHART_AGENT_USER_ID, else the first admin), same convention the
-    // mass-backtest pipeline uses for its own unattended candle pulls.
+    // Candle feed no longer depends on any single linked MT account — an
+    // unattended cron tick has no true "owner" to read, so it reads the
+    // analysis-only feed directly (plan §4). `resolveAgentUserId()` is still
+    // used below, but only for `owner_user_id` attribution on the generated
+    // recommendation row, which still needs SOME identity value.
     const userId = await resolveAgentUserId();
     let generated = 0;
     let noSignal = 0;
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
       for (const interval of SCAN_INTERVALS) {
         const requestId = randomUUID();
         try {
-          const feed = await fetchQuantAgentBars({ userId, symbol, interval });
+          const feed = await fetchQuantAgentAnalysisBars({ symbol, interval });
           if (!feed.bars.length) {
             noSignal += 1;
             continue;
