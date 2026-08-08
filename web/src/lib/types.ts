@@ -298,7 +298,11 @@ export type AlertType =
   | "trade_executed"
   | "trade_closed"
   | "trade_failed"
-  | "signal";
+  | "signal"
+  /** Quant Agent's own "AI Scheduled Monitors" firing (plan §A4) — always
+   * carries "Quant Agent" in its title so it never reads as a Lonora alert
+   * in the same feed/Telegram thread. */
+  | "quant_agent_monitor";
 
 export interface AlertLog {
   id: number;

@@ -4,8 +4,10 @@
  * Quant Agent Chat panel (plan §4) — the center chat surface: header,
  * scrollable message list with an empty-state welcome screen offering a few
  * quick-start prompts, composer fixed at the bottom. Combined with
- * `QuantAgentChatSidebar` in `chat/page.tsx`'s two-column grid (a right rail
- * is explicitly out of scope for v1).
+ * `QuantAgentChatSidebar` and `QuantAgentRightRail` (Watchlist + AI Scheduled
+ * Monitors, plan "Feature A" §A7) in a three-column grid — the right rail is
+ * hidden below `lg` rather than dropped, since it is optional context, not a
+ * primary surface.
  *
  * Original layout/interaction PATTERN only — no code or markup copied from
  * QuantDinger-Vue's `CopilotWorkbench.vue` (commercially licensed, not
@@ -21,6 +23,11 @@ import type { QuantAgentChatTurnResult } from "@/lib/agent/quantAgentChat/types"
 import { QuantAgentChatComposer } from "./QuantAgentChatComposer";
 import { QuantAgentChatSidebar } from "./QuantAgentChatSidebar";
 import { QuantAgentChatMessage, type QuantAgentChatMessageData } from "./QuantAgentChatMessage";
+import { QuantAgentRightRail } from "@/components/quantAgent/QuantAgentRightRail";
+import { QuantAgentComposerCoach } from "./QuantAgentComposerCoach";
+
+/** Mirrors the exact case-insensitive/trimmed matching style `pendingTask.ts` uses server-side. */
+const CANCEL_KEYWORD_BY_LOCALE: Record<"ar" | "en", string> = { ar: "إلغاء", en: "cancel" };
 
 /** Matches Lonora's own chat: a concrete active symbol, never an unset one. */
 const DEFAULT_QUANT_AGENT_SYMBOL = "EURUSD";
@@ -30,6 +37,7 @@ interface StoredMessageResult {
   strategyProposal?: QuantAgentChatMessageData["strategyProposal"];
   memoryCandidate?: QuantAgentChatMessageData["memoryCandidate"];
   recommendations?: QuantAgentChatMessageData["recommendations"];
+  composerCoach?: QuantAgentChatMessageData["composerCoach"];
 }
 
 function toDisplayMessage(record: AgentChatMessageRecord): QuantAgentChatMessageData {
@@ -42,6 +50,7 @@ function toDisplayMessage(record: AgentChatMessageRecord): QuantAgentChatMessage
     strategyProposal: result?.strategyProposal ?? null,
     memoryCandidate: result?.memoryCandidate ?? null,
     recommendations: result?.recommendations,
+    composerCoach: result?.composerCoach ?? null,
     createdAt: record.createdAt,
   };
 }
@@ -67,6 +76,8 @@ export function QuantAgentChatPanel() {
    * `brokerConnected` is a safe, honest `false` (see `QuantAgentChatComposer`).
    */
   const [symbol, setSymbol] = useState(DEFAULT_QUANT_AGENT_SYMBOL);
+  /** Composer draft text (Feature B) — lifted so a Composer Coach suggestion chip can set it. */
+  const [draftText, setDraftText] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const loadSessions = useCallback(async () => {
@@ -107,6 +118,7 @@ export function QuantAgentChatPanel() {
   function handleSelectChat(chatId: string) {
     setActiveChatId(chatId);
     void loadMessages(chatId);
+    setDraftText("");
     const session = (sessions ?? []).find((s) => s.id === chatId);
     if (session?.symbol) setSymbol(session.symbol);
   }
@@ -115,6 +127,7 @@ export function QuantAgentChatPanel() {
     setActiveChatId(null);
     setMessages([]);
     setSymbol(DEFAULT_QUANT_AGENT_SYMBOL);
+    setDraftText("");
   }
 
   async function handleDeleteChat(chatId: string) {
@@ -184,6 +197,7 @@ export function QuantAgentChatPanel() {
                     strategyProposal: payload.strategyProposal,
                     memoryCandidate: payload.memoryCandidate,
                     recommendations: payload.recommendations,
+                    composerCoach: payload.composerCoach,
                     createdAt: Date.now(),
                   }
                 : m,
@@ -207,9 +221,21 @@ export function QuantAgentChatPanel() {
   }
 
   const showEmptyState = !loadingMessages && messages.length === 0;
+  /**
+   * Composer Coach (Feature B) — conditional on the LATEST assistant message
+   * carrying a `composerCoach` payload, so it disappears the moment step 4 is
+   * confirmed (that turn's `composerCoach` is `null`) or the wizard is
+   * cancelled. Survives a page reload because `toDisplayMessage` restores it
+   * from the persisted `result` JSON.
+   */
+  const lastAssistantMessage = [...messages].reverse().find((m) => m.role === "assistant" && !m.pending);
+  const activeComposerCoach = lastAssistantMessage?.composerCoach ?? null;
 
   return (
-    <div dir={dir} className="grid h-[calc(100dvh-13rem)] min-h-[28rem] grid-cols-1 gap-3 md:grid-cols-[16rem_1fr]">
+    <div
+      dir={dir}
+      className="grid h-[calc(100dvh-13rem)] min-h-[28rem] grid-cols-1 gap-3 md:grid-cols-[16rem_1fr] lg:grid-cols-[16rem_1fr_18rem]"
+    >
       <div className="hidden min-h-0 md:block">
         <QuantAgentChatSidebar
           sessions={sessions ?? []}
@@ -259,14 +285,28 @@ export function QuantAgentChatPanel() {
         </div>
 
         <div className="shrink-0 border-t border-border p-2">
+          {activeComposerCoach ? (
+            <QuantAgentComposerCoach
+              coach={activeComposerCoach}
+              disabled={sending}
+              onSuggestionClick={(value) => setDraftText(value)}
+              onCancel={() => void handleSend(CANCEL_KEYWORD_BY_LOCALE[locale])}
+            />
+          ) : null}
           <QuantAgentChatComposer
             onSend={(text) => void handleSend(text)}
             disabled={sending}
             symbol={symbol}
             brokerConnected={false}
             onSymbolChange={setSymbol}
+            value={draftText}
+            onValueChange={setDraftText}
           />
         </div>
+      </div>
+
+      <div className="hidden min-h-0 lg:block">
+        <QuantAgentRightRail activeSymbol={symbol} />
       </div>
     </div>
   );

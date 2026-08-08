@@ -9,9 +9,13 @@
  * `AgentChatInput.tsx` wires up — rather than building a new picker. Symbol
  * state itself is lifted one level up into `QuantAgentChatPanel`, following
  * the same prop-drilling pattern `AgentChatInput.tsx` uses for Lonora.
+ *
+ * The draft text is a CONTROLLED value (Feature B / Composer Coach): it used
+ * to be local `useState`, now lifted into `QuantAgentChatPanel` so a
+ * Composer Coach suggestion chip click can populate it from outside.
  */
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
-import { useState, type KeyboardEvent } from "react";
+import { type KeyboardEvent } from "react";
 import { Send } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { Button } from "@/components/squareui/button";
@@ -29,6 +33,9 @@ export interface QuantAgentChatComposerProps {
    */
   brokerConnected: boolean;
   onSymbolChange: (symbol: string, source: MarketDataSource) => void;
+  /** Controlled draft text — lifted so `QuantAgentComposerCoach` chips can set it. */
+  value: string;
+  onValueChange: (value: string) => void;
 }
 
 export function QuantAgentChatComposer({
@@ -37,15 +44,16 @@ export function QuantAgentChatComposer({
   symbol,
   brokerConnected,
   onSymbolChange,
+  value,
+  onValueChange,
 }: QuantAgentChatComposerProps) {
   const { t, dir } = useLocale();
-  const [value, setValue] = useState("");
 
   function submit() {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
     onSend(trimmed);
-    setValue("");
+    onValueChange("");
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -63,7 +71,7 @@ export function QuantAgentChatComposer({
       <div className="flex items-end gap-2">
         <textarea
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => onValueChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           rows={1}

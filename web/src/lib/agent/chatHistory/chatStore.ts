@@ -67,6 +67,7 @@ interface ChatRow {
   created_at: number;
   updated_at: number;
   last_message_preview: string | null;
+  pending_task_json?: string | null;
 }
 
 interface MessageRow {
@@ -84,6 +85,16 @@ interface MessageRow {
 }
 
 function toSession(row: ChatRow): AgentChatSession {
+  // Same defensive try/catch discipline as `toMessage`'s `result_json` parse
+  // below — a malformed/legacy value must never break loading the session.
+  let pendingTask: unknown;
+  if (row.pending_task_json) {
+    try {
+      pendingTask = JSON.parse(row.pending_task_json);
+    } catch {
+      pendingTask = undefined;
+    }
+  }
   return {
     id: row.id,
     userId: Number(row.user_id),
@@ -95,6 +106,7 @@ function toSession(row: ChatRow): AgentChatSession {
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     lastMessagePreview: row.last_message_preview ?? undefined,
+    pendingTask,
   };
 }
 
@@ -297,6 +309,30 @@ export async function updateChatMeta(
         SET title = ?, last_message_preview = ?, updated_at = ?
       WHERE id = ? AND user_id = ? AND agent_id = ?`,
     [title, hook || null, now, chatId, userId, agentId],
+  );
+  return getChat(userId, chatId, agentId);
+}
+
+/**
+ * Persist (or clear, with `null`) the Composer Coach wizard state for a chat.
+ * Tenant-scoped exactly like `updateChatMeta`: scoped by `user_id` AND
+ * `agent_id`, so a Lonora chat can never read/write this column through this
+ * function — structurally it's just an unused column for Lonora sessions.
+ */
+export async function setPendingTask(
+  userId: number,
+  chatId: string,
+  agentId: AgentChatAgentId,
+  pendingTask: unknown | null,
+): Promise<AgentChatSession | null> {
+  const chat = await getChat(userId, chatId, agentId);
+  if (!chat) return null;
+  const json = pendingTask === null || pendingTask === undefined ? null : safeStringify(pendingTask);
+  await execute(
+    `UPDATE agent_chats
+        SET pending_task_json = ?
+      WHERE id = ? AND user_id = ? AND agent_id = ?`,
+    [json, chatId, userId, agentId],
   );
   return getChat(userId, chatId, agentId);
 }

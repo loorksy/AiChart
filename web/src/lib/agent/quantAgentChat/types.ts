@@ -22,6 +22,20 @@ export interface QuantAgentMemoryCandidate {
 }
 
 /**
+ * Composer Coach (plan Feature B) — the assistant turn's payload for a step
+ * of the guided `generate_strategy` wizard (or `null` when this turn isn't
+ * part of one). `ready` marks the final confirm step (step 4): the wizard is
+ * ready to submit, not that generation already ran. `suggestions` populate
+ * the composer's draft text on click — they never auto-send.
+ */
+export interface ComposerCoach {
+  title: string;
+  description: string;
+  ready: boolean;
+  suggestions: { label: string; value: string }[];
+}
+
+/**
  * Two flavors of a persisted proposal now that `generate_strategy` defaults
  * to the sandboxed-code path (plan §4/§5) while the DSL path stays fully
  * present as an alternative, still-usable mechanism. Discriminated on
@@ -43,4 +57,6 @@ export interface QuantAgentChatTurnResult {
   strategyProposal: QuantAgentStrategyProposal | null;
   recommendations: QuantRecommendation[];
   usedSkills: QuantAgentUsedSkill[];
+  /** Set only while a guided `generate_strategy` wizard turn is in progress. */
+  composerCoach: ComposerCoach | null;
 }

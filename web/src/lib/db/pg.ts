@@ -530,6 +530,46 @@ const SCHEMA = `
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id
     ON users (telegram_id) WHERE telegram_id IS NOT NULL;
 
+  -- Quant Agent Chat's Watchlist + AI Scheduled Monitors right rail — see the
+  -- SQLite schema for the full rationale. 'enabled'/'notify_*' stay INTEGER
+  -- (not BOOLEAN) on purpose, matching 'user_agent_skills.enabled' above:
+  -- the cron sweep's grouping query compares them with literal '= 1', and
+  -- 'adaptSql' only rewrites that literal to 'IS TRUE' for a small hardcoded
+  -- column allowlist that does not include these — INTEGER sidesteps that
+  -- entirely on both backends.
+  CREATE TABLE IF NOT EXISTS quant_agent_watchlist_items (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    symbol      TEXT NOT NULL,
+    market      TEXT NOT NULL DEFAULT 'forex',
+    created_at  BIGINT NOT NULL,
+    UNIQUE (user_id, symbol, market)
+  );
+  CREATE INDEX IF NOT EXISTS idx_quant_agent_watchlist_user
+    ON quant_agent_watchlist_items (user_id, created_at DESC);
+
+  -- notify_email intentionally omitted — see the SQLite schema for the
+  -- rationale (no email provider exists in this codebase yet).
+  CREATE TABLE IF NOT EXISTS quant_agent_monitors (
+    id                            BIGSERIAL PRIMARY KEY,
+    user_id                       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    symbol                        TEXT NOT NULL,
+    market                        TEXT NOT NULL DEFAULT 'forex',
+    interval                      TEXT NOT NULL,
+    notify_telegram               INTEGER NOT NULL DEFAULT 1,
+    notify_push                   INTEGER NOT NULL DEFAULT 0,
+    notify_webhook_url            TEXT,
+    enabled                       INTEGER NOT NULL DEFAULT 1,
+    last_fired_recommendation_id  TEXT,
+    last_checked_at               BIGINT,
+    created_at                    BIGINT NOT NULL,
+    updated_at                    BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_quant_agent_monitors_user
+    ON quant_agent_monitors (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_quant_agent_monitors_due
+    ON quant_agent_monitors (enabled, symbol, interval);
+
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  SERIAL PRIMARY KEY,
     user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -837,7 +877,8 @@ const SCHEMA = `
     language             TEXT NOT NULL DEFAULT 'ar',
     created_at           BIGINT NOT NULL,
     updated_at           BIGINT NOT NULL,
-    last_message_preview TEXT
+    last_message_preview TEXT,
+    pending_task_json    TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_agent_chats_user
@@ -1537,6 +1578,14 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE agent_chat_messages
       ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT 'lonora'
+  `).catch(() => {});
+  // Composer Coach (plan Feature B): the in-progress guided `generate_strategy`
+  // wizard state for a chat session, nullable — only ever populated for
+  // agent_id='quant_agent' sessions, a Lonora chat just carries an unused
+  // NULL column here.
+  await client.query(`
+    ALTER TABLE agent_chats
+      ADD COLUMN IF NOT EXISTS pending_task_json TEXT
   `).catch(() => {});
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_agent_chats_user_agent

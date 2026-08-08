@@ -24,6 +24,16 @@ export interface AgentChatSession {
   createdAt: number;
   updatedAt: number;
   lastMessagePreview?: string;
+  /**
+   * Composer Coach (plan Feature B) — the in-progress guided
+   * `generate_strategy` wizard state, if any. Only ever meaningful for
+   * `agentId: "quant_agent"` sessions; kept as `unknown` here (deliberately
+   * untyped, same discipline as `AgentChatMessageRecord.result`) so this
+   * generic module never depends on `quantAgentChat`'s types — the
+   * orchestrator layer parses/validates the shape before use. `null`/
+   * `undefined` both mean "no active wizard".
+   */
+  pendingTask?: unknown;
 }
 
 export interface AgentChatMessageRecord {

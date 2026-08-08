@@ -14,6 +14,7 @@ import { Check, Copy, Loader2 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import type {
+  ComposerCoach,
   QuantAgentMemoryCandidate,
   QuantAgentStrategyProposal,
   QuantAgentUsedSkill,
@@ -35,6 +36,8 @@ export interface QuantAgentChatMessageData {
   memoryCandidate?: QuantAgentMemoryCandidate | null;
   /** The structured recommendation(s) the `explain_recommendation` turn read and explained. */
   recommendations?: QuantRecommendation[];
+  /** Set only while a guided `generate_strategy` wizard turn is in progress (Feature B). */
+  composerCoach?: ComposerCoach | null;
   /** Epoch ms — shown subtly under assistant messages, sidebar-date-formatting style. */
   createdAt?: number;
 }

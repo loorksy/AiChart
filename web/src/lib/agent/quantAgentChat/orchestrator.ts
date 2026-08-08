@@ -21,12 +21,14 @@
  * false` until a human explicitly enables it.
  */
 import { randomUUID } from "node:crypto";
-import type { AppLocale } from "@/lib/i18n";
+import { DEFAULT_LOCALE, t, type AppLocale } from "@/lib/i18n";
 import { callLLM, callLLMStream, type AnthropicResponse, type Message } from "@/lib/llm";
 import { createLogger } from "@/lib/logger";
 import {
   appendMessage as chatStoreAppendMessage,
+  getChat as chatStoreGetChat,
   getMessages as chatStoreGetMessages,
+  setPendingTask as chatStoreSetPendingTask,
 } from "@/lib/agent/chatHistory/chatStore";
 import type { AgentChatMessageRecord } from "@/lib/agent/chatHistory/types";
 import { quantAgentIdentityCore } from "@/lib/agent/quantAgentIdentity";
@@ -57,7 +59,14 @@ import {
   extractQuantAgentSymbolHint,
   routeQuantAgentChatIntent,
 } from "./intentRouter";
+import {
+  advancePendingTask,
+  coerceQuantAgentPendingTask,
+  isQuantAgentCancelMessage,
+  startPendingTask,
+} from "./pendingTask";
 import type {
+  ComposerCoach,
   QuantAgentChatTurnResult,
   QuantAgentStrategyProposal,
   QuantAgentUsedSkill,
@@ -93,6 +102,10 @@ export interface QuantAgentChatDeps {
   appendMessage: typeof chatStoreAppendMessage;
   getMessages: typeof chatStoreGetMessages;
   searchMemories: typeof searchSemanticMemoriesByKeyword;
+  /** Composer Coach (plan Feature B) — reads the session's `pendingTask`. */
+  getChat: typeof chatStoreGetChat;
+  /** Composer Coach (plan Feature B) — persists/clears the session's `pendingTask`. */
+  setPendingTask: typeof chatStoreSetPendingTask;
 }
 
 const defaultDeps: QuantAgentChatDeps = {
@@ -105,6 +118,8 @@ const defaultDeps: QuantAgentChatDeps = {
   appendMessage: chatStoreAppendMessage,
   getMessages: chatStoreGetMessages,
   searchMemories: searchSemanticMemoriesByKeyword,
+  getChat: chatStoreGetChat,
+  setPendingTask: chatStoreSetPendingTask,
 };
 
 export class QuantAgentChatError extends Error {
@@ -626,10 +641,49 @@ async function finalAnswer(
 }
 
 /**
- * Runs one Quant Agent Chat turn end to end: route intent → branch → persist
- * user then assistant message (agentId: "quant_agent" on both). Streaming vs
- * collected-and-returned is controlled purely by whether `onDelta` is passed
- * — `stream/route.ts` and `message/route.ts` both call this function.
+ * Shared outcome→reply builder for the `generate_strategy` sandboxed-code
+ * pipeline result (plan §B3: "reuse the same branch structure, don't
+ * duplicate"). Used both by the guided wizard's step-4 confirm and — before
+ * this feature — directly by the `generate_strategy` intent branch, which
+ * now only starts the wizard instead (see `runQuantAgentChatTurn`).
+ */
+async function buildStrategyGenerationReply(
+  deps: QuantAgentChatDeps,
+  identity: string,
+  contextMessage: string,
+  outcome: QuantAgentStrategyGenerationOutcome,
+  onDelta?: (fullText: string) => void,
+): Promise<{ reply: string; strategyProposal: QuantAgentStrategyProposal }> {
+  if (outcome.status === "persisted" && outcome.strategy && outcome.code) {
+    const strategyProposal: QuantAgentStrategyProposal = {
+      status: "persisted",
+      mode: "sandboxed_code",
+      strategy: outcome.strategy,
+      code: outcome.code,
+    };
+    const summarySystem = `${identity}\n\n${untrustedDataBlock(
+      "Persisted (disabled) strategy — generated Python code",
+      outcome.code,
+    )}\n\nSummarize in plain language what this newly proposed strategy does: the market condition it looks for, its stop/target logic if apparent from the code, and its regime affinity. Do not reproduce the raw code in your summary — the user can already see it separately. State clearly that it was saved DISABLED and requires the user's explicit action to enable it.`;
+    const reply = await finalAnswer(deps, summarySystem, [{ role: "user", content: contextMessage }], onDelta);
+    return { reply, strategyProposal };
+  }
+  const strategyProposal: QuantAgentStrategyProposal = { status: "invalid", errors: outcome.errors ?? [] };
+  const failureSystem = `${identity}\n\n${untrustedDataBlock(
+    "Strategy validation errors",
+    JSON.stringify(outcome.errors ?? []),
+  )}\n\nExplain clearly and briefly why the proposed strategy could not be created, in plain language (not raw error paths or sandbox internals). Do not offer to retry — a single repair attempt already failed.`;
+  const reply = await finalAnswer(deps, failureSystem, [{ role: "user", content: contextMessage }], onDelta);
+  return { reply, strategyProposal };
+}
+
+/**
+ * Runs one Quant Agent Chat turn end to end: check for an in-progress
+ * Composer Coach wizard → route intent (or continue the wizard) → branch →
+ * persist user then assistant message (agentId: "quant_agent" on both).
+ * Streaming vs collected-and-returned is controlled purely by whether
+ * `onDelta` is passed — `stream/route.ts` and `message/route.ts` both call
+ * this function.
  */
 export async function runQuantAgentChatTurn(
   input: QuantAgentChatTurnInput,
@@ -638,6 +692,7 @@ export async function runQuantAgentChatTurn(
   const { userId, chatId, message, symbol } = input;
   const requestId = randomUUID();
   const context: QuantAgentCallerContext = { userId, requestId };
+  const locale: AppLocale = input.locale ?? DEFAULT_LOCALE;
 
   // Prior history BEFORE this turn's user message is appended.
   const priorHistory = await deps.getMessages(userId, chatId, "quant_agent", HISTORY_MESSAGE_LIMIT);
@@ -652,69 +707,101 @@ export async function runQuantAgentChatTurn(
     throw new QuantAgentChatError("Quant Agent chat session not found.");
   }
 
-  const intent = routeQuantAgentChatIntent(message);
-  const usedSkills = matchQuantAgentSkills(message);
   const identity = quantAgentIdentityCore();
+  const usedSkills = matchQuantAgentSkills(message);
 
   let reply: string;
+  let intent: ReturnType<typeof routeQuantAgentChatIntent>;
   let memoryCandidate: QuantAgentMemoryCandidate | null = null;
   let strategyProposal: QuantAgentStrategyProposal | null = null;
   let recommendations: QuantRecommendation[] = [];
+  let composerCoach: ComposerCoach | null = null;
 
-  if (intent === "explain_recommendation") {
-    const built = await buildRecommendationContext(deps, context, message, symbol);
-    recommendations = built.recommendations;
-    const system = `${identity}\n\n${untrustedDataBlock("Quant Agent recommendation data", built.contextText)}`;
-    reply = await finalAnswer(
-      deps,
-      system,
-      [...historyToMessages(priorHistory), { role: "user", content: message }],
-      input.onDelta,
-    );
-  } else if (intent === "generate_strategy") {
-    // The chat intent's default mechanism is now the sandboxed-code path
-    // (plan §4: technical parity with QuantDinger) — the DSL functions above
-    // stay fully present and exported as an alternative, still-safer path,
-    // just no longer wired to this branch.
-    const outcome = await generateQuantStrategyCodeFromDescription(userId, message, deps, requestId);
-    if (outcome.status === "persisted" && outcome.strategy && outcome.code) {
-      strategyProposal = { status: "persisted", mode: "sandboxed_code", strategy: outcome.strategy, code: outcome.code };
-      const summarySystem = `${identity}\n\n${untrustedDataBlock(
-        "Persisted (disabled) strategy — generated Python code",
-        outcome.code,
-      )}\n\nSummarize in plain language what this newly proposed strategy does: the market condition it looks for, its stop/target logic if apparent from the code, and its regime affinity. Do not reproduce the raw code in your summary — the user can already see it separately. State clearly that it was saved DISABLED and requires the user's explicit action to enable it.`;
-      reply = await finalAnswer(deps, summarySystem, [{ role: "user", content: message }], input.onDelta);
+  // Composer Coach continuation check (plan §B3) — BEFORE calling the
+  // (stateless, pure) intent router at all. A session with an active guided
+  // `generate_strategy` wizard treats every message as a step of that wizard
+  // (or a cancellation), never as a fresh intent to route.
+  const existingChat = await deps.getChat(userId, chatId, "quant_agent");
+  const pendingTask = coerceQuantAgentPendingTask(existingChat?.pendingTask);
+
+  if (pendingTask) {
+    intent = "generate_strategy";
+    if (isQuantAgentCancelMessage(message)) {
+      await deps.setPendingTask(userId, chatId, "quant_agent", null);
+      reply = t(locale, "qa.chat.coach.cancelled");
     } else {
-      strategyProposal = { status: "invalid", errors: outcome.errors ?? [] };
-      const failureSystem = `${identity}\n\n${untrustedDataBlock(
-        "Strategy validation errors",
-        JSON.stringify(outcome.errors ?? []),
-      )}\n\nExplain clearly and briefly why the proposed strategy could not be created, in plain language (not raw error paths or sandbox internals). Do not offer to retry — a single repair attempt already failed.`;
-      reply = await finalAnswer(deps, failureSystem, [{ role: "user", content: message }], input.onDelta);
+      const advance = advancePendingTask(pendingTask, message, locale);
+      await deps.setPendingTask(userId, chatId, "quant_agent", advance.task);
+      if (advance.readyToGenerate && advance.syntheticDescription) {
+        // Step 4 confirmed — hand off to the EXISTING, unmodified sandboxed-
+        // code pipeline exactly as the direct `generate_strategy` intent used
+        // to, reusing the same outcome→reply branch structure.
+        const outcome = await generateQuantStrategyCodeFromDescription(
+          userId,
+          advance.syntheticDescription,
+          deps,
+          requestId,
+        );
+        const built = await buildStrategyGenerationReply(
+          deps,
+          identity,
+          advance.syntheticDescription,
+          outcome,
+          input.onDelta,
+        );
+        reply = built.reply;
+        strategyProposal = built.strategyProposal;
+      } else {
+        reply = advance.reply;
+        composerCoach = advance.composerCoach;
+      }
     }
   } else {
-    let recalled: Awaited<ReturnType<typeof searchSemanticMemoriesByKeyword>> = [];
-    try {
-      recalled = await deps.searchMemories(userId, message, QUANT_AGENT_MEMORY_CATEGORY, MEMORY_RECALL_LIMIT);
-    } catch (error) {
-      log.warn("quant_agent_chat.memory_recall_failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+    intent = routeQuantAgentChatIntent(message);
+
+    if (intent === "explain_recommendation") {
+      const built = await buildRecommendationContext(deps, context, message, symbol);
+      recommendations = built.recommendations;
+      const system = `${identity}\n\n${untrustedDataBlock("Quant Agent recommendation data", built.contextText)}`;
+      reply = await finalAnswer(
+        deps,
+        system,
+        [...historyToMessages(priorHistory), { role: "user", content: message }],
+        input.onDelta,
+      );
+    } else if (intent === "generate_strategy") {
+      // The chat intent's default mechanism is now the guided Composer Coach
+      // wizard (plan Feature B) instead of generating immediately — the
+      // sandboxed-code pipeline itself (draft → validate → one repair
+      // attempt) only runs once the wizard's step 4 is confirmed, above.
+      const started = startPendingTask(locale);
+      await deps.setPendingTask(userId, chatId, "quant_agent", started.task);
+      reply = started.reply;
+      composerCoach = started.composerCoach;
+    } else {
+      let recalled: Awaited<ReturnType<typeof searchSemanticMemoriesByKeyword>> = [];
+      try {
+        recalled = await deps.searchMemories(userId, message, QUANT_AGENT_MEMORY_CATEGORY, MEMORY_RECALL_LIMIT);
+      } catch (error) {
+        log.warn("quant_agent_chat.memory_recall_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      const memoryBlock = recalled.length
+        ? `\n\n${untrustedDataBlock(
+            "Previously confirmed user notes",
+            recalled.map((m) => `- ${m.content}`).join("\n"),
+          )}`
+        : "";
+      const system = `${identity}${memoryBlock}`;
+      reply = await finalAnswer(
+        deps,
+        system,
+        [...historyToMessages(priorHistory), { role: "user", content: message }],
+        input.onDelta,
+      );
+      memoryCandidate = draftMemoryCandidate(message);
     }
-    const memoryBlock = recalled.length
-      ? `\n\n${untrustedDataBlock(
-          "Previously confirmed user notes",
-          recalled.map((m) => `- ${m.content}`).join("\n"),
-        )}`
-      : "";
-    const system = `${identity}${memoryBlock}`;
-    reply = await finalAnswer(
-      deps,
-      system,
-      [...historyToMessages(priorHistory), { role: "user", content: message }],
-      input.onDelta,
-    );
-    memoryCandidate = draftMemoryCandidate(message);
   }
 
   await deps.appendMessage(userId, chatId, {
@@ -728,8 +815,9 @@ export async function runQuantAgentChatTurn(
       strategyProposal,
       recommendations,
       usedSkills,
+      composerCoach,
     },
   });
 
-  return { chatId, intent, reply, memoryCandidate, strategyProposal, recommendations, usedSkills };
+  return { chatId, intent, reply, memoryCandidate, strategyProposal, recommendations, usedSkills, composerCoach };
 }
