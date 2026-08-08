@@ -515,7 +515,26 @@ def safe_exec_isolated(
     proc.start()
     child_conn.close()
 
-    proc.join(timeout=timeout)
+    # Drain the pipe BEFORE joining, not after. `os.write()` to a pipe
+    # blocks once the kernel buffer (commonly 64KB on Linux) is full, so a
+    # child whose pickled result exceeds that size would block forever
+    # inside `result_pipe.send()` if nothing reads until after `proc.join()`
+    # returns -- `join()` itself never touches the pipe, so parent and child
+    # would deadlock (parent waiting to join, child waiting for buffer
+    # space). Reading first lets the child keep writing (and finish) while
+    # the parent concurrently drains it; `join()` below is then expected to
+    # return almost immediately.
+    result: dict[str, Any] | None = None
+    try:
+        if parent_conn.poll(timeout=timeout):
+            try:
+                result = parent_conn.recv()
+            except Exception:  # noqa: S110 - corrupt/partial payload treated as "no result" below
+                result = None
+    finally:
+        parent_conn.close()
+
+    proc.join(timeout=5)
 
     if proc.is_alive():
         proc.kill()
@@ -526,22 +545,17 @@ def safe_exec_isolated(
             'result': None,
         }
 
-    if proc.exitcode != 0 and not parent_conn.poll():
+    if result is not None:
+        return result
+
+    if proc.exitcode != 0:
         return {
             'success': False,
             'error': f"Subprocess exited abnormally (exit code: {proc.exitcode})",
             'result': None,
         }
 
-    try:
-        if parent_conn.poll(timeout=1):
-            received: dict[str, Any] = parent_conn.recv()
-            return received
-        return {'success': False, 'error': "Subprocess returned no result", 'result': None}
-    except Exception as e:
-        return {'success': False, 'error': f"Failed to read subprocess result: {e}", 'result': None}
-    finally:
-        parent_conn.close()
+    return {'success': False, 'error': "Subprocess returned no result", 'result': None}
 
 
 # --- Batch subprocess isolation (backtest-only) ---
@@ -683,10 +697,22 @@ def safe_exec_isolated_batch(
     proc.start()
     child_conn.close()
 
-    # Grace period beyond the child's own wall-clock self-check, so a clean
-    # early-return (truncated batch) has time to reach the pipe before the
-    # parent resorts to a hard kill.
-    proc.join(timeout=wall_clock_timeout + 10)
+    # Drain the pipe BEFORE joining, not after -- same fix, same reason, as
+    # `safe_exec_isolated` (see that function's comment). This matters more
+    # here: a batch's pickled `outputs` list grows with every bar, so it is
+    # far more likely than a single live call to exceed the pipe's kernel
+    # buffer and deadlock a join-then-read ordering.
+    result: dict[str, Any] | None = None
+    try:
+        if parent_conn.poll(timeout=wall_clock_timeout + 10):
+            try:
+                result = parent_conn.recv()
+            except Exception:  # noqa: S110 - corrupt/partial payload treated as "no result" below
+                result = None
+    finally:
+        parent_conn.close()
+
+    proc.join(timeout=5)
 
     if proc.is_alive():
         proc.kill()
@@ -700,22 +726,17 @@ def safe_exec_isolated_batch(
             'result': None,
         }
 
-    if proc.exitcode != 0 and not parent_conn.poll():
+    if result is not None:
+        return result
+
+    if proc.exitcode != 0:
         return {
             'success': False,
             'error': f"Subprocess exited abnormally (exit code: {proc.exitcode})",
             'result': None,
         }
 
-    try:
-        if parent_conn.poll(timeout=1):
-            received: dict[str, Any] = parent_conn.recv()
-            return received
-        return {'success': False, 'error': "Subprocess returned no result", 'result': None}
-    except Exception as e:
-        return {'success': False, 'error': f"Failed to read subprocess result: {e}", 'result': None}
-    finally:
-        parent_conn.close()
+    return {'success': False, 'error': "Subprocess returned no result", 'result': None}
 
 
 # --- Static validation ---

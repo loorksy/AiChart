@@ -200,6 +200,23 @@ def test_safe_exec_isolated_rejects_unsafe_code_without_spawning() -> None:
     assert "unsafe" in (result["error"] or "").lower()
 
 
+def test_safe_exec_isolated_handles_a_result_larger_than_the_pipe_buffer() -> None:
+    """Regression test for a real deadlock: the parent used to call
+    `proc.join()` BEFORE draining the result pipe. `os.write()` to a pipe
+    blocks once the kernel buffer (commonly 64KB on Linux) is full, so a
+    child whose pickled result exceeds that size would block forever inside
+    `result_pipe.send()` while the parent sat in `join()` never reading —
+    each side waiting on the other. A large list is plenty to exceed that
+    buffer once pickled; this must complete promptly, not hang until the
+    timeout is exhausted."""
+    started = time.monotonic()
+    result = safe_exec_isolated("value = [float(i) for i in range(200_000)]\n", timeout=15)
+    elapsed = time.monotonic() - started
+    assert result["success"] is True
+    assert len(result["result"]["value"]) == 200_000
+    assert elapsed < 10, f"should complete well under the 15s timeout, took {elapsed}s"
+
+
 def test_safe_exec_isolated_survives_a_crash_in_the_child() -> None:
     """A hard crash (os._exit bypasses normal Python exception handling) in
     the sandboxed subprocess must not affect this test process -- that's the

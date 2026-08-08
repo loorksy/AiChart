@@ -185,6 +185,27 @@ def test_wall_clock_timeout_bounds_a_batch_of_always_hanging_calls() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_batch_handles_cumulative_outputs_larger_than_the_pipe_buffer() -> None:
+    """Regression test for a real deadlock (see the identical fix/comment in
+    safe_exec_isolated): a batch's pickled `outputs` list grows with every
+    bar, so it is far more likely than a single live call to exceed the
+    pipe's kernel buffer (commonly 64KB on Linux) if the parent joins before
+    draining. Each call here returns a moderately sized payload; enough
+    calls accumulate well past that buffer size. Must complete promptly."""
+    code = """
+def evaluate(features):
+    return {'padding': [float(i) for i in range(2_000)]}
+"""
+    started = time.monotonic()
+    result = safe_exec_isolated_batch(code, _inputs(200), wall_clock_timeout=30, per_call_timeout=2)
+    elapsed = time.monotonic() - started
+    assert result['success'] is True
+    outputs = result['result']['outputs']
+    assert len(outputs) == 200
+    assert all(o is not None and len(o['padding']) == 2_000 for o in outputs)
+    assert elapsed < 20, f"should complete well under the 30s timeout, took {elapsed}s"
+
+
 def test_entire_batch_runs_in_a_single_subprocess() -> None:
     """A module-level accumulator only grows across calls if they share one
     process/namespace. `os` is unimportable inside the sandbox (by design),
