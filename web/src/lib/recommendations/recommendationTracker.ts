@@ -32,6 +32,7 @@ import {
   evaluateRecommendation,
   type TrackerCandle,
 } from "./recommendationStatus";
+import { activationRuleTimeframe } from "./activationRule";
 import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
 import {
   admitTriggers,
@@ -100,6 +101,37 @@ export async function trackOneRecommendation(
       close: c.close,
     }));
 
+  // A rule that names its OWN timeframe (e.g. a 15m close-below on a 5m plan)
+  // is graded on that timeframe's candles, never the plan's.
+  const ruleTimeframeRaw = rec.activationRule
+    ? activationRuleTimeframe(rec.activationRule)
+    : null;
+  const ruleInterval = ruleTimeframeRaw
+    ? normalizeCanonicalInterval(ruleTimeframeRaw)
+    : null;
+  let activationCandles: TrackerCandle[] | undefined;
+  let activationBarMs: number | undefined;
+  if (rec.activationRule && ruleInterval && ruleInterval !== interval) {
+    const ruleStored = await getCandles({
+      symbol,
+      interval: ruleInterval,
+      fromMs: createdCandleTimeMs,
+      limit: 2000,
+      order: "asc",
+    }).catch(() => []);
+    const complete = ruleStored.filter((c) => c.complete);
+    if (complete.length) {
+      activationCandles = complete.map((c) => ({
+        time: toMs(c.time),
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }));
+      activationBarMs = barDurationMs(ruleInterval);
+    }
+  }
+
   const result = evaluateRecommendation({
     recommendation: {
       direction: rec.direction,
@@ -118,9 +150,27 @@ export async function trackOneRecommendation(
       tp1HitAt: rec.tp1HitAt,
       tp2HitAt: rec.tp2HitAt,
       tp3HitAt: rec.tp3HitAt,
+      // The seam that once dropped the whole conditional contract: the rule is
+      // loaded from the store above and MUST reach the evaluator, or every
+      // plan degrades to a bare entry touch.
+      activationRule: rec.activationRule,
     },
     candles,
+    activationCandles,
+    activationBarMs,
   });
+
+  // The execution state is a function of the market from here on. The card
+  // badge reads this — leaving it at its creation value is how a plan whose
+  // condition was satisfied kept saying "بانتظار التفعيل" forever.
+  const nextExecutionState =
+    result.status === "expired"
+      ? ("expired" as const)
+      : result.status === "invalidated"
+        ? ("invalidated" as const)
+        : result.triggered
+          ? ("valid_now" as const)
+          : undefined;
 
   const updated = await updateTrackedRecommendation(rec.userId, rec.id, {
     status: result.status,
@@ -131,6 +181,8 @@ export async function trackOneRecommendation(
     tp3HitAt: result.tp3HitAt,
     slHitAt: result.slHitAt,
     expiredAt: result.expiredAt,
+    executionState: nextExecutionState,
+    activationEvidence: result.activationEvidence,
     lastCheckedAt: Date.now(),
   });
 

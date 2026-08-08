@@ -4,6 +4,7 @@ import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import type { ChartStudy } from "@/lib/chart/studies";
 import { computeRewardRisk } from "@/lib/rewardRisk";
 import type { Recommendation } from "@/lib/types";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
@@ -13,6 +14,7 @@ import type { MarketType } from "@/lib/markets/types";
 export interface ChartHydrateSnapshot {
   drawings?: ChartDrawing[];
   overlays?: ChartOverlay[];
+  studies?: ChartStudy[];
   recommendation?: Recommendation | null;
   targets?: number[];
   liveReasoningLog?: LiveReasoningEntry[];
@@ -47,6 +49,7 @@ export function useChartAnalysis({
 }) {
   const [overlays, setOverlays] = useState<ChartOverlay[]>([]);
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
+  const [studies, setStudies] = useState<ChartStudy[]>([]);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [targets, setTargets] = useState<number[]>([]);
   const [liveReasoningLog, setLiveReasoningLog] = useState<LiveReasoningEntry[]>([]);
@@ -65,6 +68,7 @@ export function useChartAnalysis({
   const clearLayers = useCallback(() => {
     setOverlays([]);
     setDrawings([]);
+    setStudies([]);
     setRecommendation(null);
     setTargets([]);
     setLiveReasoningLog([]);
@@ -78,6 +82,7 @@ export function useChartAnalysis({
     // made agent drawings visibly flicker and position tools jump.
     setDrawings((prev) => keepIfEqual(prev, snapshot.drawings ?? []));
     setOverlays((prev) => keepIfEqual(prev, snapshot.overlays ?? []));
+    setStudies((prev) => keepIfEqual(prev, snapshot.studies ?? []));
     setTargets((prev) => keepIfEqual(prev, (snapshot.targets ?? []).filter((target) => target > 0)));
     setLiveReasoningLog((prev) => keepIfEqual(prev, snapshot.liveReasoningLog ?? []));
     if (snapshot.recommendation !== undefined) {
@@ -102,6 +107,7 @@ export function useChartAnalysis({
     analyzeError: null as string | null,
     overlays,
     drawings,
+    studies,
     recommendation,
     targets,
     intents: [] as ProcessedIntent[],
@@ -113,6 +119,7 @@ export function useChartAnalysis({
     stopLiveAnalysis: () => {},
     hydrateFromSnapshot,
     setDrawings,
+    setStudies,
     setRecommendation,
   };
 }

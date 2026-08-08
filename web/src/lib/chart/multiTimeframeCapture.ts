@@ -200,20 +200,40 @@ export async function captureTimeframeImage(
     return { ok: true, imageBase64, source, capturedAt, fromCache: false };
   };
 
-  // The platform chart is the operator's own view — try it first. The
-  // QuickChart redraw is a picture of something else, worth falling back to
-  // only when this one cannot be produced.
+  // The platform chart is the operator's own view — try it first, on a
+  // BOUNDED share of the budget. Racing it against the full budget meant a
+  // slow-but-alive Playwright boot (cold Chromium + TV widget can need tens
+  // of seconds) consumed everything, `remaining` hit zero, and the renderer
+  // fallback below was unreachable — every frame of every analysis came back
+  // `capture_timeout` and "vision" decisions ran numbers-only.
   try {
-    const platform = await withDeadline(
-      capturePlatformChart({
-        userId,
-        symbol: input.symbol.toUpperCase(),
-        interval: input.interval,
-      }),
+    const platformBudget = Math.min(
       Math.max(0, deadline - Date.now()),
+      Math.round(timeoutMs * 0.55),
     );
+    const platformPromise = capturePlatformChart({
+      userId,
+      symbol: input.symbol.toUpperCase(),
+      interval: input.interval,
+    });
+    const platform = await withDeadline(platformPromise, platformBudget);
     if (platform !== TIMED_OUT && platform) {
       return store(platform.buffer.toString("base64"), "platform_chart");
+    }
+    if (platform === TIMED_OUT) {
+      // Do not waste the burn: when the abandoned capture eventually lands,
+      // cache it so the NEXT analysis gets the operator's real chart warm.
+      platformPromise
+        .then((late) => {
+          if (late) {
+            setCachedChartSnapshot(cacheKey, {
+              imageBase64: late.buffer.toString("base64"),
+              source: "platform_chart",
+              capturedAt: Date.now(),
+            });
+          }
+        })
+        .catch(() => undefined);
     }
   } catch {
     /* fall through to the broker / renderer sources */

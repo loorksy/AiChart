@@ -117,6 +117,7 @@ import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
 import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
+import { handleIndicatorCommand } from "./indicators/handleIndicatorCommand";
 import {
   clearActiveRecommendation,
   computeRecommendationExpiry,
@@ -156,8 +157,10 @@ import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
 import { detectChartGeometry } from "@/lib/chart/geometry";
 import {
   createTrackedRecommendation,
+  getTrackedRecommendation,
   listTrackedRecommendations,
 } from "@/lib/recommendations/recommendationStore";
+import { trackOneRecommendation } from "@/lib/recommendations/recommendationTracker";
 import { announceOpportunityCreated } from "@/lib/recommendations/lifecycleNotifier";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import {
@@ -517,6 +520,13 @@ async function runUnifiedChartAgentInner(
         locale,
       }),
     };
+  }
+
+  // Enable chart indicators (RSI/EMA/MACD/…) — deterministic, no LLM and no
+  // market agents. The result carries `studies`; the client mirrors them onto
+  // the TradingView chart and the layout autosave makes them survive refresh.
+  if (intents.includes("enable_indicators")) {
+    return handleIndicatorCommand({ userMessage, locale });
   }
 
   if (isDrawingOnly(intents)) {
@@ -2207,6 +2217,20 @@ async function trackStoredRecommendation(input: {
 
   const evaluated = evaluateRecommendationStatus({ recommendation: rec, market });
   await updateActiveRecommendationStatus(rec.id, evaluated.status, evaluated.reason);
+  // Same market, same moment, same verdict on the CARD: run the canonical
+  // rule-aware tracker for this plan too, so "تابع التوصية" cannot answer one
+  // thing in prose while the tracked card waits for the next cron sweep to
+  // say another.
+  if (ctx.userId != null) {
+    try {
+      const tracked = await getTrackedRecommendation(ctx.userId, rec.id);
+      if (tracked && tracked.outcome === "pending") {
+        await trackOneRecommendation(tracked);
+      }
+    } catch {
+      // The sweep will catch up; the follow-up answer never blocks on it.
+    }
+  }
   const summary = await composeRecommendationStatusAnswer({
     recommendation: rec,
     evaluation: evaluated,
@@ -2304,12 +2328,13 @@ async function storeFinalRecommendation(input: {
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],
     rr: rec.rr,
-    status:
-      rec.executionState === "valid_now" ||
-      rec.activationClass === "immediate" ||
-      rec.entryType === "market"
-        ? "triggered"
-        : "pending_entry",
+    // Status is a function of the execution state ONLY. Folding in
+    // `activationClass` or a market entryType let an immediate plan whose
+    // price sat OUTSIDE the entry zone — executionState "awaiting_activation"
+    // — store as "triggered": one row saying "waiting", the other "in the
+    // trade", and a conditional plan on a market-entry candidate started its
+    // life pre-filled, so its activation rule was never evaluated at all.
+    status: rec.executionState === "valid_now" ? "triggered" : "pending_entry",
     alternativeScenario: rec.alternativeScenario,
     validityCandles: rec.validityCandles,
     // No manufactured sentence. A plan with no stated condition activates on
@@ -2361,7 +2386,12 @@ async function storeFinalRecommendation(input: {
       // The object the model actually reasoned over — the same one the parity
       // log fingerprints, so revision 1 and parity finally describe one thing.
       evidenceSnapshot: input.evidenceSnapshot,
-    }).catch((error) => {
+    },
+    // The run's own cost evidence, PRICE units — the tradability grade's
+    // within-spread-noise check finally sees the spread the LLM was shown
+    // instead of a hard-coded null.
+    input.market.costEvidence.spreadPrice ?? input.market.spread ?? null,
+    ).catch((error: unknown) => {
       // Still best-effort — the operator gets their answer either way — but no
       // longer silent. A swallowed failure here means the plan exists in the
       // reply and nowhere else: nothing tracks it, nothing can revise it, and
@@ -2409,6 +2439,8 @@ function lastClosedBarTime(
  */
 async function assessPlanTradability(
   active: ActiveRecommendation,
+  /** The run's resolved cost-evidence spread, in PRICE units (ask − bid). */
+  spreadPrice: number | null,
 ): Promise<TradabilityAssessment | null> {
   try {
     let atr: number | null = null;
@@ -2430,7 +2462,11 @@ async function assessPlanTradability(
       entry: active.entry,
       currentPrice: active.priceAtCreation ?? null,
       atr,
-      spread: null,
+      // assessTradability expects PRICE units (its within-spread-noise check
+      // compares |entry − price| directly against this). costEvidence carries
+      // both units; spreadPrice is the right one — passing pips here would be
+      // the 10^4 bug the cost contract exists to prevent.
+      spread: spreadPrice,
       validityCandles: active.validityCandles ?? null,
     });
     metrics.tradabilityVerdicts.inc({ verdict: assessment.tradability });
@@ -2464,6 +2500,8 @@ async function persistTrackedRecommendation(
     /** The frozen bundle the brain decided on — stored whole, apart from the card. */
     evidenceSnapshot?: Record<string, unknown>;
   },
+  /** The run's resolved cost-evidence spread in PRICE units, for tradability. */
+  spreadPrice: number | null = null,
 ): Promise<void> {
   const entryType: "market" | "limit" | "pending" =
     active.entryType === "market"
@@ -2484,7 +2522,7 @@ async function persistTrackedRecommendation(
   // stream and a throw would drop an otherwise sound analysis. A plan the
   // market cannot reach keeps its direction and is graded `watch_only`, which
   // is what routes it to the watch section instead of an actionable card.
-  const tradability = await assessPlanTradability(active);
+  const tradability = await assessPlanTradability(active, spreadPrice);
 
   await createTrackedRecommendation({
     tradability,
@@ -2500,17 +2538,18 @@ async function persistTrackedRecommendation(
     stopLoss: active.stopLoss,
     targets: active.targets,
     invalidationLevel: active.invalidationLevel,
-    status:
-      active.status === "triggered" || entryType === "market"
-        ? "triggered"
-        : "pending_entry",
+    // Mirrors the ActiveRecommendation derivation above: only a plan that is
+    // executable RIGHT NOW starts triggered. A conditional/anticipatory plan
+    // with a market-entry candidate must still wait for its activation rule —
+    // starting it "triggered" made the sweep skip the rule evaluator entirely.
+    status: active.status === "triggered" ? "triggered" : "pending_entry",
     outcome: "pending",
     setupType: active.setupType,
     rr: active.rr,
     createdAt: Date.now(),
     createdCandleTime: active.createdCandleTime ?? active.createdAt,
     expiresAt: active.expiresAt ?? Date.now() + 4 * 60 * 60 * 1000,
-    triggeredAt: entryType === "market" ? Date.now() : undefined,
+    triggeredAt: active.status === "triggered" ? Date.now() : undefined,
     priceAtCreation: active.priceAtCreation,
     // The three layers and the plan's own conditions, so the tracker has an
     // activation condition to watch and the journal a plan type to report.

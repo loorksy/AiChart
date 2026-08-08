@@ -53,7 +53,7 @@ const fixtureNow = Date.UTC(2026, 6, 20, 12, 0, 0);
 function modelAnswer(user: string, planType: "immediate" | "anticipatory" | "conditional"): string {
   const context = JSON.parse(user) as {
     currentPrice: number;
-    tradeCandidates?: Array<{ id: string; action: "buy" | "sell" }>;
+    tradeCandidates?: Array<{ id: string; action: "buy" | "sell"; entry?: number }>;
     evidenceLevels?: Array<{ price: number }>;
   };
   const candidate = context.tradeCandidates?.[0];
@@ -103,6 +103,16 @@ function modelAnswer(user: string, planType: "immediate" | "anticipatory" | "con
     timeframeRoles: { lead: "15m", context: "1h", timing: "15m" },
     activationCondition:
       planType === "immediate" ? null : "Wait for a confirming close at the selected entry.",
+    // Non-immediate plans must carry the machine-checkable twin of the
+    // sentence above, anchored to the entry this answer selects.
+    activationRule:
+      planType === "immediate"
+        ? null
+        : {
+            kind: direction === "buy" ? "candle_close_above" : "candle_close_below",
+            level: candidate?.entry ?? proposedLevels?.preferredEntry ?? context.currentPrice,
+            timeframe: "15m",
+          },
     invalidationRule: "A close beyond the selected stop invalidates the plan.",
     alternativeScenario: "Switch only after the opposite structure break.",
     validityCandles: 7,

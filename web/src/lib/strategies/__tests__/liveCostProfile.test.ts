@@ -119,10 +119,35 @@ describe("the labelled fallback", () => {
     assert.equal(answer.sampleCount, 0);
   });
 
-  it("returns unavailable rather than inventing when there is no quote either", async () => {
-    const answer = await cost.expectedSpreadFor("AUDNZD", null);
+  it("answers from the absolute static table when there is no quote either", async () => {
+    // The rung whose absence made "no samples yet + no live quote" collapse to
+    // unavailable — while the UI ticker was showing a real spread.
+    const answer = await cost.expectedSpreadFor(
+      "AUDNZD", // minor cross, never sampled
+      null,
+      new Date("2026-07-27T03:00:00Z"), // asia
+    );
+    assert.equal(answer.source, "static_model");
+    // 1.8 pips (minor cross) shaped by the asia multiplier 1.4.
+    assert.equal(answer.expectedSpreadPips, 2.52);
+    assert.equal(answer.sampleCount, 0);
+  });
+
+  it("still returns unavailable for an instrument class it refuses to model", async () => {
+    const answer = await cost.expectedSpreadFor("BTCUSD", null);
     assert.equal(answer.source, "unavailable");
     assert.equal(answer.expectedSpreadPips, null);
+  });
+
+  it("prefers the observed anchor over the absolute table", async () => {
+    const answer = await cost.expectedSpreadFor(
+      "AUDNZD",
+      1.5,
+      new Date("2026-07-27T03:00:00Z"), // asia
+    );
+    assert.equal(answer.source, "static_model");
+    // Shaped from the OBSERVED 1.5, not the table's 1.8.
+    assert.equal(answer.expectedSpreadPips, 2.1);
   });
 
   it("does not answer live from a stale profile", async () => {
@@ -134,5 +159,30 @@ describe("the labelled fallback", () => {
     );
     assert.equal(answer.source, "static_model", "stale live data falls back, labelled");
     assert.equal(answer.stale, true);
+  });
+});
+
+describe("the absolute typical-spread table", () => {
+  it("prices each instrument class in the platform pip convention", () => {
+    assert.equal(cost.staticTypicalSpreadPips("EURUSD"), 1.2, "major");
+    assert.equal(cost.staticTypicalSpreadPips("USDJPY"), 1.2, "USDJPY is a major");
+    assert.equal(cost.staticTypicalSpreadPips("EURJPY"), 1.8, "JPY cross");
+    assert.equal(cost.staticTypicalSpreadPips("AUDNZD"), 1.8, "minor cross");
+    assert.equal(cost.staticTypicalSpreadPips("USDTRY"), 3.5, "exotic");
+    // Gold: 30 pips at pip 0.01 = 0.30 USD; broker suffixes normalise away.
+    assert.equal(cost.staticTypicalSpreadPips("XAUUSDm"), 30);
+    assert.equal(cost.staticTypicalSpreadPips("XAGUSD"), 25, "silver");
+    // Indices are stored in native points and converted through the pip
+    // convention (0.0001), so the PRICE-unit consumers see 2.5 index points.
+    assert.equal(cost.staticTypicalSpreadPips("US30"), 25000);
+    assert.ok(
+      cost.staticTypicalSpreadPips("US30")! * 0.0001 === 2.5,
+      "US30 typical spread converts back to 2.5 native points",
+    );
+  });
+
+  it("refuses to model crypto rather than guessing", () => {
+    assert.equal(cost.staticTypicalSpreadPips("BTCUSD"), null);
+    assert.equal(cost.staticTypicalSpreadPips("ETHUSD"), null);
   });
 });

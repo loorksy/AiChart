@@ -645,6 +645,12 @@ export const ar: Record<TranslationKey, string> = {
   "drawing.invalid_price":
     "هذا السعر يبدو غير مناسب لهذا الشارت، لذلك لم أحرّك شيئًا. أعطني سعرًا قريبًا من النطاق الحالي وسأعدّله.",
 
+  // مؤشرات الشارت التي يستطيع الوكيل تشغيلها على الشارت المرئي.
+  "indicator.enabled":
+    "تم — شغّلت {list} على الشارت. لم أُصدر توصية تداول.",
+  "indicator.which":
+    "أي مؤشر تريد تشغيله؟ أدعم RSI وEMA وSMA وMACD وبولينجر وATR وستوكاستك وVWAP — مثلًا: «شغّل RSI» أو «أضف EMA 50».",
+
   // المحادثة الصوتية اللحظية
   "voice.start": "بدء المحادثة الصوتية",
   "voice.requesting_permission": "جاري طلب إذن الميكروفون",
@@ -713,10 +719,11 @@ export const ar: Record<TranslationKey, string> = {
   "rec.badge.hit": "تحقق",
   "rec.badge.pending": "لم يتحقق",
   "rec.footer.valid_now": "التوصية نشطة الآن.",
-  "rec.footer.awaiting": "بانتظار تحقق شروط التفعيل.",
+  "rec.footer.awaiting_activation": "بانتظار تحقق شروط التفعيل.",
   "rec.footer.expired": "انتهت صلاحية التوصية قبل اكتمالها.",
   "rec.footer.invalidated": "أُبطلت التوصية بعد تغيّر البنية السعرية.",
   "rec.footer.blocked": "متوقفة لعائق تنفيذي — ليس حكمًا على السوق.",
+  "rec.footer.cancelled": "أُلغيت التوصية قبل اكتمالها.",
   "rec.footer.closed_win": "أُغلقت الصفقة بعد تحقق الهدف.",
   "rec.footer.closed_loss": "أُغلقت الصفقة على وقف الخسارة.",
   "rec.support.label": "الدعم الإحصائي",
@@ -728,6 +735,11 @@ export const ar: Record<TranslationKey, string> = {
   "rec.plan_type.immediate": "فوري",
   "rec.plan_type.anticipatory": "استباقي",
   "rec.plan_type.conditional": "شرطي",
+  "rec.setup_type.scalp": "سكالب",
+  "rec.setup_type.trend_continuation": "استمرار الاتجاه",
+  "rec.setup_type.reversal_after_sweep": "انعكاس بعد اجتياح سيولة",
+  "rec.setup_type.range_boundary": "حدود النطاق",
+  "rec.setup_type.breakout_retest": "اختراق وإعادة اختبار",
   "rec.detail.execution_state": "حالة التنفيذ",
   "rec.exec_state.valid_now": "صالح الآن",
   "rec.exec_state.awaiting_activation": "بانتظار التفعيل",

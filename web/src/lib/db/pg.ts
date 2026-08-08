@@ -749,9 +749,9 @@ const SCHEMA = `
     ON decision_parity_comparisons(user_id, parity_key)
     WHERE user_id IS NOT NULL AND parity_key IS NOT NULL;
 
-  -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
-  -- aggregated on read, pruned past the window. The EA bridge that populated
-  -- this table was removed; nothing writes new rows here going forward.
+  -- Live spread samples per symbol×session (plan §13 H.1), aggregated on
+  -- read. Written by the MetaApi streaming listener (lib/metaapi/streaming.ts)
+  -- at most once per symbol per minute from ticks it already receives.
   CREATE TABLE IF NOT EXISTS cost_samples (
     id          BIGSERIAL PRIMARY KEY,
     symbol      TEXT NOT NULL,

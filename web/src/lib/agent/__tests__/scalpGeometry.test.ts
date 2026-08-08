@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   SCALP_GEOMETRY,
+  TRADE_SPAN,
   classifyActivation,
   computeGrossR,
   computeNetR,
@@ -288,12 +289,29 @@ describe("buildTradeCandidates geometry repair", () => {
     }
   });
 
-  it("uses a farther structural target only when it meets net R", () => {
+  it("targets span the style floor, carry >=2 targets, and buffer the stop", () => {
     const result = supplyScenario({ nearTarget: 3980.84, farTarget: 3968 });
     assert.ok(result.best, "expected executable candidate with far structural target");
-    assert.ok(result.best!.netRr + 1e-9 >= SCALP_GEOMETRY.minNetTp1R);
-    assert.ok(result.best!.targets[0]! <= 3970);
-    assert.equal(result.best!.activationClass, "conditional");
+    const best = result.best!;
+    assert.ok(best.netRr + 1e-9 >= SCALP_GEOMETRY.minNetTp1R);
+    assert.equal(best.activationClass, "conditional");
+    // Span contract: TP1 must sit beyond the per-style floor (no interval in
+    // this fixture → intraday), so the first minor shelf (3980.84) can never
+    // be the target of record again.
+    const span = TRADE_SPAN.intraday;
+    const atr = 1.5;
+    assert.ok(
+      Math.abs(best.targets[0]! - best.entry) + 1e-9 >= span.minTp1Atr * atr,
+      `TP1 ${best.targets[0]} too close to entry ${best.entry} for the span floor`,
+    );
+    // At least two targets, and the stop takes a real buffer beyond the
+    // structural invalidation (supply zone high 3982.85).
+    assert.ok(best.targets.length >= 2, "span contract requires two targets");
+    assert.equal(best.structuralStop, 3982.85);
+    assert.ok(
+      best.stop_loss - 3982.85 + 1e-9 >= span.stopBufferAtr * atr,
+      `stop ${best.stop_loss} sits on the structural level instead of beyond it`,
+    );
   });
 
   it("preserves sell order target < entry < stop", () => {
@@ -369,6 +387,14 @@ describe("AI direction preserved without executable levels", () => {
       selectedTradeCandidateId: null,
       proposedLevels: null,
       activationCondition: "عودة السعر إلى منطقة العرض ورفض واضح.",
+      // The schema now refuses a conditional plan without its machine-checkable
+      // rule — the model must state the same condition as data.
+      activationRule: {
+        kind: "rejection_confirmed",
+        level: 3984,
+        direction: "below",
+        timeframe: "1m",
+      },
       invalidationRule: "إغلاق فوق قمة العرض يبطل الفكرة.",
       alternativeScenario: "اختراق العرض يقلب المشهد إلى شراء.",
       validityCandles: 8,

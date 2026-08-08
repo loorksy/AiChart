@@ -83,6 +83,13 @@ export interface CanonicalRecommendation {
    * writers still treat it as append-at-create, never a mutable channel.
    */
   contextJson?: string;
+  planType?: string | null;
+  /**
+   * The LIVE execution state on the row itself. Revisions keep the state each
+   * revision DECLARED; this is the one the tracker moves as the market makes a
+   * waiting plan executable — the card badge reads this, never the revision.
+   */
+  executionState?: string | null;
 }
 
 export interface CreateCanonicalRecommendationInput {

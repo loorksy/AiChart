@@ -50,6 +50,7 @@ function answer(over: Record<string, unknown> = {}): string {
     selectedTradeCandidateId: null,
     proposedLevels: null,
     activationCondition: "إغلاق فوق 1.1005",
+    activationRule: { kind: "candle_close_above", level: 1.1005, timeframe: "5m" },
     invalidationRule: "إغلاق تحت 1.09.",
     alternativeScenario: "كسر 1.09 يقلب المشهد.",
     validityCandles: 6,

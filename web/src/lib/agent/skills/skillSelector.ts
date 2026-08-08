@@ -7,6 +7,10 @@ import { FEATURES } from "../featureFlags";
 
 /** The Pattern Atlas skill, gated by phase F's flag. */
 const ATLAS_SKILL = "pattern-atlas";
+/** The plan-type doctrine skill — pinned for market-analysis intents. */
+const STRATEGY_SKILL = "trading-strategies";
+/** Intent fragments that mean "we are analyzing a market for a trade". */
+const ANALYSIS_INTENT = /analysis|analyz|trade|chart|market|recommend/;
 
 const STOP = new Set([
   "the", "and", "for", "with", "from", "that", "this", "are", "was", "were",
@@ -125,6 +129,16 @@ export function selectAgentSkills(
       if (
         skill.metadata.name === ATLAS_SKILL &&
         (context.detectedPatterns?.length ?? 0) > 0
+      ) {
+        score += 4;
+      }
+      // The plan-type doctrine is FOR trade analyses the same way: without
+      // this boost, a detected pattern raised the atlas score and the
+      // alphabetical tie-break always evicted trading-strategies — the
+      // doctrine skill vanished exactly when a tradeable structure existed.
+      if (
+        skill.metadata.name === STRATEGY_SKILL &&
+        intents.some((intent) => ANALYSIS_INTENT.test(intent))
       ) {
         score += 4;
       }

@@ -273,6 +273,20 @@ export function normalizeActivationRule(
   return rule.timeframe ? rule : { ...rule, timeframe: tf };
 }
 
+/**
+ * The single timeframe this rule is graded on, or null when its leaves name
+ * different ones. Callers use this to fetch the rule's OWN candle series; a
+ * mixed composite falls back to the plan series — the conservative direction,
+ * since a rule graded on the wrong frame can fire when it should not.
+ */
+export function activationRuleTimeframe(rule: ActivationRule): string | null {
+  if (rule.kind !== "composite") return rule.timeframe ?? null;
+  const frames = new Set(
+    rule.rules.map((leaf) => (leaf.timeframe ?? "").trim()).filter(Boolean),
+  );
+  return frames.size === 1 ? [...frames][0]! : null;
+}
+
 /** Did this candle close beyond `level` on the required side, past tolerance? */
 function closedBeyond(
   candle: TrackerCandle,

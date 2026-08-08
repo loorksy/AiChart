@@ -38,6 +38,14 @@ export function visualTimeframesFor(interval: string): string[] {
       return ["1h", "4h", "1d"];
     case "4h":
       return ["4h", "1d", "1w"];
+    case "1d":
+    case "d":
+      // A daily analysis needs daily-and-above context, not intraday noise —
+      // the old fallthrough handed it 15m/1h/4h frames.
+      return ["1d", "1w", "4h"];
+    case "1w":
+    case "w":
+      return ["1w", "1d"];
     default:
       return ["15m", "1h", "4h"];
   }

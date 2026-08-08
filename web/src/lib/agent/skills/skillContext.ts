@@ -91,9 +91,10 @@ export function buildAgentSkillContext(
     }
     const descriptors = [...reg.discover(), ...extraDescriptors];
     const selected = selectAgentSkills(descriptors, {
-      // A third slot when user skills exist, so a personal strategy skill
-      // does not have to displace the system guidance to be heard.
-      maxSkills: extraDescriptors.length ? 3 : 2,
+      // Three system slots so pattern-atlas + trading-lexicon can no longer
+      // evict the trading-strategies doctrine, plus one more when the
+      // operator's own skills exist so a personal strategy is heard too.
+      maxSkills: extraDescriptors.length ? 4 : 3,
       allowExecutionSkills: false,
       ...selection,
     });

@@ -15,7 +15,14 @@ import type { GeometryCandle, GeometryPivot } from "./types";
 export const DEFAULT_PIVOT_LOOKBACK = 3;
 export const DEFAULT_ZIGZAG_MIN_MOVE_ATR = 0.5;
 
-/** Fractal swing pivots for one side, confirmed by `lookback` bars each way. */
+/**
+ * Fractal swing pivots for one side, confirmed by `lookback` bars each way.
+ *
+ * Plateau rule: equal extremes on the RIGHT are tolerated (so a flat double
+ * low still yields a pivot) while an equal extreme on the LEFT disqualifies —
+ * the FIRST bar of an equal run is the pivot, later duplicates defer to it.
+ * A strictly more extreme bar on either side disqualifies as before.
+ */
 export function confirmedPivots(
   candles: readonly GeometryCandle[],
   side: "high" | "low",
@@ -28,12 +35,16 @@ export function confirmedPivots(
     const price = side === "low" ? candle.low : candle.high;
     let ok = true;
     for (let j = 1; j <= lb; j++) {
+      const left = side === "low" ? candles[i - j]!.low : candles[i - j]!.high;
+      const right = side === "low" ? candles[i + j]!.low : candles[i + j]!.high;
       if (side === "low") {
-        if (price > candles[i - j]!.low || price > candles[i + j]!.low) {
+        // Left equal-or-lower fails (keep first of a run); right strictly
+        // lower fails, right equal passes (plateau edge).
+        if (left <= price || right < price) {
           ok = false;
           break;
         }
-      } else if (price < candles[i - j]!.high || price < candles[i + j]!.high) {
+      } else if (left >= price || right > price) {
         ok = false;
         break;
       }

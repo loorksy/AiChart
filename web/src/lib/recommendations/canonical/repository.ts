@@ -1,4 +1,4 @@
-import { getDbBackend, query, queryOne, transaction } from "@/lib/db";
+import { execute, getDbBackend, query, queryOne, transaction } from "@/lib/db";
 import { createLogger } from "@/lib/logger";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { assertRecommendationTransition, initialRecommendationStatus } from "./stateMachine";
@@ -49,6 +49,8 @@ interface RecommendationRow {
   entry_type: string | null;
   legacy_tracking_id: string | null;
   context_json: string | null;
+  plan_type: string | null;
+  execution_state: string | null;
 }
 
 interface TransitionRow {
@@ -153,6 +155,8 @@ function toCanonical(row: RecommendationRow): CanonicalRecommendation {
     entryType: row.entry_type ?? undefined,
     legacyTrackingId: row.legacy_tracking_id ?? undefined,
     contextJson: row.context_json ?? undefined,
+    planType: row.plan_type ?? null,
+    executionState: row.execution_state ?? null,
   };
 }
 
@@ -476,6 +480,24 @@ export async function listAllActiveCanonicalRecommendations(
     [Math.max(1, Math.min(limit, 5000))],
   );
   return rows.map(toCanonical);
+}
+
+/**
+ * Move the LIVE execution state on the recommendation row. Revisions are
+ * append-only and keep the state each revision declared; this column is the
+ * one the tracker owns — it flips awaiting_activation → valid_now the moment
+ * the market satisfies the plan's activation rule, so the card badge is a
+ * function of the market, not of creation time.
+ */
+export async function updateCanonicalExecutionState(
+  userId: number,
+  recommendationId: number,
+  executionState: string,
+): Promise<void> {
+  await execute(
+    "UPDATE recommendations SET execution_state = ?, updated_at = ? WHERE id = ? AND user_id = ? AND (execution_state IS NULL OR execution_state <> ?)",
+    [executionState, Date.now(), recommendationId, userId, executionState],
+  );
 }
 
 export async function transitionRecommendation(

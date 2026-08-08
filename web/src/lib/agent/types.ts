@@ -4,6 +4,7 @@
  * user sees one activity stream and one final result.
  */
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import type { ChartStudy } from "@/lib/chart/studies";
 import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import type {
   SerializedChartDrawing,
@@ -25,6 +26,7 @@ export type AgentIntent =
   | "draw_trendline"
   | "draw_support_resistance"
   | "draw_poi_zones"
+  | "enable_indicators"
   | "clear_agent_drawings"
   | "explain_active_recommendation"
   | "track_active_recommendation"
@@ -268,6 +270,8 @@ export interface AgentFinalResult {
   stages?: import("./stageEvents").AgentStageEvent[];
   recommendation?: AgentRecommendation;
   drawings?: ChartDrawing[];
+  /** Indicators (studies) to enable on the visible chart (idempotent by id). */
+  studies?: ChartStudy[];
   /** User-drawing mutations to apply AFTER the final SSE (idempotent by id). */
   drawingMutations?: UserDrawingMutationCommand[];
   newsRisk?: AgentNewsRisk;

@@ -232,6 +232,7 @@ function SmartChartWorkspaceInner({
     isAnalyzing,
     overlays,
     drawings,
+    studies,
     recommendation,
     targets,
     riskReward,
@@ -243,6 +244,7 @@ function SmartChartWorkspaceInner({
     setHighlightDrawingIndex,
     hydrateFromSnapshot,
     setDrawings,
+    setStudies,
     setRecommendation,
   } = useChartAnalysis({
     symbol,
@@ -333,6 +335,7 @@ function SmartChartWorkspaceInner({
       const state: ChartLayoutState = {
         drawings,
         overlays,
+        studies,
         recommendation,
         targets,
         liveReasoningLog,
@@ -364,6 +367,7 @@ function SmartChartWorkspaceInner({
     dataSource,
     drawings,
     overlays,
+    studies,
     recommendation,
     targets,
     liveReasoningLog,
@@ -457,6 +461,15 @@ function SmartChartWorkspaceInner({
           [...clearAgentDrawings(prev), ...(result.drawings ?? [])],
         );
       }
+      // Indicators from the SSE path: merge by id so "add MACD" keeps the RSI
+      // the agent enabled earlier instead of replacing the whole set.
+      if (result.studies?.length) {
+        const incoming = result.studies;
+        setStudies((prev) => {
+          const replaced = new Set(incoming.map((s) => s.id));
+          return [...prev.filter((s) => !replaced.has(s.id)), ...incoming];
+        });
+      }
       const rec = result.recommendation;
       if (rec && (rec.action === "buy" || rec.action === "sell")) {
         setRecommendation({
@@ -473,7 +486,7 @@ function SmartChartWorkspaceInner({
         setRecommendation(null);
       }
     },
-    [setDrawings, setRecommendation, symbol, interval],
+    [setDrawings, setStudies, setRecommendation, symbol, interval],
   );
 
   // Analyze always uses the same chat agent path; there is no parallel engine.
@@ -833,6 +846,7 @@ function SmartChartWorkspaceInner({
                 targets={targets}
                 overlays={overlays}
                 drawings={drawings}
+                studies={studies}
                 headerActions={headerActions}
                 dataSource={dataSource}
                 locale={locale}

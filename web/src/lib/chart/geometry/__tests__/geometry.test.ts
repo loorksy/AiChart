@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { GeometryCandle } from "@/lib/chart/geometry";
+import type { GeometryCandle, GeometryPivot } from "@/lib/chart/geometry";
 import {
   detectChartGeometry,
+  detectTrendlines,
   geometryToDrawings,
   summarizeGeometry,
   zigzagPivots,
   allConfirmedPivots,
+  confirmedPivots,
   geometryAtr,
 } from "@/lib/chart/geometry";
 
@@ -56,10 +58,13 @@ function ascendingTriangleCandles(breakout: boolean): GeometryCandle[] {
       const p = low + ((high - low) * i) / 5;
       out.push(candle(index++, p - 0.5, p + 0.5));
     }
-    // Leg down to the rising support.
+    // Leg down to the rising support. The low clamps at the support floor —
+    // clamp the high with it so clamped candles stay well-formed (high > low
+    // and a close on the right side of the boundary, not a phantom break).
     for (let i = 0; i < 6; i++) {
       const p = high - ((high - low + 2) * i) / 5;
-      out.push(candle(index++, Math.max(p - 0.5, low - 0.5), p + 0.5));
+      const lo = Math.max(p - 0.5, low - 0.5);
+      out.push(candle(index++, lo, Math.max(p + 0.5, lo + 1)));
     }
   }
   if (breakout) {
@@ -280,5 +285,112 @@ describe("drawings and summaries", () => {
     assert.equal(triangle!.status, "completed");
     assert.ok(triangle!.pattern_ar.length > 0);
     assert.ok(triangle!.projected_target != null);
+  });
+});
+
+/** Hand-built pivot helper for direct trendline-engine tests. */
+function lowPivot(index: number, price: number): GeometryPivot {
+  return { index, time: START + index * BAR_MS, price, kind: "low" };
+}
+
+describe("trendline envelope engine", () => {
+  /** Candle whose close is explicit; low/high wide enough to be neutral. */
+  function bar(index: number, close: number, low?: number): GeometryCandle {
+    return candle(index, low ?? close - 0.5, close + 0.5, close);
+  }
+
+  it("rejects a support pair when an interior candle CLOSES through the line", () => {
+    // Line 100→102 across bars 10..50; the dip at 30 closes at 100.0 while the
+    // line sits at 101.0 — a close-based violation between the anchors.
+    const candles = Array.from({ length: 70 }, (_, i) => {
+      if (i === 10) return bar(i, 106, 100);
+      if (i === 50) return bar(i, 106, 102);
+      if (i === 30) return candle(i, 99.8, 106.5, 100.0);
+      return bar(i, 106, 105.5);
+    });
+    const pivots = [lowPivot(10, 100), lowPivot(50, 102)];
+    const lines = detectTrendlines({ candles, pivots, atr: 1 });
+    assert.equal(lines.filter((l) => l.side === "support").length, 0);
+  });
+
+  it("tolerates an interior WICK below the line (close-based rule)", () => {
+    // Same shape but the dip closes back above the line: the wick to 99.8 is
+    // a stop-run, not a break — the line remains a valid lower envelope.
+    const candles = Array.from({ length: 70 }, (_, i) => {
+      if (i === 10) return bar(i, 106, 100);
+      if (i === 50) return bar(i, 106, 102);
+      if (i === 30) return candle(i, 99.8, 106.5, 101.2);
+      return bar(i, 106, 105.5);
+    });
+    const pivots = [lowPivot(10, 100), lowPivot(50, 102)];
+    const lines = detectTrendlines({ candles, pivots, atr: 1 });
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0]!.side, "support");
+    assert.deepEqual(
+      lines[0]!.anchors.map((p) => p.index),
+      [10, 50],
+    );
+  });
+
+  it("a 3-touch flatter line outranks a 2-touch steeper one", () => {
+    // Flat collinear lows at (10,100) (30,101) (50,102); a late steep pair
+    // (52,103)→(60,107). Closes ride the steep line at the end so both
+    // envelopes hold — the flat line must still win on touch count.
+    const steepAt = (i: number) => 103 + 0.5 * (i - 52);
+    const candles = Array.from({ length: 70 }, (_, i) =>
+      bar(i, i >= 52 ? steepAt(i) + 1 : 104),
+    );
+    const pivots = [
+      lowPivot(10, 100),
+      lowPivot(30, 101),
+      lowPivot(50, 102),
+      lowPivot(52, 103),
+      lowPivot(60, 107),
+    ];
+    const lines = detectTrendlines({ candles, pivots, atr: 1 });
+    assert.ok(lines.length >= 1);
+    const top = lines[0]!;
+    assert.equal(top.side, "support");
+    assert.ok(top.touches >= 3, `expected ≥3 touches, got ${top.touches}`);
+    assert.ok(Math.abs(top.slope) < 0.1, "the flatter line wins");
+    assert.deepEqual(top.anchors.map((p) => p.index), [10, 50]);
+  });
+
+  it("refuses anchor pairs whose second anchor is older than 100 bars", () => {
+    const make = (length: number) =>
+      Array.from({ length }, (_, i) => {
+        if (i === 10) return bar(i, 106, 100);
+        if (i === 40) return bar(i, 106, 100.6);
+        return bar(i, 106, 105.5);
+      });
+    const pivots = [lowPivot(10, 100), lowPivot(40, 100.6)];
+    // 200 bars → the second anchor is 159 bars old → rejected.
+    assert.deepEqual(detectTrendlines({ candles: make(200), pivots, atr: 1 }), []);
+    // 120 bars → 79 bars old → accepted.
+    const recent = detectTrendlines({ candles: make(120), pivots, atr: 1 });
+    assert.equal(recent.length, 1);
+    assert.ok(recent[0]!.confidence >= 60);
+  });
+});
+
+describe("plateau pivots", () => {
+  it("an equal-low plateau yields exactly one pivot, on the first bar", () => {
+    const candles = Array.from({ length: 20 }, (_, i) =>
+      candle(i, i === 8 || i === 9 ? 100 : 105, 106),
+    );
+    const lows = confirmedPivots(candles, "low");
+    assert.equal(lows.length, 1);
+    assert.equal(lows[0]!.index, 8);
+    assert.equal(lows[0]!.price, 100);
+  });
+
+  it("an equal-high plateau yields exactly one pivot, on the first bar", () => {
+    const candles = Array.from({ length: 20 }, (_, i) =>
+      candle(i, 99, i === 8 || i === 9 ? 110 : 105),
+    );
+    const highs = confirmedPivots(candles, "high");
+    assert.equal(highs.length, 1);
+    assert.equal(highs[0]!.index, 8);
+    assert.equal(highs[0]!.price, 110);
   });
 });

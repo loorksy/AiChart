@@ -8,12 +8,49 @@
  * recommendation card — callers should render a lighter market-view instead.
  */
 import type { AgentFinalResult } from "@/lib/agent/types";
+import { intervalMs } from "@/lib/agent/trading/tradePlan";
 import type { TrackedEntryType, TrackedRecommendation } from "./types";
 
 function mapEntryType(entryType?: string): TrackedEntryType {
   if (!entryType || entryType === "market") return "market";
   if (entryType.includes("limit")) return "limit";
   return "pending";
+}
+
+/**
+ * Best-effort market context out of the result's frozen evidence snapshot —
+ * the same object the decision engine reasoned over, which carries the symbol,
+ * interval and current price even when the narrow `activeRecommendation` wire
+ * shape does not.
+ */
+function snapshotContext(result: AgentFinalResult): {
+  currentPrice?: number;
+  symbol?: string;
+  interval?: string;
+} {
+  const modelContext = (
+    result.evidenceSnapshot as { modelContext?: unknown } | undefined
+  )?.modelContext;
+  if (!modelContext || typeof modelContext !== "object") return {};
+  const ctx = modelContext as Record<string, unknown>;
+  return {
+    currentPrice:
+      typeof ctx.currentPrice === "number" && Number.isFinite(ctx.currentPrice)
+        ? ctx.currentPrice
+        : undefined,
+    symbol: typeof ctx.symbol === "string" && ctx.symbol ? ctx.symbol : undefined,
+    interval:
+      typeof ctx.interval === "string" && ctx.interval ? ctx.interval : undefined,
+  };
+}
+
+function firstFinite(
+  ...values: Array<number | null | undefined>
+): number | undefined {
+  for (const value of values) {
+    if (value != null && Number.isFinite(value)) return value;
+  }
+  return undefined;
 }
 
 export function trackedRecommendationFromResult(
@@ -36,13 +73,29 @@ export function trackedRecommendationFromResult(
   const activationClass =
     rec.activationClass ??
     (entryType === "market" ? "immediate" : "conditional");
-  const triggered = activationClass === "immediate" || entryType === "market";
+  // Status follows the execution state when the result states one (mirrors the
+  // server: only a plan executable RIGHT NOW starts triggered); legacy results
+  // without one keep the activation-class/entry-type derivation.
+  const triggered = rec.executionState
+    ? rec.executionState === "valid_now"
+    : activationClass === "immediate" || entryType === "market";
+
+  const snapshot = snapshotContext(result);
+  const marketSync = result.debugDecisionFlow?.marketSync;
+  const createdAt = Date.now();
+  // Real validity window instead of a born-expired card. Mirrors the server
+  // default (validityCandles ?? 6) and its 96-candle ceiling.
+  const validityCandles = Math.max(
+    1,
+    Math.min(Math.round(rec.validityCandles ?? 6), 96),
+  );
+  const interval = active?.interval || snapshot.interval || "";
 
   return {
     id,
     userId: 0,
-    symbol: active?.symbol ?? "",
-    interval: active?.interval ?? "",
+    symbol: active?.symbol || snapshot.symbol || "",
+    interval,
     direction: rec.action,
     entryType,
     entry: rec.entry,
@@ -54,13 +107,26 @@ export function trackedRecommendationFromResult(
     netRr: rec.netRr,
     netRrTp2: rec.netRrTp2,
     activationClass,
+    planType:
+      rec.planType ??
+      (activationClass === "immediate" ? "immediate" : "conditional"),
+    executionState: rec.executionState,
+    entryLow: rec.entryZone?.low,
+    entryHigh: rec.entryZone?.high,
+    validityCandles: rec.validityCandles,
     triggerCondition: rec.triggerCondition,
     invalidationLevel: rec.invalidationLevel ?? rec.stop_loss,
-    createdAt: Date.now(),
-    createdCandleTime: Date.now(),
-    expiresAt: Date.now(),
-    triggeredAt: triggered ? Date.now() : undefined,
-    priceAtCreation: undefined,
+    createdAt,
+    createdCandleTime: createdAt,
+    expiresAt: createdAt + validityCandles * intervalMs(interval),
+    triggeredAt: triggered ? createdAt : undefined,
+    priceAtCreation:
+      snapshot.currentPrice ??
+      firstFinite(
+        marketSync?.liveClose,
+        marketSync?.chartClose,
+        marketSync?.warehouseClose,
+      ),
   };
 }
 

@@ -36,6 +36,8 @@ import {
 } from "@/lib/recommendations/activationRule";
 import { deriveExecutionState, type PlanType } from "@/lib/agent/trading/tradePlan";
 import { getUnifiedPrice } from "@/lib/markets";
+import { getForexLiveQuote } from "@/lib/markets/forexPrice";
+import { resolveCostEvidence } from "@/lib/agent/marketContext/costEvidence";
 import { getCandles, getLatestClosedCandle } from "@/lib/candles/candleRepository";
 import { atr as computeAtr } from "@/lib/indicators";
 import {
@@ -392,13 +394,34 @@ export async function POST(req: NextRequest) {
       } catch {
         planAtr = null;
       }
+      // The run's cost evidence: a live bid/ask from the operator's own broker
+      // feed when it answers inside the bound, otherwise the ladder's lower
+      // rungs (measured profile → static model). assessTradability expects
+      // PRICE units — spreadPrice, never the pips figure — for its
+      // within-spread-noise check. Best-effort: an unreachable feed grades the
+      // plan without a spread, exactly as before.
+      let costSpreadPrice: number | null = null;
+      try {
+        const quote = await getForexLiveQuote(userId, normalizedSymbol, {
+          timeoutMs: 1_800,
+        });
+        const cost = await resolveCostEvidence({
+          userId,
+          symbol: normalizedSymbol,
+          referencePrice: currentPrice,
+          observedOverride: quote,
+        });
+        costSpreadPrice = cost.spreadPrice;
+      } catch {
+        costSpreadPrice = null;
+      }
       tradability = assessTradability({
         direction: body.action,
         planType: body.plan_type,
         entry: body.entry,
         currentPrice,
         atr: planAtr,
-        spread: null,
+        spread: costSpreadPrice,
         validityCandles: body.validity_candles ?? null,
       });
       // Verdict distribution at publish (plan §2.4) — the KPI that shows the

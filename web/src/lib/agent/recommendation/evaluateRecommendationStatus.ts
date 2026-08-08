@@ -4,6 +4,7 @@ import {
   type RecommendationStatus,
 } from "../sessionRecommendation";
 import type { AgentMarketContext } from "../marketContext/buildAgentMarketContext";
+import { createActivationEvaluator } from "@/lib/recommendations/activationRule";
 
 export interface RecommendationStatusEvaluation {
   status: RecommendationStatus;
@@ -61,12 +62,23 @@ export function evaluateRecommendationStatus(input: {
   const direction = recommendation.direction;
   let triggered = recommendation.status !== "pending_entry";
 
+  // Same contract as the canonical tracker (recommendationStatus.ts): a plan
+  // carrying a structured activation rule must have the rule satisfied before
+  // its entry can fill. Without this gate the chat path graded on a bare entry
+  // touch and could tell the operator "the trade triggered" while the card —
+  // graded by the rule-aware sweep — still said "بانتظار التفعيل".
+  const activation =
+    !triggered && recommendation.activationRule
+      ? createActivationEvaluator(recommendation.activationRule)
+      : null;
+
   for (const candle of candles) {
+    const conditionMet = activation ? activation.observe(candle).activated : true;
     const touchedEntry =
       direction === "buy"
         ? candle.low <= recommendation.entry
         : candle.high >= recommendation.entry;
-    if (!triggered && touchedEntry) triggered = true;
+    if (!triggered && conditionMet && touchedEntry) triggered = true;
 
     const invalidated =
       direction === "buy"

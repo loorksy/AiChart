@@ -87,6 +87,7 @@ function answer(over: Record<string, unknown> = {}): string {
     selectedTradeCandidateId: null,
     proposedLevels: null,
     activationCondition: "رفض صاعد واضح من 3996.",
+    activationRule: { kind: "rejection_confirmed", level: 3996, direction: "above", timeframe: "5m" },
     invalidationRule: "إغلاق تحت 3990 يبطل الفكرة.",
     alternativeScenario: "كسر 3990 يقلب المشهد إلى بيع نحو 3980.",
     validityCandles: 6,
@@ -149,7 +150,7 @@ describe("doctrine scenarios", () => {
     const tc = candidate({ activationClass: "immediate", entry: 4000, entryType: "market" });
     const out = await decide(
       { risk: makeRisk({ selectedCandidate: tc, candidatesResult: { candidates: [tc], best: tc, rejectedReasons: [], hasReversalEvidence: false } }) },
-      answer({ planType: "immediate", selectedTradeCandidateId: "tc-0", activationCondition: null }),
+      answer({ planType: "immediate", selectedTradeCandidateId: "tc-0", activationCondition: null, activationRule: null }),
     );
     assertCompletePlan(out.result!);
     assert.equal(out.result?.executionState, "valid_now");
@@ -172,6 +173,7 @@ describe("doctrine scenarios", () => {
         planType: "anticipatory",
         selectedTradeCandidateId: "tc-0",
         activationCondition: "الدخول من قيعان المثلث الصاعد قبل الاختراق.",
+        activationRule: { kind: "price_touch", level: 3996, timeframe: "5m" },
         riskWarnings: ["دخول استباقي — مخاطرة أعلى من الدخول بعد التأكيد."],
       }),
     );
@@ -213,6 +215,7 @@ describe("doctrine scenarios", () => {
         planType: "conditional",
         proposedLevels: { entryLow: 3992, entryHigh: 3996, preferredEntry: 3992, stopLoss: 3990, targets: [4010] },
         activationCondition: "عودة السعر إلى 3992 حيث يغطي الهدف التكاليف.",
+        activationRule: { kind: "price_touch", level: 3992, timeframe: "5m" },
       }),
     );
     assertCompletePlan(out.result!);
@@ -236,6 +239,7 @@ describe("doctrine scenarios", () => {
       answer({
         planType: "conditional",
         activationCondition: "بعد انتهاء الحركة الأولى للخبر واستعادة 3996.",
+        activationRule: { kind: "candle_close_above", level: 3996, timeframe: "5m" },
         validityCandles: 3,
       }),
     );

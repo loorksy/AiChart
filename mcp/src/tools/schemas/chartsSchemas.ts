@@ -56,6 +56,24 @@ const zDrawing = z.object({
     .describe("For positions: {entry, stopLoss, takeProfit}"),
 });
 
+const zStudy = z.object({
+  id: z
+    .string()
+    .max(24)
+    .describe("Stable study id (e.g. 'agent-rsi') — repeats replace, not stack"),
+  name: z
+    .enum(["RSI", "EMA", "SMA", "MACD", "BB", "ATR", "Stochastic", "VWAP"])
+    .describe("Indicator: RSI | EMA | SMA | MACD | BB (Bollinger) | ATR | Stochastic | VWAP"),
+  inputs: z
+    .record(z.string(), z.union([z.number(), z.string(), z.boolean()]))
+    .optional()
+    .describe("Named study inputs, e.g. {length: 50} — omit for TradingView defaults"),
+  pane: z
+    .enum(["overlay", "separate"])
+    .optional()
+    .describe("overlay = price pane, separate = own pane — omit for the study's natural pane"),
+});
+
 const zRecommendation = z.object({
   action: z.enum(["buy", "sell", "wait"]),
   entry: z.number().nullable().optional(),
@@ -100,7 +118,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "draw_on_chart",
     domain: "charts",
     description:
-      "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. dataSource is metaapi-only (drawings are time-anchored against the account-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
+      "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. Can also turn on chart indicators (studies) via `studies`: RSI, EMA, SMA, MACD, Bollinger (BB), ATR, Stochastic, VWAP — rendered as native TradingView indicators beside the drawings. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. Studies are only touched when `studies` is passed (mode=set replaces the study set, add merges by id); clear_chart_drawings removes them too. dataSource is metaapi-only (drawings are time-anchored against the account-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
     inputSchema: {
       layout_id: zLayoutId,
       symbol: zSymbol.optional().describe("Change chart symbol (optional)"),
@@ -111,6 +129,11 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
   dataSource: z.literal("metaapi").optional(),
       mode: z.enum(["set", "add"]).default("set"),
       drawings: z.array(zDrawing).max(24),
+      studies: z
+        .array(zStudy)
+        .max(8)
+        .optional()
+        .describe("Chart indicators to enable (native TV studies) — omit to leave the current set untouched"),
       recommendation: zRecommendation.nullable().optional(),
       targets: z.array(z.number()).max(6).optional().describe("Additional profit targets"),
     },

@@ -1,6 +1,6 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-08-07T00:24:42.082Z",
+  "exportedAt": "2026-08-08T00:21:11.712Z",
   "toolCount": 55,
   "tools": [
     {
@@ -526,7 +526,7 @@
     {
       "name": "draw_on_chart",
       "domain": "charts",
-      "description": "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. dataSource is metaapi-only (drawings are time-anchored against the account-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
+      "description": "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. Can also turn on chart indicators (studies) via `studies`: RSI, EMA, SMA, MACD, Bollinger (BB), ATR, Stochastic, VWAP — rendered as native TradingView indicators beside the drawings. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. Studies are only touched when `studies` is passed (mode=set replaces the study set, add merges by id); clear_chart_drawings removes them too. dataSource is metaapi-only (drawings are time-anchored against the account-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,

@@ -157,6 +157,31 @@ const NEXT_STEP_BY_TOOL: Record<string, NextStepFn> = {
     params: null,
   }),
 
+  // Fresh market evidence in hand → consult the statistical arsenal before
+  // deciding. Deterministic and read-only: the platform's validated-strategy
+  // machinery sat opt-in for a model that was never told to opt in, so the
+  // ~60-strategy factory never reached a live decision.
+  get_market_snapshot: (args) => {
+    const symbol = typeof args.symbol === "string" ? args.symbol : null;
+    if (!symbol) return null;
+    return {
+      tool: "get_strategy_performance",
+      reason:
+        "Before deciding, check whether a validated strategy deployment matches this symbol/timeframe — cite it as evidence when it exists; the plan stands either way.",
+      params: { symbol },
+    };
+  },
+  get_strategy_performance: (args) => {
+    const symbol = typeof args.symbol === "string" ? args.symbol : null;
+    if (!symbol) return null;
+    return {
+      tool: "find_similar_cases",
+      reason:
+        "Structural memory: what followed similar past moments, for BOTH directions — weigh it as evidence, never as a veto.",
+      params: { symbol },
+    };
+  },
+
   // run_backtest no longer goes through bridgeCall (Phase 3: it queues a job
   // and returns immediately — see core.ts) so this table is never consulted
   // for it; its next_step (-> jobs_wait) is embedded directly in that

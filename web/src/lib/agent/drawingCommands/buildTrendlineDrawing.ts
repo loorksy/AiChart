@@ -15,10 +15,7 @@ export function buildTrendlineDrawing(
     return [];
   }
 
-  const candles =
-    market.currentTfCandles.length >= 40
-      ? market.currentTfCandles
-      : market.currentTfCandles;
+  const candles = market.currentTfCandles;
   if (candles.length < 40) return [];
 
   const proposal = proposeStructuralTrendline({

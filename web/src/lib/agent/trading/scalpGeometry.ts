@@ -20,6 +20,63 @@ export const SCALP_GEOMETRY = {
   rejectActivationAtr: 8,
 } as const;
 
+export type TradeSpanStyle = "scalp" | "intraday" | "swing";
+
+/**
+ * Per-style span & protection contract.
+ *
+ * Product rule (operator-set): a plan must span a REAL swing — on the order of
+ * 30 candles of travel on the analyzed timeframe, not a handful of points —
+ * and the stop never sits ON the structural level: it takes a strong
+ * volatility buffer beyond it (e.g. structural 4393.52 → stop 4401.79 on
+ * gold). Directional travel over ~30 bars runs well above per-bar ATR, so the
+ * floors are expressed as ATR multiples of the analyzed timeframe.
+ *
+ * The nearest-structural-target-first selection defeated this on its own:
+ * with a tight stop, 2.5R net on gold is a ~10-point scalp. The span floor
+ * filters the structural pool BEFORE the nearest-first pick.
+ */
+export const TRADE_SPAN: Record<
+  TradeSpanStyle,
+  {
+    /** TP1 must sit at least this many ATR from the entry. */
+    minTp1Atr: number;
+    /** TP2 must sit at least this many ATR from the entry. */
+    minTp2Atr: number;
+    /** Stop buffer BEYOND the structural level, in ATR. */
+    stopBufferAtr: number;
+  }
+> = {
+  scalp: { minTp1Atr: 3.5, minTp2Atr: 6, stopBufferAtr: 0.5 },
+  intraday: { minTp1Atr: 4.5, minTp2Atr: 7.5, stopBufferAtr: 0.6 },
+  swing: { minTp1Atr: 6, minTp2Atr: 10, stopBufferAtr: 0.75 },
+};
+
+/**
+ * Interval → span style. Local rather than reusing riskPolicy's mapper: this
+ * one accepts any raw interval string the pipeline carries ("15m", "1h", "D")
+ * and must never throw on an unknown one.
+ */
+export function spanStyleForInterval(interval?: string | null): TradeSpanStyle {
+  const raw = (interval ?? "").trim().toLowerCase();
+  if (raw === "1m" || raw === "5m" || raw === "1" || raw === "5") return "scalp";
+  if (
+    raw === "15m" ||
+    raw === "30m" ||
+    raw === "15" ||
+    raw === "30" ||
+    raw === "45m" ||
+    raw === "45"
+  ) {
+    return "intraday";
+  }
+  return raw ? "swing" : "intraday";
+}
+
+export function tradeSpanFor(interval?: string | null) {
+  return TRADE_SPAN[spanStyleForInterval(interval)];
+}
+
 export type GeometryActivationClass =
   | "immediate"
   | "conditional"
