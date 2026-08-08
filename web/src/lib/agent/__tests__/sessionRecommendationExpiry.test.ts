@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { computeRecommendationExpiry } from "@/lib/agent/sessionRecommendation";
+import { computeRecommendationExpiry } from "@/lib/agent/recommendationExpiry";
 import { spanStyleForInterval } from "@/lib/agent/trading/scalpGeometry";
 import { resolveValidity } from "@/lib/agent/trading/tradePlan";
 

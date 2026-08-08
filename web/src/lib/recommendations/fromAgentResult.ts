@@ -8,7 +8,7 @@
  * recommendation card — callers should render a lighter market-view instead.
  */
 import type { AgentFinalResult } from "@/lib/agent/types";
-import { computeRecommendationExpiry } from "@/lib/agent/sessionRecommendation";
+import { computeRecommendationExpiry } from "@/lib/agent/recommendationExpiry";
 import { resolveValidity } from "@/lib/agent/trading/tradePlan";
 import { spanStyleForInterval } from "@/lib/agent/trading/scalpGeometry";
 import type { TrackedEntryType, TrackedRecommendation } from "./types";
