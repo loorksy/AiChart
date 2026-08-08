@@ -119,6 +119,11 @@ class StrategyDef(BaseModel):
     regime_affinity: str | None = None
     source_generated: bool = False
     params_json: str | None = None
+    # "declarative": params_json holds a GeneratedStrategySpec (data only).
+    # "sandboxed_code": source_code holds AI-generated Python, executed only
+    # via app.sandbox.safe_exec + app.engine.strategies.generated_code.
+    generation_mode: Literal["declarative", "sandboxed_code"] = "declarative"
+    source_code: str | None = None
     created_at: str
     updated_at: str
 
@@ -175,3 +180,22 @@ class GenerateValidateResponse(BaseModel):
 class EnableStrategyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool
+
+
+class GenerateValidateCodeRequest(BaseModel):
+    """Body for `POST /internal/quant-agent/strategies/generate-validate-code`.
+
+    `web/` obtains `code` from an LLM elsewhere and posts it here; this
+    service makes no outbound network/LLM call of its own — it only runs the
+    code through `app.sandbox.safe_exec.validate_code_safety` and the
+    compile/discovery step in
+    `app.engine.strategies.generated_code.contract`, and on success persists
+    it disabled."""
+
+    model_config = ConfigDict(extra="forbid")
+    strategy_id: str
+    version: str
+    display_name: str
+    description: str = ""
+    regime_affinity: str
+    code: str = Field(min_length=1, max_length=20_000)

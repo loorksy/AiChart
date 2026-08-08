@@ -132,6 +132,13 @@ class SqliteQuantStore:
             )
         if "params_json" not in existing:
             connection.execute("ALTER TABLE quant_strategy_defs ADD COLUMN params_json TEXT")
+        if "generation_mode" not in existing:
+            connection.execute(
+                "ALTER TABLE quant_strategy_defs "
+                "ADD COLUMN generation_mode TEXT NOT NULL DEFAULT 'declarative'"
+            )
+        if "source_code" not in existing:
+            connection.execute("ALTER TABLE quant_strategy_defs ADD COLUMN source_code TEXT")
 
     # ------------------------------------------------------------------
     # recommendations
@@ -317,7 +324,8 @@ class SqliteQuantStore:
                     connection.execute(
                         """UPDATE quant_strategy_defs SET
                             version=?, display_name=?, description=?, enabled=?,
-                            regime_affinity=?, source_generated=1, params_json=?, updated_at=?
+                            regime_affinity=?, source_generated=1, params_json=?,
+                            generation_mode=?, source_code=?, updated_at=?
                         WHERE strategy_id=?""",
                         (
                             strategy_def.version,
@@ -326,6 +334,8 @@ class SqliteQuantStore:
                             1 if strategy_def.enabled else 0,
                             strategy_def.regime_affinity,
                             strategy_def.params_json,
+                            strategy_def.generation_mode,
+                            strategy_def.source_code,
                             now,
                             strategy_def.strategy_id,
                         ),
@@ -334,8 +344,9 @@ class SqliteQuantStore:
                     connection.execute(
                         """INSERT INTO quant_strategy_defs (
                             strategy_id, version, display_name, description, enabled,
-                            regime_affinity, source_generated, params_json, created_at, updated_at
-                        ) VALUES (?,?,?,?,?,?,1,?,?,?)""",
+                            regime_affinity, source_generated, params_json,
+                            generation_mode, source_code, created_at, updated_at
+                        ) VALUES (?,?,?,?,?,?,1,?,?,?,?,?)""",
                         (
                             strategy_def.strategy_id,
                             strategy_def.version,
@@ -344,6 +355,8 @@ class SqliteQuantStore:
                             1 if strategy_def.enabled else 0,
                             strategy_def.regime_affinity,
                             strategy_def.params_json,
+                            strategy_def.generation_mode,
+                            strategy_def.source_code,
                             strategy_def.created_at,
                             now,
                         ),
@@ -488,9 +501,12 @@ class SqliteQuantStore:
 
     @staticmethod
     def _row_to_strategy_def(row: sqlite3.Row) -> StrategyDef:
-        # `source_generated`/`params_json` are always present by the time any
-        # row is read through this store, since `initialize()` runs the
-        # migration unconditionally before any query executes.
+        # `source_generated`/`params_json`/`generation_mode`/`source_code`
+        # are always present by the time any row is read through this
+        # store, since `initialize()` runs the migration unconditionally
+        # before any query executes.
+        row_keys = row.keys()
+        generation_mode = row["generation_mode"] if "generation_mode" in row_keys else "declarative"
         return StrategyDef(
             strategy_id=row["strategy_id"],
             version=row["version"],
@@ -500,6 +516,8 @@ class SqliteQuantStore:
             regime_affinity=row["regime_affinity"],
             source_generated=bool(row["source_generated"]),
             params_json=row["params_json"],
+            generation_mode=generation_mode or "declarative",
+            source_code=row["source_code"] if "source_code" in row_keys else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

@@ -7,11 +7,13 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import ValidationError
 
 from app.engine.strategies.generated.schema import GeneratedStrategySpec
+from app.engine.strategies.generated_code.contract import compile_and_discover
 from app.engine.strategies.registry import registered_strategies
 from app.errors import ServiceError
 from app.security import require_internal_auth
 from app.storage.models import (
     EnableStrategyRequest,
+    GenerateValidateCodeRequest,
     GenerateValidateRequest,
     GenerateValidateResponse,
     StrategyDef,
@@ -86,6 +88,66 @@ async def generate_validate(
         regime_affinity=spec.regime_affinity,
         source_generated=True,
         params_json=spec.model_dump_json(),
+        created_at=now,
+        updated_at=now,
+    )
+    persisted = await store.upsert_generated_strategy_def(strategy_def)
+    if persisted is None:
+        return GenerateValidateResponse(
+            status="invalid",
+            errors=[
+                {
+                    "path": "strategy_id",
+                    "message": "strategy_id collides with an existing built-in strategy row",
+                }
+            ],
+        )
+    return GenerateValidateResponse(status="persisted", strategy=persisted)
+
+
+@router.post(
+    "/generate-validate-code", response_model=GenerateValidateResponse, dependencies=[_AUTH]
+)
+async def generate_validate_code(
+    body: GenerateValidateCodeRequest, store: SqliteQuantStore = Depends(_store)
+) -> GenerateValidateResponse:
+    """Sandboxed-code sibling of `/generate-validate`. Same guarantees:
+    makes **no** outbound network or LLM call (`web/` already obtained
+    `body.code` from an LLM), never a 500 on bad input, always persists
+    `enabled=False`. The extra step here is `compile_and_discover`, which
+    actually runs `body.code` once -- inside an isolated subprocess, never
+    in-process -- against a neutral stub before it is ever stored."""
+    if body.strategy_id in _HARDCODED_STRATEGY_IDS:
+        return GenerateValidateResponse(
+            status="invalid",
+            errors=[
+                {
+                    "path": "strategy_id",
+                    "message": "strategy_id collides with a built-in strategy",
+                }
+            ],
+        )
+
+    try:
+        ok, error = compile_and_discover(body.code)
+    except Exception:  # noqa: BLE001 - fail-closed: any unexpected error is "invalid", never a 500
+        ok, error = False, "code could not be validated"
+    if not ok:
+        message = error or "unsafe or invalid code"
+        errors = [{"path": "code", "message": message}]
+        return GenerateValidateResponse(status="invalid", errors=errors)
+
+    now = datetime.now(UTC).isoformat()
+    strategy_def = StrategyDef(
+        strategy_id=body.strategy_id,
+        version=body.version,
+        display_name=body.display_name,
+        description=body.description,
+        enabled=False,
+        regime_affinity=body.regime_affinity,
+        source_generated=True,
+        generation_mode="sandboxed_code",
+        source_code=body.code,
         created_at=now,
         updated_at=now,
     )

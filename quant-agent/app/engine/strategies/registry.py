@@ -19,6 +19,8 @@ from app.engine.strategies.base import Strategy
 from app.engine.strategies.ema_trend_v1 import EmaTrendV1
 from app.engine.strategies.generated.interpreter import DeclarativeStrategy
 from app.engine.strategies.generated.schema import GeneratedStrategySpec
+from app.engine.strategies.generated_code.contract import compile_and_discover
+from app.engine.strategies.generated_code.interpreter import GeneratedCodeStrategy
 from app.engine.strategies.rsi_reversion_v1 import RsiReversionV1
 
 if TYPE_CHECKING:
@@ -37,26 +39,48 @@ def strategy_by_id(strategy_id: str) -> Strategy | None:
 
 async def registered_strategies_with_generated(store: SqliteQuantStore) -> tuple[Strategy, ...]:
     """`STRATEGIES` plus every enabled, `source_generated` strategy stored
-    in `quant_strategy_defs` whose `params_json` still parses as a valid
-    `GeneratedStrategySpec`. A row that fails to parse (corrupted or from an
-    older/incompatible schema version) is skipped, never raised — a stale
-    row must never crash recommendation creation."""
+    in `quant_strategy_defs` that still passes its generation mode's
+    validation:
+      - `generation_mode="declarative"`: `params_json` must still parse as
+        a valid `GeneratedStrategySpec`.
+      - `generation_mode="sandboxed_code"`: `source_code` must still pass
+        `compile_and_discover` (re-checked at load time too, defensively —
+        a schema/policy change since generation should retire a row, not
+        silently keep running it).
+    A row that fails its check is skipped, never raised — a stale or
+    corrupted row must never crash recommendation creation."""
     defs = await store.list_strategy_defs()
     generated: list[Strategy] = []
     for definition in defs:
-        eligible = (
-            definition.enabled
-            and definition.source_generated
-            and definition.params_json is not None
-        )
-        if not eligible:
+        if not (definition.enabled and definition.source_generated):
             continue
-        assert definition.params_json is not None
+
+        if definition.generation_mode == "sandboxed_code":
+            if not definition.source_code:
+                continue
+            try:
+                ok, _err = compile_and_discover(definition.source_code)
+            except Exception:  # noqa: BLE001, S112 - fail-closed, see docstring
+                continue
+            if not ok:
+                continue
+            generated.append(
+                GeneratedCodeStrategy(
+                    strategy_id=definition.strategy_id,
+                    version=definition.version,
+                    display_name=definition.display_name,
+                    description=definition.description,
+                    regime_affinity=definition.regime_affinity or "range",  # type: ignore[arg-type]
+                    source_code=definition.source_code,
+                )
+            )
+            continue
+
+        if definition.params_json is None:
+            continue
         try:
             spec = GeneratedStrategySpec.model_validate_json(definition.params_json, strict=True)
-        except Exception:  # noqa: BLE001, S112 - fail-closed: a corrupted/stale row must be
-            # skipped, never raised or logged as an error here (this runs on every
-            # recommendation request; the row itself is inert until parseable again).
+        except Exception:  # noqa: BLE001, S112 - fail-closed, see docstring
             continue
         generated.append(DeclarativeStrategy(spec))
     return STRATEGIES + tuple(generated)
