@@ -916,6 +916,21 @@ export const ar: Record<TranslationKey, string> = {
   "qa.chat.coach.step4.confirm_hint": "اكتب «يولّد» للتأكيد، أو «إلغاء» للإيقاف.",
   "qa.chat.coach.step4.confirm_button": "يولّد",
 
+  // حلقة الاختبار-والتحسين المحدودة — نص التقدّم المرحلي (§4/§5)
+  "qa.chat.coach.backtest.drafting": "صياغة الاستراتيجية والتحقق منها...",
+  "qa.chat.coach.backtest.testing_round": "اختبار الجولة {round} من {total}...",
+  "qa.chat.coach.backtest.repairing": "تعديل الاستراتيجية بناءً على نتائج الباكتيست (الجولة {round} من {total})...",
+
+  // بطاقة اقتراح الاستراتيجية — كتلة مقاييس الباكتيست (§4/§5)
+  "qa.chat.strategy.backtest.title": "نتائج الباكتيست",
+  "qa.chat.strategy.backtest.unavailable": "الباكتيست غير متاح",
+  "qa.chat.strategy.backtest.pass_badge": "اجتاز معيار الجودة",
+  "qa.chat.strategy.backtest.fail_badge": "لم يجتز معيار الجودة",
+  "qa.chat.strategy.backtest.trades": "الصفقات",
+  "qa.chat.strategy.backtest.win_rate": "نسبة النجاح",
+  "qa.chat.strategy.backtest.profit_factor": "عامل الربح",
+  "qa.chat.strategy.backtest.max_drawdown": "أقصى تراجع %",
+
   // Watchlist + AI Scheduled Monitors — اللوحة الجانبية اليمنى (Feature A)
   "qa.watchlist.title": "قائمة المتابعة",
   "qa.watchlist.add": "إضافة رمز",

@@ -33,13 +33,21 @@ import {
 import type { AgentChatMessageRecord } from "@/lib/agent/chatHistory/types";
 import { quantAgentIdentityCore } from "@/lib/agent/quantAgentIdentity";
 import { createQuantAgentSkillRegistry } from "@/lib/agent/skills/quantAgentRegistry";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import {
+  backtestQuantStrategy,
   generateAndValidateQuantStrategy,
   generateAndValidateQuantStrategyCode,
   getQuantRecommendation as clientGetQuantRecommendation,
   listQuantRecommendations as clientListQuantRecommendations,
 } from "@/lib/quantAgent/client";
+import {
+  fetchQuantAgentAnalysisBars,
+  type FetchQuantAgentAnalysisBarsOptions,
+  type QuantAgentBarsResult,
+} from "@/lib/quantAgent/marketFeed";
 import type {
+  BacktestQuantStrategyParams,
   GenerateQuantStrategyCodeParams,
   GenerateValidateQuantStrategyError,
   GenerateValidateQuantStrategyResult,
@@ -47,6 +55,8 @@ import type {
   GeneratedStrategySpec,
   ListQuantRecommendationsParams,
   QuantAgentCallerContext,
+  QuantBacktestMetrics,
+  QuantBacktestResult,
   QuantRecommendation,
 } from "@/lib/quantAgent/types";
 import { searchSemanticMemoriesByKeyword } from "@/lib/semanticMemory";
@@ -78,6 +88,24 @@ const HISTORY_MESSAGE_LIMIT = 30;
 const HISTORY_LLM_LIMIT = 20;
 const MEMORY_RECALL_LIMIT = 3;
 
+// Bounded backtest quality-gate loop (plan §4/§5) — confirmed product
+// decisions, not to be re-derived: 3 total attempts (initial + 2 refinement
+// rounds), 5000-bar backtest window, minimum 30 resolved trades, profit
+// factor >= 1.2, max drawdown <= 40%.
+const BACKTEST_MAX_ROUNDS = 3;
+const BACKTEST_BAR_LIMIT = 5000;
+const BACKTEST_MIN_TRADE_COUNT = 30;
+const BACKTEST_MIN_PROFIT_FACTOR = 1.2;
+const BACKTEST_MAX_DRAWDOWN_PERCENT = 40;
+
+// Fallbacks for API/MCP callers that never set a symbol/interval (the chat
+// panel itself always sends both — see QuantAgentChatPanel.tsx/
+// ComposerIntervalPicker's own default). Mirrors the panel's own defaults so
+// behavior stays identical whether the value came from the composer or a
+// bare API call.
+const DEFAULT_BACKTEST_SYMBOL = "EURUSD";
+const DEFAULT_BACKTEST_INTERVAL = "1h";
+
 // --- Dependency injection (unit-testable without a live DB/service/LLM) ---
 
 export interface QuantAgentChatDeps {
@@ -97,6 +125,13 @@ export interface QuantAgentChatDeps {
     context: QuantAgentCallerContext,
     params: GenerateQuantStrategyCodeParams,
   ) => Promise<GenerateValidateQuantStrategyResult>;
+  /** Bounded backtest quality-gate loop (plan §4/§5) — Quant Agent's own isolated batch backtest engine. */
+  backtestQuantStrategy: (
+    context: QuantAgentCallerContext,
+    params: BacktestQuantStrategyParams,
+  ) => Promise<QuantBacktestResult>;
+  /** Bar source for the backtest loop — analysis-only, no `userId`/broker-link concept (plan §4). */
+  fetchAnalysisBars: (options: FetchQuantAgentAnalysisBarsOptions) => Promise<QuantAgentBarsResult>;
   callLLM: typeof callLLM;
   callLLMStream: typeof callLLMStream;
   appendMessage: typeof chatStoreAppendMessage;
@@ -113,6 +148,8 @@ const defaultDeps: QuantAgentChatDeps = {
   getRecommendation: clientGetQuantRecommendation,
   generateAndValidate: generateAndValidateQuantStrategy,
   generateAndValidateCode: generateAndValidateQuantStrategyCode,
+  backtestQuantStrategy,
+  fetchAnalysisBars: fetchQuantAgentAnalysisBars,
   callLLM,
   callLLMStream,
   appendMessage: chatStoreAppendMessage,
@@ -590,6 +627,215 @@ export async function generateQuantStrategyCodeFromDescription(
   };
 }
 
+// --- Bounded backtest-and-refine quality gate (plan §4/§5) ---
+//
+// Wraps (never replaces) the safety-validation pipeline above: a strategy
+// must already be safety-valid and persisted before it is ever backtested —
+// this loop only decides whether an already-safe strategy's REAL historical
+// performance is good enough to say so honestly, never whether it's safe to
+// run at all (that stays `generateQuantStrategyCodeFromDescription`'s job,
+// completely unmodified).
+
+/**
+ * Feeds the model's own code back to it alongside the ACTUAL backtest
+ * numbers (never invented, always framed as untrusted data — the same "data,
+ * not instruction" discipline `repairStrategyCode` uses for validation
+ * errors) and asks it to improve REAL historical performance. This is a
+ * distinct concern from `repairStrategyCode`: that one fixes safety-validator
+ * rejections; this one improves a strategy that already passed safety but
+ * traded poorly. The repaired code is NOT trusted until it re-runs through
+ * `deps.generateAndValidateCode` — see the loop below.
+ */
+async function repairStrategyCodeForQuality(
+  deps: QuantAgentChatDeps,
+  description: string,
+  previousCode: string,
+  backtestResult: QuantBacktestResult,
+): Promise<string> {
+  const res = await deps.callLLM(
+    {
+      system: `${quantAgentIdentityCore()}\n\n${STRATEGY_CODE_SCHEMA_PROMPT}\n\nThis code already PASSED the safety validator — do not change anything just to satisfy safety again. Instead, adjust ONLY the entry/exit trading logic (thresholds, conditions, stop/target sizing) to improve its REAL historical backtest performance against these thresholds: minimum 30 resolved trades, profit factor >= 1.2, max drawdown <= 40%.`,
+      messages: [
+        { role: "user", content: `Original request: ${description}` },
+        { role: "assistant", content: "```python\n" + previousCode + "\n```" },
+        {
+          role: "user",
+          content: `${untrustedDataBlock(
+            "Actual backtest results for this code (real historical data, never invented)",
+            JSON.stringify(backtestResult),
+          )}\n\nRewrite the evaluate(features) function to improve its real historical performance against the thresholds above. Return only the corrected Python code block.`,
+        },
+      ],
+      maxTokens: 1200,
+    },
+    { tier: "deep" },
+  );
+  return extractCodeBlock(extractText(res));
+}
+
+/**
+ * `null` metrics — an "invalid" backtest run, or a `profit_factor`/
+ * `max_drawdown_percent` the service could not compute — never pass. This is
+ * an explicit rule (plan): a missing number is not evidence of a good number.
+ */
+function passesBacktestQualityGate(metrics: QuantBacktestMetrics | null): boolean {
+  if (!metrics) return false;
+  if (!Number.isFinite(metrics.tradeCount) || metrics.tradeCount < BACKTEST_MIN_TRADE_COUNT) return false;
+  if (metrics.profitFactor == null || metrics.profitFactor < BACKTEST_MIN_PROFIT_FACTOR) return false;
+  if (metrics.maxDrawdownPercent == null || metrics.maxDrawdownPercent > BACKTEST_MAX_DRAWDOWN_PERCENT) return false;
+  return true;
+}
+
+export interface QuantAgentBacktestGateOutcome {
+  /** True only when a backtest round actually cleared all three thresholds. */
+  passedGate: boolean;
+  /**
+   * Number of backtest rounds actually RUN (0 means round 1's own safety
+   * validation already failed and `backtestQuantStrategy` was never called —
+   * the hard "never backtest an unsafe draft" rule).
+   */
+  roundsUsed: number;
+  /**
+   * The LAST safety-valid, persisted (still `enabled: false`) generation
+   * outcome — or, when `roundsUsed === 0`, round 1's own "invalid" outcome.
+   * Never discarded even when the quality gate was never cleared.
+   */
+  generation: QuantAgentStrategyGenerationOutcome;
+  /** Metrics from the LAST attempted backtest round, or `null` when `roundsUsed === 0`. */
+  backtest: QuantBacktestResult | null;
+}
+
+/**
+ * The bounded "test, then refine" loop the direct
+ * `/api/quant-agent/chat/generate-strategy` endpoint does NOT get this round
+ * (plan §4) — only the guided chat wizard's step-4 confirm calls this.
+ *
+ * Round 1 reuses `generateQuantStrategyCodeFromDescription` completely
+ * unmodified. Every later round re-validates through the SAME
+ * `deps.generateAndValidateCode` safety gate — a quality-repair round is
+ * never trusted just because it looks plausible.
+ */
+export async function generateAndBacktestQuantStrategyCodeFromDescription(
+  userId: number,
+  description: string,
+  symbol: string,
+  market: string,
+  interval: string,
+  deps: QuantAgentChatDeps = defaultDeps,
+  requestId: string = randomUUID(),
+  onProgress?: (status: string) => void,
+  locale: AppLocale = DEFAULT_LOCALE,
+): Promise<QuantAgentBacktestGateOutcome> {
+  const context: QuantAgentCallerContext = { userId, requestId };
+
+  onProgress?.(t(locale, "qa.chat.coach.backtest.drafting"));
+  const firstOutcome = await generateQuantStrategyCodeFromDescription(userId, description, deps, requestId);
+  if (firstOutcome.status !== "persisted" || !firstOutcome.strategy || !firstOutcome.code) {
+    // Hard rule: a draft that failed its own safety validation (even after
+    // its one internal repair attempt) is NEVER backtested. Stop immediately.
+    return { passedGate: false, roundsUsed: 0, generation: firstOutcome, backtest: null };
+  }
+
+  // Tracked separately from `currentOutcome` (rather than reading
+  // `currentOutcome.strategy`/`.code`, both optional on the general outcome
+  // shape) so every access below is statically known-defined — this loop
+  // only ever holds a safety-valid, persisted round.
+  let currentOutcome: QuantAgentStrategyGenerationOutcome = firstOutcome;
+  let currentStrategy: GeneratedQuantStrategyRecord = firstOutcome.strategy;
+  let currentCode: string = firstOutcome.code;
+  let backtestResult: QuantBacktestResult | null = null;
+
+  for (let round = 1; round <= BACKTEST_MAX_ROUNDS; round++) {
+    onProgress?.(
+      t(locale, "qa.chat.coach.backtest.testing_round", { round: String(round), total: String(BACKTEST_MAX_ROUNDS) }),
+    );
+
+    let bars: QuantAgentBarsResult["bars"];
+    try {
+      const barsResult = await deps.fetchAnalysisBars({ symbol, interval, market, limit: BACKTEST_BAR_LIMIT });
+      bars = barsResult.bars;
+    } catch (error) {
+      log.warn("quant_agent_chat.backtest_gate.fetch_bars_failed", {
+        round,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { passedGate: false, roundsUsed: round, generation: currentOutcome, backtest: backtestResult };
+    }
+
+    const strategyId = currentStrategy.strategy_id;
+    try {
+      backtestResult = await deps.backtestQuantStrategy(context, { strategyId, symbol, market, interval, bars });
+    } catch (error) {
+      log.warn("quant_agent_chat.backtest_gate.backtest_failed", {
+        round,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { passedGate: false, roundsUsed: round, generation: currentOutcome, backtest: backtestResult };
+    }
+
+    const passed = backtestResult.status === "completed" && passesBacktestQualityGate(backtestResult.metrics);
+    if (passed) {
+      return { passedGate: true, roundsUsed: round, generation: currentOutcome, backtest: backtestResult };
+    }
+    if (round === BACKTEST_MAX_ROUNDS) {
+      // Rounds exhausted without passing — the LAST safety-valid persisted
+      // version is returned as-is (still `enabled: false`) with its real,
+      // failing metrics attached. Never discarded, never silently dropped.
+      return { passedGate: false, roundsUsed: round, generation: currentOutcome, backtest: backtestResult };
+    }
+
+    onProgress?.(
+      t(locale, "qa.chat.coach.backtest.repairing", {
+        round: String(round + 1),
+        total: String(BACKTEST_MAX_ROUNDS),
+      }),
+    );
+
+    let repairedCode: string;
+    try {
+      repairedCode = await repairStrategyCodeForQuality(deps, description, currentCode, backtestResult);
+    } catch (error) {
+      log.warn("quant_agent_chat.backtest_gate.quality_repair_draft_failed", {
+        round,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { passedGate: false, roundsUsed: round, generation: currentOutcome, backtest: backtestResult };
+    }
+
+    // Re-validate against the SAME unmodified safety gate — a quality-repair
+    // round is never trusted just because it looks plausible. A fresh
+    // strategyId (derived exactly like round 1's own draft) keeps every
+    // round's persisted row distinct rather than reusing one strategy_id.
+    const meta = deriveStrategyMetadataFromDescription(description);
+    const revalidated = await deps.generateAndValidateCode(context, { ...meta, code: repairedCode });
+    if (revalidated.status !== "persisted" || !revalidated.strategy) {
+      // The quality repair broke safety validity — never skip re-validation.
+      // Stop here (rather than retrying again within the round budget) and
+      // keep reporting the LAST safety-valid version, per the same
+      // never-discard rule as exhaustion above.
+      log.warn("quant_agent_chat.backtest_gate.quality_repair_failed_safety", {
+        round,
+        errors: revalidated.errors ?? [],
+      });
+      return { passedGate: false, roundsUsed: round, generation: currentOutcome, backtest: backtestResult };
+    }
+
+    currentStrategy = revalidated.strategy;
+    currentCode = repairedCode;
+    currentOutcome = {
+      status: "persisted",
+      mode: "sandboxed_code",
+      strategy: currentStrategy,
+      code: currentCode,
+      repaired: true,
+    };
+  }
+
+  // Unreachable — every loop iteration returns — kept only so the function
+  // has a total return type without a non-null assertion.
+  return { passedGate: false, roundsUsed: BACKTEST_MAX_ROUNDS, generation: currentOutcome, backtest: backtestResult };
+}
+
 // --- Turn orchestration ---
 
 export interface QuantAgentChatTurnInput {
@@ -607,6 +853,16 @@ export interface QuantAgentChatTurnInput {
    * callers (e.g. the MCP `quant_agent_chat_send` tool) that don't set it.
    */
   symbol?: string;
+  /**
+   * The timeframe the composer's NEW interval picker had focused for this
+   * turn (plan §4/§5's interval decision — the chat had no interval concept
+   * before this). Threaded exactly like `symbol` above: persisted onto both
+   * the user and assistant messages (and, via `appendMessage`'s `COALESCE`,
+   * onto the chat session), and — its one actual consumer — passed to the
+   * bounded backtest loop once the guided wizard's step 4 is confirmed.
+   * Optional for the same backward-compatibility reason `symbol` is.
+   */
+  interval?: string;
   /**
    * Streaming callback for the final answer step — cumulative text so far
    * (replace semantics). Presence selects `callLLMStream` for the answer;
@@ -678,6 +934,63 @@ async function buildStrategyGenerationReply(
 }
 
 /**
+ * The bounded backtest quality-gate's outcome→reply builder — a sibling to
+ * `buildStrategyGenerationReply`, not a modification of it (plan §4/§5). When
+ * round 1 never even reached a safety-valid persisted strategy, no backtest
+ * ever ran, so this delegates verbatim to `buildStrategyGenerationReply`'s
+ * existing invalid-outcome branch rather than duplicating that explanation.
+ * Otherwise it ALWAYS states the real backtest numbers — good or bad, never
+ * invented, never softened — extending `quantAgentIdentityCore()`'s existing
+ * "no invented data" principle to backtest performance specifically.
+ */
+async function buildBacktestGateReply(
+  deps: QuantAgentChatDeps,
+  identity: string,
+  contextMessage: string,
+  outcome: QuantAgentBacktestGateOutcome,
+  onDelta?: (fullText: string) => void,
+): Promise<{ reply: string; strategyProposal: QuantAgentStrategyProposal }> {
+  if (outcome.generation.status !== "persisted" || !outcome.generation.strategy || !outcome.generation.code) {
+    // Round 1's own safety validation failed — `backtestQuantStrategy` was
+    // NEVER called (the hard rule). Same honest failure explanation as the
+    // non-backtested pipeline, no duplicated branch.
+    return buildStrategyGenerationReply(deps, identity, contextMessage, outcome.generation, onDelta);
+  }
+
+  const { strategy, code } = outcome.generation;
+  const strategyProposal: QuantAgentStrategyProposal = {
+    status: "persisted",
+    mode: "sandboxed_code",
+    strategy,
+    code,
+    backtest: outcome.backtest ?? undefined,
+  };
+
+  const metricsBlock = untrustedDataBlock(
+    "Actual backtest results — real historical performance, never invented",
+    JSON.stringify({
+      passedGate: outcome.passedGate,
+      roundsUsed: outcome.roundsUsed,
+      qualityThresholds: {
+        minTradeCount: BACKTEST_MIN_TRADE_COUNT,
+        minProfitFactor: BACKTEST_MIN_PROFIT_FACTOR,
+        maxDrawdownPercent: BACKTEST_MAX_DRAWDOWN_PERCENT,
+      },
+      backtest: outcome.backtest,
+    }),
+  );
+  const codeBlock = untrustedDataBlock("Persisted (disabled) strategy — generated Python code", code);
+
+  const instruction = outcome.passedGate
+    ? `Summarize in plain language what this newly proposed strategy does: the market condition it looks for, its stop/target logic if apparent from the code, and its regime affinity. Then state the REAL backtest numbers plainly (resolved trade count, win rate, profit factor, max drawdown) — the strategy CLEARED the quality bar (minimum 30 resolved trades, profit factor >= 1.2, max drawdown <= 40%). Even so, state clearly that it was saved DISABLED and still requires the user's explicit action to enable it — a good backtest never enables a strategy automatically.`
+    : `Summarize in plain language what this newly proposed strategy does. Then explicitly state that after ${outcome.roundsUsed} backtest round(s) it did NOT clear the quality bar (minimum 30 resolved trades, profit factor >= 1.2, max drawdown <= 40%) — state the actual (failing) numbers plainly. Never invent a good number, never omit or soften a bad one. State clearly it was saved DISABLED for the user's own review.`;
+
+  const summarySystem = `${identity}\n\n${codeBlock}\n\n${metricsBlock}\n\n${instruction} Do not reproduce the raw code in your summary — the user can already see it separately.`;
+  const reply = await finalAnswer(deps, summarySystem, [{ role: "user", content: contextMessage }], onDelta);
+  return { reply, strategyProposal };
+}
+
+/**
  * Runs one Quant Agent Chat turn end to end: check for an in-progress
  * Composer Coach wizard → route intent (or continue the wizard) → branch →
  * persist user then assistant message (agentId: "quant_agent" on both).
@@ -689,7 +1002,7 @@ export async function runQuantAgentChatTurn(
   input: QuantAgentChatTurnInput,
   deps: QuantAgentChatDeps = defaultDeps,
 ): Promise<QuantAgentChatTurnResult> {
-  const { userId, chatId, message, symbol } = input;
+  const { userId, chatId, message, symbol, interval } = input;
   const requestId = randomUUID();
   const context: QuantAgentCallerContext = { userId, requestId };
   const locale: AppLocale = input.locale ?? DEFAULT_LOCALE;
@@ -702,6 +1015,7 @@ export async function runQuantAgentChatTurn(
     role: "user",
     content: message,
     symbol,
+    interval,
   });
   if (!appendedUser) {
     throw new QuantAgentChatError("Quant Agent chat session not found.");
@@ -733,20 +1047,28 @@ export async function runQuantAgentChatTurn(
       const advance = advancePendingTask(pendingTask, message, locale);
       await deps.setPendingTask(userId, chatId, "quant_agent", advance.task);
       if (advance.readyToGenerate && advance.syntheticDescription) {
-        // Step 4 confirmed — hand off to the EXISTING, unmodified sandboxed-
-        // code pipeline exactly as the direct `generate_strategy` intent used
-        // to, reusing the same outcome→reply branch structure.
-        const outcome = await generateQuantStrategyCodeFromDescription(
+        // Step 4 confirmed — hand off to the bounded backtest-and-refine
+        // quality gate (plan §4/§5), which itself runs the EXISTING,
+        // unmodified sandboxed-code pipeline as round 1 before ever
+        // backtesting. The direct `/api/quant-agent/chat/generate-strategy`
+        // endpoint deliberately still calls the plain pipeline — only the
+        // guided wizard gains backtesting this round.
+        const gateOutcome = await generateAndBacktestQuantStrategyCodeFromDescription(
           userId,
           advance.syntheticDescription,
+          symbol || DEFAULT_BACKTEST_SYMBOL,
+          DEFAULT_MARKET,
+          interval || DEFAULT_BACKTEST_INTERVAL,
           deps,
           requestId,
+          input.onDelta,
+          locale,
         );
-        const built = await buildStrategyGenerationReply(
+        const built = await buildBacktestGateReply(
           deps,
           identity,
           advance.syntheticDescription,
-          outcome,
+          gateOutcome,
           input.onDelta,
         );
         reply = built.reply;
@@ -809,6 +1131,7 @@ export async function runQuantAgentChatTurn(
     role: "assistant",
     content: reply,
     symbol,
+    interval,
     result: {
       intent,
       memoryCandidate,

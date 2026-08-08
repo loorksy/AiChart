@@ -191,3 +191,59 @@ export interface GenerateValidateQuantStrategyResult {
   strategy?: GeneratedQuantStrategyRecord;
   errors?: GenerateValidateQuantStrategyError[];
 }
+
+/**
+ * Quant Agent's own backtest engine (chat bounded quality-gate loop —
+ * `POST /internal/quant-agent/strategies/{strategy_id}/backtest`, quant-agent
+ * side built separately). Results are in R-multiple, never currency — Quant
+ * Agent has no capital/account model to invent one from. Kept camelCase on
+ * this TS side per this file's own convention for hand-built request/response
+ * shapes (see `MonitorNotificationPayload.stopLoss/takeProfit` in
+ * `monitorNotify.ts`) — the `*Wire` siblings mirror the actual snake_case
+ * wire shape, decoded by `normalizeQuantBacktestResult` in `client.ts`.
+ */
+export interface QuantBacktestMetrics {
+  tradeCount: number;
+  winRate: number | null;
+  profitFactor: number | null;
+  expectancyR: number | null;
+  maxDrawdownR: number | null;
+  maxDrawdownPercent: number | null;
+  sharpeR: number | null;
+  metricReasons: Record<string, string>;
+}
+
+export interface QuantBacktestResult {
+  status: "completed" | "invalid";
+  metrics: QuantBacktestMetrics | null;
+  warnings: string[] | null;
+  error: string | null;
+}
+
+/** Wire (snake_case) shape as the quant-agent service actually sends it. */
+export interface QuantBacktestMetricsWire {
+  trade_count: number;
+  win_rate: number | null;
+  profit_factor: number | null;
+  expectancy_r: number | null;
+  max_drawdown_r: number | null;
+  max_drawdown_percent: number | null;
+  sharpe_r: number | null;
+  metric_reasons: Record<string, string>;
+}
+
+export interface QuantBacktestResultWire {
+  status: "completed" | "invalid";
+  metrics: QuantBacktestMetricsWire | null;
+  warnings: string[] | null;
+  error: string | null;
+}
+
+/** Request params for `backtestQuantStrategy` — `bars` reuses the same `QuantOhlcBar` shape every other client function already sends. */
+export interface BacktestQuantStrategyParams {
+  strategyId: string;
+  symbol: string;
+  market: string;
+  interval: string;
+  bars: QuantOhlcBar[];
+}

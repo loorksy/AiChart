@@ -182,6 +182,80 @@ class EnableStrategyRequest(BaseModel):
     enabled: bool
 
 
+class BacktestMetrics(BaseModel):
+    """Wire/persisted shape of `app.engine.backtest.models.BacktestMetrics`.
+
+    Deliberately a separate, duplicated definition rather than an import of
+    the engine type: `app.engine.features` already imports `Bar` from this
+    module, so importing anything from `app.engine.*` back into
+    `app/storage/models.py` would create a circular import at module load
+    time. This mirrors the existing `Signal` -> `Recommendation` pattern
+    (`app/engine/planner.py`) of an engine-local type being copied,
+    field-for-field, into its storage/wire counterpart."""
+
+    trade_count: int
+    win_rate: float | None = None
+    profit_factor: float | None = None
+    expectancy_r: float | None = None
+    max_drawdown_r: float | None = None
+    max_drawdown_percent: float | None = None
+    sharpe_r: float | None = None
+    metric_reasons: dict[str, str] = Field(default_factory=dict)
+
+
+class BacktestRun(BaseModel):
+    """One persisted `quant_backtest_runs` row."""
+
+    id: str
+    strategy_id: str
+    strategy_version: str
+    symbol: str
+    market: str
+    interval: str
+    bar_count: int
+    from_time: str
+    to_time: str
+    status: Literal["completed", "invalid"]
+    metrics: BacktestMetrics | None = None
+    warnings: list[str] = Field(default_factory=list)
+    created_at: str
+
+
+class BacktestCreateRequest(BaseModel):
+    """Body for `POST /internal/quant-agent/strategies/{strategy_id}/backtest`.
+
+    Same shape/conventions as `RecommendationCreateRequest`, with a much
+    higher `bars` ceiling — a backtest replays a whole historical window
+    (the plan's own default is 5000 bars), not a single live decision."""
+
+    model_config = ConfigDict(extra="forbid")
+    bars: list[Bar] = Field(min_length=2, max_length=20_000)
+    symbol: str = Field(min_length=1, max_length=32)
+    market: str = Field(default="forex", min_length=1, max_length=32)
+    interval: str = Field(min_length=1, max_length=16)
+    owner_user_id: int = Field(gt=0)
+    request_id: str = Field(min_length=3, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+
+    @model_validator(mode="after")
+    def _bars_strictly_ascending(self) -> BacktestCreateRequest:
+        parsed = [datetime.fromisoformat(bar.time.replace("Z", "+00:00")) for bar in self.bars]
+        for previous, current in zip(parsed, parsed[1:], strict=False):
+            if current <= previous:
+                raise ValueError("bars must be strictly ascending by time with no duplicates")
+        return self
+
+
+class BacktestResponse(BaseModel):
+    """`status="invalid"` is reserved for genuinely malformed input (strategy
+    not found, too few/too many bars) — a zero-trade result is
+    `status="completed"`, never an error."""
+
+    status: Literal["completed", "invalid"]
+    metrics: BacktestMetrics | None = None
+    warnings: list[str] | None = None
+    error: str | None = None
+
+
 class GenerateValidateCodeRequest(BaseModel):
     """Body for `POST /internal/quant-agent/strategies/generate-validate-code`.
 

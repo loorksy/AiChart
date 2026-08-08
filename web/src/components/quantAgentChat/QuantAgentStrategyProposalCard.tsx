@@ -18,9 +18,27 @@ import { useLocale } from "@/hooks/useLocale";
 import { Surface } from "@/components/foundation";
 import { Button } from "@/components/squareui/button";
 import { cn } from "@/lib/utils";
-import type { QuantConditionLeaf, QuantConditionNode } from "@/lib/quantAgent/types";
+import type { QuantBacktestMetrics, QuantConditionLeaf, QuantConditionNode } from "@/lib/quantAgent/types";
 import type { QuantAgentStrategyProposal } from "@/lib/agent/quantAgentChat/types";
+import { formatNumber } from "@/components/quantAgent/QuantRecommendationCard";
 import { CodeBlock } from "./CodeBlock";
+
+/**
+ * Mirrors the confirmed quality-gate thresholds enforced server-side in the
+ * orchestrator's bounded backtest loop (min 30 resolved trades, profit
+ * factor >= 1.2, max drawdown <= 40% — see `orchestrator.ts`'s
+ * `passesBacktestQualityGate`). Display-only: it decides nothing new — the
+ * pass/fail outcome was already computed when the loop ran; this only
+ * re-derives the same badge from the same numbers for rendering. `null`
+ * metrics never pass, matching the loop's own explicit rule.
+ */
+function passesBacktestQualityGate(metrics: QuantBacktestMetrics | null): boolean {
+  if (!metrics) return false;
+  if (metrics.tradeCount < 30) return false;
+  if (metrics.profitFactor == null || metrics.profitFactor < 1.2) return false;
+  if (metrics.maxDrawdownPercent == null || metrics.maxDrawdownPercent > 40) return false;
+  return true;
+}
 
 export type QuantAgentStrategyProposalCardProps = {
   proposal: QuantAgentStrategyProposal;
@@ -183,6 +201,69 @@ export function QuantAgentStrategyProposalCard({ proposal }: QuantAgentStrategyP
             </dl>
           </>
         )}
+
+        {proposal.backtest ? (
+          <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold text-foreground">
+                {t("qa.chat.strategy.backtest.title")}
+              </span>
+              {proposal.backtest.status === "completed" ? (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                    passesBacktestQualityGate(proposal.backtest.metrics)
+                      ? "border-success/45 bg-success/10 text-success"
+                      : "border-warning/40 bg-warning/10 text-warning",
+                  )}
+                >
+                  {passesBacktestQualityGate(proposal.backtest.metrics) ? (
+                    <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  ) : (
+                    <XCircle className="h-3 w-3" aria-hidden="true" />
+                  )}
+                  {t(
+                    passesBacktestQualityGate(proposal.backtest.metrics)
+                      ? "qa.chat.strategy.backtest.pass_badge"
+                      : "qa.chat.strategy.backtest.fail_badge",
+                  )}
+                </span>
+              ) : (
+                <span className="text-[11px] text-muted-foreground">
+                  {t("qa.chat.strategy.backtest.unavailable")}
+                </span>
+              )}
+            </div>
+            {proposal.backtest.metrics ? (
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] sm:grid-cols-4">
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">{t("qa.chat.strategy.backtest.trades")}</dt>
+                  <dd className="font-mono text-foreground">{formatNumber(proposal.backtest.metrics.tradeCount)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">{t("qa.chat.strategy.backtest.win_rate")}</dt>
+                  <dd className="font-mono text-foreground">{formatNumber(proposal.backtest.metrics.winRate)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">
+                    {t("qa.chat.strategy.backtest.profit_factor")}
+                  </dt>
+                  <dd className="font-mono text-foreground">
+                    {formatNumber(proposal.backtest.metrics.profitFactor)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">
+                    {t("qa.chat.strategy.backtest.max_drawdown")}
+                  </dt>
+                  <dd className="font-mono text-foreground">
+                    {formatNumber(proposal.backtest.metrics.maxDrawdownPercent)}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {enabled ? (

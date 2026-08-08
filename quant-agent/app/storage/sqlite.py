@@ -19,7 +19,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from app.storage.models import Recommendation, RecommendationEvent, StrategyDef, utc_now_iso
+from app.storage.models import (
+    BacktestMetrics,
+    BacktestRun,
+    Recommendation,
+    RecommendationEvent,
+    StrategyDef,
+    utc_now_iso,
+)
 
 
 class SqliteQuantStore:
@@ -106,6 +113,24 @@ class SqliteQuantStore:
                       created_at TEXT NOT NULL,
                       updated_at TEXT NOT NULL
                     );
+
+                    CREATE TABLE IF NOT EXISTS quant_backtest_runs (
+                      id TEXT PRIMARY KEY,
+                      strategy_id TEXT NOT NULL,
+                      strategy_version TEXT NOT NULL,
+                      symbol TEXT NOT NULL,
+                      market TEXT NOT NULL DEFAULT 'forex',
+                      interval TEXT NOT NULL,
+                      bar_count INTEGER NOT NULL,
+                      from_time TEXT NOT NULL,
+                      to_time TEXT NOT NULL,
+                      status TEXT NOT NULL,
+                      metrics_json TEXT NOT NULL DEFAULT '{}',
+                      warnings_json TEXT NOT NULL DEFAULT '[]',
+                      created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_backtest_runs_strategy_created
+                      ON quant_backtest_runs(strategy_id, created_at DESC);
                     """
                 )
                 self._migrate_strategy_defs_columns(connection)
@@ -391,6 +416,35 @@ class SqliteQuantStore:
                 updated.updated_at = now
                 return updated
 
+    # ------------------------------------------------------------------
+    # backtest runs
+    # ------------------------------------------------------------------
+
+    async def create_backtest_run(self, run: BacktestRun) -> BacktestRun:
+        """Always an INSERT — unlike recommendations, backtest runs have no
+        idempotency key (the same strategy/symbol/interval/bar-window can
+        legitimately be backtested repeatedly, e.g. across generate-and-fix
+        rounds) and no dedup path is needed."""
+        async with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """INSERT INTO quant_backtest_runs (
+                        id, strategy_id, strategy_version, symbol, market, interval,
+                        bar_count, from_time, to_time, status, metrics_json, warnings_json,
+                        created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    self._backtest_run_params(run),
+                )
+                return run
+
+    async def get_backtest_run(self, run_id: str) -> BacktestRun | None:
+        async with self._lock:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT * FROM quant_backtest_runs WHERE id=?", (run_id,)
+                ).fetchone()
+                return self._row_to_backtest_run(row) if row else None
+
     async def available(self) -> bool:
         try:
             async with self._lock:
@@ -496,6 +550,48 @@ class SqliteQuantStore:
             sequence=row["sequence"],
             event_type=row["event_type"],
             detail=json.loads(row["detail_json"]),
+            created_at=row["created_at"],
+        )
+
+    @staticmethod
+    def _backtest_run_params(run: BacktestRun) -> tuple[Any, ...]:
+        return (
+            run.id,
+            run.strategy_id,
+            run.strategy_version,
+            run.symbol,
+            run.market,
+            run.interval,
+            run.bar_count,
+            run.from_time,
+            run.to_time,
+            run.status,
+            json.dumps(
+                run.metrics.model_dump() if run.metrics is not None else {},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            json.dumps(run.warnings, ensure_ascii=False, separators=(",", ":")),
+            run.created_at,
+        )
+
+    @staticmethod
+    def _row_to_backtest_run(row: sqlite3.Row) -> BacktestRun:
+        metrics_raw = json.loads(row["metrics_json"])
+        metrics = BacktestMetrics.model_validate(metrics_raw) if metrics_raw else None
+        return BacktestRun(
+            id=row["id"],
+            strategy_id=row["strategy_id"],
+            strategy_version=row["strategy_version"],
+            symbol=row["symbol"],
+            market=row["market"],
+            interval=row["interval"],
+            bar_count=row["bar_count"],
+            from_time=row["from_time"],
+            to_time=row["to_time"],
+            status=row["status"],
+            metrics=metrics,
+            warnings=json.loads(row["warnings_json"]),
             created_at=row["created_at"],
         )
 

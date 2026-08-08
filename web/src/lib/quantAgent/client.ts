@@ -5,6 +5,7 @@ import {
   type ServiceErrorBody,
 } from "./serviceErrors";
 import type {
+  BacktestQuantStrategyParams,
   GenerateQuantRecommendationInput,
   GenerateQuantStrategyCodeParams,
   GenerateValidateQuantStrategyResult,
@@ -12,6 +13,8 @@ import type {
   GeneratedStrategySpec,
   ListQuantRecommendationsParams,
   QuantAgentCallerContext,
+  QuantBacktestResult,
+  QuantBacktestResultWire,
   QuantRecommendation,
   QuantRecommendationWire,
   QuantStrategyDef,
@@ -323,6 +326,68 @@ export async function setQuantStrategyEnabled(
       body: JSON.stringify({ enabled }),
     },
   );
+}
+
+/** Decodes the wire backtest metrics/result (trade_count/win_rate/... → camelCase). */
+export function normalizeQuantBacktestResult(raw: QuantBacktestResultWire): QuantBacktestResult {
+  const rawMetrics = raw.metrics;
+  return {
+    status: raw.status,
+    metrics: rawMetrics
+      ? {
+          tradeCount: rawMetrics.trade_count,
+          winRate: rawMetrics.win_rate ?? null,
+          profitFactor: rawMetrics.profit_factor ?? null,
+          expectancyR: rawMetrics.expectancy_r ?? null,
+          maxDrawdownR: rawMetrics.max_drawdown_r ?? null,
+          maxDrawdownPercent: rawMetrics.max_drawdown_percent ?? null,
+          sharpeR: rawMetrics.sharpe_r ?? null,
+          metricReasons: rawMetrics.metric_reasons ?? {},
+        }
+      : null,
+    warnings: raw.warnings ?? null,
+    error: raw.error ?? null,
+  };
+}
+
+/**
+ * Quant Agent Chat's bounded backtest quality-gate loop (chat wizard only —
+ * plan §4/§5). POSTs the strategy's own historical bars to quant-agent's
+ * isolated backtest engine (single subprocess for the whole batch, never the
+ * live per-candle sandbox path) and reads back R-multiple performance
+ * metrics. `bars[].time` is converted to ISO 8601 here — `QuantOhlcBar.time`
+ * is epoch milliseconds everywhere else in this client, but the backtest
+ * contract's bar shape is ISO8601 strings. Mirrors every other function in
+ * this file: same `serviceRequest` call, same `QuantAgentServiceError` /
+ * transient-retry path.
+ */
+export async function backtestQuantStrategy(
+  context: QuantAgentCallerContext,
+  params: BacktestQuantStrategyParams,
+): Promise<QuantBacktestResult> {
+  const raw = await serviceRequest<QuantBacktestResultWire>(
+    context,
+    `/internal/quant-agent/strategies/${encodeURIComponent(params.strategyId)}/backtest`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        bars: params.bars.map((bar) => ({
+          time: new Date(bar.time).toISOString(),
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume ?? null,
+        })),
+        symbol: params.symbol,
+        market: params.market,
+        interval: params.interval,
+        owner_user_id: context.userId,
+        request_id: context.requestId,
+      }),
+    },
+  );
+  return normalizeQuantBacktestResult(raw);
 }
 
 /** Returns null on 404 (not found) instead of throwing, mirroring §4's "or 404". */

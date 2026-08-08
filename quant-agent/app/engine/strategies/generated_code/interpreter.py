@@ -33,6 +33,70 @@ def _at(series: Sequence[float | None], index: int) -> float | None:
     return series[index]
 
 
+def _build_signal_from_output(
+    *,
+    strategy_id: str,
+    version: str,
+    regime_affinity: Regime,
+    regime: Regime,
+    output: dict[str, Any],
+    atr_value: float,
+    close: float,
+) -> Signal | None:
+    """Validate one raw `evaluate()` output dict as `GeneratedCodeOutput` and
+    turn it into a `Signal` (ATR-multiple stop, R-multiple target ladder --
+    same math as `DeclarativeStrategy._evaluate`). Extracted out of
+    `GeneratedCodeStrategy._evaluate` so the batch backtest replay
+    (`app/engine/backtest/replay.py`) can reduce each of its many raw sandbox
+    outputs through the exact same logic the live per-bar path uses, without
+    a second copy of this arithmetic to keep in sync.
+
+    `regime_affinity` is the strategy's own fixed regime label (goes on
+    `Signal.regime`, like every other strategy type); `regime` is the
+    *current* bar's classified regime (goes into `evidence` only) -- these
+    are deliberately different values, not a typo."""
+    try:
+        validated = GeneratedCodeOutput.model_validate(output, strict=True)
+    except Exception:  # noqa: BLE001 - a spec that fails output validation just doesn't fire
+        return None
+
+    direction: Direction = validated.direction
+    sign = 1.0 if direction == "buy" else -1.0
+    entry = close
+    stop_loss = entry - sign * validated.stop_loss_atr_multiple * atr_value
+    risk = abs(entry - stop_loss)
+    targets = [entry + sign * risk * multiple for multiple in validated.take_profit_r_multiples]
+    if not targets:
+        return None
+
+    rationale = [
+        f"sandboxed-code strategy '{strategy_id}': evaluate() fired",
+    ]
+    if validated.rationale:
+        rationale.append(validated.rationale)
+
+    evidence: dict[str, Any] = {
+        "close": close,
+        "atr14": atr_value,
+        "regime": regime,
+    }
+
+    return Signal(
+        strategy_id=strategy_id,
+        strategy_version=version,
+        direction=direction,
+        plan_type="immediate",
+        entry=entry,
+        stop_loss=stop_loss,
+        take_profit=targets[0],
+        targets=targets,
+        confidence=_CONFIDENCE,
+        regime=regime_affinity,
+        rationale=rationale,
+        evidence=evidence,
+    )
+
+
 class GeneratedCodeStrategy(Strategy):
     """Wraps one sandbox-validated `source_code` string as a `Strategy`.
     Built fresh from the stored row on every registry read
@@ -58,6 +122,14 @@ class GeneratedCodeStrategy(Strategy):
         self.regime_affinity: Regime = regime_affinity  # type: ignore[misc]
         self._source_code = source_code
 
+    @property
+    def source_code(self) -> str:
+        """Read-only access to the wrapped source -- used by the batch
+        backtest replay path (`app/engine/backtest/replay.py`) to make ONE
+        `run_evaluate_batch_in_sandbox` call for the whole replay instead of
+        one `run_evaluate_in_sandbox` subprocess per bar."""
+        return self._source_code
+
     def evaluate(self, features: Features) -> Signal | None:
         try:
             return self._evaluate(features)
@@ -75,48 +147,17 @@ class GeneratedCodeStrategy(Strategy):
         if not success or output is None:
             return None
 
-        try:
-            validated = GeneratedCodeOutput.model_validate(output, strict=True)
-        except Exception:  # noqa: BLE001 - a spec that fails output validation just doesn't fire
-            return None
-
         atr_value = _at(features.atr14, index)
         close = _at(features.closes, index)
         if atr_value is None or close is None:
             return None
 
-        direction: Direction = validated.direction
-        sign = 1.0 if direction == "buy" else -1.0
-        entry = close
-        stop_loss = entry - sign * validated.stop_loss_atr_multiple * atr_value
-        risk = abs(entry - stop_loss)
-        targets = [entry + sign * risk * multiple for multiple in validated.take_profit_r_multiples]
-        if not targets:
-            return None
-
-        rationale = [
-            f"sandboxed-code strategy '{self.strategy_id}': evaluate() fired",
-        ]
-        if validated.rationale:
-            rationale.append(validated.rationale)
-
-        evidence: dict[str, Any] = {
-            "close": close,
-            "atr14": atr_value,
-            "regime": features.regime,
-        }
-
-        return Signal(
+        return _build_signal_from_output(
             strategy_id=self.strategy_id,
-            strategy_version=self.version,
-            direction=direction,
-            plan_type="immediate",
-            entry=entry,
-            stop_loss=stop_loss,
-            take_profit=targets[0],
-            targets=targets,
-            confidence=_CONFIDENCE,
-            regime=self.regime_affinity,
-            rationale=rationale,
-            evidence=evidence,
+            version=self.version,
+            regime_affinity=self.regime_affinity,
+            regime=features.regime,
+            output=output,
+            atr_value=atr_value,
+            close=close,
         )

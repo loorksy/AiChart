@@ -22,6 +22,7 @@ from app.engine.strategies.generated.schema import GeneratedStrategySpec
 from app.engine.strategies.generated_code.contract import compile_and_discover
 from app.engine.strategies.generated_code.interpreter import GeneratedCodeStrategy
 from app.engine.strategies.rsi_reversion_v1 import RsiReversionV1
+from app.storage.models import StrategyDef
 
 if TYPE_CHECKING:
     from app.storage.sqlite import SqliteQuantStore
@@ -35,6 +36,48 @@ def registered_strategies() -> tuple[Strategy, ...]:
 
 def strategy_by_id(strategy_id: str) -> Strategy | None:
     return next((s for s in STRATEGIES if s.strategy_id == strategy_id), None)
+
+
+def strategy_from_def(definition: StrategyDef) -> Strategy | None:
+    """Build one `Strategy` instance from a stored `StrategyDef`, using the
+    same declarative/sandboxed_code branching as
+    `registered_strategies_with_generated`'s loop body below (extracted out
+    so a caller that wants exactly one named strategy -- the backtest
+    endpoint, `app/api/backtests.py` -- doesn't duplicate this branching).
+
+    Deliberately does NOT check `definition.enabled`: that gate stays in
+    `registered_strategies_with_generated`'s loop, which only ever wants
+    live-eligible strategies. A caller building one strategy by id (on
+    purpose, including an `enabled: false` one for backtesting a
+    not-yet-enabled candidate) must be able to bypass it.
+
+    Returns `None` on any parse/validation failure -- fail-closed, never
+    raises, same contract as the loop this was extracted from."""
+    if definition.generation_mode == "sandboxed_code":
+        if not definition.source_code:
+            return None
+        try:
+            ok, _err = compile_and_discover(definition.source_code)
+        except Exception:  # noqa: BLE001, S112 - fail-closed, see docstring
+            return None
+        if not ok:
+            return None
+        return GeneratedCodeStrategy(
+            strategy_id=definition.strategy_id,
+            version=definition.version,
+            display_name=definition.display_name,
+            description=definition.description,
+            regime_affinity=definition.regime_affinity or "range",  # type: ignore[arg-type]
+            source_code=definition.source_code,
+        )
+
+    if definition.params_json is None:
+        return None
+    try:
+        spec = GeneratedStrategySpec.model_validate_json(definition.params_json, strict=True)
+    except Exception:  # noqa: BLE001, S112 - fail-closed, see docstring
+        return None
+    return DeclarativeStrategy(spec)
 
 
 async def registered_strategies_with_generated(store: SqliteQuantStore) -> tuple[Strategy, ...]:
@@ -54,33 +97,7 @@ async def registered_strategies_with_generated(store: SqliteQuantStore) -> tuple
     for definition in defs:
         if not (definition.enabled and definition.source_generated):
             continue
-
-        if definition.generation_mode == "sandboxed_code":
-            if not definition.source_code:
-                continue
-            try:
-                ok, _err = compile_and_discover(definition.source_code)
-            except Exception:  # noqa: BLE001, S112 - fail-closed, see docstring
-                continue
-            if not ok:
-                continue
-            generated.append(
-                GeneratedCodeStrategy(
-                    strategy_id=definition.strategy_id,
-                    version=definition.version,
-                    display_name=definition.display_name,
-                    description=definition.description,
-                    regime_affinity=definition.regime_affinity or "range",  # type: ignore[arg-type]
-                    source_code=definition.source_code,
-                )
-            )
-            continue
-
-        if definition.params_json is None:
-            continue
-        try:
-            spec = GeneratedStrategySpec.model_validate_json(definition.params_json, strict=True)
-        except Exception:  # noqa: BLE001, S112 - fail-closed, see docstring
-            continue
-        generated.append(DeclarativeStrategy(spec))
+        strategy = strategy_from_def(definition)
+        if strategy is not None:
+            generated.append(strategy)
     return STRATEGIES + tuple(generated)

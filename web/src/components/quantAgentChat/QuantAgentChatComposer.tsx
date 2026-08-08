@@ -19,7 +19,7 @@ import { type KeyboardEvent } from "react";
 import { Send } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { Button } from "@/components/squareui/button";
-import { ComposerSymbolPicker } from "@/components/agent/ComposerMarketPickers";
+import { ComposerIntervalPicker, ComposerSymbolPicker } from "@/components/agent/ComposerMarketPickers";
 
 export interface QuantAgentChatComposerProps {
   onSend: (message: string) => void;
@@ -27,12 +27,20 @@ export interface QuantAgentChatComposerProps {
   /** The pair the next question/analysis is scoped to. */
   symbol: string;
   /**
+   * The timeframe the next backtest (plan §4/§5) is scoped to — new capability,
+   * the chat had no interval concept before this. Reuses `ComposerIntervalPicker`
+   * verbatim, the exact same trigger + popover Lonora's own `AgentChatInput.tsx`
+   * wires up, rather than building a new picker.
+   */
+  interval: string;
+  /**
    * Quant Agent never touches broker accounts — this only governs whether
    * the symbol picker sheet shows live quotes, never correctness. Pass the
    * real broker-link state when one is cheaply available; `false` otherwise.
    */
   brokerConnected: boolean;
   onSymbolChange: (symbol: string, source: MarketDataSource) => void;
+  onIntervalChange: (interval: string) => void;
   /** Controlled draft text — lifted so `QuantAgentComposerCoach` chips can set it. */
   value: string;
   onValueChange: (value: string) => void;
@@ -42,8 +50,10 @@ export function QuantAgentChatComposer({
   onSend,
   disabled,
   symbol,
+  interval,
   brokerConnected,
   onSymbolChange,
+  onIntervalChange,
   value,
   onValueChange,
 }: QuantAgentChatComposerProps) {
@@ -67,6 +77,7 @@ export function QuantAgentChatComposer({
     <div dir={dir} className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-2">
       <div className="flex items-center gap-1">
         <ComposerSymbolPicker symbol={symbol} brokerConnected={brokerConnected} onSelect={onSymbolChange} />
+        <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
       </div>
       <div className="flex items-end gap-2">
         <textarea

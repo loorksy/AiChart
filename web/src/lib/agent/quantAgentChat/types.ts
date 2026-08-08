@@ -8,6 +8,7 @@ import type {
   GenerateValidateQuantStrategyError,
   GeneratedQuantStrategyRecord,
   GeneratedStrategySpec,
+  QuantBacktestResult,
   QuantRecommendation,
 } from "@/lib/quantAgent/types";
 import type { QuantAgentChatIntent } from "./intentRouter";
@@ -45,8 +46,28 @@ export interface ComposerCoach {
  * composes the server's fields directly rather than re-mapping them.
  */
 export type QuantAgentStrategyProposal =
-  | { status: "persisted"; mode: "declarative"; strategy: GeneratedQuantStrategyRecord; spec: GeneratedStrategySpec }
-  | { status: "persisted"; mode: "sandboxed_code"; strategy: GeneratedQuantStrategyRecord; code: string }
+  | {
+      status: "persisted";
+      mode: "declarative";
+      strategy: GeneratedQuantStrategyRecord;
+      spec: GeneratedStrategySpec;
+      /** Only ever set by the sandboxed-code chat wizard's bounded backtest loop (plan §4/§5) — the DSL path never backtests. */
+      backtest?: QuantBacktestResult;
+    }
+  | {
+      status: "persisted";
+      mode: "sandboxed_code";
+      strategy: GeneratedQuantStrategyRecord;
+      code: string;
+      /**
+       * Set once the bounded backtest quality-gate loop
+       * (`generateAndBacktestQuantStrategyCodeFromDescription`) ran — always
+       * the LAST attempted round's real metrics, whether it passed or not.
+       * `undefined` for the (unmodified) direct `generate_strategy` pipeline,
+       * which does not backtest this round.
+       */
+      backtest?: QuantBacktestResult;
+    }
   | { status: "invalid"; errors: GenerateValidateQuantStrategyError[] };
 
 export interface QuantAgentChatTurnResult {

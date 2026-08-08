@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  generateAndBacktestQuantStrategyCodeFromDescription,
   generateQuantStrategyCodeFromDescription,
   runQuantAgentChatTurn,
   type QuantAgentChatDeps,
@@ -8,6 +9,7 @@ import {
 import type { AnthropicResponse } from "@/lib/llm";
 import type {
   GenerateValidateQuantStrategyResult,
+  QuantBacktestResult,
   QuantRecommendation,
 } from "@/lib/quantAgent/types";
 import type {
@@ -15,6 +17,44 @@ import type {
   AgentChatSession,
   AppendAgentChatMessageInput,
 } from "@/lib/agent/chatHistory/types";
+
+/** A backtest result that clears every confirmed quality-gate threshold. */
+function passingBacktestResult(): QuantBacktestResult {
+  return {
+    status: "completed",
+    metrics: {
+      tradeCount: 40,
+      winRate: 0.55,
+      profitFactor: 1.8,
+      expectancyR: 0.3,
+      maxDrawdownR: -4,
+      maxDrawdownPercent: 12,
+      sharpeR: 1.1,
+      metricReasons: {},
+    },
+    warnings: null,
+    error: null,
+  };
+}
+
+/** A backtest result that fails the trade-count threshold (well below 30). */
+function failingBacktestResult(): QuantBacktestResult {
+  return {
+    status: "completed",
+    metrics: {
+      tradeCount: 5,
+      winRate: 0.4,
+      profitFactor: 0.9,
+      expectancyR: -0.1,
+      maxDrawdownR: -8,
+      maxDrawdownPercent: 55,
+      sharpeR: -0.2,
+      metricReasons: {},
+    },
+    warnings: null,
+    error: null,
+  };
+}
 
 function textResponse(text: string): AnthropicResponse {
   return {
@@ -72,6 +112,17 @@ function buildDeps(overrides: Partial<QuantAgentChatDeps> = {}): {
     getRecommendation: async () => null,
     generateAndValidate: async () => ({ status: "persisted" }) as GenerateValidateQuantStrategyResult,
     generateAndValidateCode: async () => ({ status: "persisted" }) as GenerateValidateQuantStrategyResult,
+    // Defaults CLEAR the quality gate on round 1 — most orchestrator-level
+    // tests care about the wizard/turn plumbing, not the backtest loop
+    // itself (that gets its own dedicated tests below), so the default keeps
+    // `generateAndValidateCode` calls at exactly 1 unless a test overrides.
+    backtestQuantStrategy: async () => passingBacktestResult(),
+    fetchAnalysisBars: async ({ symbol, interval }) => ({
+      symbol,
+      market: "forex" as const,
+      interval: interval ?? "1h",
+      bars: [],
+    }),
     callLLM: (async () => textResponse("stub reply")) as QuantAgentChatDeps["callLLM"],
     callLLMStream: (async (_params, handlers) => {
       handlers?.onTextDelta?.("stub ");
@@ -469,4 +520,281 @@ test("generate_strategy: a Lonora session (agentId lonora) is never touched by t
   );
   assert.equal(result.intent, "generate_strategy");
   assert.ok(result.composerCoach);
+});
+
+test("appends the selected interval onto both the user and assistant messages when provided", async () => {
+  const { deps, appended } = buildDeps();
+  await runQuantAgentChatTurn(
+    { userId: 1, chatId: "chat_1", message: "how are you today?", symbol: "GBPUSD", interval: "4h" },
+    deps,
+  );
+  assert.equal(appended[0]!.interval, "4h");
+  assert.equal(appended[1]!.interval, "4h");
+});
+
+// --- Bounded backtest quality-gate loop (plan §4/§5) ---
+//
+// `generateAndBacktestQuantStrategyCodeFromDescription` wraps (never
+// replaces) `generateQuantStrategyCodeFromDescription`'s own safety pipeline.
+// Tested directly here (bypassing the wizard) so each scenario is isolated;
+// the wizard-integration test further below checks the wiring end to end.
+
+test("backtest gate: round 1 safety failure stops immediately — backtest is NEVER called on an unsafe draft", async () => {
+  let backtestCalls = 0;
+  const { deps } = buildDeps({
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async () =>
+      ({
+        status: "invalid",
+        errors: [{ path: "code", message: "disallowed import: os" }],
+      }) as GenerateValidateQuantStrategyResult,
+    backtestQuantStrategy: async () => {
+      backtestCalls += 1;
+      return passingBacktestResult();
+    },
+  });
+  const outcome = await generateAndBacktestQuantStrategyCodeFromDescription(
+    1,
+    "build a strategy",
+    "EURUSD",
+    "forex",
+    "1h",
+    deps,
+    "req_1",
+  );
+  assert.equal(backtestCalls, 0, "an unsafe/invalid draft must never be backtested");
+  assert.equal(outcome.passedGate, false);
+  assert.equal(outcome.roundsUsed, 0);
+  assert.equal(outcome.backtest, null);
+  assert.equal(outcome.generation.status, "invalid");
+});
+
+test("backtest gate: round 1 clears the quality bar — stops after exactly 1 round, no quality-repair call", async () => {
+  let validateCalls = 0;
+  let backtestCalls = 0;
+  const { deps } = buildDeps({
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async (_ctx, params) => {
+      validateCalls += 1;
+      return {
+        status: "persisted",
+        strategy: {
+          strategy_id: params.strategyId,
+          version: params.version,
+          display_name: params.displayName,
+          enabled: false,
+          source_generated: true,
+          generation_mode: "sandboxed_code",
+          source_code: params.code,
+        },
+      } as GenerateValidateQuantStrategyResult;
+    },
+    backtestQuantStrategy: async () => {
+      backtestCalls += 1;
+      return passingBacktestResult();
+    },
+  });
+  const outcome = await generateAndBacktestQuantStrategyCodeFromDescription(
+    1,
+    "build a strategy",
+    "EURUSD",
+    "forex",
+    "1h",
+    deps,
+    "req_1",
+  );
+  assert.equal(validateCalls, 1, "only round 1's own safety validation ran — no quality-repair round needed");
+  assert.equal(backtestCalls, 1);
+  assert.equal(outcome.passedGate, true);
+  assert.equal(outcome.roundsUsed, 1);
+  assert.ok(outcome.backtest);
+  assert.equal(outcome.generation.status, "persisted");
+});
+
+test("backtest gate: a null profit_factor/max_drawdown_percent never counts as a pass — exhausts all 3 rounds, returns the last honest failing metrics", async () => {
+  let validateCalls = 0;
+  let backtestCalls = 0;
+  const { deps } = buildDeps({
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async (_ctx, params) => {
+      validateCalls += 1;
+      return {
+        status: "persisted",
+        strategy: {
+          strategy_id: params.strategyId,
+          version: params.version,
+          display_name: params.displayName,
+          enabled: false,
+          source_generated: true,
+          generation_mode: "sandboxed_code",
+          source_code: params.code,
+        },
+      } as GenerateValidateQuantStrategyResult;
+    },
+    backtestQuantStrategy: async () => {
+      backtestCalls += 1;
+      return {
+        status: "completed",
+        metrics: {
+          tradeCount: 40, // clears the trade-count bar on its own
+          winRate: 0.5,
+          profitFactor: null, // explicitly null — must never be treated as a pass
+          expectancyR: null,
+          maxDrawdownR: null,
+          maxDrawdownPercent: null,
+          sharpeR: null,
+          metricReasons: { profit_factor: "no losing trades in the sample" },
+        },
+        warnings: null,
+        error: null,
+      } as QuantBacktestResult;
+    },
+  });
+  const outcome = await generateAndBacktestQuantStrategyCodeFromDescription(
+    1,
+    "build a strategy",
+    "EURUSD",
+    "forex",
+    "1h",
+    deps,
+    "req_1",
+  );
+  assert.equal(backtestCalls, 3, "exactly 3 backtest rounds — initial + 2 refinements, never more");
+  assert.equal(validateCalls, 3, "round 1 + 2 quality-repair re-validations");
+  assert.equal(outcome.passedGate, false, "a null profit_factor must never pass the gate");
+  assert.equal(outcome.roundsUsed, 3);
+  assert.ok(outcome.backtest, "the last (failing) backtest result is still returned, never discarded");
+  assert.equal(outcome.backtest!.metrics!.profitFactor, null);
+  assert.equal(outcome.generation.status, "persisted", "the last safety-valid persisted strategy is still returned");
+});
+
+test("backtest gate: fails round 1, passes round 2 — stops early with exactly one quality-repair round", async () => {
+  let validateCalls = 0;
+  let backtestCalls = 0;
+  const { deps } = buildDeps({
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async (_ctx, params) => {
+      validateCalls += 1;
+      return {
+        status: "persisted",
+        strategy: {
+          strategy_id: params.strategyId,
+          version: params.version,
+          display_name: params.displayName,
+          enabled: false,
+          source_generated: true,
+          generation_mode: "sandboxed_code",
+          source_code: params.code,
+        },
+      } as GenerateValidateQuantStrategyResult;
+    },
+    backtestQuantStrategy: async () => {
+      backtestCalls += 1;
+      return backtestCalls === 1 ? failingBacktestResult() : passingBacktestResult();
+    },
+  });
+  const outcome = await generateAndBacktestQuantStrategyCodeFromDescription(
+    1,
+    "build a strategy",
+    "EURUSD",
+    "forex",
+    "1h",
+    deps,
+    "req_1",
+  );
+  assert.equal(backtestCalls, 2);
+  assert.equal(validateCalls, 2, "round 1 + exactly one quality-repair re-validation");
+  assert.equal(outcome.passedGate, true);
+  assert.equal(outcome.roundsUsed, 2);
+});
+
+test("backtest gate: interim progress callback fires at each phase transition, localized", async () => {
+  const progress: string[] = [];
+  const { deps } = buildDeps({
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async (_ctx, params) =>
+      ({
+        status: "persisted",
+        strategy: {
+          strategy_id: params.strategyId,
+          version: params.version,
+          display_name: params.displayName,
+          enabled: false,
+          source_generated: true,
+          generation_mode: "sandboxed_code",
+          source_code: params.code,
+        },
+      }) as GenerateValidateQuantStrategyResult,
+    backtestQuantStrategy: async () => passingBacktestResult(),
+  });
+  await generateAndBacktestQuantStrategyCodeFromDescription(
+    1,
+    "build a strategy",
+    "EURUSD",
+    "forex",
+    "1h",
+    deps,
+    "req_1",
+    (status) => progress.push(status),
+    "en",
+  );
+  assert.deepEqual(progress, ["Drafting and validating the strategy...", "Testing round 1 of 3..."]);
+});
+
+test("generate_strategy wizard confirm: threads the chat's symbol/interval into the backtest loop and attaches real metrics to the proposal", async () => {
+  let capturedBarsOptions: { symbol: string; interval?: string; market?: string } | null = null;
+  let capturedBacktestParams: { strategyId: string; symbol: string; interval: string; market: string } | null = null;
+  const { deps } = buildDeps({
+    callLLM: (async () => textResponse(VALID_EVALUATE_CODE)) as QuantAgentChatDeps["callLLM"],
+    generateAndValidateCode: async (_ctx, params) =>
+      ({
+        status: "persisted",
+        strategy: {
+          strategy_id: params.strategyId,
+          version: params.version,
+          display_name: params.displayName,
+          enabled: false,
+          source_generated: true,
+          generation_mode: "sandboxed_code",
+          source_code: params.code,
+        },
+      }) as GenerateValidateQuantStrategyResult,
+    fetchAnalysisBars: async (options) => {
+      capturedBarsOptions = { symbol: options.symbol, interval: options.interval, market: options.market };
+      return { symbol: options.symbol, market: "forex" as const, interval: options.interval ?? "1h", bars: [] };
+    },
+    backtestQuantStrategy: async (_ctx, params) => {
+      capturedBacktestParams = {
+        strategyId: params.strategyId,
+        symbol: params.symbol,
+        interval: params.interval,
+        market: params.market,
+      };
+      return passingBacktestResult();
+    },
+  });
+  const chatId = "chat_interval";
+  await driveWizardToConfirm(deps, chatId);
+  const confirmed = await runQuantAgentChatTurn(
+    { userId: 1, chatId, message: "generate", symbol: "GBPUSD", interval: "4h" },
+    deps,
+  );
+
+  // Note: `assert.ok` is deliberately NOT used to gate these reads — its
+  // `asserts` narrowing combined with TS's closure-unaware control-flow
+  // analysis mistakenly narrows `capturedBarsOptions`/`capturedBacktestParams`
+  // to `never` here (their only textually-visible assignment before this
+  // point is the initial `null`; TS does not "step into" the async callbacks
+  // above to see the real assignment). The `!` alone is enough — if the
+  // callbacks above never fired, these `.symbol`/`.interval` reads throw at
+  // runtime exactly as loudly as a failed `assert.ok` would.
+  assert.equal(capturedBarsOptions!.symbol, "GBPUSD");
+  assert.equal(capturedBarsOptions!.interval, "4h");
+  assert.equal(capturedBacktestParams!.symbol, "GBPUSD");
+  assert.equal(capturedBacktestParams!.interval, "4h");
+  assert.equal(confirmed.strategyProposal?.status, "persisted");
+  if (confirmed.strategyProposal?.status === "persisted" && confirmed.strategyProposal.mode === "sandboxed_code") {
+    assert.ok(confirmed.strategyProposal.backtest, "the real backtest result is attached to the proposal");
+    assert.equal(confirmed.strategyProposal.backtest!.metrics!.tradeCount, 40);
+  }
 });

@@ -918,6 +918,21 @@ export const en = {
   "qa.chat.coach.step4.confirm_hint": "Type \"generate\" to confirm, or \"cancel\" to stop.",
   "qa.chat.coach.step4.confirm_button": "Generate",
 
+  // Bounded backtest quality-gate loop — interim progress text (plan §4/§5)
+  "qa.chat.coach.backtest.drafting": "Drafting and validating the strategy...",
+  "qa.chat.coach.backtest.testing_round": "Testing round {round} of {total}...",
+  "qa.chat.coach.backtest.repairing": "Adjusting the strategy based on backtest results (round {round} of {total})...",
+
+  // Strategy proposal card — backtest metrics block (plan §4/§5)
+  "qa.chat.strategy.backtest.title": "Backtest results",
+  "qa.chat.strategy.backtest.unavailable": "Backtest unavailable",
+  "qa.chat.strategy.backtest.pass_badge": "Passed quality bar",
+  "qa.chat.strategy.backtest.fail_badge": "Did not pass quality bar",
+  "qa.chat.strategy.backtest.trades": "Trades",
+  "qa.chat.strategy.backtest.win_rate": "Win rate",
+  "qa.chat.strategy.backtest.profit_factor": "Profit factor",
+  "qa.chat.strategy.backtest.max_drawdown": "Max drawdown %",
+
   // Watchlist + AI Scheduled Monitors — right rail (plan Feature A)
   "qa.watchlist.title": "Watchlist",
   "qa.watchlist.add": "Add symbol",

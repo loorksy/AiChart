@@ -22,6 +22,7 @@ const schema = z.object({
   message: z.string().min(1).max(4000),
   locale: z.enum(["ar", "en"]).optional(),
   symbol: z.string().min(1).max(32).optional(),
+  interval: z.string().min(1).max(16).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
       message: body.message,
       locale: body.locale,
       symbol: body.symbol,
+      interval: body.interval,
     });
     return NextResponse.json(result);
   } catch (err) {

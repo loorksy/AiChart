@@ -34,6 +34,19 @@ class Settings(BaseModel):
     # A recommendation's validity window is this many bars of the source
     # interval, measured from the bar that produced the signal.
     validity_bars: int = Field(default=6, ge=1, le=200)
+    # Backtest-only bounds (app/api/backtests.py, app/engine/backtest/) --
+    # deliberately separate from `max_bars` above, which governs the live
+    # recommendation endpoint's tighter default. A backtest replays much
+    # further back (5000 bars is the plan's own default window) than a
+    # single live decision ever needs to see.
+    backtest_max_bars: int = Field(default=5000, ge=200, le=20_000)
+    # Should match `run_evaluate_batch_in_sandbox`'s own defaults
+    # (`BACKTEST_BATCH_TIMEOUT_SECONDS`/`BACKTEST_PER_BAR_TIMEOUT_SECONDS` in
+    # app/engine/strategies/generated_code/contract.py) -- exposed here as a
+    # configurable setting the API route passes through, not a second
+    # independently-invented set of numbers.
+    backtest_batch_timeout_seconds: int = Field(default=90, ge=10, le=300)
+    backtest_per_bar_timeout_seconds: int = Field(default=1, ge=1, le=5)
 
     @model_validator(mode="after")
     def validate_security(self) -> Settings:
@@ -78,6 +91,9 @@ _ENV_MAP: dict[str, tuple[str, Callable[[str], object]]] = {
     "QUANT_AGENT_MIN_BARS": ("min_bars", int),
     "QUANT_AGENT_MAX_BARS": ("max_bars", int),
     "QUANT_AGENT_VALIDITY_BARS": ("validity_bars", int),
+    "QUANT_AGENT_BACKTEST_MAX_BARS": ("backtest_max_bars", int),
+    "QUANT_AGENT_BACKTEST_BATCH_TIMEOUT_SECONDS": ("backtest_batch_timeout_seconds", int),
+    "QUANT_AGENT_BACKTEST_PER_BAR_TIMEOUT_SECONDS": ("backtest_per_bar_timeout_seconds", int),
 }
 
 

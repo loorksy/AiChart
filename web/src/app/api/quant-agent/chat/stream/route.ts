@@ -23,6 +23,7 @@ const schema = z.object({
   message: z.string().min(1).max(4000),
   locale: z.enum(["ar", "en"]).optional(),
   symbol: z.string().min(1).max(32).optional(),
+  interval: z.string().min(1).max(16).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -51,6 +52,7 @@ export async function POST(req: NextRequest) {
             message: body.message,
             locale: body.locale,
             symbol: body.symbol,
+            interval: body.interval,
             // Cumulative sanitized-free text so far — replace semantics on
             // the client, matching the pattern documented in @/lib/sse.
             onDelta: (fullText) => send("delta", { text: fullText }),

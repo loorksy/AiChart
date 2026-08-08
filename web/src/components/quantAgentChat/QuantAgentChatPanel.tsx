@@ -31,6 +31,8 @@ const CANCEL_KEYWORD_BY_LOCALE: Record<"ar" | "en", string> = { ar: "إلغاء"
 
 /** Matches Lonora's own chat: a concrete active symbol, never an unset one. */
 const DEFAULT_QUANT_AGENT_SYMBOL = "EURUSD";
+/** Same default Lonora's own composer/monitors use for a fresh timeframe (plan §4/§5's new interval concept). */
+const DEFAULT_QUANT_AGENT_INTERVAL = "1h";
 
 interface StoredMessageResult {
   usedSkills?: QuantAgentChatMessageData["usedSkills"];
@@ -76,6 +78,14 @@ export function QuantAgentChatPanel() {
    * `brokerConnected` is a safe, honest `false` (see `QuantAgentChatComposer`).
    */
   const [symbol, setSymbol] = useState(DEFAULT_QUANT_AGENT_SYMBOL);
+  /**
+   * The timeframe the next backtest is scoped to (plan §4/§5) — lifted next
+   * to `symbol` exactly the same way, so both the composer's NEW
+   * `ComposerIntervalPicker` and the outgoing request body read the same
+   * value. Named `setChatInterval` (not `setInterval`) to avoid shadowing
+   * the global timer function of the same name.
+   */
+  const [interval, setChatInterval] = useState(DEFAULT_QUANT_AGENT_INTERVAL);
   /** Composer draft text (Feature B) — lifted so a Composer Coach suggestion chip can set it. */
   const [draftText, setDraftText] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -121,12 +131,14 @@ export function QuantAgentChatPanel() {
     setDraftText("");
     const session = (sessions ?? []).find((s) => s.id === chatId);
     if (session?.symbol) setSymbol(session.symbol);
+    setChatInterval(session?.interval || DEFAULT_QUANT_AGENT_INTERVAL);
   }
 
   function handleNewChat() {
     setActiveChatId(null);
     setMessages([]);
     setSymbol(DEFAULT_QUANT_AGENT_SYMBOL);
+    setChatInterval(DEFAULT_QUANT_AGENT_INTERVAL);
     setDraftText("");
   }
 
@@ -173,7 +185,7 @@ export function QuantAgentChatPanel() {
       const res = await fetch("/api/quant-agent/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId, message: text, locale, symbol }),
+        body: JSON.stringify({ chatId, message: text, locale, symbol, interval }),
       });
       if (!res.ok || !res.body) throw new Error("stream request failed");
 
@@ -297,8 +309,10 @@ export function QuantAgentChatPanel() {
             onSend={(text) => void handleSend(text)}
             disabled={sending}
             symbol={symbol}
+            interval={interval}
             brokerConnected={false}
             onSymbolChange={setSymbol}
+            onIntervalChange={setChatInterval}
             value={draftText}
             onValueChange={setDraftText}
           />
