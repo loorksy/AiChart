@@ -57,7 +57,7 @@ export interface CandleSanitizationResult {
   rejected: number;
 }
 
-interface CandleRow {
+export interface CandleRow {
   time: number | string;
   open: number | string;
   high: number | string;
@@ -67,8 +67,13 @@ interface CandleRow {
   complete: number | boolean | null;
 }
 
-/** pg returns BIGINT/COUNT as strings and BOOLEAN as 1/0 via normalizeRow — coerce all. */
-function toStoredCandle(row: CandleRow): StoredCandle {
+/**
+ * pg returns BIGINT/COUNT as strings and BOOLEAN as 1/0 via normalizeRow —
+ * coerce all. Exported so `analysisCandleRepository.ts` (the OANDA-only
+ * sibling store, kept structurally separate on purpose — see that file's
+ * header) can reuse the exact same row-coercion logic without duplicating it.
+ */
+export function toStoredCandle(row: CandleRow): StoredCandle {
   return {
     time: Number(row.time),
     open: Number(row.open),
