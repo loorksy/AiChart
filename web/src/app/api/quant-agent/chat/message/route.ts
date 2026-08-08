@@ -21,6 +21,7 @@ const schema = z.object({
   chatId: z.string().min(1).max(64),
   message: z.string().min(1).max(4000),
   locale: z.enum(["ar", "en"]).optional(),
+  symbol: z.string().min(1).max(32).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       chatId: body.chatId,
       message: body.message,
       locale: body.locale,
+      symbol: body.symbol,
     });
     return NextResponse.json(result);
   } catch (err) {

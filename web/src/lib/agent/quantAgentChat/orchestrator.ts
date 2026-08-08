@@ -185,8 +185,12 @@ async function buildRecommendationContext(
   deps: QuantAgentChatDeps,
   context: QuantAgentCallerContext,
   message: string,
+  explicitSymbol?: string,
 ): Promise<{ recommendations: QuantRecommendation[]; contextText: string }> {
-  const symbol = extractQuantAgentSymbolHint(message) ?? undefined;
+  // The composer's symbol picker (Gap 1) wins when set — it's an explicit,
+  // unambiguous choice — falling back to the regex hint only for callers
+  // that never pass a symbol (backward compatibility).
+  const symbol = explicitSymbol || extractQuantAgentSymbolHint(message) || undefined;
   let recs: QuantRecommendation[] = [];
   try {
     recs = await deps.listRecommendations(context, symbol ? { symbol } : {});
@@ -579,6 +583,16 @@ export interface QuantAgentChatTurnInput {
   message: string;
   locale?: AppLocale;
   /**
+   * The pair the composer's symbol picker had focused for this turn (Gap 1).
+   * When present, `explain_recommendation` prefers this over the regex-
+   * extracted `extractQuantAgentSymbolHint(message)`, and it is persisted
+   * onto both the user and assistant messages (and, via `appendMessage`'s
+   * `COALESCE`, onto the chat session itself) the same way Lonora's own chat
+   * persists its active symbol. Optional for backward compatibility with API
+   * callers (e.g. the MCP `quant_agent_chat_send` tool) that don't set it.
+   */
+  symbol?: string;
+  /**
    * Streaming callback for the final answer step — cumulative text so far
    * (replace semantics). Presence selects `callLLMStream` for the answer;
    * absence collects with plain `callLLM` (the non-streaming `message` route
@@ -621,7 +635,7 @@ export async function runQuantAgentChatTurn(
   input: QuantAgentChatTurnInput,
   deps: QuantAgentChatDeps = defaultDeps,
 ): Promise<QuantAgentChatTurnResult> {
-  const { userId, chatId, message } = input;
+  const { userId, chatId, message, symbol } = input;
   const requestId = randomUUID();
   const context: QuantAgentCallerContext = { userId, requestId };
 
@@ -632,6 +646,7 @@ export async function runQuantAgentChatTurn(
     agentId: "quant_agent",
     role: "user",
     content: message,
+    symbol,
   });
   if (!appendedUser) {
     throw new QuantAgentChatError("Quant Agent chat session not found.");
@@ -647,7 +662,7 @@ export async function runQuantAgentChatTurn(
   let recommendations: QuantRecommendation[] = [];
 
   if (intent === "explain_recommendation") {
-    const built = await buildRecommendationContext(deps, context, message);
+    const built = await buildRecommendationContext(deps, context, message, symbol);
     recommendations = built.recommendations;
     const system = `${identity}\n\n${untrustedDataBlock("Quant Agent recommendation data", built.contextText)}`;
     reply = await finalAnswer(
@@ -706,11 +721,12 @@ export async function runQuantAgentChatTurn(
     agentId: "quant_agent",
     role: "assistant",
     content: reply,
+    symbol,
     result: {
       intent,
       memoryCandidate,
       strategyProposal,
-      recommendationIds: recommendations.map((r) => r.id),
+      recommendations,
       usedSkills,
     },
   });

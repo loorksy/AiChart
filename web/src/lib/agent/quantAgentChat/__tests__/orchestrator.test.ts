@@ -134,6 +134,49 @@ test("explain_recommendation branch: fetches recommendations and passes them thr
   assert.equal(result.recommendations[0]!.id, "rec_1");
 });
 
+test("explain_recommendation branch: prefers the explicitly passed symbol over the regex hint from the message", async () => {
+  const rec = fakeRecommendation({ symbol: "EURUSD" });
+  const { deps } = buildDeps({
+    listRecommendations: async (_ctx, params) => {
+      assert.equal(params?.symbol, "EURUSD");
+      return [rec];
+    },
+  });
+  const result = await runQuantAgentChatTurn(
+    { userId: 1, chatId: "chat_1", message: "why did XAUUSD get a buy signal?", symbol: "EURUSD" },
+    deps,
+  );
+  assert.equal(result.intent, "explain_recommendation");
+  assert.equal(result.recommendations[0]!.symbol, "EURUSD");
+});
+
+test("explain_recommendation branch: full recommendation objects (not just ids) are persisted on the assistant message", async () => {
+  const rec = fakeRecommendation();
+  const { deps, appended } = buildDeps({
+    listRecommendations: async () => [rec],
+  });
+  await runQuantAgentChatTurn(
+    { userId: 1, chatId: "chat_1", message: "why did XAUUSD get a buy signal?" },
+    deps,
+  );
+  const assistantMessage = appended.find((m) => m.role === "assistant");
+  const stored = assistantMessage?.result as { recommendations?: QuantRecommendation[] } | undefined;
+  assert.ok(stored?.recommendations);
+  assert.equal(stored.recommendations!.length, 1);
+  assert.equal(stored.recommendations![0]!.id, "rec_1");
+  assert.equal(stored.recommendations![0]!.entry, 2400);
+});
+
+test("appends the selected symbol onto both the user and assistant messages when provided", async () => {
+  const { deps, appended } = buildDeps();
+  await runQuantAgentChatTurn(
+    { userId: 1, chatId: "chat_1", message: "how are you today?", symbol: "GBPUSD" },
+    deps,
+  );
+  assert.equal(appended[0]!.symbol, "GBPUSD");
+  assert.equal(appended[1]!.symbol, "GBPUSD");
+});
+
 // Chat's generate_strategy intent now defaults to the sandboxed-code path
 // (plan §4: technical parity with QuantDinger) — `callLLM` is expected to
 // return a fenced Python code block (the `evaluate(features)` body), not a

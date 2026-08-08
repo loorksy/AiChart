@@ -22,10 +22,14 @@ import { QuantAgentChatComposer } from "./QuantAgentChatComposer";
 import { QuantAgentChatSidebar } from "./QuantAgentChatSidebar";
 import { QuantAgentChatMessage, type QuantAgentChatMessageData } from "./QuantAgentChatMessage";
 
+/** Matches Lonora's own chat: a concrete active symbol, never an unset one. */
+const DEFAULT_QUANT_AGENT_SYMBOL = "EURUSD";
+
 interface StoredMessageResult {
   usedSkills?: QuantAgentChatMessageData["usedSkills"];
   strategyProposal?: QuantAgentChatMessageData["strategyProposal"];
   memoryCandidate?: QuantAgentChatMessageData["memoryCandidate"];
+  recommendations?: QuantAgentChatMessageData["recommendations"];
 }
 
 function toDisplayMessage(record: AgentChatMessageRecord): QuantAgentChatMessageData {
@@ -37,6 +41,8 @@ function toDisplayMessage(record: AgentChatMessageRecord): QuantAgentChatMessage
     usedSkills: result?.usedSkills,
     strategyProposal: result?.strategyProposal ?? null,
     memoryCandidate: result?.memoryCandidate ?? null,
+    recommendations: result?.recommendations,
+    createdAt: record.createdAt,
   };
 }
 
@@ -53,6 +59,14 @@ export function QuantAgentChatPanel() {
   const [messages, setMessages] = useState<QuantAgentChatMessageData[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  /**
+   * The pair the next question/analysis is scoped to (Gap 1) — mirrors
+   * Lonora's own `symbol` state in `SmartChartWorkspace.tsx`, lifted here so
+   * both the composer's `ComposerSymbolPicker` and the outgoing request body
+   * read the same value. Quant Agent never touches broker accounts, so
+   * `brokerConnected` is a safe, honest `false` (see `QuantAgentChatComposer`).
+   */
+  const [symbol, setSymbol] = useState(DEFAULT_QUANT_AGENT_SYMBOL);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const loadSessions = useCallback(async () => {
@@ -93,11 +107,14 @@ export function QuantAgentChatPanel() {
   function handleSelectChat(chatId: string) {
     setActiveChatId(chatId);
     void loadMessages(chatId);
+    const session = (sessions ?? []).find((s) => s.id === chatId);
+    if (session?.symbol) setSymbol(session.symbol);
   }
 
   function handleNewChat() {
     setActiveChatId(null);
     setMessages([]);
+    setSymbol(DEFAULT_QUANT_AGENT_SYMBOL);
   }
 
   async function handleDeleteChat(chatId: string) {
@@ -133,6 +150,7 @@ export function QuantAgentChatPanel() {
       id: `local-user-${Date.now()}`,
       role: "user",
       content: text,
+      createdAt: Date.now(),
     };
     const pendingId = `local-assistant-${Date.now()}`;
     setMessages((prev) => [...prev, userMessage, { id: pendingId, role: "assistant", content: "", pending: true }]);
@@ -142,7 +160,7 @@ export function QuantAgentChatPanel() {
       const res = await fetch("/api/quant-agent/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId, message: text, locale }),
+        body: JSON.stringify({ chatId, message: text, locale, symbol }),
       });
       if (!res.ok || !res.body) throw new Error("stream request failed");
 
@@ -165,6 +183,8 @@ export function QuantAgentChatPanel() {
                     usedSkills: payload.usedSkills,
                     strategyProposal: payload.strategyProposal,
                     memoryCandidate: payload.memoryCandidate,
+                    recommendations: payload.recommendations,
+                    createdAt: Date.now(),
                   }
                 : m,
             ),
@@ -239,7 +259,13 @@ export function QuantAgentChatPanel() {
         </div>
 
         <div className="shrink-0 border-t border-border p-2">
-          <QuantAgentChatComposer onSend={(text) => void handleSend(text)} disabled={sending} />
+          <QuantAgentChatComposer
+            onSend={(text) => void handleSend(text)}
+            disabled={sending}
+            symbol={symbol}
+            brokerConnected={false}
+            onSymbolChange={setSymbol}
+          />
         </div>
       </div>
     </div>

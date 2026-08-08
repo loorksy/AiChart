@@ -888,6 +888,8 @@ export const ar: Record<TranslationKey, string> = {
   "qa.chat.memory.saving": "جارٍ الحفظ…",
   "qa.chat.memory.saved": "تم الحفظ في الذاكرة",
   "qa.chat.memory.error": "تعذّر حفظ الملاحظة.",
+  "qa.chat.message.copy_reply": "نسخ الرد كاملًا",
+  "qa.chat.message.copy_reply_done": "تم نسخ الرد",
 
   // Admin
   "nav.admin_diagnostics": "التشخيص",

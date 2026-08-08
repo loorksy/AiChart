@@ -890,6 +890,8 @@ export const en = {
   "qa.chat.memory.saving": "Saving…",
   "qa.chat.memory.saved": "Saved to memory",
   "qa.chat.memory.error": "Could not save the note.",
+  "qa.chat.message.copy_reply": "Copy full reply",
+  "qa.chat.message.copy_reply_done": "Copied",
 
   // Admin
   "nav.admin_diagnostics": "Diagnostics",
