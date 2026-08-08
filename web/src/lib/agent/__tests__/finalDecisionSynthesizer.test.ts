@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { runFinalDecisionSynthesizer } from "@/lib/agent/agents/finalDecisionSynthesizer";
+import {
+  runFinalDecisionSynthesizer,
+  shouldCoerceImmediateOnConflict,
+} from "@/lib/agent/agents/finalDecisionSynthesizer";
 import type { FinalDecisionInput } from "@/lib/agent/agents/finalDecisionAgent";
 import type { AgentMarketContext } from "@/lib/agent/marketContext/buildAgentMarketContext";
 import type { AgentRunContext } from "@/lib/agent/types";
@@ -61,8 +64,21 @@ function evidence(...candidates: TradeCandidate[]): RiskAgentResult {
   return makeRisk({ candidatesResult: { candidates, best: candidates[0] ?? null, rejectedReasons: [], hasReversalEvidence: false }, selectedCandidate: candidates[0] ?? null });
 }
 
-function input(risk: RiskAgentResult | null): FinalDecisionInput & { candidates: [] } {
-  return { userMessage: "analyze", risk, news: null, market: market(), structure: makeStructure(), supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null }, mtf: null, candidates: [] };
+function input(
+  risk: RiskAgentResult | null,
+  over: Partial<FinalDecisionInput> = {},
+): FinalDecisionInput & { candidates: [] } {
+  return {
+    userMessage: "analyze",
+    risk,
+    news: null,
+    market: market(),
+    structure: makeStructure(),
+    supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null },
+    mtf: null,
+    candidates: [],
+    ...over,
+  };
 }
 
 /** A complete model answer under the three-layer contract. */
@@ -214,5 +230,58 @@ describe("AI final decision authority", () => {
     const out = await runFinalDecisionSynthesizer(ctx, input(null), { configured: true, callModel: async () => "invalid" });
     assert.equal(out.usedLLM, false);
     assert.equal(out.result, null);
+  });
+
+  it("coerces immediate+MTF conflict to conditional awaiting activation", async () => {
+    assert.equal(
+      shouldCoerceImmediateOnConflict({
+        planType: "immediate",
+        mtfConflict: true,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldCoerceImmediateOnConflict({
+        planType: "conditional",
+        mtfConflict: true,
+      }),
+      false,
+    );
+
+    const buy = candidate("buy-1", "buy");
+    const sell = candidate("sell-1", "sell");
+    const out = await runFinalDecisionSynthesizer(
+      ctx,
+      {
+        ...input(evidence(buy, sell), {
+          mtf: {
+            currentBias: "bullish",
+            higherBias: "bearish",
+            dailyBias: "bearish",
+            conflict: true,
+          },
+        }),
+        locale: "en",
+      },
+      {
+        configured: true,
+        callModel: async () =>
+          model({
+            selectedTradeCandidateId: "buy-1",
+            planType: "immediate",
+            timeframeRoles: { lead: "5m", context: "1h", timing: "5m" },
+            publicReasoningSummary: ["demand held twice"],
+          }),
+      },
+    );
+    assert.equal(out.result?.planType, "conditional");
+    assert.equal(out.result?.executionState, "awaiting_activation");
+    assert.ok(out.result?.recommendation.activationRule);
+    assert.ok(
+      (out.result?.publicReasoningSummary ?? []).some((l) =>
+        /Adopted scenario|alternative/i.test(l),
+      ),
+      JSON.stringify(out.result?.publicReasoningSummary),
+    );
   });
 });

@@ -49,6 +49,7 @@ interface RecommendationRow {
   entry_type: string | null;
   legacy_tracking_id: string | null;
   context_json: string | null;
+  chart_drawings_json: string | null;
   plan_type: string | null;
   execution_state: string | null;
 }
@@ -155,6 +156,7 @@ function toCanonical(row: RecommendationRow): CanonicalRecommendation {
     entryType: row.entry_type ?? undefined,
     legacyTrackingId: row.legacy_tracking_id ?? undefined,
     contextJson: row.context_json ?? undefined,
+    chartDrawingsJson: row.chart_drawings_json ?? undefined,
     planType: row.plan_type ?? null,
     executionState: row.execution_state ?? null,
   };

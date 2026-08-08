@@ -101,6 +101,7 @@ import {
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
+import { spanStyleForInterval } from "./trading/scalpGeometry";
 import { collectVisualEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { recordDecisionForParity } from "./parityLog";
@@ -337,18 +338,34 @@ export async function runUnifiedChartAgent(
   // A run that blew its total budget did NOT complete on full evidence. Saying
   // so is mandatory: silently returning the degraded answer would dress an
   // incomplete run up as a normal one (and re-enable usage charging).
-  if (
-    (budget.expired || budget.cancelledByClient) &&
-    result.envelope?.outcome_class !== "operational_blocker"
-  ) {
-    result.envelope = operationalBlockerEnvelope({
-      failureStage: "general",
-      failureCode: budget.cancelledByClient ? "cancelled" : "timeout",
-      retryable: !budget.cancelledByClient,
-      traceId: input.requestContext.requestId,
-      cancelled: budget.cancelledByClient,
-      degradedStages: result.envelope?.degraded_stages,
-    });
+  if (budget.expired || budget.cancelledByClient) {
+    if (result.envelope?.outcome_class !== "operational_blocker") {
+      result.envelope = operationalBlockerEnvelope({
+        failureStage: "general",
+        failureCode: budget.cancelledByClient ? "cancelled" : "timeout",
+        retryable: !budget.cancelledByClient,
+        traceId: input.requestContext.requestId,
+        cancelled: budget.cancelledByClient,
+        degradedStages: result.envelope?.degraded_stages,
+      });
+    }
+    // Never leave a half-finished trade card / drawings attached to a budget
+    // failure — the UI would treat it as a real recommendation.
+    const sessionId = input.requestContext.sessionId ?? "default";
+    if (result.recommendationId || result.activeRecommendation?.id) {
+      void clearActiveRecommendation(
+        sessionId,
+        input.chartContext?.symbol,
+        input.requestContext.userId,
+      ).catch(() => {
+        // Best-effort: the envelope already marks the run as a blocker.
+      });
+    }
+    result.decision = "informational";
+    result.recommendation = undefined;
+    result.recommendationId = undefined;
+    result.activeRecommendation = undefined;
+    result.drawings = undefined;
   }
 
   // Contract guarantee: EVERY result carries a three-state envelope. Blockers
@@ -1523,6 +1540,43 @@ async function runUnifiedChartAgentInner(
     userMessage,
     latencyBudgetMs: 900,
   });
+
+  // Apply historicalEvidenceTendency to the returned confidence (clamped). The
+  // user-safe projection may claim a nudge — the number must actually move.
+  const tendency = researchEvidence.historicalEvidenceTendency;
+  const confidenceBeforeTendency = finalDecision.confidence;
+  const confidenceAfterTendency = Math.max(
+    0,
+    Math.min(1, confidenceBeforeTendency + (Number.isFinite(tendency) ? tendency : 0)),
+  );
+  const confidenceNudgeApplied = confidenceAfterTendency - confidenceBeforeTendency;
+  if (Math.abs(confidenceNudgeApplied) > 1e-12) {
+    finalDecision.confidence = confidenceAfterTendency;
+    const semantics = finalDecision.confidenceSemantics;
+    const nudgeNumber = (value: typeof semantics.displayValue) =>
+      typeof value === "number"
+        ? Math.max(0, Math.min(1, value + confidenceNudgeApplied))
+        : value;
+    finalDecision.confidenceSemantics = {
+      ...semantics,
+      displayValue: nudgeNumber(semantics.displayValue),
+      decisionConfidence: nudgeNumber(semantics.decisionConfidence),
+      recommendationConfidence: nudgeNumber(semantics.recommendationConfidence),
+      analysisConfidence: nudgeNumber(semantics.analysisConfidence),
+      factors: [
+        ...semantics.factors,
+        {
+          factor: "historical_reliability",
+          status: confidenceNudgeApplied > 0 ? "supports" : "weakens",
+          effect:
+            confidenceNudgeApplied > 0
+              ? "historical evidence nudged confidence slightly higher"
+              : "historical evidence nudged confidence slightly lower",
+        },
+      ],
+    };
+  }
+
   // User-safe projection → model keeps natural summary; no module-name append.
   const historicalInsufficient = researchEvidence.contributions.some(
     (c) =>
@@ -1654,13 +1708,16 @@ async function runUnifiedChartAgentInner(
       userId: ctx.userId,
       layoutId: chartContext?.layoutId,
       analysisId,
-      scalp: true,
+      // Derive from the analysis timeframe — hardcoding scalp:true forced every
+      // plan onto a 30m wall-clock ceiling regardless of 15m/1h/4h charts.
+      scalp: spanStyleForInterval(market.interval) === "scalp",
       market,
       finalDecision,
       risk,
       drawings,
       chartSnapshotHash,
       statisticalSupport: statisticalSupport?.level,
+      statisticalStrategyId: statisticalSupport?.strategyId,
       evidenceSnapshot: synth.evidenceSnapshot,
     });
   }
@@ -1743,6 +1800,7 @@ async function runUnifiedChartAgentInner(
 
   const projection = toUserSafeResearchProjection(researchEvidence, {
     deeperVerification,
+    confidenceNudgeApplied,
   });
 
   // Final leakage scan on user-visible text; regenerate once via fallback if needed.
@@ -2071,6 +2129,27 @@ async function drawStoredRecommendation(
     riskWarnings: [],
     activityEvents: collected,
     drawings,
+    // Restore entry/SL/TP React state on the chart — drawings alone leave the
+    // recommendation panel empty after a redraw/reload.
+    recommendation: {
+      action: rec.direction,
+      planType: rec.planType,
+      executionState: rec.executionState,
+      entry: rec.entry,
+      entryZone: rec.entryZone,
+      entryType: rec.entryType,
+      stop_loss: rec.stopLoss,
+      take_profit: rec.takeProfit ?? rec.targets[0],
+      targets: rec.targets,
+      rr: rec.rr,
+      triggerCondition: rec.triggerCondition,
+      activationRule: rec.activationRule,
+      invalidationLevel: rec.invalidationLevel,
+      invalidationRule: rec.invalidationRule,
+      alternativeScenario: rec.alternativeScenario,
+      validityCandles: rec.validityCandles,
+      chartSnapshotHash: rec.chartSnapshotHash,
+    },
     analysisId: rec.analysisId,
     recommendationId: rec.id,
     activeRecommendation: {
@@ -2274,6 +2353,8 @@ async function storeFinalRecommendation(input: {
   chartSnapshotHash: string;
   /** Verified backing grade, persisted so the card is not rebuilt from nothing. */
   statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
+  /** Catalog strategy id when statistical support named one. */
+  statisticalStrategyId?: string;
   /**
    * The frozen bundle the brain decided on. Lives on the synthesizer OUTCOME,
    * not its result, so it is passed explicitly — the same object the parity
@@ -2386,6 +2467,7 @@ async function storeFinalRecommendation(input: {
       // The object the model actually reasoned over — the same one the parity
       // log fingerprints, so revision 1 and parity finally describe one thing.
       evidenceSnapshot: input.evidenceSnapshot,
+      strategyId: input.statisticalStrategyId,
     },
     // The run's own cost evidence, PRICE units — the tradability grade's
     // within-spread-noise check finally sees the spread the LLM was shown
@@ -2499,6 +2581,8 @@ async function persistTrackedRecommendation(
     evidenceDimensions?: EvidenceDimension[];
     /** The frozen bundle the brain decided on — stored whole, apart from the card. */
     evidenceSnapshot?: Record<string, unknown>;
+    /** Prefer statisticalSupport.strategyId over setupType when binding. */
+    strategyId?: string;
   },
   /** The run's resolved cost-evidence spread in PRICE units, for tradability. */
   spreadPrice: number | null = null,
@@ -2545,6 +2629,8 @@ async function persistTrackedRecommendation(
     status: active.status === "triggered" ? "triggered" : "pending_entry",
     outcome: "pending",
     setupType: active.setupType,
+    // Prefer the verified strategy id when research support named one.
+    strategyId: explanation?.strategyId ?? active.setupType,
     rr: active.rr,
     createdAt: Date.now(),
     createdCandleTime: active.createdCandleTime ?? active.createdAt,
@@ -2570,6 +2656,8 @@ async function persistTrackedRecommendation(
     invalidationRule: active.invalidationRule,
     alternativeScenario: active.alternativeScenario,
     validityCandles: active.validityCandles,
+    chartDrawingsJson:
+      active.drawings?.length ? JSON.stringify(active.drawings) : undefined,
     // Stored with revision 1: why this plan, and on what evidence — so the
     // decision stays explainable after the market has moved past it.
     decisionTrace: explanation?.decisionTrace as unknown as Record<string, unknown> | undefined,

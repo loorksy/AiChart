@@ -105,7 +105,36 @@ describe("trackedRecommendationFromResult", () => {
     assert.equal(tracked!.entryHigh, 3983);
     // 12 one-minute candles of validity — not born expired.
     assert.ok(tracked!.expiresAt >= tracked!.createdAt + 11 * 60_000);
+    // Scalp ceiling is 30m — candle window must not outlive it.
+    assert.ok(tracked!.expiresAt <= tracked!.createdAt + 30 * 60_000);
     assert.equal(tracked!.status, "pending_entry");
+  });
+
+  it("caps 1h chat-card expiry with the timeframe ceiling, not raw candles×interval", () => {
+    const tracked = trackedRecommendationFromResult(
+      baseResult({
+        activeRecommendation: {
+          id: "rec-1h",
+          status: "pending_entry",
+          direction: "buy",
+          symbol: "EURUSD",
+          interval: "1h",
+        },
+        recommendation: {
+          action: "buy",
+          entry: 1.1,
+          entryType: "buy_limit",
+          stop_loss: 1.09,
+          targets: [1.12],
+          validityCandles: 96,
+          activationClass: "conditional",
+        },
+      }),
+    );
+    assert.ok(tracked);
+    // 96×1h would be 4 days; 1h ceiling is 36h.
+    assert.ok(tracked!.expiresAt <= tracked!.createdAt + 36 * 60 * 60_000);
+    assert.ok(tracked!.expiresAt > tracked!.createdAt);
   });
 
   it("execution state outranks a market entry type for the initial status", () => {

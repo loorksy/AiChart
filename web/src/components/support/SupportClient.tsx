@@ -162,7 +162,7 @@ export function SupportClient() {
   // Previously a failed first load left the skeleton on screen forever.
   if (tickets === null) {
     return (
-      <div className="space-y-6" dir="rtl">
+      <div className="space-y-6">
         {header}
         {loadFailed ? (
           <Surface padding="none">
@@ -191,7 +191,7 @@ export function SupportClient() {
   }
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6">
       {header}
       {errorBanner}
 

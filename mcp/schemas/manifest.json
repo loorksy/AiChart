@@ -276,7 +276,7 @@
     {
       "name": "resolve_agent_skills",
       "domain": "core",
-      "description": "Selects the most relevant skills for the operator's current request from the catalogue and returns metadata only — the selected names plus the rejected ones with reasons, never skill bodies. When: before answering a trading or analysis request; follow with load_agent_skill for each selected name, and prefer this over manually attaching skill files. Not a way to load a skill by itself — this only decides WHICH ones, load_agent_skill is the separate step that actually reads content. Defaults: locale unset (auto), market forex, max_skills 2, allow_execution_skills false (set true only when execution tools are actually authorized). read-only. If next_step is returned, call it immediately without asking the user — it names exactly which load_agent_skill calls are required.",
+      "description": "Selects the most relevant skills for the operator's current request from the catalogue and returns metadata only — the selected names plus the rejected ones with reasons, never skill bodies. When: before answering a trading or analysis request; follow with load_agent_skill for each selected name, and prefer this over manually attaching skill files. Not a way to load a skill by itself — this only decides WHICH ones, load_agent_skill is the separate step that actually reads content. Defaults: locale unset (auto), market forex, max_skills 3, allow_execution_skills false (set true only when execution tools are actually authorized). read-only. If next_step is returned, call it immediately without asking the user — it names exactly which load_agent_skill calls are required.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

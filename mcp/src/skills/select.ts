@@ -6,6 +6,13 @@
  */
 import type { McpSkillDescriptor, McpSkillMetadata } from "./catalog.js";
 
+/** The Pattern Atlas skill — pinned when geometry detected patterns. */
+const ATLAS_SKILL = "pattern-atlas";
+/** The plan-type doctrine skill — pinned for market-analysis intents. */
+const STRATEGY_SKILL = "trading-strategies";
+/** Intent fragments that mean "we are analyzing a market for a trade". */
+const ANALYSIS_INTENT = /analysis|analyz|trade|chart|market|recommend/;
+
 export interface McpSkillSelectionInput {
   request: string;
   /** Soft intent hints (optional) — e.g. analysis, recommendation, cards. */
@@ -15,6 +22,8 @@ export interface McpSkillSelectionInput {
   availableTools?: string[];
   maxSkills?: number;
   allowExecutionSkills?: boolean;
+  /** Detected chart pattern names — selection signal (parity with web). */
+  detectedPatterns?: string[];
 }
 
 export interface McpSkillCandidateScore {
@@ -87,6 +96,8 @@ export function requestCapabilityTokens(input: McpSkillSelectionInput): string[]
   const parts = [
     input.request ?? "",
     ...(input.intents ?? []),
+    // Detected pattern names are selection signal like any request token.
+    ...(input.detectedPatterns ?? []).map((p) => p.replace(/_/g, " ")),
   ];
   return unique(parts.flatMap((p) => capabilityTokens(p)));
 }
@@ -191,6 +202,24 @@ export function selectMcpSkills(
       }
     }
 
+    // Parity with web skillSelector: atlas is FOR detected patterns; doctrine
+    // is FOR trade analyses. Without these pins, alphabetical tie-breaks evict
+    // the skill that the request actually needs.
+    if (
+      metadata.name === ATLAS_SKILL &&
+      (input.detectedPatterns?.length ?? 0) > 0
+    ) {
+      score += 4;
+      matchReasons.push("detected_pattern_atlas_pin");
+    }
+    if (
+      metadata.name === STRATEGY_SKILL &&
+      intents.some((intent) => ANALYSIS_INTENT.test(intent))
+    ) {
+      score += 4;
+      matchReasons.push("analysis_strategy_doctrine_pin");
+    }
+
     if (score <= 0) {
       rejected.push({ name: metadata.name, reason: "not_relevant_to_request" });
       continue;
@@ -203,7 +232,8 @@ export function selectMcpSkills(
       b.score - a.score || a.skill.metadata.name.localeCompare(b.skill.metadata.name),
   );
 
-  const max = Math.max(1, Math.min(input.maxSkills ?? 2, 4));
+  // Default 3 — aligned with the resolve_agent_skills tool handler.
+  const max = Math.max(1, Math.min(input.maxSkills ?? 3, 4));
   // Minimal set: keep candidates within 50% of the top score (and score >= 1).
   const top = scored[0]?.score ?? 0;
   const threshold = top > 0 ? Math.max(1, Math.ceil(top * 0.5)) : 1;

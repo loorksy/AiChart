@@ -95,6 +95,12 @@ export function toUserSafeResearchProjection(
   opts?: {
     deeperVerification?: DeeperVerificationState;
     sampleSizeHint?: number;
+    /**
+     * Actual confidence delta applied after research (post-clamp). When set,
+     * "nudged confidence" notes must match this number — never claim a nudge
+     * that did not change the returned confidence.
+     */
+    confidenceNudgeApplied?: number;
   },
 ): UserSafeResearchProjection {
   const used = bundle.contributions.filter((c) => c.status === "used");
@@ -148,7 +154,16 @@ export function toUserSafeResearchProjection(
   } else if (agreement === "mixed") {
     notes.push("Historical signals were mixed for this kind of setup.");
   }
-  if (evidenceDirection === "supports") {
+  // Only claim a confidence nudge when one was actually applied (or, when the
+  // caller did not report the applied delta, fall back to tendency direction).
+  const applied = opts?.confidenceNudgeApplied;
+  if (typeof applied === "number") {
+    if (applied > 1e-9) {
+      notes.push("Historical reliability nudged confidence slightly higher.");
+    } else if (applied < -1e-9) {
+      notes.push("Historical reliability nudged confidence slightly lower.");
+    }
+  } else if (evidenceDirection === "supports") {
     notes.push("Historical reliability nudged confidence slightly higher.");
   } else if (evidenceDirection === "weakens") {
     notes.push("Historical reliability nudged confidence slightly lower.");

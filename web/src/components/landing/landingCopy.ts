@@ -201,7 +201,7 @@ const ar: LandingCopy = {
     subtitle:
       "يجمع Lonora بين الشارت الحي ومحادثة تداول ذكية، ثم يجهّز سيناريوهات واضحة للمراجعة قبل التنفيذ عبر MetaTrader.",
     primaryCta: "افتح Lonora",
-    secondaryCta: "جرّب الشارت",
+    secondaryCta: "افتح مساحة العمل",
     quickPrompts: [
       "حلّل EURUSD",
       "اقترح سيناريو WAIT",
@@ -268,7 +268,7 @@ const ar: LandingCopy = {
     ],
     panelTitle: "معاينة توضيحية",
     panelBody: "شاهد كيف تبدو مساحة العمل قبل التسجيل — بيانات توضيحية وليست توصية حية.",
-    panelCta: "افتح الشارت",
+    panelCta: "افتح مساحة العمل",
     executionLabel: "قرار السوق",
     executionTitle: "BUY · SELL · WAIT بقرار واحد واضح",
     executionBody:
@@ -525,7 +525,7 @@ const en: LandingCopy = {
     subtitle:
       "Lonora combines a live chart with an intelligent trading conversation, then prepares clear trade scenarios for review before MetaTrader execution.",
     primaryCta: "Open Lonora",
-    secondaryCta: "View the chart",
+    secondaryCta: "Open workspace",
     quickPrompts: [
       "Analyze EURUSD",
       "Suggest a WAIT scenario",
@@ -592,7 +592,7 @@ const en: LandingCopy = {
     ],
     panelTitle: "Illustrative preview",
     panelBody: "See how the workspace feels before signup — illustrative data, not a live recommendation.",
-    panelCta: "Open the chart",
+    panelCta: "Open workspace",
     executionLabel: "Market decision",
     executionTitle: "BUY · SELL · WAIT in one clear outcome",
     executionBody:
@@ -835,7 +835,7 @@ export function getLandingCopy(locale: AppLocale): LandingCopy {
 export const LANDING_CTA_HREFS = [
   LANDING_ROUTES.signup,
   LANDING_ROUTES.login,
-  LANDING_ROUTES.chart,
+  LANDING_ROUTES.console,
   LANDING_ROUTES.privacy,
   LANDING_ROUTES.terms,
   LANDING_ROUTES.agreement,

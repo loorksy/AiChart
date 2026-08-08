@@ -6,6 +6,7 @@ import { StatisticsSection } from "@/components/performance/StatisticsSection";
 import { RecommendationsSection } from "@/components/performance/RecommendationsSection";
 import { BacktestSection } from "@/components/performance/BacktestSection";
 import { PerformanceSectionNav } from "@/components/performance/PerformanceSectionNav";
+import { PerformanceHashScroll } from "@/components/performance/PerformanceHashScroll";
 
 /**
  * One page for the whole performance story: the plans (recommendations),
@@ -23,6 +24,7 @@ export default async function PerformancePage() {
 
   return (
     <main className="page-shell max-w-6xl space-y-8">
+      <PerformanceHashScroll />
       <PerformanceSectionNav />
       <RecommendationsSection />
       <TradesClient initialIntents={intents} initialTrades={trades} embedded />

@@ -207,6 +207,11 @@ export type CreateTrackedRecommendationInput = Omit<
      * where it was reported.
      */
     tradability?: TradabilityAssessment | null;
+    /**
+     * Catalog / statistical strategy id when known. Preferred over setupType for
+     * the canonical strategyId binding.
+     */
+    strategyId?: string;
   };
 
 function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unknown> {
@@ -357,6 +362,7 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     invalidationRule: effective?.invalidationRule ?? undefined,
     alternativeScenario: effective?.alternativeScenario ?? undefined,
     evidenceSnapshot: effective?.evidence,
+    chartDrawingsJson: recommendation.chartDrawingsJson,
   };
 }
 
@@ -382,7 +388,7 @@ export async function createTrackedRecommendation(
     targets: input.targets,
     risk: legacyRisk(input),
     confidence: 0,
-    strategyId: input.setupType ?? "unspecified",
+    strategyId: input.strategyId ?? input.setupType ?? "unspecified",
     strategyVersion: "1",
     createdAt: input.createdAt,
     expiresAt: input.expiresAt,
@@ -392,6 +398,7 @@ export async function createTrackedRecommendation(
     engineVersion: "aichart-phase4-v1",
     entryType: input.entryType,
     legacyTrackingId: input.id,
+    chartDrawingsJson: input.chartDrawingsJson,
     // The three layers and the evidence grade, persisted rather than kept in
     // memory: the tracker needs the activation condition to evaluate, and the
     // journal needs the plan type to report.

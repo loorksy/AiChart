@@ -456,7 +456,12 @@ function SmartChartWorkspaceInner({
   const handleAgentResult = useCallback(
     (result: AgentFinalResult) => {
       lastFinalResultRef.current = result;
-      if (result.drawings) {
+      // Empty `drawings: []` is truthy and used to mean "no new drawings" on
+      // many paths — applying it wiped agent overlays. Clear only on an
+      // explicit clear flag; otherwise replace agent layers only when new ones arrive.
+      if (result.clearAgentDrawings) {
+        setDrawings((prev) => clearAgentDrawings(prev));
+      } else if (result.drawings?.length) {
         setDrawings((prev) =>
           [...clearAgentDrawings(prev), ...(result.drawings ?? [])],
         );

@@ -270,6 +270,11 @@ export interface AgentFinalResult {
   stages?: import("./stageEvents").AgentStageEvent[];
   recommendation?: AgentRecommendation;
   drawings?: ChartDrawing[];
+  /**
+   * Explicit request to remove agent-owned drawings. Distinct from
+   * `drawings: []`, which many paths use to mean "no new drawings this turn".
+   */
+  clearAgentDrawings?: boolean;
   /** Indicators (studies) to enable on the visible chart (idempotent by id). */
   studies?: ChartStudy[];
   /** User-drawing mutations to apply AFTER the final SSE (idempotent by id). */

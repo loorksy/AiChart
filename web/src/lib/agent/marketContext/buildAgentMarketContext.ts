@@ -136,23 +136,22 @@ async function refillIfThin(input: {
   available: number;
   required: number;
   limit: number;
+  /**
+   * When false, never await MetaApi — deepen in the background. Higher TF and
+   * daily use this so an empty 1d series cannot own the market-data deadline.
+   */
+  blocking?: boolean;
 }): Promise<{ attempted: boolean; inserted: number; failed: boolean }> {
   if (input.available >= input.required) {
     return { attempted: false, inserted: 0, failed: false };
   }
-  // Three of these used to run in parallel (current TF, higher TF, daily)
-  // inside the market-data stage. Uncapped, each could page ten times at
-  // twelve seconds, so a single cold series — the daily one, most often —
-  // made the whole analysis fail on time every time. One page here, depth
-  // from the cron.
-  //
-  // When the warehouse already has SOME bars, awaiting MetaApi again is what
-  // still produces the recurring "بيانات السوق لم تنتهِ ضمن المهلة" fault:
-  // coverage can report honestly as thin while analysis proceeds, and the
-  // cron / background backfill deepens the series. Only an EMPTY series still
-  // blocks — without any bars there is nothing to reason on.
+  // Thin or non-blocking empty → background deepen. Only the analysis's own
+  // empty current TF still awaits one bounded page.
   void recordWarmDemand({ symbol: input.symbol, interval: input.interval });
-  if (FEATURES.boundedColdStartV1() && input.available > 0) {
+  const backgroundOnly =
+    FEATURES.boundedColdStartV1() &&
+    (input.available > 0 || input.blocking === false);
+  if (backgroundOnly) {
     void backfillCandles({
       symbol: input.symbol,
       interval: input.interval,
@@ -251,6 +250,7 @@ export async function buildAgentMarketContext(input: {
       available: currentTfCandles.length,
       required: tradeGate.currentTf,
       limit: 5000,
+      blocking: true,
     }),
     refillIfThin({
       symbol,
@@ -258,6 +258,7 @@ export async function buildAgentMarketContext(input: {
       available: higherTfCandles.length,
       required: tradeGate.higherTf,
       limit: 2000,
+      blocking: false,
     }),
     refillIfThin({
       symbol,
@@ -265,19 +266,19 @@ export async function buildAgentMarketContext(input: {
       available: dailyCandles.length,
       required: tradeGate.daily,
       limit: 500,
+      blocking: false,
     }),
   ]);
 
   if (currentRefill.attempted || higherRefill.attempted || dailyRefill.attempted) {
+    // Re-read warehouse only — never a second blocking live pull after refill.
     if (currentRefill.inserted > 0) {
-      fresh = await getFreshAgentCandles({
-        userId: input.userId,
+      currentTfCandles = (await getCandles({
         symbol,
         interval,
-        dataSource: input.dataSource,
         limit: 1500,
-      });
-      currentTfCandles = fresh.currentTfCandles;
+      })) as AgentCandle[];
+      fresh = { ...fresh, currentTfCandles };
     }
     [higherTfCandles, dailyCandles] = await Promise.all([
       getCandles({ symbol, interval: higherInterval, limit: 1000 }),

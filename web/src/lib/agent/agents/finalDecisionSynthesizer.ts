@@ -884,6 +884,59 @@ function buildModelContext(
 }
 
 /**
+ * True when an immediate market entry is too weak given conflicting evidence —
+ * MTF conflict, opposite-side candidates, or a timeframe-roles ruling that
+ * already names disagreement. Prefer conditional / awaiting_activation.
+ */
+export function shouldCoerceImmediateOnConflict(input: {
+  planType: PlanType;
+  mtfConflict?: boolean;
+  competingEvidence?: boolean;
+  /** Model acknowledged multi-frame roles while MTF conflict is present. */
+  timeframeRolesConflict?: boolean;
+}): boolean {
+  if (input.planType !== "immediate") return false;
+  return Boolean(
+    input.mtfConflict || input.competingEvidence || input.timeframeRolesConflict,
+  );
+}
+
+function hasCompetingDirectionalEvidence(
+  candidates: ReadonlyArray<{ action: "buy" | "sell"; qualityScore?: number }>,
+  direction: "buy" | "sell",
+): boolean {
+  const opposite = direction === "buy" ? "sell" : "buy";
+  return candidates.some(
+    (c) => c.action === opposite && (c.qualityScore == null || c.qualityScore >= 0.35),
+  );
+}
+
+/** Machine-checkable confirmation when an immediate plan is coerced to conditional. */
+function synthesizeConflictActivation(input: {
+  direction: "buy" | "sell";
+  entry: number | null | undefined;
+  currentPrice: number | null | undefined;
+  interval: string;
+  locale?: "ar" | "en";
+}): { condition: string; rule: NonNullable<FinalDecisionModelOutput["activationRule"]> } | null {
+  const levelCandidate =
+    (typeof input.entry === "number" && input.entry > 0 ? input.entry : null) ??
+    (typeof input.currentPrice === "number" && input.currentPrice > 0
+      ? input.currentPrice
+      : null);
+  if (levelCandidate == null) return null;
+  const kind = input.direction === "buy" ? "candle_close_above" : "candle_close_below";
+  const condition =
+    input.locale === "en"
+      ? `Confirm with a ${input.direction === "buy" ? "close above" : "close below"} ${levelCandidate} before entry — conflicting timeframe evidence makes an immediate fill premature.`
+      : `التأكيد بـ${input.direction === "buy" ? "إغلاق فوق" : "إغلاق تحت"} ${levelCandidate} قبل الدخول — تعارض الأدلة بين الفريمات يجعل الدخول الفوري ضعيفاً.`;
+  return {
+    condition,
+    rule: { kind, level: levelCandidate, timeframe: input.interval },
+  };
+}
+
+/**
  * Turn the model's answer into the three-layer result.
  *
  * The direction is taken as authoritative. The plan's numbers are not: they
@@ -900,6 +953,7 @@ function applyModelDecision(
     historicalCases?: HistoricalCaseEvidence | null;
     macroRegime?: MacroRegimeBlock | null;
     cotPositioning?: CotPositioning[] | null;
+    locale?: "ar" | "en";
   },
 ): FinalDecisionResult {
   const confidence = Math.max(0, Math.min(1, parsed.confidence));
@@ -947,7 +1001,47 @@ function applyModelDecision(
     );
   }
 
-  const planType: PlanType = parsed.planType;
+  const mtfConflict = Boolean(input.mtf?.conflict);
+  const competingEvidence = hasCompetingDirectionalEvidence(candidates, direction);
+  // timeframeRoles naming lead≠context while MTF conflict is present is the
+  // synthesizer's own conflict ruling — still coerce weak immediate entries.
+  const timeframeRolesConflict = Boolean(
+    mtfConflict &&
+      parsed.timeframeRoles?.lead &&
+      parsed.timeframeRoles.context &&
+      parsed.timeframeRoles.lead !== parsed.timeframeRoles.context,
+  );
+  let planType: PlanType = parsed.planType;
+  let activationCondition = parsed.activationCondition ?? null;
+  let activationRule = parsed.activationRule ?? null;
+  const coercedFromImmediate = shouldCoerceImmediateOnConflict({
+    planType,
+    mtfConflict,
+    competingEvidence,
+    timeframeRolesConflict,
+  });
+  if (coercedFromImmediate) {
+    planType = "conditional";
+    if (!activationCondition?.trim() || !activationRule) {
+      const synthesized = synthesizeConflictActivation({
+        direction,
+        entry: resolved.levels?.preferredEntry ?? selected?.entry ?? null,
+        currentPrice: input.market.currentPrice,
+        interval: input.market.interval,
+        locale: input.locale,
+      });
+      if (synthesized) {
+        activationCondition = activationCondition?.trim() || synthesized.condition;
+        activationRule = activationRule ?? synthesized.rule;
+      }
+    }
+    riskWarnings.unshift(
+      input.locale === "en"
+        ? "Conflicting timeframe or competing evidence — plan kept conditional pending confirmation."
+        : "تعارض بين الفريمات أو أدلة متنافسة — أُبقيَت الخطة مشروطة بانتظار التأكيد.",
+    );
+  }
+
   const executionState = deriveExecutionState({
     planType,
     levels: resolved.levels,
@@ -980,6 +1074,11 @@ function applyModelDecision(
   const activationClass: "immediate" | "conditional" =
     planType === "immediate" ? "immediate" : "conditional";
   const netRr = selected?.netRr;
+  const cleanedActivationCondition =
+    sanitizePublicText(activationCondition ?? "").slice(0, 400) || undefined;
+  const normalizedActivationRule = activationRule
+    ? normalizeActivationRule(activationRule, input.market.interval)
+    : undefined;
   const plan: AgentRecommendation | null = resolved.levels
     ? {
         action: direction,
@@ -1002,14 +1101,10 @@ function applyModelDecision(
         // a card whose header says "valid now" must not carry a body sentence
         // saying "only executable if price returns to the zone".
         triggerCondition:
-          sanitizePublicText(parsed.activationCondition ?? "").slice(0, 400) ||
+          cleanedActivationCondition ||
           (planType === "immediate" ? undefined : selected?.triggerCondition),
-        // Carried only when the model actually stated one. A plan with no
-        // machine-checkable rule keeps entry semantics rather than inheriting
-        // a condition it never expressed.
-        activationRule: parsed.activationRule
-          ? normalizeActivationRule(parsed.activationRule, input.market.interval)
-          : undefined,
+        // Carried when the model stated one, or when conflict coercion synthesized it.
+        activationRule: normalizedActivationRule,
         invalidationLevel: resolved.levels.stopLoss,
         invalidationRule:
           sanitizePublicText(parsed.invalidationRule).slice(0, 400) ||
@@ -1023,8 +1118,8 @@ function applyModelDecision(
         action: direction,
         planType,
         executionState,
-        triggerCondition:
-          sanitizePublicText(parsed.activationCondition ?? "").slice(0, 400) || undefined,
+        triggerCondition: cleanedActivationCondition,
+        activationRule: normalizedActivationRule,
         invalidationRule: sanitizePublicText(parsed.invalidationRule).slice(0, 400),
         alternativeScenario: sanitizePublicText(parsed.alternativeScenario).slice(0, 400),
         validityCandles: parsed.validityCandles,
@@ -1044,6 +1139,28 @@ function applyModelDecision(
       // it, the analysis frame led by construction — recorded as such rather
       // than dropped, so every decision carries a timeframe-agreement ruling.
       { lead: input.market.interval, context: null, timing: null };
+
+  const publicReasoningSummary = clean(parsed.publicReasoningSummary, 5);
+  const alternativeScenario = sanitizePublicText(parsed.alternativeScenario).slice(0, 400);
+  // On conflict-driven conditional plans, surface adopted vs alternative when missing.
+  if (
+    (coercedFromImmediate || mtfConflict || competingEvidence) &&
+    alternativeScenario &&
+    !publicReasoningSummary.some((line) =>
+      /alternative|البديل|السيناريو البديل|runner-up|adopted|المعتمد/i.test(line),
+    )
+  ) {
+    const note =
+      input.locale === "en"
+        ? `Adopted scenario stands; alternative if invalidation hits: ${alternativeScenario}`
+        : `السيناريو المعتمد قائم؛ البديل عند الإبطال: ${alternativeScenario}`;
+    const cleanedNote = sanitizePublicText(note).slice(0, 240);
+    if (publicReasoningSummary.length >= 5) {
+      publicReasoningSummary[4] = cleanedNote;
+    } else {
+      publicReasoningSummary.push(cleanedNote);
+    }
+  }
 
   return {
     decision: direction,
@@ -1081,7 +1198,7 @@ function applyModelDecision(
       dataSufficient: input.market.dataQuality.sufficient,
       validityCandles: parsed.validityCandles,
     }).dimensions,
-    publicReasoningSummary: clean(parsed.publicReasoningSummary, 5),
+    publicReasoningSummary: publicReasoningSummary.slice(0, 5),
   };
 }
 
