@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { ToolAnnotations } from "../registry.js";
 
-export type ToolDomain = "core" | "market" | "mt5" | "charts";
+export type ToolDomain = "core" | "market" | "mt5" | "charts" | "quantAgent";
 
 export interface ToolDefinition {
   name: string;

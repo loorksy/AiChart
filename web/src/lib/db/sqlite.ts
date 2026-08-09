@@ -550,6 +550,50 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
     ON push_subscriptions (user_id);
 
+  -- Quant Agent Chat's Watchlist + AI Scheduled Monitors right rail (plan
+  -- "Feature A — Watchlist + AI Scheduled Monitors" §A1). Fully independent
+  -- of 'lib/store.ts' (Lonora-scoped) — these back 'lib/quantAgent/*Store.ts'
+  -- only, mirroring the isolation 'agent_chats' agent_id scoping already
+  -- established for Quant Agent Chat.
+  CREATE TABLE IF NOT EXISTS quant_agent_watchlist_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    symbol      TEXT NOT NULL,
+    market      TEXT NOT NULL DEFAULT 'forex',
+    created_at  INTEGER NOT NULL,
+    UNIQUE (user_id, symbol, market),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_quant_agent_watchlist_user
+    ON quant_agent_watchlist_items (user_id, created_at DESC);
+
+  -- notify_email is intentionally NOT a column yet: no email provider
+  -- (SMTP/Resend/SendGrid) exists anywhere in this codebase to actually
+  -- deliver it. Add it as a real column once an operator chooses a provider
+  -- (plan §A1) — never fabricate a channel that cannot send.
+  CREATE TABLE IF NOT EXISTS quant_agent_monitors (
+    id                            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                       INTEGER NOT NULL,
+    symbol                        TEXT NOT NULL,
+    market                        TEXT NOT NULL DEFAULT 'forex',
+    interval                      TEXT NOT NULL,
+    notify_telegram               INTEGER NOT NULL DEFAULT 1,
+    notify_push                   INTEGER NOT NULL DEFAULT 0,
+    notify_webhook_url            TEXT,
+    enabled                       INTEGER NOT NULL DEFAULT 1,
+    last_fired_recommendation_id  TEXT,
+    last_checked_at               INTEGER,
+    created_at                    INTEGER NOT NULL,
+    updated_at                    INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_quant_agent_monitors_user
+    ON quant_agent_monitors (user_id, created_at DESC);
+  -- The cron sweep's own lookup shape: all due candidates for one (symbol,
+  -- interval) group, regardless of which user owns them.
+  CREATE INDEX IF NOT EXISTS idx_quant_agent_monitors_due
+    ON quant_agent_monitors (enabled, symbol, interval);
+
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id             INTEGER NOT NULL,
@@ -816,6 +860,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS agent_chats (
     id                   TEXT PRIMARY KEY,
     user_id              INTEGER NOT NULL,
+    agent_id             TEXT NOT NULL DEFAULT 'lonora',
     title                TEXT NOT NULL DEFAULT 'محادثة جديدة',
     symbol               TEXT,
     interval             TEXT,
@@ -823,6 +868,7 @@ const SCHEMA = `
     created_at           INTEGER NOT NULL,
     updated_at           INTEGER NOT NULL,
     last_message_preview TEXT,
+    pending_task_json    TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -833,6 +879,7 @@ const SCHEMA = `
     id                TEXT PRIMARY KEY,
     chat_id           TEXT NOT NULL,
     user_id           INTEGER NOT NULL,
+    agent_id          TEXT NOT NULL DEFAULT 'lonora',
     role              TEXT NOT NULL,
     content           TEXT NOT NULL,
     result_json       TEXT,
@@ -1319,6 +1366,40 @@ function migrate(db: Database.Database) {
   if (!dpCols.some((c) => c.name === "kind")) {
     db.exec("ALTER TABLE dynamic_pages ADD COLUMN kind TEXT NOT NULL DEFAULT 'page'");
   }
+
+  // Second chat-capable agent (Quant Agent) support: existing rows default to
+  // 'lonora' so every pre-migration chat/message stays exactly where it was.
+  // Indexed here, not in SCHEMA: on a database that predates the column the
+  // schema pass runs before this migration, so indexing it there would fail
+  // and take the whole initDb with it (same reasoning as decision_parity below).
+  const agentChatsCols = db
+    .prepare("PRAGMA table_info(agent_chats)")
+    .all() as Array<{ name: string }>;
+  if (!agentChatsCols.some((c) => c.name === "agent_id")) {
+    db.exec("ALTER TABLE agent_chats ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'lonora'");
+  }
+  const agentChatMessagesCols = db
+    .prepare("PRAGMA table_info(agent_chat_messages)")
+    .all() as Array<{ name: string }>;
+  if (!agentChatMessagesCols.some((c) => c.name === "agent_id")) {
+    db.exec(
+      "ALTER TABLE agent_chat_messages ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'lonora'",
+    );
+  }
+  // Composer Coach (plan Feature B): the in-progress guided `generate_strategy`
+  // wizard state for a chat session, nullable — only ever populated for
+  // agent_id='quant_agent' sessions, a Lonora chat just carries an unused
+  // NULL column here.
+  if (!agentChatsCols.some((c) => c.name === "pending_task_json")) {
+    db.exec("ALTER TABLE agent_chats ADD COLUMN pending_task_json TEXT");
+  }
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_agent_chats_user_agent ON agent_chats (user_id, agent_id, updated_at DESC)",
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat_agent ON agent_chat_messages (chat_id, agent_id, created_at)",
+  );
+
   if (!recCols.some((c) => c.name === "factors")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN factors TEXT");
   }

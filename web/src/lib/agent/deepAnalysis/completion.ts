@@ -670,6 +670,7 @@ async function appendChatUpdate(
   if (!run.chatId) return;
   try {
     await appendMessage(run.userId, run.chatId, {
+      agentId: "lonora",
       role: "assistant",
       content: text,
       analysisId: run.analysisId,
@@ -677,7 +678,7 @@ async function appendChatUpdate(
       symbol: run.symbol,
       interval: run.interval,
     });
-    void refreshChatMetaAfterAssistantTurn(run.userId, run.chatId);
+    void refreshChatMetaAfterAssistantTurn(run.userId, run.chatId, "lonora");
   } catch (err) {
     // Session deleted — handle safely.
     log.info("chat update skipped (session missing or unauthorized)", {

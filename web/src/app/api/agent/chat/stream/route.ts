@@ -339,7 +339,7 @@ export async function POST(req: NextRequest) {
     if (FEATURES.agentContextV2()) {
       try {
         const [persisted, recalled] = await Promise.all([
-          getMessages(user.id, sessionId, 160),
+          getMessages(user.id, sessionId, "lonora", 160),
           recallAgentMemoryForContext({
             userId: user.id,
             query: resolvedMessage,

@@ -11,6 +11,7 @@ import {
   isDefaultChatTitle,
 } from "./composeChatMeta";
 import type {
+  AgentChatAgentId,
   AgentChatLanguage,
   AgentChatMessageRecord,
   AgentChatSession,
@@ -58,6 +59,7 @@ function previewOf(content: string): string {
 interface ChatRow {
   id: string;
   user_id: number;
+  agent_id: string;
   title: string;
   symbol: string | null;
   interval: string | null;
@@ -65,11 +67,13 @@ interface ChatRow {
   created_at: number;
   updated_at: number;
   last_message_preview: string | null;
+  pending_task_json?: string | null;
 }
 
 interface MessageRow {
   id: string;
   chat_id: string;
+  agent_id: string;
   role: string;
   content: string;
   result_json: string | null;
@@ -81,9 +85,20 @@ interface MessageRow {
 }
 
 function toSession(row: ChatRow): AgentChatSession {
+  // Same defensive try/catch discipline as `toMessage`'s `result_json` parse
+  // below — a malformed/legacy value must never break loading the session.
+  let pendingTask: unknown;
+  if (row.pending_task_json) {
+    try {
+      pendingTask = JSON.parse(row.pending_task_json);
+    } catch {
+      pendingTask = undefined;
+    }
+  }
   return {
     id: row.id,
     userId: Number(row.user_id),
+    agentId: (row.agent_id === "quant_agent" ? "quant_agent" : "lonora") as AgentChatAgentId,
     title: row.title,
     symbol: row.symbol ?? undefined,
     interval: row.interval ?? undefined,
@@ -91,6 +106,7 @@ function toSession(row: ChatRow): AgentChatSession {
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     lastMessagePreview: row.last_message_preview ?? undefined,
+    pendingTask,
   };
 }
 
@@ -119,6 +135,7 @@ function toMessage(row: MessageRow): AgentChatMessageRecord {
 
 export async function createChat(input: {
   userId: number;
+  agentId: AgentChatAgentId;
   symbol?: string;
   interval?: string;
   language?: AgentChatLanguage;
@@ -130,11 +147,12 @@ export async function createChat(input: {
   const title = input.title?.trim() || defaultChatTitle(language);
   await execute(
     `INSERT INTO agent_chats
-       (id, user_id, title, symbol, interval, language, created_at, updated_at, last_message_preview)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, agent_id, title, symbol, interval, language, created_at, updated_at, last_message_preview)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.userId,
+      input.agentId,
       title,
       input.symbol ?? null,
       input.interval ?? null,
@@ -147,6 +165,7 @@ export async function createChat(input: {
   return {
     id,
     userId: input.userId,
+    agentId: input.agentId,
     title,
     symbol: input.symbol,
     interval: input.interval,
@@ -158,14 +177,15 @@ export async function createChat(input: {
 
 export async function listChats(
   userId: number,
+  agentId: AgentChatAgentId,
   limit = 50,
 ): Promise<AgentChatSession[]> {
   const rows = await query<ChatRow>(
     `SELECT * FROM agent_chats
-      WHERE user_id = ?
+      WHERE user_id = ? AND agent_id = ?
       ORDER BY updated_at DESC
       LIMIT ?`,
-    [userId, Math.max(1, Math.min(limit, 200))],
+    [userId, agentId, Math.max(1, Math.min(limit, 200))],
   );
   return rows.map(toSession);
 }
@@ -173,10 +193,11 @@ export async function listChats(
 export async function getChat(
   userId: number,
   chatId: string,
+  agentId: AgentChatAgentId,
 ): Promise<AgentChatSession | null> {
   const row = await queryOne<ChatRow>(
-    "SELECT * FROM agent_chats WHERE id = ? AND user_id = ?",
-    [chatId, userId],
+    "SELECT * FROM agent_chats WHERE id = ? AND user_id = ? AND agent_id = ?",
+    [chatId, userId, agentId],
   );
   return row ? toSession(row) : null;
 }
@@ -184,20 +205,21 @@ export async function getChat(
 export async function getMessages(
   userId: number,
   chatId: string,
+  agentId: AgentChatAgentId,
   limit = 500,
 ): Promise<AgentChatMessageRecord[]> {
   // Scope through the chat's owner so a message read can't cross tenants.
-  const chat = await getChat(userId, chatId);
+  const chat = await getChat(userId, chatId, agentId);
   if (!chat) return [];
   // Take the MOST RECENT window (a bounded read of a long conversation must
   // keep the latest turns — the old ascending LIMIT silently dropped them),
   // then restore chronological order for consumers.
   const rows = await query<MessageRow>(
     `SELECT * FROM agent_chat_messages
-      WHERE chat_id = ?
+      WHERE chat_id = ? AND agent_id = ?
       ORDER BY created_at DESC, id DESC
       LIMIT ?`,
-    [chatId, Math.max(1, Math.min(limit, 2000))],
+    [chatId, agentId, Math.max(1, Math.min(limit, 2000))],
   );
   return rows.map(toMessage).reverse();
 }
@@ -213,7 +235,7 @@ export async function appendMessage(
   chatId: string,
   input: AppendAgentChatMessageInput,
 ): Promise<AgentChatMessageRecord | null> {
-  const chat = await getChat(userId, chatId);
+  const chat = await getChat(userId, chatId, input.agentId);
   if (!chat) return null;
 
   const now = monotonicNow();
@@ -222,12 +244,13 @@ export async function appendMessage(
     input.result === undefined ? null : safeStringify(input.result);
   await execute(
     `INSERT INTO agent_chat_messages
-       (id, chat_id, user_id, role, content, result_json, recommendation_id, analysis_id, symbol, interval, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, chat_id, user_id, agent_id, role, content, result_json, recommendation_id, analysis_id, symbol, interval, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       chatId,
       userId,
+      input.agentId,
       input.role,
       input.content,
       resultJson,
@@ -243,7 +266,7 @@ export async function appendMessage(
   await execute(
     `UPDATE agent_chats
         SET updated_at = ?, last_message_preview = ?, symbol = COALESCE(?, symbol), interval = COALESCE(?, interval)
-      WHERE id = ? AND user_id = ?`,
+      WHERE id = ? AND user_id = ? AND agent_id = ?`,
     [
       now,
       previewOf(input.content),
@@ -251,6 +274,7 @@ export async function appendMessage(
       input.interval ?? null,
       chatId,
       userId,
+      input.agentId,
     ],
   );
 
@@ -272,9 +296,10 @@ export async function appendMessage(
 export async function updateChatMeta(
   userId: number,
   chatId: string,
+  agentId: AgentChatAgentId,
   meta: { title: string; hook: string },
 ): Promise<AgentChatSession | null> {
-  const chat = await getChat(userId, chatId);
+  const chat = await getChat(userId, chatId, agentId);
   if (!chat) return null;
   const title = meta.title.replace(/\s+/g, " ").trim().slice(0, MAX_TITLE_LEN) || chat.title;
   const hook = meta.hook.replace(/\s+/g, " ").trim().slice(0, PREVIEW_LEN) || chat.lastMessagePreview || "";
@@ -282,21 +307,53 @@ export async function updateChatMeta(
   await execute(
     `UPDATE agent_chats
         SET title = ?, last_message_preview = ?, updated_at = ?
-      WHERE id = ? AND user_id = ?`,
-    [title, hook || null, now, chatId, userId],
+      WHERE id = ? AND user_id = ? AND agent_id = ?`,
+    [title, hook || null, now, chatId, userId, agentId],
   );
-  return getChat(userId, chatId);
+  return getChat(userId, chatId, agentId);
+}
+
+/**
+ * Persist (or clear, with `null`) the Composer Coach wizard state for a chat.
+ * Tenant-scoped exactly like `updateChatMeta`: scoped by `user_id` AND
+ * `agent_id`, so a Lonora chat can never read/write this column through this
+ * function — structurally it's just an unused column for Lonora sessions.
+ */
+export async function setPendingTask(
+  userId: number,
+  chatId: string,
+  agentId: AgentChatAgentId,
+  pendingTask: unknown | null,
+): Promise<AgentChatSession | null> {
+  const chat = await getChat(userId, chatId, agentId);
+  if (!chat) return null;
+  const json = pendingTask === null || pendingTask === undefined ? null : safeStringify(pendingTask);
+  await execute(
+    `UPDATE agent_chats
+        SET pending_task_json = ?
+      WHERE id = ? AND user_id = ? AND agent_id = ?`,
+    [json, chatId, userId, agentId],
+  );
+  return getChat(userId, chatId, agentId);
 }
 
 export { isDefaultChatTitle };
 
-export async function deleteChat(userId: number, chatId: string): Promise<boolean> {
-  const chat = await getChat(userId, chatId);
+export async function deleteChat(
+  userId: number,
+  chatId: string,
+  agentId: AgentChatAgentId,
+): Promise<boolean> {
+  const chat = await getChat(userId, chatId, agentId);
   if (!chat) return false;
-  await execute("DELETE FROM agent_chat_messages WHERE chat_id = ?", [chatId]);
-  await execute("DELETE FROM agent_chats WHERE id = ? AND user_id = ?", [
+  await execute("DELETE FROM agent_chat_messages WHERE chat_id = ? AND agent_id = ?", [
+    chatId,
+    agentId,
+  ]);
+  await execute("DELETE FROM agent_chats WHERE id = ? AND user_id = ? AND agent_id = ?", [
     chatId,
     userId,
+    agentId,
   ]);
   return true;
 }

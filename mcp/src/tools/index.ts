@@ -5,6 +5,7 @@ import { registerMarketTools } from "./market.js";
 import { registerCoreTools } from "./core.js";
 import { registerMt5Tools } from "./mt5.js";
 import { registerChartsTools } from "./charts.js";
+import { registerQuantAgentTools } from "./quantAgent.js";
 import { registerWidgets } from "../ui/index.js";
 import { bootstrapText } from "../onboarding/bootstrap.js";
 import { discoverSkills } from "../skills/catalog.js";
@@ -157,5 +158,6 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
   registerMarketTools(server, bridge);
   registerMt5Tools(server, bridge);
   registerChartsTools(server, bridge);
+  registerQuantAgentTools(server, bridge);
   registerWidgets(server);
 }

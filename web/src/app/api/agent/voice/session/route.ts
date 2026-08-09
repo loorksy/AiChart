@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const { chatId, locale } = parsed.value;
 
     // Ownership: the voice session is bound to a chat the user owns.
-    const chat = await getChat(user.id, chatId);
+    const chat = await getChat(user.id, chatId, "lonora");
     if (!chat) {
       return NextResponse.json({ error: "chat_not_found" }, { status: 404 });
     }

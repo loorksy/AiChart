@@ -32,6 +32,17 @@ const DURATION_MS: Record<ResearchTimeframe, number> = {
   "1d": 24 * 60 * 60_000,
 };
 
+/**
+ * Same coverage gate `strategies/pipeline.ts`'s `submitStrategyBacktest`
+ * checks on the returned bar count — duplicated here (not imported) to avoid
+ * a layering cycle (`pipeline.ts` already imports this module). Keep these
+ * two numbers in sync if either changes.
+ */
+const MIN_SUFFICIENT_BARS = 200;
+const MIN_DEPTH_FRACTION = 0.5;
+/** Below this fraction of the disjoint OANDA window, warm demand + fire a backfill. */
+const ANALYSIS_THIN_FRACTION = 0.5;
+
 function invalid(message: string): never {
   throw new ResearchServiceError("RESEARCH_INPUT_INVALID", message, 400);
 }
@@ -144,19 +155,131 @@ export function buildAiChartCandleWarehouseEnvelope(
   };
 }
 
+/**
+ * When the MT (`getCandles`) coverage for the requested window is too thin
+ * by `submitStrategyBacktest`'s own gate, fill the gap from
+ * `getAnalysisCandles` (OANDA, analysis-only) — but ONLY the strictly older
+ * time window MT does not cover, never interleaved with MT bars at the same
+ * timestamp. Mixing two providers' bars for one timestamp would silently
+ * corrupt indicator continuity, so the two series are kept in disjoint,
+ * non-overlapping time ranges and simply concatenated in time order.
+ *
+ * Never merges when `fromMs` is unset: without a fixed range there is no
+ * window boundary to hand OANDA, so the caller gets exactly what it asked
+ * for (MT-only), same as before this fallback existed.
+ */
+async function supplementFromAnalysisSource(params: {
+  symbol: string;
+  timeframe: ResearchTimeframe;
+  fromMs: number;
+  toMs: number;
+  limit: number;
+  mtCandles: StoredCandle[];
+}): Promise<StoredCandle[]> {
+  // Only splice when the analysis source is actually configured. This function
+  // is reached from Lonora's own paths — `deepAnalysis/enqueue.ts` (a live
+  // analysis turn) and `strategies/pipeline.ts` (the mass-backtest cron) — and
+  // the envelope it feeds stamps every bar `aichart_candle_warehouse`, so a
+  // spliced bar is indistinguishable downstream from the operator's own broker
+  // history. Without this gate the read still runs with no OANDA credentials
+  // set anywhere, and thin MT depth quietly turns what used to be an honest
+  // "backfill first" failure into a passing backtest over foreign bars — and
+  // backtest evidence is what gates recommendations.
+  const { oandaConfigured } = await import("@/lib/markets/oanda");
+  if (!oandaConfigured()) return params.mtCandles;
+
+  const step = DURATION_MS[params.timeframe];
+  const mtComplete = params.mtCandles.filter((candle) => candle.complete);
+
+  // The oldest MT bar in range is the boundary: OANDA may only fill strictly
+  // older than that (never the same or a later timestamp).
+  const mtEarliest = mtComplete.length
+    ? Math.min(...mtComplete.map((candle) => candle.time))
+    : null;
+  const analysisToMs = mtEarliest != null ? mtEarliest - step : params.toMs;
+  if (analysisToMs < params.fromMs) {
+    // MT's earliest bar already sits at/before the requested start — nothing
+    // older is left for OANDA to add.
+    return params.mtCandles;
+  }
+  // Budgeted against the RAW (not complete-only) MT count: the combined
+  // array is what `buildAiChartCandleWarehouseEnvelope` checks against
+  // `normalized.limit` before it filters down to complete bars.
+  const remainingBudget = Math.max(0, params.limit - params.mtCandles.length);
+  if (remainingBudget === 0) return params.mtCandles;
+
+  const { getAnalysisCandles } = await import("@/lib/candles/analysisCandleRepository");
+  const analysisCandles = await getAnalysisCandles({
+    symbol: params.symbol,
+    interval: params.timeframe,
+    fromMs: params.fromMs,
+    toMs: analysisToMs,
+    limit: remainingBudget,
+    order: "asc",
+  });
+
+  // Warm demand for next time whenever the analysis-only store itself turns
+  // out thin for this disjoint window — same "record demand, fire a
+  // fire-and-forget backfill" pattern `warehouseOhlc.ts`/`warmDemand.ts`
+  // already use for the MT case, reused rather than reinvented.
+  const expectedAnalysisBars = Math.max(
+    1,
+    Math.floor((analysisToMs - params.fromMs) / step) + 1,
+  );
+  const analysisTarget = Math.min(remainingBudget, expectedAnalysisBars);
+  if (analysisCandles.length < analysisTarget * ANALYSIS_THIN_FRACTION) {
+    const [{ recordWarmDemand }, { triggerAnalysisBackfill }] = await Promise.all([
+      import("@/lib/candles/warmDemand"),
+      import("@/lib/candles/oandaBackfillService"),
+    ]);
+    void recordWarmDemand({ symbol: params.symbol, interval: params.timeframe });
+    triggerAnalysisBackfill({
+      symbol: params.symbol,
+      interval: params.timeframe,
+      fromMs: params.fromMs,
+      toMs: analysisToMs,
+    });
+  }
+
+  if (!analysisCandles.length) return params.mtCandles;
+  return [...analysisCandles, ...params.mtCandles].sort((a, b) => a.time - b.time);
+}
+
 export async function exportAiChartCandleWarehouse(
   input: AiChartWarehouseExportInput,
 ): Promise<AiChartCandleWarehouseEnvelope> {
   requireResearchBacktestEnabled();
   const exportedAt = new Date();
   const normalized = validatedInput(input, exportedAt.getTime());
+  const toMs = input.toMs ?? exportedAt.getTime();
   const { getCandles } = await import("@/lib/candles/candleRepository");
-  const candles = await getCandles({
+  const mtCandles = await getCandles({
     symbol: normalized.symbol,
     interval: normalized.timeframe,
     fromMs: input.fromMs,
-    toMs: input.toMs ?? exportedAt.getTime(),
+    toMs,
     limit: normalized.limit,
   });
+
+  let candles = mtCandles;
+  if (input.fromMs !== undefined) {
+    const mtCompleteCount = mtCandles.filter((candle) => candle.complete).length;
+    const expectedCalendarBars = Math.ceil((toMs - input.fromMs) / DURATION_MS[normalized.timeframe]);
+    const minimumDepth = Math.max(
+      MIN_SUFFICIENT_BARS,
+      Math.floor(expectedCalendarBars * MIN_DEPTH_FRACTION),
+    );
+    if (mtCompleteCount < minimumDepth) {
+      candles = await supplementFromAnalysisSource({
+        symbol: normalized.symbol,
+        timeframe: normalized.timeframe,
+        fromMs: input.fromMs,
+        toMs,
+        limit: normalized.limit,
+        mtCandles,
+      });
+    }
+  }
+
   return buildAiChartCandleWarehouseEnvelope(input, candles, exportedAt);
 }

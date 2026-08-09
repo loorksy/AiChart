@@ -13,6 +13,7 @@ test("APP_NAV has Chart/Chat, unified Performance, Journal — no Chat History p
     "/workspace",
     "/performance",
     "/journal",
+    "/quant-agent",
     "/console/billing",
     "/console/support",
   ]);

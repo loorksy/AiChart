@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test, { afterEach } from "node:test";
 
 import type { StoredCandle } from "@/lib/candles/candleRepository";
@@ -145,6 +148,180 @@ test("disabled warehouse helper fails before loading the Candle Warehouse", asyn
     exportAiChartCandleWarehouse({ symbol: "EURUSD", timeframe: "1h" }),
     (error: unknown) =>
       error instanceof ResearchServiceError && error.code === "RESEARCH_SERVICE_DISABLED",
+  );
+});
+
+function makeRows(n: number, startMs: number, stepMs: number, priceBase: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    time: startMs + i * stepMs,
+    open: priceBase + i * 0.0001,
+    high: priceBase + i * 0.0001 + 0.0005,
+    low: priceBase + i * 0.0001 - 0.0005,
+    close: priceBase + i * 0.0001 + 0.0002,
+    volume: 100 + i,
+    complete: true,
+  }));
+}
+
+/**
+ * Real sqlite backend (throwaway DB file, same pattern as
+ * `candles/__tests__/analysisCandleRepository.test.ts`). Proves the plan's
+ * central backtest-fallback constraint: when MT coverage is too thin (same
+ * gate `strategies/pipeline.ts`'s `submitStrategyBacktest` checks), the
+ * OANDA-sourced analysis store fills ONLY the strictly older, disjoint
+ * window MT does not cover — never interleaved bars at the same timestamp.
+ */
+test("backtest fallback fills the disjoint older window from OANDA without ever overlapping an MT timestamp (sqlite)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "aichart-warehouse-fallback-"));
+  process.env.DB_PATH = join(dir, "test.db");
+  process.env.ENCRYPTION_KEY = "0".repeat(64);
+  process.env.APP_SECRET = "test-secret";
+  process.env.RESEARCH_SERVICE_ENABLED = "1";
+  process.env.RESEARCH_BACKTEST_ENABLED = "1";
+  delete process.env.DATABASE_URL;
+  // The splice is gated on `oandaConfigured()`, so a token must be present for
+  // this scenario to run at all. Reads still come from the local store — the
+  // only outbound path is `triggerAnalysisBackfill`, which is fire-and-forget
+  // and swallows its own rejection, so a failed auth or DNS lookup in CI
+  // cannot affect the assertions below.
+  process.env.OANDA_API_TOKEN = "test-analysis-token";
+
+  const db = await import("@/lib/db");
+  await db.initDb();
+  const { upsertCandles } = await import("@/lib/candles/candleRepository");
+  const { upsertAnalysisCandles } = await import("@/lib/candles/analysisCandleRepository");
+  const { listWarmDemand } = await import("@/lib/candles/warmDemand");
+
+  const STEP = 60 * 60_000; // 1h
+  const FROM = 1_700_000_000_000;
+
+  // --- Scenario A: MT thin (50 bars) + OANDA covers the older gap ---------
+  const symbolA = "EURUSD";
+  const toA = FROM + 400 * STEP; // expectedCalendarBars = 400 → minimumDepth = 200
+  const mtA = makeRows(50, FROM + 350 * STEP, STEP, 1.1); // recent tail only — insufficient
+  const oandaA = makeRows(301, FROM, STEP, 9.9); // older window, disjoint from mtA
+  await upsertCandles(symbolA, "1h", mtA);
+  await upsertAnalysisCandles(symbolA, "1h", oandaA);
+
+  const envelopeA = await exportAiChartCandleWarehouse({
+    symbol: symbolA,
+    timeframe: "1h",
+    fromMs: FROM,
+    toMs: toA,
+    limit: 1000,
+  });
+  assert.equal(envelopeA.bars.length, 351, "OANDA's 301 + MT's 50, disjoint, both present");
+  const timesA = envelopeA.bars.map((b) => new Date(b.timestamp).getTime());
+  assert.deepEqual(timesA, [...timesA].sort((a, b) => a - b), "strictly time-ordered");
+  assert.equal(new Set(timesA).size, timesA.length, "no duplicate timestamps across providers");
+  const mtEarliestA = Math.min(...mtA.map((c) => c.time));
+  const oandaLatestA = Math.max(...oandaA.map((c) => c.time));
+  assert.ok(oandaLatestA < mtEarliestA, "OANDA bars stay strictly older than every MT bar");
+  assert.ok(
+    timesA.every((t) => t <= oandaLatestA || t >= mtEarliestA),
+    "no bar falls inside the gap between the two disjoint windows",
+  );
+
+  // --- Scenario B: MT alone already clears the gate — OANDA untouched -----
+  const symbolB = "GBPUSD";
+  const toB = FROM + 250 * STEP;
+  const mtB = makeRows(250, FROM, STEP, 1.3); // 250 >= minimumDepth(200) — sufficient alone
+  await upsertCandles(symbolB, "1h", mtB);
+  // Deliberately NO OANDA rows for symbolB — if the fallback fired anyway,
+  // there would be nothing to merge in and the count would still match, so
+  // the real assertion is that a below-gate OANDA row for the SAME symbol
+  // never appears: there is none, so any leak would show as an error, not a
+  // silent pass.
+  const envelopeB = await exportAiChartCandleWarehouse({
+    symbol: symbolB,
+    timeframe: "1h",
+    fromMs: FROM,
+    toMs: toB,
+    limit: 1000,
+  });
+  assert.equal(envelopeB.bars.length, 250, "MT alone satisfies the gate — no fallback needed");
+
+  // --- Scenario C: MT thin AND OANDA thin for the gap → warm demand fires -
+  const symbolC = "USDJPY";
+  const toC = FROM + 400 * STEP;
+  const mtC = makeRows(50, FROM + 350 * STEP, STEP, 150);
+  const oandaCThin = makeRows(5, FROM, STEP, 150); // far fewer than the ~350-bar gap
+  await upsertCandles(symbolC, "1h", mtC);
+  await upsertAnalysisCandles(symbolC, "1h", oandaCThin);
+
+  await exportAiChartCandleWarehouse({
+    symbol: symbolC,
+    timeframe: "1h",
+    fromMs: FROM,
+    toMs: toC,
+    limit: 1000,
+  });
+  // recordWarmDemand/triggerAnalysisBackfill are fire-and-forget — give the
+  // in-process DB write a tick to land before reading it back.
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  const demand = await listWarmDemand();
+  assert.ok(
+    demand.some((entry) => entry.symbol === symbolC && entry.interval === "1h"),
+    "thin OANDA coverage for the disjoint gap registers warm demand for next time",
+  );
+});
+
+/**
+ * Regression: the splice had no `oandaConfigured()` gate — only a `fromMs`
+ * check — so it ran with no OANDA credentials set anywhere. That is not a
+ * no-op, because `getAnalysisCandles` reads a shared table, and this function
+ * is reached from Lonora's own paths (`deepAnalysis/enqueue.ts` on a live
+ * analysis turn, `strategies/pipeline.ts` on the mass-backtest cron). The
+ * envelope stamps every bar `aichart_candle_warehouse`, so anything spliced in
+ * is indistinguishable downstream from the operator's own broker history, and
+ * thin MT depth silently became a passing backtest instead of an honest
+ * "backfill first" failure.
+ */
+test("backtest fallback does NOT splice analysis bars when the analysis source is unconfigured (sqlite)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "aichart-warehouse-nogate-"));
+  process.env.DB_PATH = join(dir, "test.db");
+  process.env.ENCRYPTION_KEY = "0".repeat(64);
+  process.env.APP_SECRET = "test-secret";
+  process.env.RESEARCH_SERVICE_ENABLED = "1";
+  process.env.RESEARCH_BACKTEST_ENABLED = "1";
+  delete process.env.DATABASE_URL;
+  delete process.env.OANDA_API_TOKEN;
+  // `getPlatformValue` caches a hit for the lifetime of the process, so an
+  // earlier test in this file that set the token would otherwise keep
+  // `oandaConfigured()` true here no matter what the env says.
+  const { clearPlatformConfigCache } = await import("@/lib/platformConfig");
+  clearPlatformConfigCache();
+
+  const db = await import("@/lib/db");
+  await db.initDb();
+  const { upsertCandles } = await import("@/lib/candles/candleRepository");
+  const { upsertAnalysisCandles } = await import("@/lib/candles/analysisCandleRepository");
+
+  const STEP = 60 * 60_000;
+  const FROM = 1_700_000_000_000;
+  const symbol = "USDCHF";
+  const to = FROM + 400 * STEP; // minimumDepth = 200, so 50 MT bars is thin
+
+  await upsertCandles(symbol, "1h", makeRows(50, FROM + 350 * STEP, STEP, 0.9));
+  await upsertAnalysisCandles(symbol, "1h", makeRows(301, FROM, STEP, 9.9));
+
+  const envelope = await exportAiChartCandleWarehouse({
+    symbol,
+    timeframe: "1h",
+    fromMs: FROM,
+    toMs: to,
+    limit: 1000,
+  });
+
+  assert.equal(
+    envelope.bars.length,
+    50,
+    "with no analysis source configured the export stays MT-only — 301 analysis bars must not appear",
+  );
+  const prices = envelope.bars.map((b) => b.close);
+  assert.ok(
+    prices.every((p) => p < 5),
+    "no 9.9-based analysis bar leaked into a Lonora dataset",
   );
 });
 

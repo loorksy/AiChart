@@ -6,6 +6,8 @@ import {
   resolveActiveMarket,
 } from "@/lib/marketPolicy";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
+import { ANALYSIS_BOOK_LABEL, fetchAnalysisCandleFeed } from "@/lib/markets/analysisCandleFeed";
 import {
   detectNumericMarketRegime,
   MARKET_REGIME_THRESHOLDS,
@@ -38,6 +40,28 @@ export const GET = withBridge(
         400,
         `limit must be an integer between ${MARKET_REGIME_THRESHOLDS.minimumCandles} and ${MAX_LIMIT}.`,
       );
+    }
+
+    const decision = await resolveMarketDataSource(userId, null);
+
+    // No linked account to read from — analysis-only reference data instead
+    // of an error (plan §5: detect_market_regime is analysis-only, no
+    // account tie-in).
+    if (!decision.available.metaapi) {
+      const fed = await fetchAnalysisCandleFeed(symbol, interval, limit);
+      const analysis = detectNumericMarketRegime(fed.candles);
+      return {
+        symbol: fed.symbol,
+        interval: fed.interval,
+        market,
+        methodVersion: "atr-adx-bollinger-v1",
+        ...analysis,
+        ohlcSource: ANALYSIS_BOOK_LABEL,
+        cachedAt: Date.now(),
+        ageMs: 0,
+        fromCache: false,
+        warning: fed.warning,
+      };
     }
 
     let ohlc = await fetchOhlc({

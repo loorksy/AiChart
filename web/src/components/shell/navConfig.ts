@@ -6,6 +6,7 @@ import {
   KeyRound,
   LifeBuoy,
   NotebookPen,
+  Radar,
   Shield,
   Stethoscope,
   Users,
@@ -36,6 +37,9 @@ export const APP_NAV: NavItem[] = [
   // routes. Old URLs redirect here with section anchors.
   { href: "/performance", labelKey: "nav.performance", icon: BarChart3 },
   { href: "/journal", labelKey: "nav.journal", icon: NotebookPen },
+  // Quant Agent (plan §4): a second, independent recommendation engine —
+  // its own nav destination so it never reads as part of Lonora's feed.
+  { href: "/quant-agent", labelKey: "nav.quant_agent", icon: Radar },
   // V2-A5: balance, statement, top-ups and subscription management.
   { href: "/console/billing", labelKey: "nav.billing", icon: Wallet },
   // V2-C: tickets — instant AI answer, human escalation on request.
