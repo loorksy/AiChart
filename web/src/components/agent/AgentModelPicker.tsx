@@ -107,13 +107,36 @@ export function ModelChoiceList({
   onChoose: (ref: string | null) => void;
 }) {
   const { t } = useLocale();
-  const grouped = models.reduce<Record<string, ModelOption[]>>((acc, m) => {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? models.filter(
+        (m) =>
+          m.label.toLowerCase().includes(q) ||
+          m.model.toLowerCase().includes(q) ||
+          m.ref.toLowerCase().includes(q),
+      )
+    : models;
+  const grouped = filtered.reduce<Record<string, ModelOption[]>>((acc, m) => {
     (acc[m.provider] ??= []).push(m);
     return acc;
   }, {});
 
   return (
     <div>
+      {models.length > 24 && (
+        <div className="px-2.5 pb-1.5 pt-1">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="ابحث عن نموذج…"
+            dir="rtl"
+            className="focus-ring tap-target h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs"
+            aria-label="بحث النماذج"
+          />
+        </div>
+      )}
       <button
         type="button"
         disabled={saving}
@@ -152,6 +175,9 @@ export function ModelChoiceList({
           ))}
         </div>
       ))}
+      {q && filtered.length === 0 && (
+        <p className="px-2.5 py-2 text-xs text-muted-foreground">لا نتائج.</p>
+      )}
     </div>
   );
 }
