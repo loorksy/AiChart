@@ -273,3 +273,188 @@ class GenerateValidateCodeRequest(BaseModel):
     description: str = ""
     regime_affinity: str
     code: str = Field(min_length=1, max_length=20_000)
+
+
+# ---------------------------------------------------------------------------
+# Automated bots (grid / DCA / martingale / layered martingale)
+#
+# SIMULATION ONLY. Every row these models describe is the output of a replay
+# against pushed-in bars — see `app/engine/bots/simulated_broker.py`. Nothing
+# persisted here has ever reached a venue, and `execution_mode` carries that
+# fact through the wire so a UI cannot lose it.
+#
+# Shapes derived from QuantDinger (https://github.com/OpenByteInc/QuantDinger),
+# Copyright Open Byte Inc., licensed under the Apache License, Version 2.0
+# (http://www.apache.org/licenses/LICENSE-2.0) —
+# `backend_api_python/app/services/strategy_runtime/executors.py` (the executor
+# config vocabulary and preview envelope), `.../app/services/grid/
+# resting_orders_repo.py` and `.../app/services/live_trading/grid_cells.py`.
+# ---------------------------------------------------------------------------
+
+BotType = Literal["grid", "dca", "martingale", "layered_martingale"]
+
+#: The only value `execution_mode` can hold in this service. Kept as a Literal
+#: of one so adding "live" is a type error in every file that reads it.
+BotExecutionMode = Literal["simulation"]
+
+
+class BotDefinition(BaseModel):
+    """One persisted `quant_bots` row — a saved bot configuration."""
+
+    id: str
+    owner_user_id: int
+    bot_type: BotType
+    name: str
+    symbol: str
+    market: str = "forex"
+    interval: str
+    execution_mode: BotExecutionMode = "simulation"
+    initial_capital: float
+    fee_rate: float
+    config: dict[str, Any] = Field(default_factory=dict)
+    levels: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    risk_diagnostics: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+
+
+class BotRun(BaseModel):
+    """One persisted `quant_bot_runs` row — a completed simulation."""
+
+    id: str
+    bot_id: str
+    owner_user_id: int
+    execution_mode: BotExecutionMode = "simulation"
+    status: Literal["completed", "invalid"]
+    bar_count: int = 0
+    from_time: str = ""
+    to_time: str = ""
+    cells_bootstrapped: int = 0
+    orders_placed: int = 0
+    fill_count: int = 0
+    matched_cycles: int = 0
+    realized_profit: float = 0.0
+    unrealized_profit: float = 0.0
+    total_commission: float = 0.0
+    ending_price: float = 0.0
+    resting_orders: int = 0
+    stop_reason: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    logs: list[dict[str, str]] = Field(default_factory=list)
+    cells: list[dict[str, Any]] = Field(default_factory=list)
+    error: str | None = None
+    created_at: str
+
+
+class BotFill(BaseModel):
+    """One persisted `quant_bot_fills` row — one simulated crossing."""
+
+    id: int = 0
+    run_id: str
+    owner_user_id: int
+    sequence: int
+    bar_time: str
+    cell_index: int
+    purpose: str
+    price: float
+    quantity: float
+
+
+class BotLedgerEntry(BaseModel):
+    """One persisted `quant_bot_ledger` row — one trade the fill produced.
+
+    `grid_matched_profit` is populated only on exits, and when it is, it is the
+    cell's own two-rung PnL rather than the FIFO answer. That override is
+    upstream's deliberate rule; see `app/engine/bots/fill_handler.py`.
+    """
+
+    id: int = 0
+    run_id: str
+    owner_user_id: int
+    sequence: int
+    trade_type: str
+    close_reason: str = ""
+    cell_index: int = -1
+    price: float
+    amount: float
+    commission: float = 0.0
+    profit: float | None = None
+    matched_entry_price: float | None = None
+    grid_matched_profit: float | None = None
+
+
+class BotPreviewRequest(BaseModel):
+    """Body for `POST /internal/quant-agent/bots/preview`. Pure: nothing is
+    stored and nothing is executed — a ladder of levels comes back."""
+
+    model_config = ConfigDict(extra="forbid")
+    bot_type: BotType = "grid"
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class BotPreviewResponse(BaseModel):
+    execution_mode: BotExecutionMode = "simulation"
+    status: Literal["ok", "invalid"]
+    bot_type: str = ""
+    config: dict[str, Any] = Field(default_factory=dict)
+    levels: list[dict[str, Any]] = Field(default_factory=list)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    risk_diagnostics: list[dict[str, Any]] = Field(default_factory=list)
+    blocking_warning: str = ""
+    error: str | None = None
+
+
+class BotCreateRequest(BaseModel):
+    """Body for `POST /internal/quant-agent/bots`."""
+
+    model_config = ConfigDict(extra="forbid")
+    owner_user_id: int = Field(gt=0)
+    bot_type: BotType = "grid"
+    name: str = Field(min_length=1, max_length=80)
+    symbol: str = Field(min_length=1, max_length=32)
+    market: str = Field(default="forex", min_length=1, max_length=32)
+    interval: str = Field(min_length=1, max_length=16)
+    initial_capital: float = Field(default=1000.0, ge=0, le=1_000_000)
+    fee_rate: float = Field(default=0.001, ge=0, le=0.05)
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class BotListResponse(BaseModel):
+    execution_mode: BotExecutionMode = "simulation"
+    bots: list[BotDefinition] = Field(default_factory=list)
+
+
+class BotSimulateRequest(BaseModel):
+    """Body for `POST /internal/quant-agent/bots/{bot_id}/simulate`.
+
+    `owner_user_id` is mandatory and is checked against the stored bot before
+    anything runs: an id in the path is never authority on its own.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    owner_user_id: int = Field(gt=0)
+    bars: list[Bar] = Field(min_length=1, max_length=20_000)
+
+    @model_validator(mode="after")
+    def _bars_strictly_ascending(self) -> BotSimulateRequest:
+        parsed = [datetime.fromisoformat(bar.time.replace("Z", "+00:00")) for bar in self.bars]
+        for previous, current in zip(parsed, parsed[1:], strict=False):
+            if current <= previous:
+                raise ValueError("bars must be strictly ascending by time with no duplicates")
+        return self
+
+
+class BotSimulateResponse(BaseModel):
+    execution_mode: BotExecutionMode = "simulation"
+    status: Literal["completed", "invalid"]
+    run: BotRun | None = None
+    fills: list[BotFill] = Field(default_factory=list)
+    ledger: list[BotLedgerEntry] = Field(default_factory=list)
+    error: str | None = None
+
+
+class BotRunListResponse(BaseModel):
+    execution_mode: BotExecutionMode = "simulation"
+    runs: list[BotRun] = Field(default_factory=list)

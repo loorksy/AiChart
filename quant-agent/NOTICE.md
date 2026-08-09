@@ -197,6 +197,119 @@ the original:
   contract includes it. `tests/test_factors_golden_regen.py` is the
   regeneration recipe for the golden fixture, not a test.
 
+## Automated bot engines (`app/engine/bots/`) — SIMULATION ONLY
+
+`app/engine/bots/levels.py`, `config.py`, `validator.py`, `cells.py`,
+`engine.py`, `fill_handler.py`, `ladders.py`, `simulated_broker.py` and the
+endpoints in `app/api/bots.py` are adapted from
+[QuantDinger](https://github.com/OpenByteInc/QuantDinger), Copyright Open Byte
+Inc., licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0). Upstream sources:
+`backend_api_python/app/services/grid/{levels,config,validator,engine,fill_handler,resting_orders_repo,poller,runner}.py`,
+`.../app/services/live_trading/{grid_cells,exchange_orders,records}.py`,
+`.../app/services/strategy_runtime/executors.py` and
+`.../app/services/strategy_runtime/robot_v2.py` (the bar-crossing fill rule).
+
+The grid algorithm is ported whole — arithmetic and geometric level generation,
+the lines-versus-cells duality, the five-state cell machine, the fee-coverage
+and minimum-spread gates (byte for byte, including which cell they name), the
+budget/quantity arithmetic, entry arming with its neutral round-robin, the
+weighted-average cost basis on partial entries, one-reduce-only-exit coverage,
+the cycle-preserving entry re-hang, the boundary actions, and the
+`filled_quantity` / `processed_fill_qty` watermark that makes ledger posting
+recoverable. The martingale, layered-martingale and DCA ladders are ported from
+the executor previews, `trend` excluded (see below).
+
+**The execution boundary is the point of this port.** Upstream's `GridEngine`
+is coupled to nine exchange clients through eleven `self._create_client()`
+calls. Here the engine has exactly one outward dependency, the five-method
+`QuantBrokerPort` (`app/engine/bots/engine.py`), and this repository contains
+exactly ONE implementation of it: `SimulatedQuantBroker`, which fills limit
+orders against bars `web/` pushes in. `tests/test_no_execution.py` asserts both
+halves structurally — no module under `app/engine/bots/` imports a network
+library or calls `__import__`/`importlib`, and no second class anywhere in the
+tree either declares the port as a base, registers as a subclass, or even
+structurally satisfies its five methods. Adding real execution therefore
+requires a new class and a new import in a reviewed diff; there is no
+configuration value that can do it.
+
+Changes made from the original:
+
+- **Nothing that talks to a venue was ported.** `exchange_orders.py`
+  (`place_grid_limit_order`, `execute_grid_market_order`, `cancel_grid_order`,
+  `query_grid_order_fill`, `normalize_grid_order_quantity`), `poller.py`'s REST
+  polling loop with its per-credential rate budget, `fill_units.py`'s nine
+  per-venue field maps, `exchange_requirements.py`'s account-mode queries and
+  `runner.py`'s client construction are all absent. Their *decisions* survive —
+  the poller's fill/watermark reconciliation, the normalizer's floor-never-round
+  contract, the runner's startup and tick ordering — reimplemented over local
+  state.
+- **`normalize_quantity` is total.** Upstream fetches instrument metadata over
+  REST on every single order and returns `0.0` from a blanket `except`, which
+  callers read as "skip" — one flaky venue call silently disables an entire
+  grid. Here the instrument spec is pushed in as data and the flooring is
+  arithmetic that cannot raise. Flooring, never rounding up, is upstream's rule
+  and is kept: an exit must never offer more than the cell owns.
+- **The exchange-ownership guards collapse to one that still means something.**
+  `_grid_entry_ownership_allowed`, `_resolve_grid_exit_quantity`,
+  `resolve_reduce_only_quantity` and `clamp_spot_close_quantity` exist to stop a
+  live engine selling inventory it does not own on a credential shared with
+  other strategies. A simulated account has no other party, so what remains is
+  the local clamp: an exit is limited to the strategy ledger's own leg size
+  minus what other open exits already reserve.
+- **No initial-position exchange recovery.** `_try_recover_initial_from_exchange`,
+  `_probe_initial_client_order_fill`, the 0.85/1.05 tolerance band, the
+  three-attempt/30-second retry throttle and the frozen pre-start position
+  baseline all answer "did my order actually reach the venue?", which cannot be
+  in doubt here. The initial leg's SIZING is ported exactly, neutral 50/50 split
+  included, and the deterministic initial client-order id is kept because that
+  determinism is the duplicate-open guard.
+- **Resting client-order ids are deterministic.** Upstream mixes
+  `int(time.time())` into them so repeat placements on one cell stay distinct; a
+  replay must be reproducible, so an explicit `seq` the caller owns replaces the
+  wall clock. Format and 32-character truncation are unchanged.
+- **`order_frequency` counts bars, not seconds.** A replay has no wall clock.
+  The default of 0 disables the throttle, exactly as upstream.
+- **Neutral grids warn instead of hard-blocking.**
+  `validate_neutral_grid_exchange_support` refuses to start a neutral grid whose
+  account is not verified in hedge mode. A simulated account has no such
+  setting, so `SimulatedQuantBroker.hedge_mode()` is `True` and the gate would
+  only obstruct the simulation the user asked for.
+- **Logs and the auto-stop lifecycle are data.** `append_strategy_log` writes to
+  Postgres and `auto_stop_live_strategy` stops a live deployment. The same log
+  strings, formatted identically, accumulate on the run report; a boundary
+  `stop_loss` still requests the stop and still books the qty-0 close-all (zero
+  means "close everything", not "close nothing").
+- **Persistence is SQLite, and every accessor is owner-scoped.** `qd_grid_cells`
+  and `qd_grid_resting_orders` become in-memory repositories with the same query
+  shapes for the duration of a run, and the finished run is written to
+  `quant_bots` / `quant_bot_runs` / `quant_bot_fills` / `quant_bot_ledger`.
+  `owner_user_id` is denormalized onto all four and the store offers no unscoped
+  `get_bot`, so a by-id handler cannot look a bot up without saying whose it is.
+- **`trend` is dropped.** Upstream lists it in `KNOWN_BOT_TYPES`,
+  `BOT_TYPE_MARKETS` and the recommender prompt, but nothing anywhere consumes
+  `maPeriod`/`maType`/`confirmBars`/`positionPct` — it is a parameter schema
+  with no engine, and offering it would be offering a bot that cannot run.
+- **`execution_mode` can only be `signal`, and it selects nothing.** Upstream's
+  `signal | live` field forks in `pending_order_worker._dispatch_one`, where a
+  row queued as `signal` is silently UPGRADED to `live` if the strategy row says
+  so. That auto-upgrade is not ported, and neither is the fork: there is no live
+  branch to take.
+- **Upstream behaviours reproduced rather than corrected:** `grid_count` means
+  boundary lines unless `gridCountUnit` says cells; `config.pct` clamps
+  negatives while `ladders.ratio` does not; `pct(1)` is 100%; a grid cell's PnL
+  overrides the FIFO answer on every exit (`fill_handler.py`); a dropped
+  degenerate rung leaves a gap in the cell indexes rather than renumbering them;
+  the layered-martingale volume multiplier restarts per layer while prices
+  compound across layers.
+- **Not ported:** `build_executor_strategy_payload` and `_executor_code`
+  (credential minting and Python source generation for a runtime that does not
+  exist here), `robot_v2.py`'s generated bar-replay sources, `grid_runtime.py`'s
+  adaptive bounds and waterfall protection (pandas-dependent, and this service
+  has no pandas), `ledger_reconcile.py`'s phantom-clearing CLI, the
+  `strategy_bot_recommend.py` LLM recommender (it needs a model, so it lives in
+  `web/`), and every route that starts, stops or deploys a bot.
+
 The quant-agent-specific "compile and discover" contract
 (`app/engine/strategies/generated_code/contract.py`) and the strategy
 interpreter (`app/engine/strategies/generated_code/interpreter.py`) are

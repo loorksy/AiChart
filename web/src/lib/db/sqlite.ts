@@ -646,6 +646,63 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS quant_analyses_symbol
     ON quant_analyses (user_id, symbol, created_at DESC);
 
+  -- Persistent signal history: one append-only row per monitor FIRE. Before
+  -- this table a fired monitor left nothing behind but
+  -- 'quant_agent_monitors.last_fired_recommendation_id' — a single slot that
+  -- the next fire overwrote — so a Telegram message that failed to send left
+  -- no trace at all and nothing in-product could answer "what has this
+  -- monitor told me?".
+  --
+  -- The row is CLAIMED BEFORE delivery is attempted, not written after it:
+  -- that is what makes a failed send a queryable record rather than a
+  -- silence, and it is what makes 'quant_agent_signal_events_bar' a real
+  -- delivery lock instead of a de-duplicating afterthought.
+  --
+  -- 'quant_agent_signal_events_bar' UNIQUE (monitor_id, bar_time, decision):
+  -- one monitor, one bar, one decision => exactly one row and therefore
+  -- exactly one delivery, however many times the sweep runs inside that bar.
+  -- A genuine decision change inside the same bar (HOLD -> SELL) is a
+  -- different tuple and does fire. Adapted from QuantDinger's own
+  -- recommendation for the history table it never built
+  -- ('_signal_fingerprint' + "fingerprint UNIQUE with alert_id"); the columns
+  -- are spelled out rather than hashed so the constraint is readable and the
+  -- bar is renderable.
+  --
+  -- 'monitor_id' is ON DELETE SET NULL, not CASCADE: deleting a monitor stops
+  -- future fires, it does not retract the ones that already went out. Every
+  -- field the history page renders (symbol, interval, levels, rule) lives on
+  -- the event row itself, so a detached event still displays in full.
+  CREATE TABLE IF NOT EXISTS quant_agent_signal_events (
+    id                 TEXT PRIMARY KEY,
+    user_id            INTEGER NOT NULL,
+    monitor_id         INTEGER,
+    symbol             TEXT NOT NULL,
+    market             TEXT NOT NULL DEFAULT 'forex',
+    interval           TEXT NOT NULL,
+    decision           TEXT NOT NULL,
+    direction          TEXT,
+    entry_price        REAL,
+    stop_loss          REAL,
+    take_profit        REAL,
+    confidence         INTEGER,
+    rationale          TEXT,
+    fire_rule          TEXT NOT NULL DEFAULT 'always',
+    previous_decision  TEXT,
+    recommendation_id  TEXT,
+    bar_time           INTEGER NOT NULL,
+    delivery_json      TEXT NOT NULL DEFAULT '{}',
+    delivered          INTEGER NOT NULL DEFAULT 0,
+    created_at         INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (monitor_id) REFERENCES quant_agent_monitors(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS quant_agent_signal_events_user_created
+    ON quant_agent_signal_events (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS quant_agent_signal_events_monitor
+    ON quant_agent_signal_events (monitor_id, created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS quant_agent_signal_events_bar
+    ON quant_agent_signal_events (monitor_id, bar_time, decision);
+
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id             INTEGER NOT NULL,
@@ -2265,6 +2322,23 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS quant_analyses_validated
       ON quant_analyses (user_id, symbol, validated_at DESC);
   `);
+
+  // Per-monitor firing rule + the last decision that actually fired. Additive:
+  // every monitor that predates the column keeps upstream's behaviour
+  // ('always' — notify whenever a signal exists), and a NULL
+  // 'last_fired_decision' means "nothing has fired yet", which is a third
+  // state neither 'BUY' nor 'HOLD' may stand in for.
+  const monitorCols = db
+    .prepare("PRAGMA table_info(quant_agent_monitors)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["fire_rule", "TEXT NOT NULL DEFAULT 'always'"],
+    ["last_fired_decision", "TEXT"],
+  ] as const) {
+    if (!monitorCols.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE quant_agent_monitors ADD COLUMN ${name} ${definition}`);
+    }
+  }
 
   const entFlag = db
     .prepare("SELECT value FROM system_flags WHERE key = 'entitlement_migration_v1'")

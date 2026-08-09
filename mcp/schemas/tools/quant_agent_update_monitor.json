@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Quant Agent monitor id from quant_agent_list_monitors"
+    },
+    "interval": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16,
+      "description": "Timeframe, e.g. 15m, 1h, 4h, 1d"
+    },
+    "notifyTelegram": {
+      "description": "Send each fire to Telegram",
+      "type": "boolean"
+    },
+    "notifyPush": {
+      "description": "Send each fire as a web push",
+      "type": "boolean"
+    },
+    "notifyWebhookUrl": {
+      "description": "https:// webhook to POST each fire to. Must be https — http is rejected by the route. Empty string clears it.",
+      "type": "string",
+      "maxLength": 2048
+    },
+    "enabled": {
+      "description": "false pauses the monitor without deleting it",
+      "type": "boolean"
+    },
+    "fireRule": {
+      "description": "always = notify on every signal (default). on_change = notify only when the call differs from the last one that fired, so a repeated SELL stays quiet.",
+      "type": "string",
+      "enum": [
+        "always",
+        "on_change"
+      ]
+    },
+    "idempotencyKey": {
+      "description": "REQUIRED. A stable caller-chosen key (max 120 chars) that makes this call safe to retry — repeat the SAME key to retry, and the first result is replayed instead of a second write. Omitting it is refused, not defaulted. Scope: this MCP session's process (the web routes do not yet honour x-idempotency-key), so it protects a retried tool call, not a cross-process replay.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    }
+  },
+  "required": [
+    "id"
+  ]
+}

@@ -2,13 +2,16 @@
 
 /**
  * Shared tab bar for `/quant-agent` (plan §4) — "Feed" (the existing,
- * unchanged `QuantAgentFeedClient`), "Chat", and "Analysis" (the LLM
- * trading-analysis surface). Mounted once in `quant-agent/layout.tsx` so the
- * routes share it without any page needing to know about the others.
+ * unchanged `QuantAgentFeedClient`), "Chat", "Analysis" (the LLM
+ * trading-analysis surface), "Signals" (the persistent log of what the
+ * scheduled monitors have actually fired) and "Bots" (the SIMULATION-ONLY
+ * automated bot workbench — nothing there places an order). Mounted once in
+ * `quant-agent/layout.tsx` so the routes share it without any page needing to
+ * know about the others.
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ListChecks, MessageCircle, Radar } from "lucide-react";
+import { Bell, Bot, ListChecks, MessageCircle, Radar } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +19,8 @@ const TABS = [
   { href: "/quant-agent", labelKey: "qa.tabs.feed", icon: ListChecks },
   { href: "/quant-agent/chat", labelKey: "qa.tabs.chat", icon: MessageCircle },
   { href: "/quant-agent/analysis", labelKey: "qa.tabs.analysis", icon: Radar },
+  { href: "/quant-agent/signals", labelKey: "qa.tabs.signals", icon: Bell },
+  { href: "/quant-agent/bots", labelKey: "qa.tabs.bots", icon: Bot },
 ] as const;
 
 /**

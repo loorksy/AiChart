@@ -22,11 +22,20 @@ from typing import Any
 from app.storage.models import (
     BacktestMetrics,
     BacktestRun,
+    BotDefinition,
+    BotFill,
+    BotLedgerEntry,
+    BotRun,
     Recommendation,
     RecommendationEvent,
     StrategyDef,
     utc_now_iso,
 )
+
+
+def _dumps(value: Any) -> str:
+    """The one JSON spelling this store uses for every JSON column."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 class SqliteQuantStore:
@@ -131,6 +140,105 @@ class SqliteQuantStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_quant_backtest_runs_strategy_created
                       ON quant_backtest_runs(strategy_id, created_at DESC);
+
+                    -- Automated bots. SIMULATION ONLY: every row under these
+                    -- four tables is the output of a replay against pushed-in
+                    -- bars, never a venue. `execution_mode` is stored rather
+                    -- than assumed so a row read years from now still says so
+                    -- out loud.
+                    --
+                    -- `owner_user_id` is on all four, not just the definition.
+                    -- Denormalized on purpose: it lets every by-id read filter
+                    -- on ownership in one indexed predicate instead of joining
+                    -- back to the parent, which is the shape an authz bug
+                    -- likes to hide in.
+                    CREATE TABLE IF NOT EXISTS quant_bots (
+                      id TEXT PRIMARY KEY,
+                      owner_user_id INTEGER NOT NULL,
+                      bot_type TEXT NOT NULL,
+                      name TEXT NOT NULL,
+                      symbol TEXT NOT NULL,
+                      market TEXT NOT NULL DEFAULT 'forex',
+                      interval TEXT NOT NULL,
+                      execution_mode TEXT NOT NULL DEFAULT 'simulation',
+                      initial_capital REAL NOT NULL DEFAULT 0,
+                      fee_rate REAL NOT NULL DEFAULT 0.001,
+                      config_json TEXT NOT NULL DEFAULT '{}',
+                      levels_json TEXT NOT NULL DEFAULT '[]',
+                      warnings_json TEXT NOT NULL DEFAULT '[]',
+                      diagnostics_json TEXT NOT NULL DEFAULT '[]',
+                      created_at TEXT NOT NULL,
+                      updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_bots_owner_created
+                      ON quant_bots(owner_user_id, created_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS quant_bot_runs (
+                      id TEXT PRIMARY KEY,
+                      bot_id TEXT NOT NULL,
+                      owner_user_id INTEGER NOT NULL,
+                      execution_mode TEXT NOT NULL DEFAULT 'simulation',
+                      status TEXT NOT NULL,
+                      bar_count INTEGER NOT NULL DEFAULT 0,
+                      from_time TEXT NOT NULL DEFAULT '',
+                      to_time TEXT NOT NULL DEFAULT '',
+                      cells_bootstrapped INTEGER NOT NULL DEFAULT 0,
+                      orders_placed INTEGER NOT NULL DEFAULT 0,
+                      fill_count INTEGER NOT NULL DEFAULT 0,
+                      matched_cycles INTEGER NOT NULL DEFAULT 0,
+                      realized_profit REAL NOT NULL DEFAULT 0,
+                      unrealized_profit REAL NOT NULL DEFAULT 0,
+                      total_commission REAL NOT NULL DEFAULT 0,
+                      ending_price REAL NOT NULL DEFAULT 0,
+                      resting_orders INTEGER NOT NULL DEFAULT 0,
+                      stop_reason TEXT NOT NULL DEFAULT '',
+                      warnings_json TEXT NOT NULL DEFAULT '[]',
+                      logs_json TEXT NOT NULL DEFAULT '[]',
+                      cells_json TEXT NOT NULL DEFAULT '[]',
+                      error TEXT,
+                      created_at TEXT NOT NULL,
+                      FOREIGN KEY(bot_id) REFERENCES quant_bots(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_bot_runs_bot_created
+                      ON quant_bot_runs(bot_id, created_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_quant_bot_runs_owner_created
+                      ON quant_bot_runs(owner_user_id, created_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS quant_bot_fills (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      run_id TEXT NOT NULL,
+                      owner_user_id INTEGER NOT NULL,
+                      sequence INTEGER NOT NULL,
+                      bar_time TEXT NOT NULL,
+                      cell_index INTEGER NOT NULL DEFAULT -1,
+                      purpose TEXT NOT NULL DEFAULT '',
+                      price REAL NOT NULL DEFAULT 0,
+                      quantity REAL NOT NULL DEFAULT 0,
+                      UNIQUE(run_id, sequence),
+                      FOREIGN KEY(run_id) REFERENCES quant_bot_runs(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_bot_fills_run
+                      ON quant_bot_fills(run_id, sequence);
+
+                    CREATE TABLE IF NOT EXISTS quant_bot_ledger (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      run_id TEXT NOT NULL,
+                      owner_user_id INTEGER NOT NULL,
+                      sequence INTEGER NOT NULL,
+                      trade_type TEXT NOT NULL,
+                      close_reason TEXT NOT NULL DEFAULT '',
+                      cell_index INTEGER NOT NULL DEFAULT -1,
+                      price REAL NOT NULL DEFAULT 0,
+                      amount REAL NOT NULL DEFAULT 0,
+                      commission REAL NOT NULL DEFAULT 0,
+                      profit REAL,
+                      matched_entry_price REAL,
+                      grid_matched_profit REAL,
+                      UNIQUE(run_id, sequence),
+                      FOREIGN KEY(run_id) REFERENCES quant_bot_runs(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_bot_ledger_run
+                      ON quant_bot_ledger(run_id, sequence);
                     """
                 )
                 self._migrate_strategy_defs_columns(connection)
@@ -445,6 +553,176 @@ class SqliteQuantStore:
                 ).fetchone()
                 return self._row_to_backtest_run(row) if row else None
 
+    # ------------------------------------------------------------------
+    # bots (simulation only)
+    #
+    # EVERY accessor here takes `owner_user_id` and filters on it in SQL.
+    # There is no `get_bot(bot_id)` overload without an owner, deliberately:
+    # an unscoped read is the exact shape of the authz hole we closed on the
+    # strategy-enable route, and the cheapest way not to reintroduce it is not
+    # to offer the function.
+    # ------------------------------------------------------------------
+
+    async def create_bot(self, bot: BotDefinition) -> BotDefinition:
+        async with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """INSERT INTO quant_bots (
+                        id, owner_user_id, bot_type, name, symbol, market, interval,
+                        execution_mode, initial_capital, fee_rate, config_json, levels_json,
+                        warnings_json, diagnostics_json, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        bot.id,
+                        bot.owner_user_id,
+                        bot.bot_type,
+                        bot.name,
+                        bot.symbol,
+                        bot.market,
+                        bot.interval,
+                        bot.execution_mode,
+                        bot.initial_capital,
+                        bot.fee_rate,
+                        _dumps(bot.config),
+                        _dumps(bot.levels),
+                        _dumps(bot.warnings),
+                        _dumps(bot.risk_diagnostics),
+                        bot.created_at,
+                        bot.updated_at,
+                    ),
+                )
+                return bot
+
+    async def get_bot(self, owner_user_id: int, bot_id: str) -> BotDefinition | None:
+        async with self._lock:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT * FROM quant_bots WHERE id=? AND owner_user_id=?",
+                    (bot_id, int(owner_user_id)),
+                ).fetchone()
+                return self._row_to_bot(row) if row else None
+
+    async def list_bots(self, owner_user_id: int, *, limit: int = 50) -> list[BotDefinition]:
+        async with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """SELECT * FROM quant_bots WHERE owner_user_id=?
+                    ORDER BY created_at DESC LIMIT ?""",
+                    (int(owner_user_id), max(1, min(int(limit), 200))),
+                ).fetchall()
+                return [self._row_to_bot(row) for row in rows]
+
+    async def delete_bot(self, owner_user_id: int, bot_id: str) -> bool:
+        async with self._lock:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM quant_bots WHERE id=? AND owner_user_id=?",
+                    (bot_id, int(owner_user_id)),
+                )
+                return cursor.rowcount > 0
+
+    async def create_bot_run(
+        self,
+        run: BotRun,
+        fills: list[BotFill],
+        ledger: list[BotLedgerEntry],
+    ) -> BotRun:
+        """Persist a finished simulation and its two child logs in one
+        transaction — a run whose fills failed to land would misreport its own
+        arithmetic."""
+        async with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """INSERT INTO quant_bot_runs (
+                        id, bot_id, owner_user_id, execution_mode, status, bar_count,
+                        from_time, to_time, cells_bootstrapped, orders_placed, fill_count,
+                        matched_cycles, realized_profit, unrealized_profit, total_commission,
+                        ending_price, resting_orders, stop_reason, warnings_json, logs_json,
+                        cells_json, error, created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        run.id,
+                        run.bot_id,
+                        run.owner_user_id,
+                        run.execution_mode,
+                        run.status,
+                        run.bar_count,
+                        run.from_time,
+                        run.to_time,
+                        run.cells_bootstrapped,
+                        run.orders_placed,
+                        run.fill_count,
+                        run.matched_cycles,
+                        run.realized_profit,
+                        run.unrealized_profit,
+                        run.total_commission,
+                        run.ending_price,
+                        run.resting_orders,
+                        run.stop_reason,
+                        _dumps(run.warnings),
+                        _dumps(run.logs),
+                        _dumps(run.cells),
+                        run.error,
+                        run.created_at,
+                    ),
+                )
+                connection.executemany(
+                    """INSERT INTO quant_bot_fills (
+                        run_id, owner_user_id, sequence, bar_time, cell_index, purpose,
+                        price, quantity
+                    ) VALUES (?,?,?,?,?,?,?,?)""",
+                    [
+                        (
+                            fill.run_id,
+                            fill.owner_user_id,
+                            fill.sequence,
+                            fill.bar_time,
+                            fill.cell_index,
+                            fill.purpose,
+                            fill.price,
+                            fill.quantity,
+                        )
+                        for fill in fills
+                    ],
+                )
+                connection.executemany(
+                    """INSERT INTO quant_bot_ledger (
+                        run_id, owner_user_id, sequence, trade_type, close_reason, cell_index,
+                        price, amount, commission, profit, matched_entry_price,
+                        grid_matched_profit
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    [
+                        (
+                            entry.run_id,
+                            entry.owner_user_id,
+                            entry.sequence,
+                            entry.trade_type,
+                            entry.close_reason,
+                            entry.cell_index,
+                            entry.price,
+                            entry.amount,
+                            entry.commission,
+                            entry.profit,
+                            entry.matched_entry_price,
+                            entry.grid_matched_profit,
+                        )
+                        for entry in ledger
+                    ],
+                )
+                return run
+
+    async def list_bot_runs(
+        self, owner_user_id: int, bot_id: str, *, limit: int = 20
+    ) -> list[BotRun]:
+        async with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """SELECT * FROM quant_bot_runs WHERE bot_id=? AND owner_user_id=?
+                    ORDER BY created_at DESC LIMIT ?""",
+                    (bot_id, int(owner_user_id), max(1, min(int(limit), 100))),
+                ).fetchall()
+                return [self._row_to_bot_run(row) for row in rows]
+
     async def available(self) -> bool:
         try:
             async with self._lock:
@@ -592,6 +870,57 @@ class SqliteQuantStore:
             status=row["status"],
             metrics=metrics,
             warnings=json.loads(row["warnings_json"]),
+            created_at=row["created_at"],
+        )
+
+    @staticmethod
+    def _row_to_bot(row: sqlite3.Row) -> BotDefinition:
+        return BotDefinition(
+            id=row["id"],
+            owner_user_id=int(row["owner_user_id"]),
+            bot_type=row["bot_type"],
+            name=row["name"],
+            symbol=row["symbol"],
+            market=row["market"],
+            interval=row["interval"],
+            execution_mode="simulation",
+            initial_capital=float(row["initial_capital"]),
+            fee_rate=float(row["fee_rate"]),
+            config=json.loads(row["config_json"]),
+            levels=json.loads(row["levels_json"]),
+            warnings=json.loads(row["warnings_json"]),
+            risk_diagnostics=json.loads(row["diagnostics_json"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _row_to_bot_run(row: sqlite3.Row) -> BotRun:
+        return BotRun(
+            id=row["id"],
+            bot_id=row["bot_id"],
+            owner_user_id=int(row["owner_user_id"]),
+            # Read as the literal, never from the column: a row that somehow
+            # carried another value must not be able to relabel itself.
+            execution_mode="simulation",
+            status=row["status"],
+            bar_count=int(row["bar_count"]),
+            from_time=row["from_time"],
+            to_time=row["to_time"],
+            cells_bootstrapped=int(row["cells_bootstrapped"]),
+            orders_placed=int(row["orders_placed"]),
+            fill_count=int(row["fill_count"]),
+            matched_cycles=int(row["matched_cycles"]),
+            realized_profit=float(row["realized_profit"]),
+            unrealized_profit=float(row["unrealized_profit"]),
+            total_commission=float(row["total_commission"]),
+            ending_price=float(row["ending_price"]),
+            resting_orders=int(row["resting_orders"]),
+            stop_reason=row["stop_reason"],
+            warnings=json.loads(row["warnings_json"]),
+            logs=json.loads(row["logs_json"]),
+            cells=json.loads(row["cells_json"]),
+            error=row["error"],
             created_at=row["created_at"],
         )
 

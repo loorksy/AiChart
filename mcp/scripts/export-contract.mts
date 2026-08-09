@@ -30,7 +30,8 @@ type Permission =
   | "trade.execute" | "trade.manage" | "memory.read" | "memory.write"
   | "settings.write" | "notify.send" | "research.run" | "ui.render" | "web.browse"
   | "quant_agent.read" | "quant_agent.recommend"
-  | "quant_agent.chat" | "quant_agent.generate_strategy";
+  | "quant_agent.chat" | "quant_agent.generate_strategy"
+  | "quant_agent.analyze" | "quant_agent.monitor";
 type RiskClass = "read" | "write" | "recommendation" | "execution";
 
 interface Override {
@@ -135,6 +136,31 @@ const OVERRIDES: Record<string, Override> = {
     permission: "quant_agent.generate_strategy",
     riskClass: "recommendation",
   },
+  // — quant agent analysis / monitors / signals —
+  // Same reasoning as quant_agent_generate_recommendation: these write only to
+  // Quant Agent's own isolated store and reach no broker, so the highest risk
+  // class any of them can carry is "recommendation" — never "execution".
+  // run_analysis produces a trade PLAN (entry/stop/target), which is exactly
+  // what create_recommendation produces and is classed as, so it matches.
+  // Its 120s timeout is the route's own maxDuration; the MCP call itself
+  // returns a job id immediately, but the queued bridge POST needs the budget.
+  quant_agent_run_analysis: {
+    permission: "quant_agent.analyze",
+    riskClass: "recommendation",
+    timeoutMs: 120_000,
+  },
+  quant_agent_get_analysis: { permission: "quant_agent.read" },
+  quant_agent_list_analyses: { permission: "quant_agent.read" },
+  quant_agent_analysis_accuracy: { permission: "quant_agent.read" },
+  quant_agent_list_monitors: { permission: "quant_agent.read" },
+  // A monitor schedules recurring analysis and sends notifications. It cannot
+  // trade, so "write", not "recommendation" — the row it creates is a
+  // schedule, not a plan.
+  quant_agent_create_monitor: { permission: "quant_agent.monitor", riskClass: "write" },
+  quant_agent_update_monitor: { permission: "quant_agent.monitor", riskClass: "write" },
+  quant_agent_delete_monitor: { permission: "quant_agent.monitor", riskClass: "write" },
+  quant_agent_list_signals: { permission: "quant_agent.read" },
+  quant_agent_get_signal: { permission: "quant_agent.read" },
 };
 
 /** Research Swarm policy allowlist names → canonical mapping. */

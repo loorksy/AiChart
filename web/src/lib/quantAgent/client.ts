@@ -1,9 +1,26 @@
+import { QUANT_BOT_EXECUTION_MODE } from "./bots/brokerPort";
 import { QuantAgentServiceError } from "./errors";
 import {
   isTransientQuantAgentError,
   quantAgentHttpError,
   type ServiceErrorBody,
 } from "./serviceErrors";
+import type {
+  CreateQuantBotParams,
+  PreviewQuantBotParams,
+  QuantBot,
+  QuantBotLevel,
+  QuantBotLevelWire,
+  QuantBotPreview,
+  QuantBotPreviewWire,
+  QuantBotRiskDiagnostic,
+  QuantBotRun,
+  QuantBotRunWire,
+  QuantBotSimulation,
+  QuantBotSimulationWire,
+  QuantBotWire,
+  SimulateQuantBotParams,
+} from "./bots/types";
 import type {
   BacktestQuantStrategyParams,
   FinalizeQuantAnalysisParams,
@@ -814,4 +831,285 @@ export async function getQuantRecommendation(
     }
     throw error;
   }
+}
+
+/* ------------------------------------------------------------------
+ * Automated bots (grid / DCA / martingale / layered martingale).
+ *
+ * SIMULATION ONLY. Every one of these calls reaches an endpoint whose only
+ * broker is quant-agent's `SimulatedQuantBroker`; there is no start, stop or
+ * deploy verb to call, because the service does not expose one. The web-side
+ * seam that would have to change for that to stop being true is
+ * `lib/quantAgent/bots/brokerPort.ts`, and it throws unconditionally.
+ *
+ * `owner_user_id` rides on EVERY request, including the reads. The service has
+ * no unscoped bot accessor, so a caller that omits it gets a 422 rather than
+ * someone else's bot.
+ * ------------------------------------------------------------------ */
+
+function normalizeBotLevels(levels: QuantBotLevelWire[] | undefined): QuantBotLevel[] {
+  return (levels ?? []).map((level) => ({
+    level: level.level,
+    layerIndex: level.layer_index,
+    orderIndex: level.order_index,
+    action: level.action,
+    side: level.side,
+    price: level.price,
+    amountQuote: level.amount_quote,
+    takeProfitPrice: level.take_profit_price,
+    triggerPct: level.trigger_pct,
+    scheduledOffsetMinutes: level.scheduled_offset_minutes ?? null,
+    cumulativeAmountQuote: level.cumulative_amount_quote ?? null,
+  }));
+}
+
+function normalizeBotDiagnostics(
+  raw: Record<string, unknown>[] | undefined,
+): QuantBotRiskDiagnostic[] {
+  return (raw ?? []).map((item) => ({
+    code: String(item.code ?? ""),
+    beforeLevel: Number(item.before_level ?? 0),
+    basketAverage: Number(item.basket_average ?? 0),
+    hardStopPrice: Number(item.hard_stop_price ?? 0),
+    nextLevelPrice: Number(item.next_level_price ?? 0),
+    configuredStopPct: Number(item.configured_stop_pct ?? 0),
+    requiredStopPct: Number(item.required_stop_pct ?? 0),
+    suggestedStopPct: Number(item.suggested_stop_pct ?? 0),
+  }));
+}
+
+export function normalizeQuantBotPreview(raw: QuantBotPreviewWire): QuantBotPreview {
+  const summary = raw.summary;
+  return {
+    // Read from the constant, never the payload: a response that claimed
+    // anything else must not be able to relabel itself on the way through.
+    executionMode: QUANT_BOT_EXECUTION_MODE,
+    status: raw.status,
+    botType: raw.bot_type ?? "",
+    config: raw.config ?? {},
+    levels: normalizeBotLevels(raw.levels),
+    summary: summary
+      ? {
+          levelCount: Number(summary.level_count ?? 0),
+          totalAmountQuote: Number(summary.total_amount_quote ?? 0),
+          longLevelCount: Number(summary.long_level_count ?? 0),
+          shortLevelCount: Number(summary.short_level_count ?? 0),
+          firstPrice: Number(summary.first_price ?? 0),
+          lastPrice: Number(summary.last_price ?? 0),
+        }
+      : null,
+    warnings: raw.warnings ?? [],
+    riskDiagnostics: normalizeBotDiagnostics(raw.risk_diagnostics),
+    blockingWarning: raw.blocking_warning ?? "",
+    error: raw.error ?? null,
+  };
+}
+
+export function normalizeQuantBot(raw: QuantBotWire): QuantBot {
+  return {
+    id: raw.id,
+    ownerUserId: raw.owner_user_id,
+    botType: raw.bot_type,
+    name: raw.name,
+    symbol: raw.symbol,
+    market: raw.market,
+    interval: raw.interval,
+    executionMode: QUANT_BOT_EXECUTION_MODE,
+    initialCapital: raw.initial_capital,
+    feeRate: raw.fee_rate,
+    config: raw.config ?? {},
+    levels: normalizeBotLevels(raw.levels),
+    warnings: raw.warnings ?? [],
+    riskDiagnostics: normalizeBotDiagnostics(raw.risk_diagnostics),
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+export function normalizeQuantBotRun(raw: QuantBotRunWire): QuantBotRun {
+  return {
+    id: raw.id,
+    botId: raw.bot_id,
+    ownerUserId: raw.owner_user_id,
+    executionMode: QUANT_BOT_EXECUTION_MODE,
+    status: raw.status,
+    barCount: raw.bar_count,
+    fromTime: raw.from_time,
+    toTime: raw.to_time,
+    cellsBootstrapped: raw.cells_bootstrapped,
+    ordersPlaced: raw.orders_placed,
+    fillCount: raw.fill_count,
+    matchedCycles: raw.matched_cycles,
+    realizedProfit: raw.realized_profit,
+    unrealizedProfit: raw.unrealized_profit,
+    totalCommission: raw.total_commission,
+    endingPrice: raw.ending_price,
+    restingOrders: raw.resting_orders,
+    stopReason: raw.stop_reason ?? "",
+    warnings: raw.warnings ?? [],
+    logs: raw.logs ?? [],
+    cells: raw.cells ?? [],
+    error: raw.error ?? null,
+    createdAt: raw.created_at,
+  };
+}
+
+/** Pure: nothing is stored and nothing is simulated. Safe to call on typing. */
+export async function previewQuantBot(
+  context: QuantAgentCallerContext,
+  params: PreviewQuantBotParams,
+): Promise<QuantBotPreview> {
+  const raw = await serviceRequest<QuantBotPreviewWire>(
+    context,
+    "/internal/quant-agent/bots/preview",
+    {
+      method: "POST",
+      body: JSON.stringify({ bot_type: params.botType, config: params.config }),
+    },
+  );
+  return normalizeQuantBotPreview(raw);
+}
+
+/** Saving a bot is NOT starting one — nothing runs until bars are pushed. */
+export async function createQuantBot(
+  context: QuantAgentCallerContext,
+  params: CreateQuantBotParams,
+): Promise<QuantBot> {
+  const raw = await serviceRequest<QuantBotWire>(context, "/internal/quant-agent/bots", {
+    method: "POST",
+    body: JSON.stringify({
+      owner_user_id: context.userId,
+      bot_type: params.botType,
+      name: params.name,
+      symbol: params.symbol,
+      market: params.market,
+      interval: params.interval,
+      initial_capital: params.initialCapital,
+      fee_rate: params.feeRate,
+      config: params.config,
+    }),
+  });
+  return normalizeQuantBot(raw);
+}
+
+export async function listQuantBots(
+  context: QuantAgentCallerContext,
+  limit = 50,
+): Promise<QuantBot[]> {
+  const query = new URLSearchParams({
+    owner_user_id: String(context.userId),
+    limit: String(limit),
+  });
+  const raw = await serviceRequest<{ bots: QuantBotWire[] }>(
+    context,
+    `/internal/quant-agent/bots?${query.toString()}`,
+  );
+  return (raw.bots ?? []).map(normalizeQuantBot);
+}
+
+/** Returns null on 404 — which is also what another tenant's id returns. */
+export async function getQuantBot(
+  context: QuantAgentCallerContext,
+  botId: string,
+): Promise<QuantBot | null> {
+  const query = new URLSearchParams({ owner_user_id: String(context.userId) });
+  try {
+    const raw = await serviceRequest<QuantBotWire>(
+      context,
+      `/internal/quant-agent/bots/${encodeURIComponent(botId)}?${query.toString()}`,
+    );
+    return normalizeQuantBot(raw);
+  } catch (error) {
+    if (error instanceof QuantAgentServiceError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function deleteQuantBot(
+  context: QuantAgentCallerContext,
+  botId: string,
+): Promise<boolean> {
+  const query = new URLSearchParams({ owner_user_id: String(context.userId) });
+  try {
+    await serviceRequest<{ ok: boolean }>(
+      context,
+      `/internal/quant-agent/bots/${encodeURIComponent(botId)}?${query.toString()}`,
+      { method: "DELETE" },
+    );
+    return true;
+  } catch (error) {
+    if (error instanceof QuantAgentServiceError && error.status === 404) return false;
+    throw error;
+  }
+}
+
+/**
+ * Replay a saved bot over pushed-in candles.
+ *
+ * Bars go through `toServiceBars` for the same reason every other push does:
+ * the service declares `time: str` and pydantic will not coerce an epoch
+ * number into one, so skipping the conversion is a hard 422.
+ *
+ * Given its own deadline and no timeout retry — a replay over thousands of
+ * bars is legitimately slow, and a second attempt would only double a wait the
+ * user is already sitting through.
+ */
+export async function simulateQuantBot(
+  context: QuantAgentCallerContext,
+  params: SimulateQuantBotParams,
+): Promise<QuantBotSimulation> {
+  const raw = await serviceRequest<QuantBotSimulationWire>(
+    context,
+    `/internal/quant-agent/bots/${encodeURIComponent(params.botId)}/simulate`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        owner_user_id: context.userId,
+        bars: toServiceBars(params.bars),
+      }),
+    },
+    { timeoutMs: backtestTimeoutMs(), retryOnTimeout: false },
+  );
+  return {
+    executionMode: QUANT_BOT_EXECUTION_MODE,
+    status: raw.status,
+    run: raw.run ? normalizeQuantBotRun(raw.run) : null,
+    fills: (raw.fills ?? []).map((fill) => ({
+      sequence: fill.sequence,
+      barTime: fill.bar_time,
+      cellIndex: fill.cell_index,
+      purpose: fill.purpose,
+      price: fill.price,
+      quantity: fill.quantity,
+    })),
+    ledger: (raw.ledger ?? []).map((entry) => ({
+      sequence: entry.sequence,
+      tradeType: entry.trade_type,
+      closeReason: entry.close_reason,
+      cellIndex: entry.cell_index,
+      price: entry.price,
+      amount: entry.amount,
+      commission: entry.commission,
+      profit: entry.profit ?? null,
+      matchedEntryPrice: entry.matched_entry_price ?? null,
+      gridMatchedProfit: entry.grid_matched_profit ?? null,
+    })),
+    error: raw.error ?? null,
+  };
+}
+
+export async function listQuantBotRuns(
+  context: QuantAgentCallerContext,
+  botId: string,
+  limit = 20,
+): Promise<QuantBotRun[]> {
+  const query = new URLSearchParams({
+    owner_user_id: String(context.userId),
+    limit: String(limit),
+  });
+  const raw = await serviceRequest<{ runs: QuantBotRunWire[] }>(
+    context,
+    `/internal/quant-agent/bots/${encodeURIComponent(botId)}/runs?${query.toString()}`,
+  );
+  return (raw.runs ?? []).map(normalizeQuantBotRun);
 }

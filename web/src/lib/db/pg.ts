@@ -609,6 +609,39 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS quant_analyses_symbol
     ON quant_analyses (user_id, symbol, created_at DESC);
 
+  -- Persistent signal history for AI Scheduled Monitors — see the SQLite
+  -- schema for the full rationale. 'monitor_id' is ON DELETE SET NULL, not
+  -- CASCADE: deleting a monitor stops future fires, it does not retract the
+  -- ones that already went out.
+  CREATE TABLE IF NOT EXISTS quant_agent_signal_events (
+    id                 TEXT PRIMARY KEY,
+    user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    monitor_id         BIGINT REFERENCES quant_agent_monitors(id) ON DELETE SET NULL,
+    symbol             TEXT NOT NULL,
+    market             TEXT NOT NULL DEFAULT 'forex',
+    interval           TEXT NOT NULL,
+    decision           TEXT NOT NULL,
+    direction          TEXT,
+    entry_price        DOUBLE PRECISION,
+    stop_loss          DOUBLE PRECISION,
+    take_profit        DOUBLE PRECISION,
+    confidence         INTEGER,
+    rationale          TEXT,
+    fire_rule          TEXT NOT NULL DEFAULT 'always',
+    previous_decision  TEXT,
+    recommendation_id  TEXT,
+    bar_time           BIGINT NOT NULL,
+    delivery_json      TEXT NOT NULL DEFAULT '{}',
+    delivered          INTEGER NOT NULL DEFAULT 0,
+    created_at         BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS quant_agent_signal_events_user_created
+    ON quant_agent_signal_events (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS quant_agent_signal_events_monitor
+    ON quant_agent_signal_events (monitor_id, created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS quant_agent_signal_events_bar
+    ON quant_agent_signal_events (monitor_id, bar_time, decision);
+
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  SERIAL PRIMARY KEY,
     user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1428,6 +1461,17 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS quant_analyses_validated
       ON quant_analyses (user_id, symbol, validated_at DESC)
+  `).catch(() => {});
+
+  // Per-monitor firing rule + the last decision that actually fired. Additive:
+  // every monitor that predates the column keeps upstream's behaviour
+  // ('always' — notify whenever a signal exists), and a NULL
+  // 'last_fired_decision' means "nothing has fired yet", which is a third
+  // state neither 'BUY' nor 'HOLD' may stand in for.
+  await client.query(`
+    ALTER TABLE quant_agent_monitors
+      ADD COLUMN IF NOT EXISTS fire_rule           TEXT NOT NULL DEFAULT 'always',
+      ADD COLUMN IF NOT EXISTS last_fired_decision TEXT
   `).catch(() => {});
 
   // Case-memory KNN (plan phase G infra). Every step is individually guarded:

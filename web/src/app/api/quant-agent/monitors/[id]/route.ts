@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, handleError } from "@/lib/api";
 import { resolveQuantAgentUserId } from "@/lib/quantAgent/webAuth";
-import { deleteMonitor, updateMonitor } from "@/lib/quantAgent/monitorStore";
+import { deleteMonitor, MONITOR_FIRE_RULES, updateMonitor } from "@/lib/quantAgent/monitorStore";
 
 const webhookUrlSchema = z
   .string()
@@ -17,6 +17,7 @@ const updateSchema = z.object({
   notifyPush: z.boolean().optional(),
   notifyWebhookUrl: z.union([webhookUrlSchema, z.literal(""), z.null()]).optional(),
   enabled: z.boolean().optional(),
+  fireRule: z.enum(MONITOR_FIRE_RULES).optional(),
 });
 
 function parseId(idParam: string): number {
@@ -39,6 +40,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       notifyWebhookUrl:
         body.notifyWebhookUrl === undefined ? undefined : body.notifyWebhookUrl || null,
       enabled: body.enabled,
+      fireRule: body.fireRule,
     });
     if (!monitor) throw new ApiError(404, "Monitor not found.");
     return NextResponse.json({ monitor });

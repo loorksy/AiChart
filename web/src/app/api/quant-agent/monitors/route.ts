@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiError, handleError } from "@/lib/api";
 import { resolveQuantAgentUserId } from "@/lib/quantAgent/webAuth";
 import { rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
-import { createMonitor, listMonitors } from "@/lib/quantAgent/monitorStore";
+import { createMonitor, listMonitors, MONITOR_FIRE_RULES } from "@/lib/quantAgent/monitorStore";
 
 /**
  * Quant Agent "AI Scheduled Monitors" CRUD (plan §A6). Mirrors
@@ -26,6 +26,9 @@ const createSchema = z.object({
   notifyTelegram: z.boolean().optional(),
   notifyPush: z.boolean().optional(),
   notifyWebhookUrl: z.union([webhookUrlSchema, z.literal(""), z.null()]).optional(),
+  // How often the monitor may speak. Optional, defaulting to `always` in the
+  // store, so every existing client keeps the behaviour it already had.
+  fireRule: z.enum(MONITOR_FIRE_RULES).optional(),
 });
 
 /** List the current user's monitors. */
@@ -54,6 +57,7 @@ export async function POST(req: NextRequest) {
       notifyTelegram: body.notifyTelegram,
       notifyPush: body.notifyPush,
       notifyWebhookUrl: body.notifyWebhookUrl || null,
+      fireRule: body.fireRule,
     });
     return NextResponse.json({ monitor }, { status: 201 });
   } catch (err) {
