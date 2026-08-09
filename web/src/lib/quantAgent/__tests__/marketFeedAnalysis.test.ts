@@ -41,7 +41,12 @@ test("fetchQuantAgentAnalysisBars: warehouse-sufficient read needs no userId and
   const { upsertAnalysisCandles } = await import("@/lib/candles/analysisCandleRepository");
   const { fetchQuantAgentAnalysisBars } = await import("@/lib/quantAgent/marketFeed");
 
-  const rows = makeCandles(50, 1_700_000_000_000, 15 * 60_000, 1.1);
+  // Timestamps must end at roughly NOW. The feed judges tail freshness, not
+  // just row count, so a fixture frozen in 2023 is legitimately stale and
+  // would come back carrying a staleness warning.
+  const STEP = 15 * 60_000;
+  const lastBar = Date.now() - STEP;
+  const rows = makeCandles(50, lastBar - 49 * STEP, STEP, 1.1);
   await upsertAnalysisCandles(SYMBOL, INTERVAL, rows);
 
   // No `userId` field exists on the options type at all — this call

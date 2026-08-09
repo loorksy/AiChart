@@ -22,8 +22,9 @@ function makeCandles(n: number, startMs: number, stepMs: number, priceBase: numb
 /**
  * Same throwaway-sqlite pattern as `candleWarehouse.integration.test.ts`, but
  * proves the property this whole plan depends on: `source='metaapi'` (the
- * chart's/Lonora's rows) and `source='oanda'` (analysis-only rows) for the
- * EXACT SAME symbol/interval never cross, regardless of which function reads.
+ * chart's/Lonora's rows) and `source='oanda_analysis'` (analysis-only rows)
+ * for the EXACT SAME symbol/interval never cross, regardless of which
+ * function reads.
  */
 test("analysis candle repository isolation (sqlite)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "aichart-analysis-warehouse-"));
@@ -43,7 +44,10 @@ test("analysis candle repository isolation (sqlite)", async () => {
     ANALYSIS_SOURCE,
   } = await import("@/lib/candles/analysisCandleRepository");
 
-  assert.equal(ANALYSIS_SOURCE, "oanda");
+  // Must NOT be the bare "oanda": that label belongs to the retired platform
+  // feed, whose rows are still in production and are not this store's data.
+  assert.equal(ANALYSIS_SOURCE, "oanda_analysis");
+  assert.notEqual(ANALYSIS_SOURCE, "oanda");
 
   // Write DIFFERENT prices under each source for the exact same symbol/interval/time window.
   const metaapiRows = makeCandles(30, 1_700_000_000_000, 15 * 60_000, 1.1);

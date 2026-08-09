@@ -179,7 +179,12 @@ test("backtest fallback fills the disjoint older window from OANDA without ever 
   process.env.RESEARCH_SERVICE_ENABLED = "1";
   process.env.RESEARCH_BACKTEST_ENABLED = "1";
   delete process.env.DATABASE_URL;
-  delete process.env.OANDA_API_TOKEN; // not_configured path — no network call risked
+  // The splice is gated on `oandaConfigured()`, so a token must be present for
+  // this scenario to run at all. Reads still come from the local store — the
+  // only outbound path is `triggerAnalysisBackfill`, which is fire-and-forget
+  // and swallows its own rejection, so a failed auth or DNS lookup in CI
+  // cannot affect the assertions below.
+  process.env.OANDA_API_TOKEN = "test-analysis-token";
 
   const db = await import("@/lib/db");
   await db.initDb();
@@ -258,6 +263,65 @@ test("backtest fallback fills the disjoint older window from OANDA without ever 
   assert.ok(
     demand.some((entry) => entry.symbol === symbolC && entry.interval === "1h"),
     "thin OANDA coverage for the disjoint gap registers warm demand for next time",
+  );
+});
+
+/**
+ * Regression: the splice had no `oandaConfigured()` gate — only a `fromMs`
+ * check — so it ran with no OANDA credentials set anywhere. That is not a
+ * no-op, because `getAnalysisCandles` reads a shared table, and this function
+ * is reached from Lonora's own paths (`deepAnalysis/enqueue.ts` on a live
+ * analysis turn, `strategies/pipeline.ts` on the mass-backtest cron). The
+ * envelope stamps every bar `aichart_candle_warehouse`, so anything spliced in
+ * is indistinguishable downstream from the operator's own broker history, and
+ * thin MT depth silently became a passing backtest instead of an honest
+ * "backfill first" failure.
+ */
+test("backtest fallback does NOT splice analysis bars when the analysis source is unconfigured (sqlite)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "aichart-warehouse-nogate-"));
+  process.env.DB_PATH = join(dir, "test.db");
+  process.env.ENCRYPTION_KEY = "0".repeat(64);
+  process.env.APP_SECRET = "test-secret";
+  process.env.RESEARCH_SERVICE_ENABLED = "1";
+  process.env.RESEARCH_BACKTEST_ENABLED = "1";
+  delete process.env.DATABASE_URL;
+  delete process.env.OANDA_API_TOKEN;
+  // `getPlatformValue` caches a hit for the lifetime of the process, so an
+  // earlier test in this file that set the token would otherwise keep
+  // `oandaConfigured()` true here no matter what the env says.
+  const { clearPlatformConfigCache } = await import("@/lib/platformConfig");
+  clearPlatformConfigCache();
+
+  const db = await import("@/lib/db");
+  await db.initDb();
+  const { upsertCandles } = await import("@/lib/candles/candleRepository");
+  const { upsertAnalysisCandles } = await import("@/lib/candles/analysisCandleRepository");
+
+  const STEP = 60 * 60_000;
+  const FROM = 1_700_000_000_000;
+  const symbol = "USDCHF";
+  const to = FROM + 400 * STEP; // minimumDepth = 200, so 50 MT bars is thin
+
+  await upsertCandles(symbol, "1h", makeRows(50, FROM + 350 * STEP, STEP, 0.9));
+  await upsertAnalysisCandles(symbol, "1h", makeRows(301, FROM, STEP, 9.9));
+
+  const envelope = await exportAiChartCandleWarehouse({
+    symbol,
+    timeframe: "1h",
+    fromMs: FROM,
+    toMs: to,
+    limit: 1000,
+  });
+
+  assert.equal(
+    envelope.bars.length,
+    50,
+    "with no analysis source configured the export stays MT-only — 301 analysis bars must not appear",
+  );
+  const prices = envelope.bars.map((b) => b.close);
+  assert.ok(
+    prices.every((p) => p < 5),
+    "no 9.9-based analysis bar leaked into a Lonora dataset",
   );
 });
 

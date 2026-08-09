@@ -176,6 +176,18 @@ async function supplementFromAnalysisSource(params: {
   limit: number;
   mtCandles: StoredCandle[];
 }): Promise<StoredCandle[]> {
+  // Only splice when the analysis source is actually configured. This function
+  // is reached from Lonora's own paths — `deepAnalysis/enqueue.ts` (a live
+  // analysis turn) and `strategies/pipeline.ts` (the mass-backtest cron) — and
+  // the envelope it feeds stamps every bar `aichart_candle_warehouse`, so a
+  // spliced bar is indistinguishable downstream from the operator's own broker
+  // history. Without this gate the read still runs with no OANDA credentials
+  // set anywhere, and thin MT depth quietly turns what used to be an honest
+  // "backfill first" failure into a passing backtest over foreign bars — and
+  // backtest evidence is what gates recommendations.
+  const { oandaConfigured } = await import("@/lib/markets/oanda");
+  if (!oandaConfigured()) return params.mtCandles;
+
   const step = DURATION_MS[params.timeframe];
   const mtComplete = params.mtCandles.filter((candle) => candle.complete);
 

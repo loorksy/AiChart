@@ -16,6 +16,7 @@
  * this one.
  */
 import { normalizeInterval } from "@/lib/intervals";
+import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
 import { forexCanonicalKey } from "./forexCanonical";
 import { getAnalysisCandles } from "@/lib/candles/analysisCandleRepository";
 import {
@@ -63,9 +64,24 @@ export async function fetchAnalysisCandleFeed(
   const limit = Math.min(Math.max(1, Math.floor(limitRaw) || 200), 5000);
 
   let warning: string | undefined;
-  const warehouse = await getAnalysisCandles({ symbol, interval, limit, order: "asc" });
+  // NO `order: "asc"` here. That is `ORDER BY time ASC LIMIT n` with no range
+  // bound — the OLDEST n rows in the store, not the latest window. With the
+  // default `desc` the repository takes the newest n and returns them
+  // ascending, which is what a "current market" feed means. The asc form is
+  // for bounded completeness scans, and every caller of this function
+  // (the Quant Agent crons and chat, and the analysis-only MCP tools) is
+  // pricing a live decision off the tail.
+  const warehouse = await getAnalysisCandles({ symbol, interval, limit });
   let candles: AnalysisFeedCandle[] = warehouse;
-  const sufficient = warehouse.length >= Math.ceil(limit * MIN_COVERAGE_RATIO);
+
+  // Depth alone is not sufficiency. Once the backfill service has more than
+  // `limit` bars of history, a depth-only check is satisfied forever and no
+  // live pull is ever made again, so the feed freezes on whatever window it
+  // last read and silently gets staler every day. The tail must be recent too.
+  const newest = warehouse.length ? warehouse[warehouse.length - 1]!.time : null;
+  const staleBy = newest == null ? Infinity : Date.now() - newest;
+  const fresh = staleBy <= candleFreshnessToleranceMs(interval);
+  const sufficient = warehouse.length >= Math.ceil(limit * MIN_COVERAGE_RATIO) && fresh;
 
   if (!sufficient) {
     if (!oandaConfigured()) {
@@ -99,5 +115,23 @@ export async function fetchAnalysisCandleFeed(
     }
   }
 
-  return { symbol, interval, candles: candles.slice(-limit), warning };
+  const result = candles.slice(-limit);
+
+  // Last line of defence: whatever path we took, if the series we are about to
+  // hand back still ends in the past, say so. Callers price entries, stops and
+  // targets off these bars and deliver them to real users over Telegram — an
+  // old series with no warning attached is worse than no series at all,
+  // because nothing downstream can tell the difference.
+  if (!warning && result.length) {
+    const tail = result[result.length - 1]!.time;
+    const behindMs = Date.now() - tail;
+    if (behindMs > candleFreshnessToleranceMs(interval)) {
+      const behindHours = Math.floor(behindMs / 3_600_000);
+      warning =
+        `بيانات التحليل لـ${symbol} (${interval}) متأخرة بنحو ${behindHours} ساعة — ` +
+        `آخر شمعة ${new Date(tail).toISOString()}. لا تُبنَ عليها قرارات سعرية.`;
+    }
+  }
+
+  return { symbol, interval, candles: result, warning };
 }

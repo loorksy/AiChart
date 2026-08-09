@@ -1,7 +1,7 @@
 /**
  * Analysis-only candle store — OANDA-sourced rows in the SAME `market_candles`
- * table as the chart's warehouse, under `source='oanda'`, but reached through
- * a COMPLETELY SEPARATE set of functions from `candleRepository.ts`.
+ * table as the chart's warehouse, under `source='oanda_analysis'`, but reached
+ * through a COMPLETELY SEPARATE set of functions from `candleRepository.ts`.
  *
  * Why a separate module instead of an optional `source` parameter on
  * `candleRepository.ts`'s existing exports: those functions are called
@@ -39,8 +39,22 @@ import {
 
 export { detectCandleGaps };
 
-/** The provenance tag every function in this file exclusively reads/writes. */
-export const ANALYSIS_SOURCE = "oanda";
+/**
+ * The provenance tag every function in this file exclusively reads/writes.
+ *
+ * NOT the bare string `"oanda"`. The retired platform feed wrote under that
+ * exact label until 2026-08-07, when `WAREHOUSE_SOURCE` moved to `"metaapi"`
+ * and those rows were declared invisible — but `pruneExpiredCandles` only
+ * deletes `source='metaapi'`, so ~445k of them are still in the production
+ * table on a five-year retention and will be for years. Reusing `"oanda"`
+ * here would silently adopt a DIFFERENT provider's stale bars as this
+ * store's contents the moment the code shipped, with no OANDA credentials
+ * configured and nothing to indicate it. A distinct label keeps the two
+ * eras in separate key spaces under the shared UNIQUE(symbol, interval,
+ * time, source) constraint, so the legacy rows stay unreadable by anything
+ * instead of becoming this feed's history.
+ */
+export const ANALYSIS_SOURCE = "oanda_analysis";
 
 const UPSERT_CHUNK = 100;
 

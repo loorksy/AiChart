@@ -183,8 +183,11 @@ type OandaPhaseResult =
     };
 
 /**
- * OANDA-fed analysis-only warehouse maintenance (`source='oanda'` rows,
- * written exclusively through `oandaBackfillService.ts`). Gated ONLY on
+ * OANDA-fed analysis-only warehouse maintenance (`source='oanda_analysis'`
+ * rows — NOT the retired platform feed's `source='oanda'` rows, which are a
+ * different provider's data and are read by nothing; see `ANALYSIS_SOURCE` in
+ * `analysisCandleRepository.ts`). Written exclusively through
+ * `oandaBackfillService.ts`. Gated ONLY on
  * `oandaConfigured()` — deliberately independent of the MT phase's feeder
  * guard above, since OANDA answers to one platform-level credential and has
  * nothing to do with any linked MetaTrader account. Reuses the exact same
