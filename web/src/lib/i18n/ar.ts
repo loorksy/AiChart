@@ -1070,6 +1070,15 @@ export const ar: Record<TranslationKey, string> = {
   "qa.analysis.missing.volume_ratio": "نسبة الحجم",
   "qa.analysis.missing.atr": "ATR",
   "qa.analysis.missing.change_24h": "تغيّر 24 ساعة",
+  "qa.analysis.accuracy.title": "كم مرة كان هذا صحيحًا",
+  "qa.analysis.accuracy.subtitle":
+    "نسبة الإصابة في تحليلاتك السابقة، مُجمَّعة حسب درجة الثقة التي أعلنها المحرّك وقتها.",
+  "qa.analysis.accuracy.validated": "{count} تحليلًا مُقيَّمًا",
+  "qa.analysis.accuracy.samples": "ع={count}",
+  "qa.analysis.accuracy.not_enough":
+    "لا يوجد سجل كافٍ بعد. تحتاج كل فئة ثقة إلى 5 تحليلات على الأقل جرى تقييمها مقابل حركة سعر حقيقية قبل أن تعني نسبة الإصابة شيئًا.",
+  "qa.analysis.accuracy.rule":
+    "يُقيَّم التحليل بعد 7 أيام من تشغيله: الاتجاه الصاعد صحيح إذا ارتفع السعر أكثر من 2%، والهابط إذا انخفض أكثر من 2%، والمحايد إذا بقي ضمن 5%.",
   "qa.analysis.card.badge": "تحليل Quant Agent",
   "qa.analysis.card.open_full": "افتح التقرير الكامل",
   "qa.analysis.history.loading": "جارٍ التحميل…",
@@ -1083,6 +1092,60 @@ export const ar: Record<TranslationKey, string> = {
   "qa.analysis.history.delete_cancel": "إلغاء",
   "qa.analysis.history.delete_error": "تعذّر حذف السجل.",
   "qa.analysis.history.load_more": "تحميل المزيد",
+
+  // Quant Agent Chat — Quick tools (Wave 2). Labels, descriptions and the two
+  // base prompts are QuantDinger's own Arabic strings (Apache-2.0), copied
+  // verbatim. The `.note` lines and the honesty clauses appended to the
+  // news/macro/trade-plan prompts have no upstream equivalent and are ours.
+  "qa.quicktool.title": "أدوات سريعة",
+  "qa.quicktool.description": "اختر أداة. معظمها يملأ صندوق الكتابة، وأداتا المحرّك تعملان فورًا.",
+  "qa.quicktool.unavailable": "غير متاح",
+  "qa.quicktool.market_diagnosis.label": "رمز التشخيص",
+  "qa.quicktool.market_diagnosis.desc": "الاتجاه، والزخم، والدعم/المقاومة، والسيولة، والمخاطر.",
+  "qa.quicktool.market_diagnosis.command": "تشخيص {symbol}: الاتجاه، الزخم، الدعم/المقاومة، السيولة، والمخاطر.",
+  "qa.quicktool.chart_review.label": "مراجعة المخطط",
+  "qa.quicktool.chart_review.desc":
+    "احكم على نقاط الدخول، ووقف الخسارة، وجني الأرباح، وإبطال الصفقات من خلال صورة الرسم البياني.",
+  "qa.quicktool.chart_review.note": "لا تقبل هذه المحادثة الصور بعد، لذا يتعذّر مراجعة صورة الرسم البياني.",
+  "qa.quicktool.indicator_research.label": "إنشاء مؤشر مخطط",
+  "qa.quicktool.indicator_research.desc":
+    "أخبر الذكاء الاصطناعي بما تريد أن يراه؛ سيقوم بإنشاء مؤشر رسم بياني قابل للتعديل.",
+  "qa.quicktool.indicator_research.prompt":
+    "أنشئ مؤشر رسم بياني لـ {symbol} يوضح الاتجاه وإمكانية الانعكاسات. استخدم فقط المؤشرات التي تحسبها هذه المنصة — RSI وMACD والمتوسطات المتحركة وبولنجر وATR والستوكاستك وADX — واذكر معاملاته وقيمها الافتراضية.",
+  "qa.quicktool.indicator_research.note":
+    "لا يوجد هنا محرّر مؤشرات مخصّص — يصف الوكيل المؤشر ولا يستطيع تثبيته.",
+  "qa.quicktool.strategy_research.label": "أنشئ استراتيجية تداول",
+  "qa.quicktool.strategy_research.desc": "صف فكرة دخول؛ الذكاء الاصطناعي يكمل القواعد وضوابط المخاطر.",
+  "qa.quicktool.strategy_research.prompt":
+    "أنشئ استراتيجية تداول قابلة للتنفيذ لـ {symbol} مع قواعد الدخول والخروج والمخاطر وحجم المركز.",
+  "qa.quicktool.trade_plan.label": "خطة التداول",
+  "qa.quicktool.trade_plan.desc": "حول السياق الحالي للسوق إلى قائمة تحقق ملموسة.",
+  "qa.quicktool.trade_plan.prompt":
+    "أنشئ خطة تداول قابلة للتنفيذ لـ {symbol}: الانحياز الاتجاهي، المستويات الرئيسية، محفز الدخول، وقف الخسارة، جني الأرباح، حجم المركز، ومتى يجب الابتعاد. استخدم فقط الأرقام الموجودة بالفعل في هذه المحادثة — ولا تخترع أي مستوى.",
+  "qa.quicktool.trade_plan.note": "يُبنى فقط من الأرقام الموجودة في هذه المحادثة — شغّل تشخيص الرمز أولًا.",
+  "qa.quicktool.news_research.label": "أخبار / أبحاث الأحداث",
+  "qa.quicktool.news_research.desc":
+    "ابحث عن أخبار الشركات والأصول والاقتصاد الكلي والصناعة لبناء سياق بحثي قابل للاستخدام.",
+  "qa.quicktool.news_research.prompt":
+    "ابحث عن آخر الأخبار والأحداث المتعلقة بـ {symbol}؛ افصل بين الحقائق والتفسيرات والشكوك. إن لم يكن هناك مصدر أخبار متصل بهذه المحادثة، فقل ذلك صراحةً بدل ذكر عناوين.",
+  "qa.quicktool.news_research.note": "لا يوجد مصدر أخبار متصل بهذه المحادثة — لا يستطيع الوكيل جلب العناوين.",
+  "qa.quicktool.macro_economic_data.label": "البيانات الكلية",
+  "qa.quicktool.macro_economic_data.desc":
+    "استعلم عن مؤشر أسعار المستهلك، ولجنة السوق المفتوحة الفيدرالية، وأسعار الفائدة، والناتج المحلي الإجمالي، ومؤشر الإنفاق الاستهلاكي الشخصي، وغيرها من الأحداث الاقتصادية الكلية.",
+  "qa.quicktool.macro_economic_data.prompt":
+    "قم بمراجعة البيانات الكلية مثل مؤشر أسعار المستهلك، ولجنة السوق المفتوحة الفيدرالية، وأسعار الفائدة، والناتج المحلي الإجمالي، ومؤشر الإنفاق الاستهلاكي الشخصي، واشرح تأثيرها على السوق. إن لم يكن هناك مصدر بيانات كلية متصل بهذه المحادثة، فقل ذلك صراحةً بدل ذكر أرقام.",
+  "qa.quicktool.macro_economic_data.note":
+    "لا توجد سلاسل بيانات كلية متصلة بهذه المحادثة — لا يستطيع الوكيل ذكر رقم منشور.",
+  "qa.quicktool.opportunity_radar.label": "رادار الفرص",
+  "qa.quicktool.opportunity_radar.desc": "قم بمسح الفرص المحتملة خلال الـ 24 ساعة القادمة.",
+  "qa.quicktool.opportunity_radar.command": "امسح قائمة المراقبة بحثًا عن الفرص المحتملة في الـ 24 ساعة القادمة.",
+  "qa.quicktool.diagnosis.progress": "جارٍ تشغيل تحليل Quant Agent لـ {symbol} ({interval})…",
+  "qa.quicktool.diagnosis.failed": "لم يكتمل تحليل {symbol}: {error}",
+  "qa.quicktool.radar.progress": "جارٍ مسح {count} من رموز قائمة المراقبة…",
+  "qa.quicktool.radar.empty": "قائمة المراقبة فارغة. أضف رموزًا إليها ثم شغّل الرادار مرة أخرى.",
+  "qa.quicktool.radar.heading": "رادار الفرص — {count} رمزًا، الأقوى إشارةً أولًا.",
+  "qa.quicktool.radar.capped": "تم مسح أول {count} رمزًا فقط من قائمة المراقبة في هذه الجولة.",
+  "qa.quicktool.radar.failed_row": "فشل التحليل",
 
   // Admin
   "nav.admin_diagnostics": "التشخيص",

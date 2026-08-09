@@ -2230,6 +2230,42 @@ function migrate(db: Database.Database) {
     }
   }
 
+  // Quant Agent analysis memory + outcome validation (Wave 2). Additive only:
+  // Wave-1 rows keep NULLs and stay exactly as honest as they were — an
+  // analysis written before the validation cron existed genuinely has no
+  // outcome, and back-filling one would be inventing a result.
+  //
+  // `indicators_json` is the fingerprint the similar-pattern scorer compares
+  // ({rsi, macd_signal, ma_trend, volatility_level, price_position}); without
+  // it a stored analysis is unrecallable, which is why Wave 1's memory block
+  // could only offer plain recency.
+  //
+  // `was_correct` stays INTEGER, not a 0/1 text flag, and NULL means "not
+  // scored yet" — a third state neither 0 nor 1 may stand in for.
+  const quantAnalysisCols = db
+    .prepare("PRAGMA table_info(quant_analyses)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["indicators_json", "TEXT"],
+    ["validated_at", "INTEGER"],
+    ["was_correct", "INTEGER"],
+    ["realised_price", "REAL"],
+    ["realised_return_pct", "REAL"],
+  ] as const) {
+    if (!quantAnalysisCols.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE quant_analyses ADD COLUMN ${name} ${definition}`);
+    }
+  }
+  // Created here rather than in SCHEMA: on a database that predates these
+  // columns the schema pass runs first, so indexing them there would fail and
+  // take the whole initDb down with it (the decision_parity precedent above).
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS quant_analyses_unvalidated
+      ON quant_analyses (validated_at, created_at);
+    CREATE INDEX IF NOT EXISTS quant_analyses_validated
+      ON quant_analyses (user_id, symbol, validated_at DESC);
+  `);
+
   const entFlag = db
     .prepare("SELECT value FROM system_flags WHERE key = 'entitlement_migration_v1'")
     .get() as { value?: string } | undefined;

@@ -42,7 +42,6 @@
  *  5. Trailing whitespace present in upstream's f-strings is not reproduced.
  */
 import { DEFAULT_LOCALE, type AppLocale } from "@/lib/i18n";
-import type { QuantAnalysisRecord } from "../types";
 import type { QuantAnalysisPromptFacts } from "./collect";
 
 /**
@@ -193,24 +192,83 @@ export function buildDecisionGuidance(facts: {
 }
 
 /**
- * `_get_memory_context` (`fast_analysis.py:268-299`), line format unchanged.
+ * One past analysis as the memory block renders it.
  *
- * Upstream ranks by indicator similarity and only ever shows analyses whose
- * outcome was already validated, which lets it append `(Outcome: Correct,
- * Return: x%)`. Neither is available here — `quant_analyses` keeps no
- * indicator snapshot to compare and no validated outcome to report — so this
- * shows plain recency and says so in the header rather than borrowing
- * upstream's "similar conditions" claim. Upstream's own code already omits the
- * outcome clause when `was_correct is None`, so the lines themselves match.
+ * `wasCorrect` / `actualReturnPct` are optional because a
+ * `QuantAnalysisRecord` — which is what the fallback path passes — genuinely
+ * has neither. An entry without them renders exactly as it did in Wave 1: the
+ * decision and the price, and no outcome claim.
  */
-export function formatMemoryContext(priorAnalyses: QuantAnalysisRecord[]): string {
-  if (!priorAnalyses.length) return "No prior analyses of this symbol are stored yet.";
-  const lines = [
-    "Recent prior analyses of this symbol (most recent first; no validated outcome exists for any of them yet, so treat them as context, not evidence):",
-  ];
-  for (const prior of priorAnalyses) {
-    const price = prior.currentPrice == null ? "N/A" : String(prior.currentPrice);
-    lines.push(`- Decision: ${prior.decision ?? "N/A"} at $${price}`);
+export interface QuantAnalysisMemoryPattern {
+  decision: string | null;
+  currentPrice: number | null;
+  wasCorrect?: boolean | null;
+  actualReturnPct?: number | null;
+}
+
+export interface FormatMemoryContextOptions {
+  /**
+   * How many stored analyses were offered to the similarity scorer. Only used
+   * to tell "nothing is stored" apart from "nothing stored was similar enough"
+   * — two very different statements, and the second one is a lie if we print
+   * the first.
+   */
+  candidatePoolSize?: number;
+}
+
+/** Upstream's own header, restored now that similarity really is computed. */
+const SIMILAR_HEADER = "Historical patterns with similar conditions:";
+/**
+ * The fallback header, from Wave 1: used when the recalled entries carry no
+ * validated outcome.
+ *
+ * NOT REACHED ON THE PRODUCTION PATH as of Wave 2, and that is the correct
+ * state, not an oversight. `listSimilarQuantAnalysesForSymbol` requires
+ * `was_correct IS NOT NULL` (upstream's own filter), so every pattern that
+ * reaches this function has an outcome and takes `SIMILAR_HEADER`. During the
+ * first week of a symbol's life on an account nothing is recalled AT ALL and
+ * the empty-list branch above speaks instead. This header stays because it is
+ * the honest wording for an unvalidated recall, and a caller that ever passes
+ * one — `formatMemoryContext` is exported and tested directly — must not be
+ * given a header claiming a similarity ranking nobody computed.
+ */
+const RECENCY_HEADER =
+  "Recent prior analyses of this symbol (most recent first; no validated outcome exists for any of them yet, so treat them as context, not evidence):";
+
+/**
+ * `_get_memory_context` (`fast_analysis.py:268-299`), line format unchanged —
+ * including the `if p.get("actual_return_pct")` TRUTHINESS test, so an exact
+ * 0.00% return omits the "Return:" clause rather than printing a zero.
+ *
+ * The header is the one thing that varies, and it varies on evidence: entries
+ * with a validated outcome get upstream's "similar conditions" wording,
+ * because at that point similarity really was computed by
+ * `quant-agent`'s scorer. Entries without one get the recency wording instead,
+ * because claiming a similarity ranking over unvalidated rows would be
+ * describing work nobody did.
+ */
+export function formatMemoryContext(
+  patterns: QuantAnalysisMemoryPattern[],
+  options: FormatMemoryContextOptions = {},
+): string {
+  if (!patterns.length) {
+    return (options.candidatePoolSize ?? 0) > 0
+      ? "Past analyses of this symbol are stored, but none matched the current conditions closely enough to be worth recalling."
+      : "No prior analyses of this symbol are stored yet.";
+  }
+  const anyValidated = patterns.some((pattern) => pattern.wasCorrect != null);
+  const lines = [anyValidated ? SIMILAR_HEADER : RECENCY_HEADER];
+  for (const pattern of patterns) {
+    const price = pattern.currentPrice == null ? "N/A" : String(pattern.currentPrice);
+    let outcome = "";
+    if (pattern.wasCorrect != null) {
+      outcome = ` (Outcome: ${pattern.wasCorrect ? "Correct" : "Incorrect"}`;
+      if (pattern.actualReturnPct) {
+        outcome += `, Return: ${pattern.actualReturnPct.toFixed(2)}%`;
+      }
+      outcome += ")";
+    }
+    lines.push(`- Decision: ${pattern.decision ?? "N/A"} at $${price}${outcome}`);
   }
   return lines.join("\n");
 }

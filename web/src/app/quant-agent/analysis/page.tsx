@@ -45,6 +45,7 @@ import {
 import { SkeletonBlock } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { QuantAnalysisRecord } from "@/lib/quantAgent/types";
+import { AccuracyStrip } from "@/components/quantAgent/analysis/AccuracyStrip";
 import { QuantAnalysisReport, formatAnalysisPrice } from "@/components/quantAgent/analysis/QuantAnalysisReport";
 
 /** Same cadence list the monitor sheet offers — an analysis re-reads the same feeds. */
@@ -296,6 +297,15 @@ function AnalysisPageBody() {
           <p className="text-[11px] text-muted-foreground">{t("qa.analysis.price.needs_link")}</p>
         ) : null}
       </Surface>
+
+      {/*
+        How often this engine has actually been right, per confidence bucket.
+        Above the report on purpose: it is the frame the reader should have
+        BEFORE reading a fresh verdict, not a footnote after it. It renders
+        itself away when the fetch fails, and says "not enough history yet"
+        rather than showing a hit rate built from three rows.
+      */}
+      <AccuracyStrip />
 
       {error ? (
         <Surface padding="none">

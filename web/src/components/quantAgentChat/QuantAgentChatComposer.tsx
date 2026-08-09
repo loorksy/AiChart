@@ -16,10 +16,18 @@
  */
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { type KeyboardEvent } from "react";
-import { Send } from "lucide-react";
+import { LayoutGrid, Send } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { Button } from "@/components/squareui/button";
 import { ComposerIntervalPicker, ComposerSymbolPicker } from "@/components/agent/ComposerMarketPickers";
+
+/**
+ * Same trigger grammar as the symbol/interval pickers next to it
+ * (`ComposerMarketPickers`' own `TRIGGER_CLASS`), so the composer's top row
+ * reads as one control strip rather than three unrelated buttons.
+ */
+const QUICK_TOOLS_TRIGGER_CLASS =
+  "flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9";
 
 export interface QuantAgentChatComposerProps {
   onSend: (message: string) => void;
@@ -44,6 +52,13 @@ export interface QuantAgentChatComposerProps {
   /** Controlled draft text — lifted so `QuantAgentComposerCoach` chips can set it. */
   value: string;
   onValueChange: (value: string) => void;
+  /**
+   * Opens the "Quick tools" sheet. Omitted — and the trigger hidden — while the
+   * conversation is still empty, because the welcome screen is already showing
+   * the same eight tools full-size (upstream gates its own button the same way:
+   * `v-if="messages.length"`).
+   */
+  onOpenQuickTools?: () => void;
 }
 
 export function QuantAgentChatComposer({
@@ -56,6 +71,7 @@ export function QuantAgentChatComposer({
   onIntervalChange,
   value,
   onValueChange,
+  onOpenQuickTools,
 }: QuantAgentChatComposerProps) {
   const { t, dir } = useLocale();
 
@@ -78,6 +94,22 @@ export function QuantAgentChatComposer({
       <div className="flex items-center gap-1">
         <ComposerSymbolPicker symbol={symbol} brokerConnected={brokerConnected} onSelect={onSymbolChange} />
         <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
+        {onOpenQuickTools ? (
+          <button
+            type="button"
+            onClick={onOpenQuickTools}
+            disabled={disabled}
+            aria-label={t("qa.quicktool.title")}
+            title={t("qa.quicktool.title")}
+            data-testid="quant-agent-quick-tools-trigger"
+            className={QUICK_TOOLS_TRIGGER_CLASS}
+          >
+            <LayoutGrid className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {/* The label is the first thing to go on a 360px screen — the icon
+                and its accessible name carry the control on their own. */}
+            <span className="hidden sm:inline">{t("qa.quicktool.title")}</span>
+          </button>
+        ) : null}
       </div>
       <div className="flex items-end gap-2">
         <textarea

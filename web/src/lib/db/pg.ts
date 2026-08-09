@@ -1396,6 +1396,40 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS session_cost    DOUBLE PRECISION
   `).catch(() => {});
 
+  // Quant Agent analysis memory + outcome validation (Wave 2). Additive only:
+  // Wave-1 rows keep NULLs and stay exactly as honest as they were — an
+  // analysis written before the validation cron existed genuinely has no
+  // outcome, and back-filling one would be inventing a result.
+  //
+  // `indicators_json` is the fingerprint the similar-pattern scorer compares
+  // ({rsi, macd_signal, ma_trend, volatility_level, price_position}); without
+  // it a stored analysis is unrecallable, which is why Wave 1's memory block
+  // could only offer plain recency.
+  //
+  // `was_correct` stays INTEGER, not BOOLEAN — same reason the quant-agent
+  // monitor flags do (see the note above `quant_agent_monitors`): the store
+  // binds 1/0 uniformly across sqlite and pg. NULL means "not scored yet",
+  // which is a third state neither 0 nor 1 may stand in for.
+  await client.query(`
+    ALTER TABLE quant_analyses
+      ADD COLUMN IF NOT EXISTS indicators_json      TEXT,
+      ADD COLUMN IF NOT EXISTS validated_at         BIGINT,
+      ADD COLUMN IF NOT EXISTS was_correct          INTEGER,
+      ADD COLUMN IF NOT EXISTS realised_price       DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS realised_return_pct  DOUBLE PRECISION
+  `).catch(() => {});
+  // The validation cron's claim query: unvalidated rows, oldest first.
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS quant_analyses_unvalidated
+      ON quant_analyses (validated_at, created_at)
+  `).catch(() => {});
+  // Memory recall and the accuracy strip both read validated rows for one
+  // (user, symbol), newest validation first.
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS quant_analyses_validated
+      ON quant_analyses (user_id, symbol, validated_at DESC)
+  `).catch(() => {});
+
   // Case-memory KNN (plan phase G infra). Every step is individually guarded:
   // a Postgres without pgvector, or without ANN index support, keeps the JS
   // similarity path — degraded and warned about, never fatal. The dimension

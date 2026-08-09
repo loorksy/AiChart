@@ -1,23 +1,29 @@
-"""The two analysis endpoints: `POST /internal/quant-agent/analysis/score`
-(pre-LLM) and `POST /internal/quant-agent/analysis/finalize` (post-LLM).
+"""The analysis endpoints: `POST /internal/quant-agent/analysis/score`
+(pre-LLM), `POST .../finalize` (post-LLM), `POST .../validate` (score a past
+analysis against the price it actually reached) and `POST .../calibrate`
+(what the decision thresholds would be if tuned on that validated history).
 
-Both are pure functions over data `web/` pushes in — no store, no network, no
-LLM. `web/` collects prices/indicators/news/macro, calls `/score`, builds its
-prompt from the result, calls the model itself, then posts the raw model
-output back to `/finalize` to have it constrained and vetoed.
+All four are pure functions over data `web/` pushes in — no store, no network,
+no LLM. `web/` collects prices/indicators/news/macro, calls `/score`, builds
+its prompt from the result, calls the model itself, then posts the raw model
+output back to `/finalize` to have it constrained and vetoed. Weeks later its
+validation cron fetches the realised price for each aged analysis and posts
+`/validate`, then feeds the accumulated outcomes to `/calibrate` for a
+read-only tuning report.
 
 Error convention follows `app/api/recommendations.py` rather than
 `app/api/strategies.py`: this is a data endpoint, so a request that cannot be
 scored is a 422 with a code, not a 200 carrying `status="invalid"`.
 
-The arithmetic behind both endpoints is a port of QuantDinger
+The arithmetic behind all four endpoints is a port of QuantDinger
 (https://github.com/OpenByteInc/QuantDinger), Copyright Open Byte Inc.,
 licensed under the Apache License, Version 2.0
 (http://www.apache.org/licenses/LICENSE-2.0) — see the per-module headers
 under `app/engine/analysis/`. Changed here: upstream runs collection, prompt
 assembly, the LLM call, the scoring and persistence inside one `analyze()`
-method; this service keeps only the deterministic middle and exposes it as
-two stateless calls.
+method, and its reflection/calibration workers own their own database
+sessions; this service keeps only the deterministic middle and exposes it as
+four stateless calls.
 """
 
 from __future__ import annotations
@@ -27,6 +33,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
+from app.engine.analysis.calibration import (
+    MIN_CALIBRATION_SAMPLES,
+    calibrate_decision_thresholds,
+)
 from app.engine.analysis.consensus import (
     QUALITY_HOLD_THRESHOLD,
     build_consensus,
@@ -44,12 +54,25 @@ from app.engine.analysis.constrain import (
     safe_float_price,
     validate_and_constrain,
 )
-from app.engine.analysis.memory import fingerprint_from_indicators, score_similar_patterns
+from app.engine.analysis.memory import (
+    confidence_accuracy_by_bucket,
+    fingerprint_from_indicators,
+    score_similar_patterns,
+    validate_outcome,
+)
 from app.engine.analysis.models import (
+    AnalysisCalibrateRequest,
+    AnalysisCalibrateResponse,
     AnalysisFinalizeRequest,
     AnalysisFinalizeResponse,
     AnalysisScoreRequest,
     AnalysisScoreResponse,
+    AnalysisValidateRequest,
+    AnalysisValidateResponse,
+    AnalysisValidationOutcome,
+    AnalysisValidationSkip,
+    AnalysisValidationStats,
+    CalibrationThresholds,
     TimeframeObjectiveScore,
     TimeframePayload,
 )
@@ -239,3 +262,82 @@ async def finalize_analysis(body: AnalysisFinalizeRequest) -> AnalysisFinalizeRe
         "applied": AppliedAdjustmentsWire.model_validate(asdict(applied)),
     }
     return AnalysisFinalizeResponse.model_validate(payload)
+
+
+@router.post("/validate", response_model=AnalysisValidateResponse, dependencies=[_AUTH])
+async def validate_analyses(body: AnalysisValidateRequest) -> AnalysisValidateResponse:
+    """Score aged analyses against the price they actually reached.
+
+    Upstream does the price lookup itself inside
+    `validate_unvalidated_older_than`; this service has no egress, so `web/`
+    reads the realised price and posts it alongside the stored one. A row whose
+    either price is non-positive is reported in `skipped` — upstream `continue`s
+    past it, and scoring it as a 0% move would silently record a correct HOLD.
+    """
+    results: list[AnalysisValidationOutcome] = []
+    skipped: list[AnalysisValidationSkip] = []
+    for candidate in body.analyses:
+        verdict = validate_outcome(
+            candidate.decision, candidate.price_at_analysis, candidate.current_price
+        )
+        if verdict is None:
+            skipped.append(AnalysisValidationSkip(id=candidate.id, reason="non_positive_price"))
+            continue
+        results.append(
+            AnalysisValidationOutcome(
+                id=candidate.id,
+                was_correct=verdict.was_correct,
+                return_pct=verdict.return_pct,
+            )
+        )
+
+    correct = sum(1 for outcome in results if outcome.was_correct)
+    return AnalysisValidateResponse(
+        results=results,
+        skipped=skipped,
+        stats=AnalysisValidationStats(
+            validated=len(results),
+            correct=correct,
+            incorrect=len(results) - correct,
+            skipped=len(skipped),
+        ),
+    )
+
+
+@router.post("/calibrate", response_model=AnalysisCalibrateResponse, dependencies=[_AUTH])
+async def calibrate_analysis_thresholds(
+    body: AnalysisCalibrateRequest,
+) -> AnalysisCalibrateResponse:
+    """Report what the decision thresholds would be if tuned on validated history.
+
+    Read-only by design: nothing in this service starts deciding differently
+    because of the answer — see the module header of
+    `app/engine/analysis/calibration.py`. Under the minimum sample count the
+    live defaults come back untouched with `applied=false` and a reason code.
+
+    `min_samples` can only be raised above `MIN_CALIBRATION_SAMPLES`, never
+    lowered: a caller must not be able to talk the engine into tuning a
+    decision boundary on twelve rows.
+    """
+    min_samples = max(MIN_CALIBRATION_SAMPLES, body.min_samples or MIN_CALIBRATION_SAMPLES)
+    outcome = calibrate_decision_thresholds(body.samples, min_samples=min_samples)
+
+    graded = [
+        (sample.confidence, sample.was_correct)
+        for sample in body.samples
+        if sample.confidence is not None and sample.was_correct is not None
+    ]
+    return AnalysisCalibrateResponse(
+        thresholds=CalibrationThresholds(
+            buy_threshold=outcome.thresholds.buy_threshold,
+            sell_threshold=outcome.thresholds.sell_threshold,
+            min_consensus_abs_override=outcome.thresholds.min_consensus_abs_override,
+            quality_hold_threshold=outcome.thresholds.quality_hold_threshold,
+        ),
+        applied=outcome.applied,
+        reason=outcome.reason,
+        best_accuracy=outcome.best_accuracy,
+        coverage=outcome.coverage,
+        sample_count=outcome.sample_count,
+        confidence_accuracy=confidence_accuracy_by_bucket(graded),
+    )

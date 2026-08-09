@@ -1072,6 +1072,15 @@ export const en = {
   "qa.analysis.missing.volume_ratio": "Volume ratio",
   "qa.analysis.missing.atr": "ATR",
   "qa.analysis.missing.change_24h": "24h change",
+  "qa.analysis.accuracy.title": "How often this has been right",
+  "qa.analysis.accuracy.subtitle":
+    "Hit rate of your past analyses, grouped by the confidence the engine stated at the time.",
+  "qa.analysis.accuracy.validated": "{count} scored",
+  "qa.analysis.accuracy.samples": "n={count}",
+  "qa.analysis.accuracy.not_enough":
+    "Not enough history yet. A confidence band needs at least 5 analyses that have been scored against a real price move before a hit rate means anything.",
+  "qa.analysis.accuracy.rule":
+    "An analysis is scored 7 days after it was run: bullish is right if price rose more than 2%, bearish if it fell more than 2%, neutral if it stayed within 5%.",
   "qa.analysis.card.badge": "Quant Agent analysis",
   "qa.analysis.card.open_full": "Open the full report",
   "qa.analysis.history.loading": "Loading…",
@@ -1085,6 +1094,62 @@ export const en = {
   "qa.analysis.history.delete_cancel": "Cancel",
   "qa.analysis.history.delete_error": "Could not delete the record.",
   "qa.analysis.history.load_more": "Load more",
+
+  // Quant Agent Chat — Quick tools (Wave 2). The eight tools, their order and
+  // every label/description below are QuantDinger's own strings
+  // (Apache-2.0, https://github.com/OpenByteInc/QuantDinger —
+  // `aiAssetAnalysis.copilot.quickTasks.*` / `.quickPrompts.*`), copied rather
+  // than re-translated. The `.note` lines and the honesty clauses appended to
+  // the news/macro/trade-plan prompts are ours: they name a data source this
+  // platform does not have, so the model is never asked to invent one.
+  "qa.quicktool.title": "Quick tools",
+  "qa.quicktool.description": "Pick a tool. Most fill the composer; the engine tools run straight away.",
+  "qa.quicktool.unavailable": "Not available",
+  "qa.quicktool.market_diagnosis.label": "Diagnose symbol",
+  "qa.quicktool.market_diagnosis.desc": "Trend, momentum, support/resistance, liquidity, and risk.",
+  "qa.quicktool.market_diagnosis.command":
+    "Diagnose {symbol}: trend, momentum, support/resistance, liquidity, and risk.",
+  "qa.quicktool.chart_review.label": "Chart review",
+  "qa.quicktool.chart_review.desc": "Judge entries, stops, take profit, and invalidation from a chart image.",
+  "qa.quicktool.chart_review.note": "This chat accepts no image yet, so a chart image cannot be reviewed.",
+  "qa.quicktool.indicator_research.label": "Create chart indicator",
+  "qa.quicktool.indicator_research.desc":
+    "Tell AI what you want to see; it will create an adjustable chart indicator.",
+  "qa.quicktool.indicator_research.prompt":
+    "Create a chart indicator for {symbol} that shows trend and possible reversals. Use only the indicators this platform computes — RSI, MACD, moving averages, Bollinger bands, ATR, stochastic, ADX — and state its parameters and their defaults.",
+  "qa.quicktool.indicator_research.note":
+    "There is no custom-indicator editor here — the agent describes the indicator, it cannot install it.",
+  "qa.quicktool.strategy_research.label": "Create trading strategy",
+  "qa.quicktool.strategy_research.desc": "Describe an entry idea; AI completes the rules and risk controls.",
+  "qa.quicktool.strategy_research.prompt":
+    "Create an executable trading strategy for {symbol} with entry, exit, risk, and position-sizing rules.",
+  "qa.quicktool.trade_plan.label": "Trading plan",
+  "qa.quicktool.trade_plan.desc": "Turn the current market context into a concrete execution checklist.",
+  "qa.quicktool.trade_plan.prompt":
+    "Create an executable trading plan for {symbol}: directional bias, key levels, entry trigger, stop loss, take profit, position sizing, and when to stay out. Use only numbers that already appear in this conversation — never invent a level.",
+  "qa.quicktool.trade_plan.note": "Built only from numbers already in this chat — run the symbol diagnosis first.",
+  "qa.quicktool.news_research.label": "News / event research",
+  "qa.quicktool.news_research.desc":
+    "Search company, asset, macro, and industry news to build usable research context.",
+  "qa.quicktool.news_research.prompt":
+    "Search recent news and events for {symbol}; separate facts, interpretation, and uncertainty. If no news source is connected to this chat, say so plainly instead of naming headlines.",
+  "qa.quicktool.news_research.note": "No news feed is connected to this chat — the agent cannot fetch headlines.",
+  "qa.quicktool.macro_economic_data.label": "Macro data",
+  "qa.quicktool.macro_economic_data.desc": "Query CPI, FOMC, rates, GDP, PCE, and other macro events.",
+  "qa.quicktool.macro_economic_data.prompt":
+    "Review macro data such as CPI, FOMC, rates, GDP, and PCE, and explain the market impact. If no macro data source is connected to this chat, say so plainly instead of quoting figures.",
+  "qa.quicktool.macro_economic_data.note":
+    "No macro series is connected to this chat — the agent cannot quote a print.",
+  "qa.quicktool.opportunity_radar.label": "Opportunity radar",
+  "qa.quicktool.opportunity_radar.desc": "Scan likely opportunities over the next 24 hours.",
+  "qa.quicktool.opportunity_radar.command": "Scan my watchlist for likely opportunities in the next 24 hours.",
+  "qa.quicktool.diagnosis.progress": "Running the Quant Agent analysis for {symbol} ({interval})…",
+  "qa.quicktool.diagnosis.failed": "The analysis for {symbol} did not complete: {error}",
+  "qa.quicktool.radar.progress": "Scanning {count} watchlist symbols…",
+  "qa.quicktool.radar.empty": "Your watchlist is empty. Add symbols to it, then run the radar again.",
+  "qa.quicktool.radar.heading": "Opportunity radar — {count} symbols, strongest signal first.",
+  "qa.quicktool.radar.capped": "Only the first {count} watchlist symbols were scanned in this run.",
+  "qa.quicktool.radar.failed_row": "analysis failed",
 
   // Admin
   "nav.admin_diagnostics": "Diagnostics",

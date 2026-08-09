@@ -20,11 +20,19 @@ import { consumeSse } from "@/lib/sse";
 import { EmptyState } from "@/components/foundation";
 import type { AgentChatMessageRecord, AgentChatSession } from "@/lib/agent/chatHistory/types";
 import type { QuantAgentChatTurnResult } from "@/lib/agent/quantAgentChat/types";
+import type { QuantAnalysisRecord } from "@/lib/quantAgent/types";
+import {
+  resolveQuantAgentQuickToolDispatch,
+  type QuantAgentQuickTool,
+} from "@/lib/agent/quantAgentChat/quickTools";
 import { QuantAgentChatComposer } from "./QuantAgentChatComposer";
 import { QuantAgentChatSidebar } from "./QuantAgentChatSidebar";
 import { QuantAgentChatMessage, type QuantAgentChatMessageData } from "./QuantAgentChatMessage";
 import { QuantAgentRightRail } from "@/components/quantAgent/QuantAgentRightRail";
 import { QuantAgentComposerCoach } from "./QuantAgentComposerCoach";
+import { QuantAgentQuickTools } from "./QuantAgentQuickTools";
+import { QuantAgentQuickToolsSheet } from "./QuantAgentQuickToolsSheet";
+import { QuantAnalysisCard } from "@/components/quantAgent/analysis/QuantAnalysisCard";
 
 /** Mirrors the exact case-insensitive/trimmed matching style `pendingTask.ts` uses server-side. */
 const CANCEL_KEYWORD_BY_LOCALE: Record<"ar" | "en", string> = { ar: "إلغاء", en: "cancel" };
@@ -40,9 +48,21 @@ interface StoredMessageResult {
   memoryCandidate?: QuantAgentChatMessageData["memoryCandidate"];
   recommendations?: QuantAgentChatMessageData["recommendations"];
   composerCoach?: QuantAgentChatMessageData["composerCoach"];
+  /** Quick Tools (Wave 2) — the stored analyses a "Diagnose symbol"/radar turn produced. */
+  analyses?: QuantAnalysisRecord[];
 }
 
-function toDisplayMessage(record: AgentChatMessageRecord): QuantAgentChatMessageData {
+/**
+ * `QuantAgentChatMessageData` plus the analyses a Quick Tool turn attaches.
+ * Kept local because the bubble component does not render them itself yet —
+ * see the message list below, which renders the card under the bubble.
+ */
+type QuantAgentPanelMessage = QuantAgentChatMessageData & { analyses?: QuantAnalysisRecord[] };
+
+/** The turn payload, plus the two fields the orchestrator adds for a Quick Tool turn. */
+type QuantAgentChatTurnPayload = QuantAgentChatTurnResult & { analyses?: QuantAnalysisRecord[] };
+
+function toDisplayMessage(record: AgentChatMessageRecord): QuantAgentPanelMessage {
   const result = record.result as StoredMessageResult | undefined;
   return {
     id: record.id,
@@ -53,21 +73,16 @@ function toDisplayMessage(record: AgentChatMessageRecord): QuantAgentChatMessage
     memoryCandidate: result?.memoryCandidate ?? null,
     recommendations: result?.recommendations,
     composerCoach: result?.composerCoach ?? null,
+    analyses: result?.analyses,
     createdAt: record.createdAt,
   };
 }
-
-const QUICK_START_KEYS = [
-  "qa.chat.quickstart.explain",
-  "qa.chat.quickstart.generate",
-  "qa.chat.quickstart.how_it_works",
-] as const;
 
 export function QuantAgentChatPanel() {
   const { t, dir, locale } = useLocale();
   const [sessions, setSessions] = useState<AgentChatSession[] | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<QuantAgentChatMessageData[]>([]);
+  const [messages, setMessages] = useState<QuantAgentPanelMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   /**
@@ -88,6 +103,8 @@ export function QuantAgentChatPanel() {
   const [interval, setChatInterval] = useState(DEFAULT_QUANT_AGENT_INTERVAL);
   /** Composer draft text (Feature B) — lifted so a Composer Coach suggestion chip can set it. */
   const [draftText, setDraftText] = useState("");
+  /** Quick Tools (Wave 2) — the composer's sheet; the welcome grid needs no state. */
+  const [quickToolsOpen, setQuickToolsOpen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const loadSessions = useCallback(async () => {
@@ -171,7 +188,7 @@ export function QuantAgentChatPanel() {
 
   async function handleSend(text: string) {
     setSending(true);
-    const userMessage: QuantAgentChatMessageData = {
+    const userMessage: QuantAgentPanelMessage = {
       id: `local-user-${Date.now()}`,
       role: "user",
       content: text,
@@ -189,7 +206,7 @@ export function QuantAgentChatPanel() {
       });
       if (!res.ok || !res.body) throw new Error("stream request failed");
 
-      await consumeSse<QuantAgentChatTurnResult>(res, {
+      await consumeSse<QuantAgentChatTurnPayload>(res, {
         onDelta: (delta) => {
           setMessages((prev) =>
             prev.map((m) => (m.id === pendingId ? { ...m, content: delta, pending: true } : m)),
@@ -210,6 +227,7 @@ export function QuantAgentChatPanel() {
                     memoryCandidate: payload.memoryCandidate,
                     recommendations: payload.recommendations,
                     composerCoach: payload.composerCoach,
+                    analyses: payload.analyses,
                     createdAt: Date.now(),
                   }
                 : m,
@@ -229,6 +247,24 @@ export function QuantAgentChatPanel() {
       );
     } finally {
       setSending(false);
+    }
+  }
+
+  /**
+   * Quick Tools (Wave 2). Six tools only fill the draft — the user still reads,
+   * edits and sends it themselves. The two engine tools ("Diagnose symbol" and
+   * "Opportunity radar") send their own command, which the orchestrator
+   * recognises and answers by running the analysis engine instead of the chat
+   * LLM. An unavailable tool never gets here: its tile is disabled.
+   */
+  function handleQuickTool(tool: QuantAgentQuickTool) {
+    const dispatch = resolveQuantAgentQuickToolDispatch(tool, { locale, symbol });
+    if (dispatch.kind === "send") {
+      void handleSend(dispatch.text);
+      return;
+    }
+    if (dispatch.kind === "draft") {
+      setDraftText(dispatch.text);
     }
   }
 
@@ -270,28 +306,36 @@ export function QuantAgentChatPanel() {
               <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
             </div>
           ) : showEmptyState ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 px-4 py-10 text-center">
+            <div className="flex flex-col items-center gap-4 px-1 py-6 text-center">
               <EmptyState
                 icon={<Sparkles aria-hidden="true" />}
                 title={t("qa.chat.empty.title")}
                 description={t("qa.chat.empty.description")}
               />
-              <div className="flex flex-wrap justify-center gap-2">
-                {QUICK_START_KEYS.map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => void handleSend(t(`${key}.prompt`))}
-                    className="min-h-11 rounded-full border border-border bg-background px-3.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9"
-                  >
-                    {t(`${key}.label`)}
-                  </button>
-                ))}
-              </div>
+              {/* The welcome grid — the same eight tools the composer's sheet
+                  offers once the conversation has started. */}
+              <QuantAgentQuickTools
+                onSelect={handleQuickTool}
+                disabled={sending}
+                className="w-full max-w-2xl text-start"
+              />
             </div>
           ) : (
             messages.map((message) => (
-              <QuantAgentChatMessage key={message.id} message={message} chatId={activeChatId ?? undefined} />
+              <div key={message.id}>
+                <QuantAgentChatMessage message={message} chatId={activeChatId ?? undefined} />
+                {/* Quick Tools' analyses. They sit directly under the bubble
+                    rather than inside it because the bubble's own data shape
+                    carries no analysis slot yet; the width matches an assistant
+                    bubble so the two read as one turn. */}
+                {message.analyses?.length ? (
+                  <div className="me-auto max-w-[min(95%,46rem)] space-y-2 px-1">
+                    {message.analyses.map((analysis) => (
+                      <QuantAnalysisCard key={analysis.id} analysis={analysis} />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ))
           )}
         </div>
@@ -315,9 +359,18 @@ export function QuantAgentChatPanel() {
             onIntervalChange={setChatInterval}
             value={draftText}
             onValueChange={setDraftText}
+            // Hidden on the welcome screen, where the grid is already on show.
+            onOpenQuickTools={messages.length ? () => setQuickToolsOpen(true) : undefined}
           />
         </div>
       </div>
+
+      <QuantAgentQuickToolsSheet
+        open={quickToolsOpen}
+        onClose={() => setQuickToolsOpen(false)}
+        onSelect={handleQuickTool}
+        disabled={sending}
+      />
 
       <div className="hidden min-h-0 lg:block">
         <QuantAgentRightRail activeSymbol={symbol} />

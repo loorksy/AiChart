@@ -46,6 +46,8 @@ import {
   type FetchQuantAgentAnalysisBarsOptions,
   type QuantAgentBarsResult,
 } from "@/lib/quantAgent/marketFeed";
+import { runQuantAnalysis } from "@/lib/quantAgent/analysis/runAnalysis";
+import { listWatchlist } from "@/lib/quantAgent/watchlistStore";
 import type {
   BacktestQuantStrategyParams,
   GenerateQuantStrategyCodeParams,
@@ -55,6 +57,7 @@ import type {
   GeneratedStrategySpec,
   ListQuantRecommendationsParams,
   QuantAgentCallerContext,
+  QuantAnalysisRecord,
   QuantBacktestMetrics,
   QuantBacktestResult,
   QuantRecommendation,
@@ -75,6 +78,10 @@ import {
   isQuantAgentCancelMessage,
   startPendingTask,
 } from "./pendingTask";
+import {
+  matchQuantAgentQuickToolCommand,
+  type QuantAgentQuickToolKey,
+} from "./quickTools";
 import type {
   ComposerCoach,
   QuantAgentChatTurnResult,
@@ -105,6 +112,23 @@ const BACKTEST_MAX_DRAWDOWN_PERCENT = 40;
 // bare API call.
 const DEFAULT_BACKTEST_SYMBOL = "EURUSD";
 const DEFAULT_BACKTEST_INTERVAL = "1h";
+
+// Quick Tools (Wave 2) — the two real actions.
+//
+// Same fallbacks, for the same reason, when a Quick Tool runs the analysis
+// engine instead of the chat LLM.
+const DEFAULT_QUICK_TOOL_SYMBOL = DEFAULT_BACKTEST_SYMBOL;
+const DEFAULT_QUICK_TOOL_INTERVAL = DEFAULT_BACKTEST_INTERVAL;
+
+/**
+ * How many watchlist symbols one radar sweep may analyse.
+ *
+ * Every symbol costs a full analysis — several candle fetches, two service
+ * round trips and one deep LLM call — and the chat routes carry a 120s
+ * `maxDuration`. Five is what fits with room to spare; anything beyond it is
+ * reported as not scanned rather than silently dropped.
+ */
+const RADAR_MAX_SYMBOLS = 5;
 
 // --- Dependency injection (unit-testable without a live DB/service/LLM) ---
 
@@ -141,6 +165,16 @@ export interface QuantAgentChatDeps {
   getChat: typeof chatStoreGetChat;
   /** Composer Coach (plan Feature B) — persists/clears the session's `pendingTask`. */
   setPendingTask: typeof chatStoreSetPendingTask;
+  /**
+   * Quick Tools' "Diagnose symbol" and "Opportunity radar" (Wave 2) — the
+   * Wave-1 analysis pipeline and the user's own watchlist.
+   *
+   * Optional because only those two branches touch them: a caller that never
+   * dispatches a Quick Tool has nothing to stub, and `defaultDeps` always
+   * supplies the real implementation.
+   */
+  runAnalysis?: typeof runQuantAnalysis;
+  listWatchlist?: typeof listWatchlist;
 }
 
 const defaultDeps: QuantAgentChatDeps = {
@@ -157,6 +191,8 @@ const defaultDeps: QuantAgentChatDeps = {
   searchMemories: searchSemanticMemoriesByKeyword,
   getChat: chatStoreGetChat,
   setPendingTask: chatStoreSetPendingTask,
+  runAnalysis: runQuantAnalysis,
+  listWatchlist,
 };
 
 export class QuantAgentChatError extends Error {
@@ -836,6 +872,242 @@ export async function generateAndBacktestQuantStrategyCodeFromDescription(
   return { passedGate: false, roundsUsed: BACKTEST_MAX_ROUNDS, generation: currentOutcome, backtest: backtestResult };
 }
 
+// --- Quick Tools: the two dispatches that run the engine, not the chat LLM ---
+//
+// Ported from QuantDinger (https://github.com/OpenByteInc/QuantDinger),
+// Copyright Open Byte Inc., licensed under the Apache License, Version 2.0 —
+// `CopilotWorkbench.vue`'s `executeProfessionalAnalysis` (`:2581-2599`), the
+// branch its `sendMessage` takes when `pendingAgentTask.type ===
+// "market_diagnosis"` and which "bypasses the LLM chat entirely".
+//
+// What changed: upstream arms a client-side `pendingAgentTask` and inspects it
+// on send; here the tile sends its own command string and
+// `matchQuantAgentQuickToolCommand` recognises it server-side, so the decision
+// to bypass the chat LLM is made in one place that the tile and the dispatch
+// both read. Upstream's radar is a prompt about ONE symbol; here it is a real
+// sweep of the user's watchlist, because this platform has both.
+
+/** Mirrors `formatAnalysisPrice` in `QuantAnalysisReport.tsx`, which is a client module. */
+function formatQuickToolPrice(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const num = Number(value);
+  const magnitude = Math.abs(num);
+  if (magnitude < 1) return num.toFixed(6);
+  if (magnitude < 100) return num.toFixed(4);
+  if (magnitude < 10_000) return num.toFixed(2);
+  return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Mirrors `formatAnalysisScore` in `QuantAnalysisReport.tsx`. */
+function formatQuickToolScore(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return String(Math.round(value));
+}
+
+/** Upstream renders the verdict as an outlook word, never as BUY/SELL/HOLD. */
+function decisionLabel(locale: AppLocale, record: QuantAnalysisRecord): string {
+  return t(locale, `qa.analysis.decision.${record.decision ?? "HOLD"}`);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The assistant reply for one finished analysis, assembled from the stored row
+ * — no second LLM call, and not one number that is not on the record. The
+ * analysis card carries the rest of the report; this text is what survives
+ * where markdown is all there is (notifications, copied replies, the API).
+ */
+function buildDiagnosisReply(locale: AppLocale, record: QuantAnalysisRecord): string {
+  if (record.status === "failed") {
+    return t(locale, "qa.quicktool.diagnosis.failed", {
+      symbol: record.symbol,
+      error: record.error ?? t(locale, "qa.analysis.error.generic"),
+    });
+  }
+
+  const blocks: string[] = [`**${record.symbol} · ${record.interval} — ${decisionLabel(locale, record)}**`];
+  if (record.confidence != null) {
+    blocks[0] += ` · ${t(locale, "qa.analysis.confidence")}: ${record.confidence}%`;
+  }
+  if (record.summary?.trim()) blocks.push(record.summary.trim());
+
+  const facts: string[] = [];
+  if (record.decision === "HOLD" || record.decision == null) {
+    facts.push(`- ${t(locale, "qa.analysis.price.hold_note")}`);
+  } else {
+    facts.push(`- ${t(locale, "qa.analysis.price.entry")}: ${formatQuickToolPrice(record.entryPrice)}`);
+    facts.push(`- ${t(locale, "qa.analysis.price.stop_loss")}: ${formatQuickToolPrice(record.stopLoss)}`);
+    facts.push(`- ${t(locale, "qa.analysis.price.take_profit")}: ${formatQuickToolPrice(record.takeProfit)}`);
+  }
+  if (record.consensus) {
+    facts.push(
+      `- ${t(locale, "qa.analysis.consensus.decision")}: ${t(
+        locale,
+        `qa.analysis.decision.${record.consensus.decision}`,
+      )} · ${t(locale, "qa.analysis.consensus.score")}: ${formatQuickToolScore(record.consensus.score)} · ${t(
+        locale,
+        "qa.analysis.consensus.agreement",
+      )}: ${Math.round(record.consensus.agreement * 100)}%`,
+    );
+  }
+  blocks.push(facts.join("\n"));
+  return blocks.join("\n\n");
+}
+
+/**
+ * Strongest signal first, by `abs(consensus.score)`.
+ *
+ * A row with no consensus — a failed run — scores below every real one rather
+ * than being treated as a zero-strength neutral, so a failure never outranks an
+ * analysis that actually completed.
+ */
+export function rankQuantAnalysesByConsensusStrength(
+  records: readonly QuantAnalysisRecord[],
+): QuantAnalysisRecord[] {
+  const strength = (record: QuantAnalysisRecord): number => {
+    const score = record.consensus?.score;
+    return score == null || !Number.isFinite(score) ? -1 : Math.abs(score);
+  };
+  return [...records].sort((a, b) => strength(b) - strength(a));
+}
+
+export interface QuantAgentQuickToolOutcome {
+  reply: string;
+  /** Stored rows, in the order the reply lists them — the chat renders one card each. */
+  analyses: QuantAnalysisRecord[];
+}
+
+interface QuickToolDispatchInput {
+  userId: number;
+  symbol: string;
+  interval: string;
+  locale: AppLocale;
+  requestId: string;
+  onDelta?: (fullText: string) => void;
+}
+
+async function runDiagnosisQuickTool(
+  deps: QuantAgentChatDeps,
+  input: QuickToolDispatchInput,
+): Promise<QuantAgentQuickToolOutcome> {
+  const runAnalysis = deps.runAnalysis ?? runQuantAnalysis;
+  const { locale, symbol, interval } = input;
+  input.onDelta?.(t(locale, "qa.quicktool.diagnosis.progress", { symbol, interval }));
+
+  let record: QuantAnalysisRecord;
+  try {
+    record = await runAnalysis({
+      userId: input.userId,
+      symbol,
+      market: DEFAULT_MARKET,
+      interval,
+      locale,
+      requestId: input.requestId,
+    });
+  } catch (error) {
+    // `runQuantAnalysis` persists its own runtime failures as a `failed` row;
+    // reaching here means the request itself was rejected (blank symbol,
+    // unsupported market), so there is no row to show — only the reason.
+    log.warn("quant_agent_chat.quick_tool.diagnosis_rejected", { symbol, error: errorMessage(error) });
+    return {
+      reply: t(locale, "qa.quicktool.diagnosis.failed", { symbol, error: errorMessage(error) }),
+      analyses: [],
+    };
+  }
+  return { reply: buildDiagnosisReply(locale, record), analyses: [record] };
+}
+
+async function runOpportunityRadarQuickTool(
+  deps: QuantAgentChatDeps,
+  input: QuickToolDispatchInput,
+): Promise<QuantAgentQuickToolOutcome> {
+  const runAnalysis = deps.runAnalysis ?? runQuantAnalysis;
+  const readWatchlist = deps.listWatchlist ?? listWatchlist;
+  const { locale, interval } = input;
+
+  let watchlist: Awaited<ReturnType<typeof listWatchlist>>;
+  try {
+    watchlist = await readWatchlist(input.userId);
+  } catch (error) {
+    log.warn("quant_agent_chat.quick_tool.radar_watchlist_failed", { error: errorMessage(error) });
+    watchlist = [];
+  }
+  if (!watchlist.length) {
+    return { reply: t(locale, "qa.quicktool.radar.empty"), analyses: [] };
+  }
+
+  const scanned = watchlist.slice(0, RADAR_MAX_SYMBOLS);
+  input.onDelta?.(t(locale, "qa.quicktool.radar.progress", { count: String(scanned.length) }));
+
+  const settled = await Promise.allSettled(
+    scanned.map((item) =>
+      runAnalysis({
+        userId: input.userId,
+        symbol: item.symbol,
+        market: item.market,
+        interval,
+        locale,
+        requestId: input.requestId,
+      }),
+    ),
+  );
+
+  const records: QuantAnalysisRecord[] = [];
+  // A rejected run has no stored row to rank or render, so it is listed by
+  // name with its reason instead of being dropped from the sweep silently.
+  const rejected: { symbol: string; error: string }[] = [];
+  settled.forEach((outcome, index) => {
+    if (outcome.status === "fulfilled") {
+      records.push(outcome.value);
+      return;
+    }
+    const symbol = scanned[index]?.symbol ?? "";
+    const reason = errorMessage(outcome.reason);
+    log.warn("quant_agent_chat.quick_tool.radar_symbol_failed", { symbol, error: reason });
+    rejected.push({ symbol, error: reason });
+  });
+
+  const ranked = rankQuantAnalysesByConsensusStrength(records);
+  const rows = ranked.map((record, index) => {
+    const rank = index + 1;
+    if (record.status === "failed") {
+      return `${rank}. **${record.symbol}** — ${t(locale, "qa.quicktool.radar.failed_row")}: ${
+        record.error ?? t(locale, "qa.analysis.error.generic")
+      }`;
+    }
+    const parts = [decisionLabel(locale, record)];
+    if (record.confidence != null) {
+      parts.push(`${t(locale, "qa.analysis.confidence")}: ${record.confidence}%`);
+    }
+    if (record.consensus) {
+      parts.push(
+        `${t(locale, "qa.analysis.consensus.score")}: ${formatQuickToolScore(record.consensus.score)}`,
+      );
+    }
+    return `${rank}. **${record.symbol}** — ${parts.join(" · ")}`;
+  });
+  rows.push(
+    ...rejected.map(
+      (failure, index) =>
+        `${ranked.length + index + 1}. **${failure.symbol}** — ${t(
+          locale,
+          "qa.quicktool.radar.failed_row",
+        )}: ${failure.error}`,
+    ),
+  );
+
+  const blocks = [
+    t(locale, "qa.quicktool.radar.heading", { count: String(scanned.length) }),
+    rows.join("\n"),
+  ];
+  if (watchlist.length > scanned.length) {
+    blocks.push(t(locale, "qa.quicktool.radar.capped", { count: String(scanned.length) }));
+  }
+  return { reply: blocks.join("\n\n"), analyses: ranked };
+}
+
 // --- Turn orchestration ---
 
 export interface QuantAgentChatTurnInput {
@@ -998,10 +1270,23 @@ async function buildBacktestGateReply(
  * `onDelta` is passed — `stream/route.ts` and `message/route.ts` both call
  * this function.
  */
+/**
+ * `QuantAgentChatTurnResult` plus the two fields a Quick Tool turn carries
+ * (Wave 2). Declared here rather than on the shared client-safe result type
+ * because these are this orchestrator's own output: the tool that ran, and the
+ * stored analysis rows the chat renders as cards.
+ */
+export interface QuantAgentChatTurnOutcome extends QuantAgentChatTurnResult {
+  /** The Quick Tool this turn dispatched, or `null` for an ordinary message. */
+  quickTool: QuantAgentQuickToolKey | null;
+  /** Stored analyses produced by a Quick Tool action, strongest signal first. */
+  analyses: QuantAnalysisRecord[];
+}
+
 export async function runQuantAgentChatTurn(
   input: QuantAgentChatTurnInput,
   deps: QuantAgentChatDeps = defaultDeps,
-): Promise<QuantAgentChatTurnResult> {
+): Promise<QuantAgentChatTurnOutcome> {
   const { userId, chatId, message, symbol, interval } = input;
   const requestId = randomUUID();
   const context: QuantAgentCallerContext = { userId, requestId };
@@ -1030,6 +1315,8 @@ export async function runQuantAgentChatTurn(
   let strategyProposal: QuantAgentStrategyProposal | null = null;
   let recommendations: QuantRecommendation[] = [];
   let composerCoach: ComposerCoach | null = null;
+  let quickTool: QuantAgentQuickToolKey | null = null;
+  let analyses: QuantAnalysisRecord[] = [];
 
   // Composer Coach continuation check (plan §B3) — BEFORE calling the
   // (stateless, pure) intent router at all. A session with an active guided
@@ -1038,7 +1325,37 @@ export async function runQuantAgentChatTurn(
   const existingChat = await deps.getChat(userId, chatId, "quant_agent");
   const pendingTask = coerceQuantAgentPendingTask(existingChat?.pendingTask);
 
-  if (pendingTask) {
+  // Quick Tools (Wave 2) — checked FIRST, ahead of both the wizard and the
+  // router. A tool command is an explicit, unambiguous instruction the user
+  // pressed a button for, so it outranks an in-progress wizard (which is
+  // cleared, exactly as upstream's `clearPendingAgentTask()` does) and never
+  // reaches the chat LLM at all. Only an exact command match gets here, so an
+  // ordinary sentence — including a wizard answer — can never trip it.
+  const quickToolCommand = matchQuantAgentQuickToolCommand(message);
+
+  if (quickToolCommand) {
+    quickTool = quickToolCommand.key;
+    intent = "chat";
+    if (pendingTask) {
+      await deps.setPendingTask(userId, chatId, "quant_agent", null);
+    }
+    const dispatchInput = {
+      userId,
+      // What the user sent wins over the picker: the command text is what they
+      // can see, and the two only differ if the draft was edited or replayed.
+      symbol: quickToolCommand.symbol || symbol || DEFAULT_QUICK_TOOL_SYMBOL,
+      interval: interval || DEFAULT_QUICK_TOOL_INTERVAL,
+      locale,
+      requestId,
+      onDelta: input.onDelta,
+    };
+    const dispatched =
+      quickToolCommand.action === "analysis"
+        ? await runDiagnosisQuickTool(deps, dispatchInput)
+        : await runOpportunityRadarQuickTool(deps, dispatchInput);
+    reply = dispatched.reply;
+    analyses = dispatched.analyses;
+  } else if (pendingTask) {
     intent = "generate_strategy";
     if (isQuantAgentCancelMessage(message)) {
       await deps.setPendingTask(userId, chatId, "quant_agent", null);
@@ -1139,8 +1456,21 @@ export async function runQuantAgentChatTurn(
       recommendations,
       usedSkills,
       composerCoach,
+      quickTool,
+      analyses,
     },
   });
 
-  return { chatId, intent, reply, memoryCandidate, strategyProposal, recommendations, usedSkills, composerCoach };
+  return {
+    chatId,
+    intent,
+    reply,
+    memoryCandidate,
+    strategyProposal,
+    recommendations,
+    usedSkills,
+    composerCoach,
+    quickTool,
+    analyses,
+  };
 }

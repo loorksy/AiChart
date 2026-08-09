@@ -322,9 +322,15 @@ export interface QuantAnalysisTimeframeWire {
 
 /**
  * One prior, outcome-validated analysis offered to quant-agent's
- * similar-pattern scorer. Nothing populates this in Wave 1 — `quant_analyses`
- * stores no indicator snapshot and no validated outcome — so the list is sent
- * empty and `analysis_memory` is reported through `dataQuality.missing`.
+ * similar-pattern scorer.
+ *
+ * Sent empty for the whole of Wave 1 — `quant_analyses` stored neither an
+ * indicator snapshot nor a validated outcome. Wave 2 added both
+ * (`indicators_json`, `validated_at`/`was_correct`), so
+ * `listSimilarQuantAnalysesForSymbol` now fills this list from the caller's own
+ * validated history. It is still empty, and `analysis_memory` still reported
+ * through `dataQuality.missing`, until the validation cron has scored something
+ * — roughly a week after a symbol's first analysis on an account.
  */
 export interface QuantAnalysisMemoryCandidateWire {
   id: string;

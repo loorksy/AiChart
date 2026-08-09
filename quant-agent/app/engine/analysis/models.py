@@ -35,6 +35,13 @@ Decision = Literal["BUY", "SELL", "HOLD"]
 
 MAX_TIMEFRAMES = 12
 MAX_MEMORY_CANDIDATES = 200
+# One cron batch of rows whose outcome is finally old enough to score.
+# Upstream's `validate_unvalidated_older_than` default limit is 200 and its
+# calibration pre-pass asks for 300; this is the ceiling for both.
+MAX_VALIDATION_ROWS = 500
+# A 30-day lookback over a busy account is a few hundred rows; 5000 is a
+# generous ceiling that still bounds one request.
+MAX_CALIBRATION_SAMPLES = 5000
 
 
 class IndicatorRsi(BaseModel):
@@ -276,3 +283,119 @@ class AnalysisFinalizeResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     applied: AppliedAdjustments
+
+
+class AnalysisValidationCandidate(BaseModel):
+    """One stored analysis old enough to score, plus the price it reached.
+
+    `decision` stays a free string rather than the `Decision` literal: these
+    rows were written weeks ago and a row whose decision this service no
+    longer recognises must still be scorable (it is judged as HOLD, exactly as
+    upstream's `str(row.get("decision") or "HOLD")` coercion does) rather than
+    failing the whole batch with a 422.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=128)
+    decision: str = Field(min_length=1, max_length=32)
+    price_at_analysis: float
+    current_price: float
+
+
+class AnalysisValidateRequest(BaseModel):
+    """Body for `POST /internal/quant-agent/analysis/validate`.
+
+    `web/` selects the unvalidated rows, fetches each symbol's realised price
+    and posts both here; this service has no network and no history table, so
+    it can only score what it is handed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    analyses: list[AnalysisValidationCandidate] = Field(
+        min_length=1, max_length=MAX_VALIDATION_ROWS
+    )
+
+
+class AnalysisValidationOutcome(BaseModel):
+    """`return_pct` is the realised move in percent, signed. It is reported for
+    every scored row, correct or not, because it is the input the threshold
+    search later replays."""
+
+    id: str
+    was_correct: bool
+    return_pct: float
+
+
+class AnalysisValidationSkip(BaseModel):
+    """A row that could not be scored. Reported, never silently dropped and
+    never scored as a 0% move — a fabricated zero reads as a correct HOLD."""
+
+    id: str
+    reason: Literal["non_positive_price"]
+
+
+class AnalysisValidationStats(BaseModel):
+    validated: int
+    correct: int
+    incorrect: int
+    skipped: int
+
+
+class AnalysisValidateResponse(BaseModel):
+    results: list[AnalysisValidationOutcome]
+    skipped: list[AnalysisValidationSkip]
+    stats: AnalysisValidationStats
+
+
+class CalibrationSample(BaseModel):
+    """One already-validated analysis, as the calibration search sees it.
+
+    `confidence` / `was_correct` feed the confidence-bucket hit rate;
+    `consensus_score` / `actual_return_pct` feed the threshold grid search.
+    A row missing either pair simply does not contribute to that half.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consensus_score: float
+    actual_return_pct: float
+    confidence: int | None = Field(default=None, ge=0, le=100)
+    was_correct: bool | None = None
+
+
+class AnalysisCalibrateRequest(BaseModel):
+    """Body for `POST /internal/quant-agent/analysis/calibrate`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    samples: list[CalibrationSample] = Field(
+        default_factory=list, max_length=MAX_CALIBRATION_SAMPLES
+    )
+    # Exposed so a caller can ask for a stricter bar than the default, never a
+    # looser one — the engine floors it at `MIN_CALIBRATION_SAMPLES`.
+    min_samples: int | None = Field(default=None, ge=1, le=MAX_CALIBRATION_SAMPLES)
+
+
+class CalibrationThresholds(BaseModel):
+    buy_threshold: float
+    sell_threshold: float
+    min_consensus_abs_override: float
+    quality_hold_threshold: float
+
+
+class AnalysisCalibrateResponse(BaseModel):
+    """A REPORT, not a mutation: `thresholds` is what the search suggests and
+    `applied` says whether it found enough evidence to suggest anything at all.
+    Nothing in this service starts deciding differently because of it."""
+
+    thresholds: CalibrationThresholds
+    applied: bool
+    reason: str | None
+    best_accuracy: float | None
+    coverage: dict[str, int]
+    sample_count: int
+    # Hit rate per confidence bucket over the same rows; a bucket with too few
+    # samples is absent from the map rather than reported as zero.
+    confidence_accuracy: dict[str, float]

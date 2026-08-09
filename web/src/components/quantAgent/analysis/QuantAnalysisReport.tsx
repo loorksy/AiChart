@@ -26,10 +26,15 @@
  *    `confidence || 50`). Nothing here defaults: an absent component renders
  *    an em dash and is named in the data-quality notice. That is the whole
  *    point of carrying `dataQuality.missing` through the wire.
- *  - Upstream's historical-accuracy strip, crypto-market-structure block,
- *    indicator matrix, quant-parameter table and helpful/not-helpful feedback
- *    row are not rendered: nothing on this platform produces those inputs yet,
- *    and a section that can only show placeholders is worse than no section.
+ *  - Upstream's crypto-market-structure block, indicator matrix,
+ *    quant-parameter table and helpful/not-helpful feedback row are not
+ *    rendered: nothing on this platform produces those inputs yet, and a
+ *    section that can only show placeholders is worse than no section.
+ *    Upstream's historical-accuracy strip WAS in that list until Wave 2 gave
+ *    it real inputs; it now lives in its own component,
+ *    `AccuracyStrip.tsx`, rendered by the analysis page above this report
+ *    rather than inside it — a hit rate is the frame you read a verdict
+ *    through, not a footnote to one.
  *  - `neutralizeDecisionText` (upstream's BUY/SELL/HOLD word-scrub over model
  *    prose) is not ported — our prompt already asks for outlook wording, and
  *    a regex that rewrites the model's own sentences is a silent edit of

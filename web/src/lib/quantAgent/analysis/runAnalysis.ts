@@ -24,6 +24,15 @@
  *  - ONE WRITE. Upstream inserts a pending row, finalises it, and then deletes
  *    the duplicate row `analyze()` wrote on its own. This writes exactly one
  *    row, at the end, success or failure.
+ *  - MEMORY IS REAL AS OF WAVE 2. Every completed run stores its indicator
+ *    fingerprint, and every run reads back this user's validated analyses of
+ *    the same symbol, pushes them to `/analysis/score` as candidates, and
+ *    renders the ranked matches into the prompt with their actual outcomes.
+ *    The split is upstream's own: `get_similar_patterns` runs one SQL query
+ *    and one scoring loop, and only the query can live on this side of the
+ *    network boundary. Memory stays SILENT until outcomes exist — the
+ *    validation cron scores a row seven days after it was written, so a new
+ *    symbol has nothing to recall for about a week, exactly as upstream.
  *  - A FAILED RUN IS STILL A ROW. Upstream's route surfaces failures as HTTP
  *    500 plus a `fail_pending_task` row. Here the pipeline never throws past
  *    this function for a data/service/model failure: it persists
@@ -40,15 +49,19 @@ import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib
 import { finalizeQuantAnalysis, scoreQuantAnalysis } from "../client";
 import {
   createQuantAnalysis,
-  listRecentQuantAnalysesForSymbol,
+  listSimilarQuantAnalysesForSymbol,
   type CreateQuantAnalysisInput,
+  type QuantAnalysisFingerprint,
+  type QuantAnalysisMemoryRow,
 } from "../analysisStore";
 import type {
   FinalizeQuantAnalysisParams,
   QuantAgentCallerContext,
   QuantAnalysisDecision,
   QuantAnalysisFinalizeResult,
+  QuantAnalysisIndicatorsWire,
   QuantAnalysisLlmOutput,
+  QuantAnalysisMemoryCandidateWire,
   QuantAnalysisRecord,
   QuantAnalysisScoreResult,
   ScoreQuantAnalysisParams,
@@ -58,7 +71,11 @@ import {
   type CollectQuantAnalysisInputsOptions,
   type QuantAnalysisCollection,
 } from "./collect";
-import { buildAnalysisPrompt, formatMemoryContext } from "./prompt";
+import {
+  buildAnalysisPrompt,
+  formatMemoryContext,
+  type QuantAnalysisMemoryPattern,
+} from "./prompt";
 
 const log = createLogger("quant_agent:analysis");
 
@@ -86,11 +103,18 @@ export interface QuantAnalysisDeps {
     params: FinalizeQuantAnalysisParams,
   ) => Promise<QuantAnalysisFinalizeResult>;
   callLLM: typeof callLLM;
+  /**
+   * The candidate pool for memory recall: this user's most recently VALIDATED
+   * analyses of this symbol. It returns `limit * 5` rows in recency order and
+   * quant-agent's scorer ranks them by indicator similarity — the split is
+   * upstream's own (`get_similar_patterns` does the SQL and the scoring in one
+   * method; only the SQL half can live on this side of the network boundary).
+   */
   listRecentAnalyses: (
     userId: number,
     symbol: string,
     limit: number,
-  ) => Promise<QuantAnalysisRecord[]>;
+  ) => Promise<QuantAnalysisMemoryRow[]>;
   createAnalysis: (
     userId: number,
     input: CreateQuantAnalysisInput,
@@ -102,9 +126,40 @@ export const defaultQuantAnalysisDeps: QuantAnalysisDeps = {
   scoreAnalysis: scoreQuantAnalysis,
   finalizeAnalysis: finalizeQuantAnalysis,
   callLLM,
-  listRecentAnalyses: listRecentQuantAnalysesForSymbol,
+  listRecentAnalyses: listSimilarQuantAnalysesForSymbol,
   createAnalysis: createQuantAnalysis,
 };
+
+/**
+ * The fingerprint stored with every completed analysis, so a future run can
+ * recall it. Exactly the five fields `quant-agent`'s similar-pattern scorer
+ * reads, with upstream's own neutral defaults for the three string axes (it
+ * compares them by exact match, and an empty string matches nothing).
+ *
+ * `price_position` is carried but never scored — upstream does not score it
+ * either. It is stored so a later change of mind about that has data to work
+ * with, rather than a year of blank history.
+ */
+export function buildAnalysisFingerprint(
+  indicators: QuantAnalysisIndicatorsWire,
+): QuantAnalysisFingerprint {
+  return {
+    rsi: indicators.rsi?.value ?? null,
+    macd_signal: indicators.macd?.signal || "neutral",
+    ma_trend: indicators.moving_averages?.trend || "sideways",
+    volatility_level: indicators.volatility_level || "normal",
+    price_position: indicators.price_position ?? null,
+  };
+}
+
+function toMemoryCandidate(row: QuantAnalysisMemoryRow): QuantAnalysisMemoryCandidateWire {
+  return {
+    id: row.id,
+    decision: row.decision,
+    was_correct: row.wasCorrect,
+    indicators: row.indicators,
+  };
+}
 
 function extractText(res: AnthropicResponse): string {
   return res.content
@@ -307,6 +362,27 @@ export async function runQuantAnalysis(
     });
   }
 
+  // Memory is read BEFORE scoring, because the candidate pool is an input to
+  // the score call: quant-agent ranks it and hands back the top matches.
+  let memoryRows: QuantAnalysisMemoryRow[] = [];
+  let memoryFailed = false;
+  try {
+    memoryRows = await deps.listRecentAnalyses(
+      input.userId,
+      collection.symbol,
+      MEMORY_RECALL_LIMIT,
+    );
+  } catch (error) {
+    // Upstream's own behaviour for this path — a memory read failing must
+    // never take the analysis down with it, and must not be reported as "no
+    // history" either, which is a different claim.
+    memoryFailed = true;
+    log.warn("quant_agent.analysis.memory_failed", {
+      symbol,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   let score: QuantAnalysisScoreResult;
   try {
     score = await deps.scoreAnalysis(context, {
@@ -315,10 +391,7 @@ export async function runQuantAnalysis(
       primaryTimeframe: collection.primaryTimeframe,
       currentPrice,
       timeframes: collection.timeframes,
-      // Empty by construction: nothing in Wave 1 stores an indicator snapshot
-      // or a validated outcome, so there is no candidate to score similarity
-      // against. Reported through `missing` rather than faked.
-      memoryCandidates: [],
+      memoryCandidates: memoryRows.map(toMemoryCandidate),
     });
   } catch (error) {
     return persistFailure(error instanceof Error ? error.message : String(error), {
@@ -327,23 +400,27 @@ export async function runQuantAnalysis(
     });
   }
 
-  let memoryContext: string;
-  try {
-    const priors = await deps.listRecentAnalyses(
-      input.userId,
-      collection.symbol,
-      MEMORY_RECALL_LIMIT,
-    );
-    memoryContext = formatMemoryContext(priors);
-  } catch (error) {
-    // Upstream's own wording for this path — a memory read failing must never
-    // take the analysis down with it.
-    log.warn("quant_agent.analysis.memory_failed", {
-      symbol,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    memoryContext = "Memory retrieval failed.";
-  }
+  // The scorer returns the ranked ids; the price and the realised move it does
+  // not carry come back off the local rows it ranked. Anything the join cannot
+  // resolve is dropped rather than rendered with a blank price.
+  const memoryById = new Map(memoryRows.map((row) => [row.id, row]));
+  const recalledPatterns: QuantAnalysisMemoryPattern[] = score.similarPatterns.flatMap(
+    (pattern) => {
+      const row = memoryById.get(pattern.id);
+      if (!row) return [];
+      return [
+        {
+          decision: pattern.decision,
+          currentPrice: row.priceAtAnalysis,
+          wasCorrect: pattern.wasCorrect,
+          actualReturnPct: row.realisedReturnPct,
+        },
+      ];
+    },
+  );
+  const memoryContext = memoryFailed
+    ? "Memory retrieval failed."
+    : formatMemoryContext(recalledPatterns, { candidatePoolSize: memoryRows.length });
 
   const { systemPrompt, userPrompt } = buildAnalysisPrompt({
     symbol: collection.symbol,
@@ -351,7 +428,16 @@ export async function runQuantAnalysis(
     interval,
     locale,
     facts: collection.promptFacts,
-    missing: collection.missing,
+    // The SAME filter the stored row gets, and for a stronger reason. The
+    // DATA AVAILABILITY block says "NOT AVAILABLE ... validated outcomes of
+    // past analyses. You must NOT assume, infer, recall, or invent any of the
+    // unavailable inputs." Leaving `analysis_memory` in that list while the
+    // memory block below it prints "(Outcome: Correct, Return: -4.11%)" tells
+    // the model, in one prompt, both that it has no history and that here is
+    // its history — which is an instruction to disregard the evidence we just
+    // spent a validation cron producing. Filtered only when something really
+    // was recalled; an empty recall is still an absence and still declared.
+    missing: withRecalledMemory(collection.missing, recalledPatterns.length > 0),
     memoryContext,
   });
 
@@ -438,12 +524,16 @@ export async function runQuantAnalysis(
     detail,
     reasons: coerceStringList(finalized.key_reasons),
     risks: coerceStringList(finalized.risks),
+    indicators: buildAnalysisFingerprint(primaryIndicators),
     dataQuality: {
       // Structural absence is NOT degradation — it is a permanent property of
       // this platform. Degradation means a frame we asked for came back short
       // or empty, or quant-agent penalised the inputs it received.
       degraded: collection.degraded || score.dataQuality.degraded,
-      missing: mergeMissing(collection.missing, score.dataQuality.missing),
+      missing: withRecalledMemory(
+        mergeMissing(collection.missing, score.dataQuality.missing),
+        recalledPatterns.length > 0,
+      ),
     },
     // A completed run still records that the model's own JSON had to be
     // repaired — the row is real, the caveat travels with it.
@@ -465,4 +555,16 @@ export async function runQuantAnalysis(
 
 function mergeMissing(local: string[], remote: string[]): string[] {
   return Array.from(new Set([...local, ...remote]));
+}
+
+/**
+ * `collect.ts` lists `analysis_memory` as structurally unavailable, which was
+ * true for the whole of Wave 1. It stops being true the moment a validated
+ * pattern is actually recalled, and leaving the flag on would tell the reader
+ * "no validated past analyses" on a report that was written with them. Drop it
+ * only when something really was recalled — an empty recall is still an
+ * absence, and still reported as one.
+ */
+function withRecalledMemory(missing: string[], recalled: boolean): string[] {
+  return recalled ? missing.filter((code) => code !== "analysis_memory") : missing;
 }

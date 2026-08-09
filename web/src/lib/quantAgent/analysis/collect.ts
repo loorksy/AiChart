@@ -63,6 +63,14 @@ export const ANALYSIS_BAR_LIMIT = QUANT_AGENT_DEFAULT_BAR_LIMIT;
  * fires for Forex either — the output contract still asks the model for a
  * fundamental score, so the UI needs to be able to explain why that factor has
  * nothing behind it.
+ *
+ * `analysis_memory` is the one entry that is no longer STRUCTURALLY absent as
+ * of Wave 2: `/api/cron/quant-analysis-validate` scores aged analyses and
+ * `listSimilarQuantAnalysesForSymbol` recalls them. It stays listed here
+ * because collection cannot know whether anything will actually be recalled —
+ * a new symbol has nothing validated for about a week — and `runAnalysis`
+ * removes it from `missing` only once a pattern really came back. The default
+ * is therefore still "absent", which is the honest one.
  */
 export const QUANT_ANALYSIS_UNAVAILABLE_COMPONENTS = [
   "fundamentals",

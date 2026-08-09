@@ -77,7 +77,7 @@ function backtestTimeoutMs(): number {
 }
 
 /**
- * The two analysis endpoints get their own ceiling, for the opposite reason
+ * The analysis endpoints get their own ceiling, for the opposite reason
  * to the backtest one.
  *
  * `/analysis/score` and `/analysis/finalize` are pure arithmetic over a
@@ -633,6 +633,165 @@ export async function finalizeQuantAnalysis(
     },
     { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
   );
+}
+
+/* ------------------------------------------------------------------
+ * Outcome validation + threshold calibration (Wave 2).
+ *
+ * Unlike the score/finalize shapes, these request and response types live in
+ * THIS file rather than in `types.ts`. `types.ts` carries the frozen Wave-1
+ * analysis contract that the UI and the API routes both compile against;
+ * nothing outside this module and the validation cron ever names a validation
+ * payload, so it stays local — the same call `ServiceBar` makes above.
+ * ------------------------------------------------------------------ */
+
+/** One aged analysis plus the price it actually reached. */
+export interface QuantAnalysisValidationCandidate {
+  id: string;
+  decision: string;
+  priceAtAnalysis: number;
+  currentPrice: number;
+}
+
+export interface QuantAnalysisValidationOutcome {
+  id: string;
+  wasCorrect: boolean;
+  returnPct: number;
+}
+
+export interface QuantAnalysisValidationResult {
+  results: QuantAnalysisValidationOutcome[];
+  skipped: { id: string; reason: string }[];
+  stats: { validated: number; correct: number; incorrect: number; skipped: number };
+}
+
+interface QuantAnalysisValidationResultWire {
+  results: { id: string; was_correct: boolean; return_pct: number }[];
+  skipped: { id: string; reason: string }[];
+  stats: { validated: number; correct: number; incorrect: number; skipped: number };
+}
+
+/**
+ * Scores stored analyses against the price they actually reached.
+ *
+ * quant-agent owns the ±2%/±5% correctness rule because it owns every other
+ * threshold in this engine; web owns the price lookup because quant-agent has
+ * no network. Nothing is decided here — the caller writes back exactly what
+ * comes out, and a row the service declines to score (non-positive price)
+ * comes back under `skipped` rather than as a fabricated 0% move.
+ */
+export async function validateQuantAnalyses(
+  context: QuantAgentCallerContext,
+  analyses: QuantAnalysisValidationCandidate[],
+): Promise<QuantAnalysisValidationResult> {
+  const raw = await serviceRequest<QuantAnalysisValidationResultWire>(
+    context,
+    "/internal/quant-agent/analysis/validate",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        analyses: analyses.map((analysis) => ({
+          id: analysis.id,
+          decision: analysis.decision,
+          price_at_analysis: analysis.priceAtAnalysis,
+          current_price: analysis.currentPrice,
+        })),
+      }),
+    },
+    { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
+  );
+  return {
+    results: (raw.results ?? []).map((outcome) => ({
+      id: outcome.id,
+      wasCorrect: outcome.was_correct,
+      returnPct: outcome.return_pct,
+    })),
+    skipped: raw.skipped ?? [],
+    stats: raw.stats,
+  };
+}
+
+export interface QuantAnalysisCalibrationInput {
+  consensusScore: number;
+  actualReturnPct: number;
+  confidence: number | null;
+  wasCorrect: boolean | null;
+}
+
+export interface QuantAnalysisCalibrationReport {
+  thresholds: {
+    buyThreshold: number;
+    sellThreshold: number;
+    minConsensusAbsOverride: number;
+    qualityHoldThreshold: number;
+  };
+  /** False when the history was too thin — the live defaults come back as-is. */
+  applied: boolean;
+  reason: string | null;
+  bestAccuracy: number | null;
+  coverage: Record<string, number>;
+  sampleCount: number;
+  confidenceAccuracy: Record<string, number>;
+}
+
+interface QuantAnalysisCalibrationReportWire {
+  thresholds: {
+    buy_threshold: number;
+    sell_threshold: number;
+    min_consensus_abs_override: number;
+    quality_hold_threshold: number;
+  };
+  applied: boolean;
+  reason: string | null;
+  best_accuracy: number | null;
+  coverage: Record<string, number>;
+  sample_count: number;
+  confidence_accuracy: Record<string, number>;
+}
+
+/**
+ * Asks what the decision thresholds WOULD be if tuned on validated history.
+ *
+ * Read-only on both sides of the split: quant-agent runs the grid search and
+ * returns a report, and nothing in this codebase feeds the answer back into a
+ * live decision. Tuning a decision boundary automatically, on a ±2%/±5% proxy
+ * for "was that call right", is a product decision nobody has taken — so this
+ * exists to make the drift VISIBLE to an operator, not to act on it.
+ */
+export async function calibrateQuantAnalysisThresholds(
+  context: QuantAgentCallerContext,
+  samples: QuantAnalysisCalibrationInput[],
+): Promise<QuantAnalysisCalibrationReport> {
+  const raw = await serviceRequest<QuantAnalysisCalibrationReportWire>(
+    context,
+    "/internal/quant-agent/analysis/calibrate",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        samples: samples.map((sample) => ({
+          consensus_score: sample.consensusScore,
+          actual_return_pct: sample.actualReturnPct,
+          confidence: sample.confidence,
+          was_correct: sample.wasCorrect,
+        })),
+      }),
+    },
+    { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
+  );
+  return {
+    thresholds: {
+      buyThreshold: raw.thresholds.buy_threshold,
+      sellThreshold: raw.thresholds.sell_threshold,
+      minConsensusAbsOverride: raw.thresholds.min_consensus_abs_override,
+      qualityHoldThreshold: raw.thresholds.quality_hold_threshold,
+    },
+    applied: raw.applied,
+    reason: raw.reason ?? null,
+    bestAccuracy: raw.best_accuracy ?? null,
+    coverage: raw.coverage ?? {},
+    sampleCount: raw.sample_count,
+    confidenceAccuracy: raw.confidence_accuracy ?? {},
+  };
 }
 
 /** Returns null on 404 (not found) instead of throwing, mirroring §4's "or 404". */
