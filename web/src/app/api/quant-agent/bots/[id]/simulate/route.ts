@@ -4,7 +4,7 @@ import { ApiError, handleError } from "@/lib/api";
 import { quantAgentServiceEnabled } from "@/lib/quantAgent/client";
 import { resolveQuantAgentUserId } from "@/lib/quantAgent/webAuth";
 import { getBot, simulateBot } from "@/lib/quantAgent/botStore";
-import { QUANT_BOT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
+import { QUANT_BOT_DEFAULT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
 import { QUANT_BOT_SIMULATABLE_TYPES } from "@/lib/quantAgent/bots/types";
 import { fetchQuantAgentBars } from "@/lib/quantAgent/marketFeed";
 
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!simulation) throw new ApiError(404, "Bot not found.");
 
     return NextResponse.json({
-      executionMode: QUANT_BOT_EXECUTION_MODE,
+      executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE,
       simulation,
       barCount: feed.bars.length,
       warning: feed.warning ?? null,

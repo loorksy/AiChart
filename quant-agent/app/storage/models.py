@@ -315,10 +315,10 @@ class GenerateValidateCodeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Automated bots (grid / DCA / martingale / layered martingale)
 #
-# SIMULATION ONLY. Every row these models describe is the output of a replay
-# against pushed-in bars — see `app/engine/bots/simulated_broker.py`. Nothing
-# persisted here has ever reached a venue, and `execution_mode` carries that
-# fact through the wire so a UI cannot lose it.
+# `execution_mode` on a saved bot is the owner's per-bot arming switch
+# (`simulation` | `live`). The engine under `app/engine/bots/` still only
+# replays bars through `SimulatedQuantBroker` — live orders are placed by the
+# web platform via createIntent → executeIntent, never from this service.
 #
 # Shapes derived from QuantDinger (https://github.com/OpenByteInc/QuantDinger),
 # Copyright Open Byte Inc., licensed under the Apache License, Version 2.0
@@ -330,9 +330,10 @@ class GenerateValidateCodeRequest(BaseModel):
 
 BotType = Literal["grid", "dca", "martingale", "layered_martingale"]
 
-#: The only value `execution_mode` can hold in this service. Kept as a Literal
-#: of one so adding "live" is a type error in every file that reads it.
-BotExecutionMode = Literal["simulation"]
+#: Per-bot arming switch. `live` means the owner has authorised this bot to
+#: create intents on the web side; it does NOT mean this service talks to a
+#: venue — the engine stays simulation-only.
+BotExecutionMode = Literal["simulation", "live"]
 
 
 class BotDefinition(BaseModel):
@@ -456,6 +457,14 @@ class BotCreateRequest(BaseModel):
     initial_capital: float = Field(default=1000.0, ge=0, le=1_000_000)
     fee_rate: float = Field(default=0.001, ge=0, le=0.05)
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class BotExecutionModeRequest(BaseModel):
+    """Body for `PATCH /internal/quant-agent/bots/{bot_id}/execution-mode`."""
+
+    model_config = ConfigDict(extra="forbid")
+    owner_user_id: int = Field(gt=0)
+    execution_mode: BotExecutionMode
 
 
 class BotListResponse(BaseModel):

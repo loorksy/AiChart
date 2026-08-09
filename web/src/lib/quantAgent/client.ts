@@ -1,4 +1,7 @@
-import { QUANT_BOT_EXECUTION_MODE } from "./bots/brokerPort";
+import {
+  QUANT_BOT_DEFAULT_EXECUTION_MODE,
+  isQuantBotExecutionMode,
+} from "./bots/brokerPort";
 import { QuantAgentServiceError } from "./errors";
 import {
   isTransientQuantAgentError,
@@ -9,6 +12,7 @@ import type {
   CreateQuantBotParams,
   PreviewQuantBotParams,
   QuantBot,
+  QuantBotExecutionModeWire,
   QuantBotLevel,
   QuantBotLevelWire,
   QuantBotPreview,
@@ -19,6 +23,7 @@ import type {
   QuantBotSimulation,
   QuantBotSimulationWire,
   QuantBotWire,
+  SetQuantBotExecutionModeParams,
   SimulateQuantBotParams,
 } from "./bots/types";
 import type {
@@ -847,16 +852,18 @@ export async function getQuantRecommendation(
 /* ------------------------------------------------------------------
  * Automated bots (grid / DCA / martingale / layered martingale).
  *
- * SIMULATION ONLY. Every one of these calls reaches an endpoint whose only
- * broker is quant-agent's `SimulatedQuantBroker`; there is no start, stop or
- * deploy verb to call, because the service does not expose one. The web-side
- * seam that would have to change for that to stop being true is
- * `lib/quantAgent/bots/brokerPort.ts`, and it throws unconditionally.
+ * The service engine stays on `SimulatedQuantBroker`. `execution_mode: live`
+ * is an arming flag web reads before createIntent → executeIntent — this
+ * client never opens a venue connection.
  *
  * `owner_user_id` rides on EVERY request, including the reads. The service has
  * no unscoped bot accessor, so a caller that omits it gets a 422 rather than
  * someone else's bot.
  * ------------------------------------------------------------------ */
+
+function normalizeBotExecutionMode(raw: unknown): QuantBotExecutionModeWire {
+  return isQuantBotExecutionMode(raw) ? raw : QUANT_BOT_DEFAULT_EXECUTION_MODE;
+}
 
 function normalizeBotLevels(levels: QuantBotLevelWire[] | undefined): QuantBotLevel[] {
   return (levels ?? []).map((level) => ({
@@ -892,9 +899,8 @@ function normalizeBotDiagnostics(
 export function normalizeQuantBotPreview(raw: QuantBotPreviewWire): QuantBotPreview {
   const summary = raw.summary;
   return {
-    // Read from the constant, never the payload: a response that claimed
-    // anything else must not be able to relabel itself on the way through.
-    executionMode: QUANT_BOT_EXECUTION_MODE,
+    // Previews are never armed — a ladder draft cannot place an order.
+    executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE,
     status: raw.status,
     botType: raw.bot_type ?? "",
     config: raw.config ?? {},
@@ -925,7 +931,7 @@ export function normalizeQuantBot(raw: QuantBotWire): QuantBot {
     symbol: raw.symbol,
     market: raw.market,
     interval: raw.interval,
-    executionMode: QUANT_BOT_EXECUTION_MODE,
+    executionMode: normalizeBotExecutionMode(raw.execution_mode),
     initialCapital: raw.initial_capital,
     feeRate: raw.fee_rate,
     config: raw.config ?? {},
@@ -942,7 +948,8 @@ export function normalizeQuantBotRun(raw: QuantBotRunWire): QuantBotRun {
     id: raw.id,
     botId: raw.bot_id,
     ownerUserId: raw.owner_user_id,
-    executionMode: QUANT_BOT_EXECUTION_MODE,
+    // Runs are always simulation replays from this service.
+    executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE,
     status: raw.status,
     barCount: raw.bar_count,
     fromTime: raw.from_time,
@@ -1054,6 +1061,25 @@ export async function deleteQuantBot(
   }
 }
 
+/** Owner-only arming switch. Does not place an order. */
+export async function setQuantBotExecutionMode(
+  context: QuantAgentCallerContext,
+  params: SetQuantBotExecutionModeParams,
+): Promise<QuantBot> {
+  const raw = await serviceRequest<QuantBotWire>(
+    context,
+    `/internal/quant-agent/bots/${encodeURIComponent(params.botId)}/execution-mode`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        owner_user_id: context.userId,
+        execution_mode: params.executionMode,
+      }),
+    },
+  );
+  return normalizeQuantBot(raw);
+}
+
 /**
  * Replay a saved bot over pushed-in candles.
  *
@@ -1082,7 +1108,7 @@ export async function simulateQuantBot(
     { timeoutMs: backtestTimeoutMs(), retryOnTimeout: false },
   );
   return {
-    executionMode: QUANT_BOT_EXECUTION_MODE,
+    executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE,
     status: raw.status,
     run: raw.run ? normalizeQuantBotRun(raw.run) : null,
     fills: (raw.fills ?? []).map((fill) => ({

@@ -310,6 +310,8 @@ const SCHEMA = `
     -- authorised it. Both are checked again at execution time.
     recommendation_revision_no INTEGER,
     authorization_source TEXT,
+    -- Opaque Quant Agent bot id when a live bot created this intent.
+    bot_id            TEXT,
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          REAL NOT NULL,
@@ -1896,6 +1898,9 @@ function migrate(db: Database.Database) {
   }
   if (!intentCols.some((c) => c.name === "authorization_source")) {
     db.exec("ALTER TABLE trade_intents ADD COLUMN authorization_source TEXT");
+  }
+  if (!intentCols.some((c) => c.name === "bot_id")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN bot_id TEXT");
   }
   if (!tradeCols.some((c) => c.name === "limit_price")) {
     db.exec("ALTER TABLE trades ADD COLUMN limit_price REAL");

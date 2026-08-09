@@ -23,6 +23,10 @@ const AUTHORIZED_CALLERS = new Map<string, string>([
     "src/app/api/trades/intents/[id]/route.ts",
     "the operator approving a pending intent in the platform",
   ],
+  [
+    "src/lib/quantAgent/bots/liveExecution.ts",
+    "standing per-bot live arming — createIntent then executeIntent only",
+  ],
 ]);
 
 const SKIP_DIRS = new Set(["node_modules", ".next", "dist", "build", "__tests__"]);
@@ -78,6 +82,7 @@ describe("execution authorization paths", () => {
       ["lib/approvalFlow.ts", /authorization_source: "user_approved"/],
       ["lib/tradeFlow.ts", /authorization_source: "user_approved"/],
       ["lib/recommendations/autoExecutor.ts", /authorization_source: "standing_auto"/],
+      ["lib/quantAgent/bots/liveExecution.ts", /authorization_source: "standing_auto"/],
       // The bridge route is STANDING-AUTO ONLY. Its body is composed by the
       // caller — a model, on the MCP surface — so a body flag must never mint a
       // `user_approved` intent. Real approvals are created pending and flipped
@@ -137,6 +142,14 @@ describe("execution authorization paths", () => {
     // An auto trade must never masquerade as a per-trade approval: the audit
     // trail is how an operator reconstructs who decided what.
     assert.match(auto, /explicitApproval: false/);
+  });
+
+  it("the bot path records standing authorisation bound to bot_id, not an approval", () => {
+    const bot = readFileSync(join(SRC, "lib/quantAgent/bots/liveExecution.ts"), "utf8");
+    assert.match(bot, /authorization_source: "standing_auto"/);
+    assert.match(bot, /bot_id:/);
+    assert.match(bot, /explicitApproval: false/);
+    assert.match(bot, /notional:\s*0/);
   });
 
   it("auto execution stays off unless an operator turns it on", () => {

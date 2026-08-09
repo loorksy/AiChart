@@ -3,19 +3,16 @@ import { ApiError, handleError } from "@/lib/api";
 import { quantAgentServiceEnabled } from "@/lib/quantAgent/client";
 import { resolveQuantAgentUserId } from "@/lib/quantAgent/webAuth";
 import { deleteBot, getBot, listBotRuns } from "@/lib/quantAgent/botStore";
-import { QUANT_BOT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
+import { getMtAccountMeta } from "@/lib/store";
+import { mtModeToExecution, normalizeMtTradeMode } from "@/lib/executionEnv";
 
 /**
  * One saved bot the caller owns — read it (with its recent simulation runs),
  * or delete it.
  *
- * SIMULATION ONLY: there is no verb here that starts anything.
- *
  * BOTH handlers resolve the bot through `botStore`, which filters on the
  * caller's id in the service query AND re-asserts ownership on the decoded
- * record. An id in the URL is never authority on its own: we closed an authz
- * hole of exactly that shape on the strategy-enable route, and a by-id handler
- * that trusts the path segment is the same bug wearing a different hat.
+ * record. An id in the URL is never authority on its own.
  *
  * Another tenant's id is a 404, not a 403 — distinguishing the two leaks which
  * ids exist.
@@ -40,8 +37,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const id = parseId(idParam);
     const bot = await getBot(userId, id);
     if (!bot) throw new ApiError(404, "Bot not found.");
-    const runs = (await listBotRuns(userId, id)) ?? [];
-    return NextResponse.json({ executionMode: QUANT_BOT_EXECUTION_MODE, bot, runs });
+    const [runs, meta] = await Promise.all([
+      listBotRuns(userId, id),
+      getMtAccountMeta(userId).catch(() => null),
+    ]);
+    return NextResponse.json({
+      bot,
+      runs: runs ?? [],
+      accountType: mtModeToExecution(normalizeMtTradeMode(meta?.account_trade_mode)),
+    });
   } catch (err) {
     return handleError(err);
   }

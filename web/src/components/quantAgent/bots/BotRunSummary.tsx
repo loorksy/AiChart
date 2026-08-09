@@ -15,7 +15,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { Surface } from "@/components/foundation";
 import { cn } from "@/lib/utils";
 import type { QuantBotRun } from "@/lib/quantAgent/bots/types";
-import { SimulationOnlyBadge } from "./SimulationOnlyBanner";
+import { BotModeBadge } from "./BotStatusBanner";
 
 function formatMoney(value: number): string {
   if (!Number.isFinite(value)) return "—";
@@ -54,7 +54,7 @@ export function BotRunSummary({ run }: { run: QuantBotRun }) {
       <div dir={dir} className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-semibold text-foreground">{t("qa.bots.run.heading")}</h2>
-          <SimulationOnlyBadge className="ms-auto" />
+          <BotModeBadge mode={run.executionMode} className="ms-auto" />
         </div>
 
         {run.status === "invalid" ? (

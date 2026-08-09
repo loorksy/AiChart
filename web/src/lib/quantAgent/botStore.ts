@@ -1,16 +1,10 @@
 /**
  * The user-scoped accessor layer for Quant Agent bots.
  *
- * SIMULATION ONLY — see `lib/quantAgent/bots/brokerPort.ts`.
- *
  * Unlike `analysisStore.ts` / `monitorStore.ts`, this store owns no table in
  * web's database. Bot definitions, runs, fills and the ledger live in
- * quant-agent's own SQLite, next to the engine that writes them: the grid's
- * crash-recovery watermark (`filled_quantity` vs `processed_fill_qty`) is only
- * meaningful if the durable state sits with the state machine that maintains
- * it, and mirroring definitions on this side would create a second source of
- * truth for the same config. What lives here instead is the thing web must own
- * and quant-agent cannot: WHOSE bot this is.
+ * quant-agent's own SQLite. Live orders are placed on the web side via
+ * `bots/liveExecution.ts` → createIntent → executeIntent.
  *
  * Every function takes `userId` first and threads it into the service call as
  * `owner_user_id`, which the service filters on in SQL. On the way back, each
@@ -30,12 +24,14 @@ import {
   listQuantBotRuns,
   listQuantBots,
   previewQuantBot,
+  setQuantBotExecutionMode,
   simulateQuantBot,
 } from "./client";
 import type { QuantAgentCallerContext, QuantOhlcBar } from "./types";
 import type {
   CreateQuantBotParams,
   QuantBot,
+  QuantBotExecutionModeWire,
   QuantBotPreview,
   QuantBotRun,
   QuantBotSimulation,
@@ -96,6 +92,21 @@ export async function getBot(userId: number, botId: string): Promise<QuantBot | 
 
 export async function deleteBot(userId: number, botId: string): Promise<boolean> {
   return deleteQuantBot(contextFor(userId), botId);
+}
+
+/** Owner-only arming switch. Does not place an order. */
+export async function setBotExecutionMode(
+  userId: number,
+  botId: string,
+  executionMode: QuantBotExecutionModeWire,
+): Promise<QuantBot | null> {
+  const existing = await getBot(userId, botId);
+  if (!existing) return null;
+  const bot = await setQuantBotExecutionMode(contextFor(userId), {
+    botId: existing.id,
+    executionMode,
+  });
+  return ownedBy(bot, userId);
 }
 
 /**

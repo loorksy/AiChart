@@ -91,16 +91,24 @@ describe("the two dictionaries agree on qa.bots.*", () => {
     }
   });
 
-  it("the simulation-only wording is present in both languages", () => {
+  it("status and mode keys resolve in both languages", () => {
     for (const locale of LOCALES) {
+      assertResolves(locale, "qa.bots.status.simulation_title");
+      assertResolves(locale, "qa.bots.status.simulation_body");
+      assertResolves(locale, "qa.bots.status.simulation_badge");
+      assertResolves(locale, "qa.bots.status.live_title");
+      assertResolves(locale, "qa.bots.status.live_body");
+      assertResolves(locale, "qa.bots.status.live_badge");
+      assertResolves(locale, "qa.bots.mode.set_live");
+      assertResolves(locale, "qa.bots.mode.set_simulation");
+      assertResolves(locale, "qa.bots.mode.failed");
+      // Legacy keys kept for any leftover surface.
       assertResolves(locale, "qa.bots.simulation_banner.title");
       assertResolves(locale, "qa.bots.simulation_banner.body");
       assertResolves(locale, "qa.bots.simulation_badge");
     }
-    // Not a translation detail: the English body must actually say that no
-    // order is placed, because that sentence is the product's honesty about
-    // what these screens do.
-    assert.match(t("en", "qa.bots.simulation_banner.body"), /never place an order/i);
+    assert.match(t("en", "qa.bots.status.simulation_body"), /will not place orders/i);
+    assert.match(t("en", "qa.bots.status.live_body"), /linked broker account/i);
   });
 
   it("interpolated keys keep their placeholders in both languages", () => {
@@ -130,6 +138,7 @@ describe("no bot surface hard-codes a user-visible string", () => {
     "src/components/quantAgent/bots/BotsClient.tsx",
     "src/components/quantAgent/bots/BotLevelLadder.tsx",
     "src/components/quantAgent/bots/BotRunSummary.tsx",
+    "src/components/quantAgent/bots/BotStatusBanner.tsx",
     "src/components/quantAgent/bots/SimulationOnlyBanner.tsx",
   ];
   const repoRoot = join(__dirname, "..", "..", "..", "..");

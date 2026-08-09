@@ -4,27 +4,19 @@ import { handleError } from "@/lib/api";
 import { quantAgentServiceEnabled } from "@/lib/quantAgent/client";
 import { resolveQuantAgentUserId } from "@/lib/quantAgent/webAuth";
 import { createBot, listBots } from "@/lib/quantAgent/botStore";
-import { QUANT_BOT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
+import { QUANT_BOT_DEFAULT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
 import { QUANT_BOT_TYPES } from "@/lib/quantAgent/bots/types";
+import { getMtAccountMeta } from "@/lib/store";
+import { mtModeToExecution, normalizeMtTradeMode } from "@/lib/executionEnv";
 
 /**
  * Quant Agent automated bots — list the caller's, or save a new one.
  *
- * SIMULATION ONLY. There is no start, stop or deploy verb on this resource,
- * here or in quant-agent, because there is nothing behind one: the engine's
- * only broker is `SimulatedQuantBroker`. `lib/quantAgent/bots/brokerPort.ts`
- * is the seam that would have to change, and it throws unconditionally.
- * `executionMode` rides on every response so a client cannot lose that fact.
+ * Saving is not arming: new bots start in `simulation`. Live orders go through
+ * `bots/liveExecution.ts` → createIntent → executeIntent.
  *
- * Ported from QuantDinger (https://github.com/OpenByteInc/QuantDinger),
- * Copyright Open Byte Inc., licensed under the Apache License, Version 2.0
- * — `backend_api_python/app/routes/strategy.py`'s executor deploy routes.
- * What changed: the deploy half is gone entirely (credential binding,
- * `execution_mode: "live"`, exchange selection), and every read is
- * user-scoped, where upstream's list route scoped by strategy id alone.
- *
- * Follows `api/quant-agent/analysis/route.ts` throughout:
- * `resolveQuantAgentUserId` → zod `.parse()` → work → `NextResponse.json`.
+ * Every response includes the linked account type (demo/live) from the
+ * broker-reported trade mode so the UI never leaves that ambiguous.
  */
 
 export const runtime = "nodejs";
@@ -42,6 +34,11 @@ const createSchema = z
   })
   .strict();
 
+async function accountTypeFor(userId: number) {
+  const meta = await getMtAccountMeta(userId).catch(() => null);
+  return mtModeToExecution(normalizeMtTradeMode(meta?.account_trade_mode));
+}
+
 /** Every bot the caller owns. */
 export async function GET(req: NextRequest) {
   try {
@@ -49,14 +46,14 @@ export async function GET(req: NextRequest) {
     if (!quantAgentServiceEnabled()) {
       return NextResponse.json({ error: "Quant Agent Service is not enabled." }, { status: 503 });
     }
-    const bots = await listBots(userId);
-    return NextResponse.json({ executionMode: QUANT_BOT_EXECUTION_MODE, bots });
+    const [bots, accountType] = await Promise.all([listBots(userId), accountTypeFor(userId)]);
+    return NextResponse.json({ bots, accountType });
   } catch (err) {
     return handleError(err);
   }
 }
 
-/** Save a bot configuration. Saving is not starting. */
+/** Save a bot configuration. Saving is not arming. */
 export async function POST(req: NextRequest) {
   try {
     const userId = await resolveQuantAgentUserId(req);
@@ -68,14 +65,18 @@ export async function POST(req: NextRequest) {
       botType: body.botType as (typeof QUANT_BOT_TYPES)[number],
       name: body.name,
       symbol: body.symbol,
-      // Forex-only platform; the field exists so the service row is explicit.
       market: "forex",
       interval: body.interval,
       initialCapital: body.initialCapital ?? 1000,
       feeRate: body.feeRate ?? 0.001,
       config: body.config,
     });
-    return NextResponse.json({ executionMode: QUANT_BOT_EXECUTION_MODE, bot });
+    const accountType = await accountTypeFor(userId);
+    return NextResponse.json({
+      executionMode: bot.executionMode ?? QUANT_BOT_DEFAULT_EXECUTION_MODE,
+      bot,
+      accountType,
+    });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(

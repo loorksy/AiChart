@@ -304,6 +304,8 @@ const SCHEMA = `
     -- authorised it. Both are checked again at execution time.
     recommendation_revision_no INTEGER,
     authorization_source TEXT,
+    -- Opaque Quant Agent bot id when a live bot created this intent.
+    bot_id            TEXT,
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          DOUBLE PRECISION NOT NULL,
@@ -1586,7 +1588,8 @@ async function migratePg(client: PoolClient) {
     ALTER TABLE trade_intents
       ADD COLUMN IF NOT EXISTS deny_code TEXT,
       ADD COLUMN IF NOT EXISTS recommendation_revision_no INTEGER,
-      ADD COLUMN IF NOT EXISTS authorization_source TEXT
+      ADD COLUMN IF NOT EXISTS authorization_source TEXT,
+      ADD COLUMN IF NOT EXISTS bot_id TEXT
   `).catch(() => {});
 
   await client.query(`

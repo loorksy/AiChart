@@ -1,12 +1,10 @@
-"""The automated-bot endpoints — preview a ladder, save a bot, replay it.
+"""The automated-bot endpoints — preview a ladder, save a bot, replay it,
+and (owner-only) arm a bot's execution_mode.
 
-SIMULATION ONLY. There is no endpoint here that starts a bot, submits an order
-or connects an account, because there is nothing in this service that could
-honour such a call: the engine's only broker is `SimulatedQuantBroker`. Every
-response carries `execution_mode: "simulation"` so a caller cannot mistake a
-replay for a deployment, and the field is a `Literal` of one value in
-`app/storage/models.py`, so widening it would be a type error everywhere it is
-read.
+The engine under `app/engine/bots/` remains simulation-only
+(`SimulatedQuantBroker`). Setting `execution_mode` to `live` is an arming
+switch the web platform reads before creating a trade_intent; this service
+never places an order itself.
 
 Ownership is checked on EVERY by-id handler. `owner_user_id` travels in the
 body (not the path) and the store has no unscoped `get_bot`, so a handler
@@ -20,16 +18,6 @@ that cannot be served is a coded 4xx rather than a 200 carrying
 `app/api/strategies.py` and returns a 200 with `status="invalid"` — a preview's
 whole job is to explain why a config is wrong while the user is still typing it,
 and an HTTP error is a worse place to put that explanation than the body.
-
-Ported from QuantDinger (https://github.com/OpenByteInc/QuantDinger), Copyright
-Open Byte Inc., licensed under the Apache License, Version 2.0
-(http://www.apache.org/licenses/LICENSE-2.0). Upstream sources:
-`backend_api_python/app/routes/strategy_grid_routes.py` and the executor
-preview/deploy routes in `.../app/routes/strategy.py`. Changed on port: the
-deploy verbs (`/start`, `/stop`, credential binding, `execution_mode: "live"`)
-are not carried across at all, and `POST .../simulate` — which has no upstream
-counterpart, because upstream runs its grid against a real venue — takes their
-place.
 """
 
 from __future__ import annotations
@@ -55,6 +43,7 @@ from app.security import require_internal_auth
 from app.storage.models import (
     BotCreateRequest,
     BotDefinition,
+    BotExecutionModeRequest,
     BotFill,
     BotLedgerEntry,
     BotListResponse,
@@ -191,6 +180,24 @@ async def delete_bot(
     if not await store.delete_bot(owner_user_id, bot_id):
         raise ServiceError("QUANT_AGENT_NOT_FOUND", "bot not found", 404)
     return {"ok": True}
+
+
+@router.patch("/{bot_id}/execution-mode", response_model=BotDefinition, dependencies=[_AUTH])
+async def set_bot_execution_mode(
+    bot_id: str,
+    body: BotExecutionModeRequest,
+    store: SqliteQuantStore = Depends(_store),
+) -> BotDefinition:
+    """Owner-only arming switch. Does not place an order."""
+    bot = await store.set_bot_execution_mode(
+        body.owner_user_id,
+        bot_id,
+        body.execution_mode,
+        updated_at=utc_now_iso(),
+    )
+    if bot is None:
+        raise ServiceError("QUANT_AGENT_NOT_FOUND", "bot not found", 404)
+    return bot
 
 
 @router.get("/{bot_id}/runs", response_model=BotRunListResponse, dependencies=[_AUTH])
