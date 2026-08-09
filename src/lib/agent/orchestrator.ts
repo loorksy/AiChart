@@ -824,6 +824,26 @@ async function runUnifiedChartAgentInner(
   }
 
   if (!market.sync.ok) {
+    // Honest, specific blocker text (Phase C2): say WHAT is stale and HOW
+    // stale, and that the refresh is already running — not a generic "wait
+    // a few seconds". The age number is what turns "the agent is broken"
+    // into "the data pipe is N minutes behind".
+    const tailAgeSec =
+      market.sync.warehouseLastTime != null
+        ? Math.max(0, Math.round((Date.now() - market.sync.warehouseLastTime) / 1000))
+        : null;
+    const ageAr =
+      tailAgeSec == null
+        ? ""
+        : tailAgeSec < 120
+          ? ` آخر شمعة متوفرة عمرها ${tailAgeSec} ثانية.`
+          : ` آخر شمعة متوفرة عمرها ${Math.round(tailAgeSec / 60)} دقيقة.`;
+    const ageEn =
+      tailAgeSec == null
+        ? ""
+        : tailAgeSec < 120
+          ? ` Latest available candle is ${tailAgeSec}s old.`
+          : ` Latest available candle is ${Math.round(tailAgeSec / 60)}m old.`;
     return {
       decision: "action_required",
       envelope: operationalBlockerEnvelope({
@@ -835,8 +855,8 @@ async function runUnifiedChartAgentInner(
       confidence: 0,
       summary: bilingual(
         locale,
-        "تعذّر تأكيد أحدث الأسعار من حساب MetaTrader الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
-        "Could not confirm the latest broker prices right now. Wait a few seconds and ask again — no page refresh needed.",
+        `${market.sync.reason}${ageAr} بدأ تحديث تلقائي من حساب MetaTrader — أعد طلبك خلال لحظات وسيكتمل التحليل.`,
+        `${market.sync.reason}${ageEn} An automatic refresh from your MetaTrader account is already running — ask again in a moment and the analysis will complete.`,
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [
@@ -1235,6 +1255,9 @@ async function runUnifiedChartAgentInner(
           skillContextBlock: skillContextFinal.block || null,
           // Realised-outcome lessons (item 14): evidence the model weighs.
           lessonsBlock,
+          // Phase C4: continuity aid so the summary can reference prior turns
+          // ("مقارنة بالخطة السابقة…") instead of reading like a first message.
+          conversationBlock: conversationBlockForSynth(input.conversationContext),
           visualSnapshots: visual.snapshots,
           statisticalSupport,
           historicalCases,
@@ -2006,6 +2029,38 @@ async function noStoredRecommendation(
     activityEvents: collected,
     options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true, locale }),
   };
+}
+
+/**
+ * Phase C4: compact recent-conversation excerpt for the synthesizer prompt.
+ * Continuity/language aid only — the synthesizer frames it as untrusted
+ * context, never evidence. Kept deliberately small (last few conversation
+ * turns + the active recommendation line) so it cannot crowd out the actual
+ * market evidence in the prompt.
+ */
+function conversationBlockForSynth(
+  context?: AgentConversationContext,
+): string | null {
+  if (!context) return null;
+  const lines: string[] = [];
+  const rec = context.activeRecommendation;
+  if (rec) {
+    lines.push(
+      `Active recommendation: ${rec.symbol} ${rec.timeframe} ${rec.direction} (${rec.status})` +
+        (rec.entry != null ? `, entry ${rec.entry}` : "") +
+        (rec.stopLoss != null ? `, SL ${rec.stopLoss}` : "") +
+        (rec.targets?.length ? `, targets ${rec.targets.join("/")}` : ""),
+    );
+  }
+  const turns = context.messages
+    .filter((m) => m.kind === "conversation" && !m.current)
+    .slice(-6);
+  for (const t of turns) {
+    const text = t.content.replace(/\s+/g, " ").trim().slice(0, 220);
+    if (text) lines.push(`${t.role === "assistant" ? "agent" : "user"}: ${text}`);
+  }
+  if (!lines.length) return null;
+  return lines.join("\n").slice(0, 2000);
 }
 
 function activeRecommendationFromChartContext(

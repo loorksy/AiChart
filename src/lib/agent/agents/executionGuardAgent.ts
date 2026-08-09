@@ -37,6 +37,8 @@ export async function runExecutionGuardAgent(
     type: "execution",
     status: "started",
     message: "أتحقق من شروط التنفيذ والتأكيد المطلوب.",
+    // Narration-only: the confirmation prompt itself is the visible step.
+    visible: false,
   });
 
   // Permission gate.

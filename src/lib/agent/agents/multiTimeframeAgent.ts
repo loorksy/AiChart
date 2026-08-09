@@ -18,6 +18,8 @@ export async function runMultiTimeframeAgent(
     type: "analysis",
     status: "started",
     message: `أقارن فريم ${market.interval} مع الفريم الأعلى ${market.higherInterval}.`,
+    // Narration-only: trace log, not UI. The comparison result event follows.
+    visible: false,
   });
 
   const currentBias = biasFromCandles(market.currentTfCandles);

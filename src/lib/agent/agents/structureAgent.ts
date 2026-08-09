@@ -32,6 +32,9 @@ export async function runStructureAgent(
     type: "analysis",
     status: "started",
     message: "أحلّل بنية السوق والقمم والقيعان وكسور الهيكل.",
+    // Narration-only (no data yet): logged for the trace, hidden from the UI.
+    // The completed event below carries the actual finding.
+    visible: false,
   });
 
   const swings = detectSwings(market.currentTfCandles);

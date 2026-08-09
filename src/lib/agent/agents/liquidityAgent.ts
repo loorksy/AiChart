@@ -26,6 +26,8 @@ export async function runLiquidityAgent(
     type: "analysis",
     status: "started",
     message: "أبحث عن مناطق السيولة والقمم/القيعان المتساوية وعمليات السحب.",
+    // Narration-only: trace log, not UI. The completed event has the result.
+    visible: false,
   });
 
   const liquidity = market.liquidity;

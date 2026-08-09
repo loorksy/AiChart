@@ -21,6 +21,9 @@ export async function runMarketDataAgent(
     status: "started",
     message: `أفحص بيانات ${symbol} على فريم ${interval} من مخزن الشموع.`,
     metadata: { symbol, interval, analysisKind: input.analysisKind },
+    // Narration-only: the completed/warning event below carries the result
+    // (candle count or coverage gap) — showing both doubles the noise.
+    visible: false,
   });
 
   const market = await buildAgentMarketContext({

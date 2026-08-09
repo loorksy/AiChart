@@ -44,6 +44,8 @@ export async function runDrawingAgent(
     status: "started",
     message: "أجهّز خطة الرسم النهائية على الشارت.",
     metadata: { drawingIntent: plan.drawingIntent },
+    // Narration-only: the drawings appearing on the chart ARE the signal.
+    visible: false,
   });
 
   const candles = input.market.currentTfCandles;

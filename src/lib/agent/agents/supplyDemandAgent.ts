@@ -17,6 +17,8 @@ export async function runSupplyDemandAgent(
     type: "analysis",
     status: "started",
     message: "أحدّد مناطق الطلب والعرض ومناطق الدخول المحتملة.",
+    // Narration-only: trace log, not UI.
+    visible: false,
   });
 
   const zones = market.zones;

@@ -76,6 +76,8 @@ export async function runRiskAgent(
     type: "risk",
     status: "started",
     message: "أشغّل قائمة فحص التداول وأتحقق من صلاحية الإعداد والمخاطرة.",
+    // Narration-only: trace log, not UI. The completed event carries the count.
+    visible: false,
   });
 
   const market = input.market;
