@@ -123,6 +123,7 @@ def test_backtest_endpoint_backtests_a_disabled_generated_strategy(client: TestC
         "/internal/quant-agent/strategies/generate-validate-code",
         headers=headers(),
         json={
+            "owner_user_id": 7001,
             "strategy_id": "sandboxed_backtest_v1",
             "version": "1.0.0",
             "display_name": "Sandboxed Backtest Candidate",

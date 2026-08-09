@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "description": "Narrow to one pair, e.g. XAUUSD",
+      "type": "string"
+    },
+    "limit": {
+      "description": "Rows per page, 1-50 (default 20)",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50
+    },
+    "cursor": {
+      "description": "nextCursor from the previous page; omit for the first page",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  }
+}

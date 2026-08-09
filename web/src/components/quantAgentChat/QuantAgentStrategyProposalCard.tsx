@@ -80,7 +80,18 @@ export function QuantAgentStrategyProposalCard({ proposal }: QuantAgentStrategyP
   const { t, dir } = useLocale();
   const [dismissed, setDismissed] = useState(false);
   const [enabling, setEnabling] = useState(false);
-  const [enabled, setEnabled] = useState(false);
+  /*
+   * A strategy that cleared the quality gate is ALREADY live by the time this
+   * card renders — the orchestrator activates it, because the owner described
+   * it, the engine backtested it over 5000 bars and it passed an objective
+   * bar. Asking them to press a button to confirm a decision that has already
+   * been made correctly is ceremony, not safety.
+   *
+   * One that did NOT pass is not live, and activating it is a deliberate act
+   * taken with the failing numbers visible directly above the button.
+   */
+  const alreadyActive = proposal.status === "persisted" && proposal.autoActivated === true;
+  const [enabled, setEnabled] = useState(alreadyActive);
   const [enableError, setEnableError] = useState(false);
 
   if (dismissed) return null;
@@ -127,13 +138,13 @@ export function QuantAgentStrategyProposalCard({ proposal }: QuantAgentStrategyP
     setEnabling(true);
     setEnableError(false);
     try {
-      const res = await fetch(`/api/quant-agent/strategies/${encodeURIComponent(strategyId)}/enable`, {
+      const res = await fetch(`/api/quant-agent/strategies/${encodeURIComponent(strategyId)}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: true }),
+        body: JSON.stringify({ status: enabled ? "paused" : "active" }),
       });
-      if (!res.ok) throw new Error("enable failed");
-      setEnabled(true);
+      if (!res.ok) throw new Error("status change failed");
+      setEnabled((was) => !was);
     } catch {
       setEnableError(true);
     } finally {
@@ -267,20 +278,30 @@ export function QuantAgentStrategyProposalCard({ proposal }: QuantAgentStrategyP
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {enabled ? (
-            <span className="inline-flex items-center gap-1 text-[12px] font-medium text-buy">
-              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("qa.chat.strategy.enabled_confirm")}
-            </span>
+            <>
+              <span className="inline-flex items-center gap-1 text-[12px] font-medium text-buy">
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                {alreadyActive
+                  ? t("qa.chat.strategy.auto_active")
+                  : t("qa.chat.strategy.enabled_confirm")}
+              </span>
+              {/* Anything that can be switched on has to be switchable off in
+                  the same place. A user who cannot find the way back stops
+                  trusting the way forward. */}
+              <Button variant="outline" size="sm" disabled={enabling} onClick={() => void handleEnable()}>
+                {enabling ? t("qa.chat.strategy.pausing") : t("qa.chat.strategy.pause_cta")}
+              </Button>
+            </>
           ) : (
-            <Button variant="default" size="sm" disabled={enabling} onClick={() => void handleEnable()}>
-              {enabling ? t("qa.chat.strategy.enabling") : t("qa.chat.strategy.enable_cta")}
-            </Button>
+            <>
+              <Button variant="default" size="sm" disabled={enabling} onClick={() => void handleEnable()}>
+                {enabling ? t("qa.chat.strategy.enabling") : t("qa.chat.strategy.enable_cta")}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setDismissed(true)}>
+                {t("qa.chat.strategy.dismiss")}
+              </Button>
+            </>
           )}
-          {!enabled ? (
-            <Button variant="outline" size="sm" onClick={() => setDismissed(true)}>
-              {t("qa.chat.strategy.dismiss")}
-            </Button>
-          ) : null}
           {enableError ? (
             <span className="text-[12px] text-destructive">{t("qa.chat.strategy.enable_error")}</span>
           ) : null}

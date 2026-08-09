@@ -12,10 +12,10 @@ from app.engine.strategies.registry import registered_strategies
 from app.errors import ServiceError
 from app.security import require_internal_auth
 from app.storage.models import (
-    EnableStrategyRequest,
     GenerateValidateCodeRequest,
     GenerateValidateRequest,
     GenerateValidateResponse,
+    SetStrategyStatusRequest,
     StrategyDef,
     StrategyListResponse,
 )
@@ -84,7 +84,12 @@ async def generate_validate(
         version=spec.version,
         display_name=spec.display_name,
         description=spec.description,
+        # A freshly generated strategy is never live. It becomes `active`
+        # only after a backtest clears the quality gate, or after its owner
+        # activates it deliberately having seen the failing numbers.
         enabled=False,
+        status="ready",
+        owner_user_id=body.owner_user_id,
         regime_affinity=spec.regime_affinity,
         source_generated=True,
         params_json=spec.model_dump_json(),
@@ -143,7 +148,12 @@ async def generate_validate_code(
         version=body.version,
         display_name=body.display_name,
         description=body.description,
+        # A freshly generated strategy is never live. It becomes `active`
+        # only after a backtest clears the quality gate, or after its owner
+        # activates it deliberately having seen the failing numbers.
         enabled=False,
+        status="ready",
+        owner_user_id=body.owner_user_id,
         regime_affinity=body.regime_affinity,
         source_generated=True,
         generation_mode="sandboxed_code",
@@ -166,19 +176,28 @@ async def generate_validate_code(
 
 
 @router.patch("/{strategy_id}", response_model=StrategyDef, dependencies=[_AUTH])
-async def set_strategy_enabled(
+async def set_strategy_status(
     strategy_id: str,
-    body: EnableStrategyRequest,
+    body: SetStrategyStatusRequest,
     store: SqliteQuantStore = Depends(_store),
 ) -> StrategyDef:
-    """Only ever toggles `source_generated=True` rows — the hardcoded
-    `ema_trend_v1`/`rsi_reversion_v1` rows are never reachable through this
-    path (plan section 5)."""
-    updated = await store.set_generated_strategy_enabled(strategy_id, body.enabled)
+    """Move one of the CALLER'S OWN generated strategies through its lifecycle.
+
+    Built-ins are unreachable here, and so is anybody else's row: the store
+    checks ownership and returns `None` for every refusal, which becomes the
+    same 404. That is deliberate — distinguishing "no such strategy" from "not
+    yours" tells a prober which ids exist.
+
+    Ownership is what replaced the admin-only stopgap. That restriction existed
+    because the registry loaded every enabled generated strategy for every
+    user, so an owner enabling their own put their code in strangers'
+    recommendations. Now the registry is scoped per owner, and enabling your
+    own strategy affects exactly your own signals."""
+    updated = await store.set_strategy_status(strategy_id, body.status, body.owner_user_id)
     if updated is None:
         raise ServiceError(
             "QUANT_AGENT_STRATEGY_NOT_FOUND",
-            "no generated strategy with that id is enabled/disabled through this endpoint",
+            "no generated strategy with that id belongs to this owner",
             404,
         )
     return updated

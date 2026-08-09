@@ -28,27 +28,66 @@
  * outbound call in this codebase targets an operator-configured, trusted
  * endpoint — an LLM provider, a broker, Telegram's API — never a URL a user
  * typed into a form). Treat any change here as security-sensitive.
+ *
+ * VENDOR DIALECTS were added on top of the above, and none of the protections
+ * were relaxed to fit them:
+ *  - The body is adapted per vendor (`notifications/webhookDialect.ts`), but
+ *    the transport is unchanged: still `node:https`, still no redirects, still
+ *    the pinned address with the original hostname for TLS.
+ *  - DingTalk signs by appending query parameters, so the signed URL is built
+ *    FIRST and `resolveAndPin` then runs on the URL that will actually be
+ *    posted to. Validating one URL and posting another is precisely the gap
+ *    this module exists to close, so the ordering is not an accident.
+ *  - The response body is now read, because Slack answers `ok` and the Chinese
+ *    vendors answer 200 with an error code inside the JSON — but it is read
+ *    under the same `MAX_RESPONSE_BYTES` cap as before, and the socket is
+ *    destroyed the moment that cap is reached.
+ *
+ * Ported from QuantDinger (https://github.com/OpenByteInc/QuantDinger),
+ * Copyright Open Byte Inc., licensed under the Apache License, Version 2.0
+ * — `backend_api_python/app/services/signal_notifier.py:704-853`
+ * (`_notify_webhook`: dialect selection, per-dialect signing, "post the bytes
+ * you signed"). What changed: the resolve-then-pin SSRF defense above has no
+ * upstream counterpart at all (upstream hands a user-supplied URL straight to
+ * `requests.post`); the single 1s retry on 429/5xx is NOT ported, because a
+ * fired monitor already leaves a persisted signal-event row recording the
+ * failure and a retry inside the cron tick spends the sweep's budget on one
+ * user's unreachable endpoint; and there is no `discord` or `email` path.
  */
 import { randomUUID } from "node:crypto";
 import * as dns from "node:dns/promises";
 import * as https from "node:https";
 import { createLogger } from "@/lib/logger";
+import {
+  adaptPayloadForDialect,
+  checkVendorResponse,
+  detectWebhookDialect,
+  dingtalkSignedUrl,
+  encodeWebhookBody,
+  signFeishuPayload,
+  signWebhookBody,
+  WEBHOOK_SIGNATURE_HEADER,
+  WEBHOOK_TIMESTAMP_HEADER,
+  type WebhookDialect,
+  type WebhookSignalPayload,
+} from "./notifications/webhookDialect";
 
 const log = createLogger("quantAgent.webhookDelivery");
 
 const REQUEST_TIMEOUT_MS = 8_000;
 const MAX_RESPONSE_BYTES = 4_096;
 
-export interface MonitorWebhookPayload {
-  monitor_id: string;
-  symbol: string;
-  interval: string;
-  recommendation_id: string;
-  direction: "buy" | "sell";
-  entry: number | null;
-  stop_loss: number;
-  take_profit: number | null;
-  fired_at: string;
+export type MonitorWebhookPayload = WebhookSignalPayload;
+
+/**
+ * Operator-configured shared secret for `generic` receivers (and the in-body /
+ * in-URL signatures Feishu and DingTalk require). Unset means unsigned
+ * delivery, which is the honest default: there is no per-monitor secret column
+ * — a credential of that shape would need encrypting at rest and a UI to
+ * manage, neither of which exists yet.
+ */
+function configuredSigningSecret(): string {
+  return process.env.QUANT_AGENT_WEBHOOK_SIGNING_SECRET?.trim() ?? "";
 }
 
 export class WebhookDeliveryError extends Error {
@@ -61,7 +100,8 @@ export class WebhookDeliveryError extends Error {
       | "PRIVATE_ADDRESS"
       | "NO_PUBLIC_ADDRESS"
       | "TIMEOUT"
-      | "REQUEST_FAILED",
+      | "REQUEST_FAILED"
+      | "VENDOR_REJECTED",
   ) {
     super(message);
     this.name = "WebhookDeliveryError";
@@ -214,16 +254,70 @@ export async function resolveAndPin(rawUrl: string, lookupFn: DnsLookupFn = defa
 
 // --- Delivery --------------------------------------------------------------
 
+export interface WebhookRequestPlan {
+  dialect: WebhookDialect;
+  /** The URL that will actually be posted to — DingTalk's carries its signature. */
+  postUrl: string;
+  /** The exact bytes on the wire. Whatever was signed, this is it. */
+  body: Buffer;
+  headers: Record<string, string | number>;
+}
+
+/**
+ * Everything decided before a socket is opened: which vendor, what body, what
+ * signature. Exported so the dialect + signing behaviour is testable without
+ * DNS or TLS — the transport below consumes this and changes nothing about it.
+ */
+export function buildWebhookRequest(
+  url: string,
+  payload: MonitorWebhookPayload,
+  options: { signingSecret?: string; nowMs?: number; requestId?: string } = {},
+): WebhookRequestPlan {
+  const dialect = detectWebhookDialect(url);
+  const secret = (options.signingSecret ?? configuredSigningSecret()).trim();
+  const nowMs = options.nowMs ?? Date.now();
+  const timestampSeconds = Math.floor(nowMs / 1000);
+
+  let adapted = adaptPayloadForDialect(dialect, payload);
+  if (dialect === "feishu" && secret) {
+    adapted = signFeishuPayload(adapted, secret, timestampSeconds);
+  }
+  // Serialize ONCE, after every mutation. Everything below reads these bytes.
+  const body = encodeWebhookBody(adapted);
+
+  const postUrl = dialect === "dingtalk" && secret ? dingtalkSignedUrl(url, secret, nowMs) : url;
+
+  const headers: Record<string, string | number> = {
+    "Content-Type": "application/json",
+    "Content-Length": body.byteLength,
+    "User-Agent": "AiChart-QuantAgent-Monitor/1.0",
+    "X-Request-Id": options.requestId ?? randomUUID(),
+  };
+  if (dialect === "generic" && secret) {
+    headers[WEBHOOK_TIMESTAMP_HEADER] = String(timestampSeconds);
+    headers[WEBHOOK_SIGNATURE_HEADER] = signWebhookBody(secret, timestampSeconds, body);
+  }
+  // WeCom and Slack are deliberately unsigned: their secret is the URL itself.
+
+  return { dialect, postUrl, body, headers };
+}
+
 /**
  * POSTs a monitor-fire payload to a user-supplied HTTPS webhook. Best-effort:
  * never throws in a way that should be allowed to break the calling cron
  * tick — callers should catch and log, treating any rejection as a simple
  * "not delivered" the same way a Telegram/push failure already is.
  */
-export async function deliverMonitorWebhook(url: string, payload: MonitorWebhookPayload): Promise<void> {
-  const target = await resolveAndPin(url);
-  const body = JSON.stringify(payload);
+export async function deliverMonitorWebhook(
+  url: string,
+  payload: MonitorWebhookPayload,
+  options: { signingSecret?: string } = {},
+): Promise<void> {
   const requestId = randomUUID();
+  const plan = buildWebhookRequest(url, payload, { ...options, requestId });
+  // Pin the URL that will be posted to, not the one that was passed in: for
+  // DingTalk those differ (the signature rides in the query string).
+  const target = await resolveAndPin(plan.postUrl);
 
   await new Promise<void>((resolve, reject) => {
     const req = https.request(
@@ -235,33 +329,58 @@ export async function deliverMonitorWebhook(url: string, payload: MonitorWebhook
         // TLS validates against the ORIGINAL hostname (correct cert/SNI
         // behavior) even though the socket connects to the pinned address.
         servername: target.hostname,
-        headers: {
-          Host: target.hostname,
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-          "User-Agent": "AiChart-QuantAgent-Monitor/1.0",
-          "X-Request-Id": requestId,
-        },
+        headers: { Host: target.hostname, ...plan.headers },
         timeout: REQUEST_TIMEOUT_MS,
       },
       (res) => {
-        // Body is never used — only the status matters — but the stream
-        // must still be drained (bounded) so the socket can close cleanly
-        // instead of leaking a half-read connection.
+        // The body IS read now — Slack answers with the literal string `ok`
+        // and Feishu/DingTalk/WeCom answer 200 with an error code inside the
+        // JSON, so a status-only check calls those failures successes. It is
+        // still bounded by MAX_RESPONSE_BYTES and the socket is destroyed the
+        // moment the cap is hit, so a hostile endpoint cannot stream at us.
+        const status = res.statusCode ?? 0;
+        const chunks: Buffer[] = [];
         let received = 0;
-        res.on("data", (chunk: Buffer) => {
-          received += chunk.length;
-          if (received > MAX_RESPONSE_BYTES) res.destroy();
-        });
-        res.on("end", () => {
-          const status = res.statusCode ?? 0;
-          if (status >= 200 && status < 300) {
+        let settled = false;
+
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          const text = Buffer.concat(chunks).toString("utf8");
+          const verdict = checkVendorResponse(plan.dialect, status, text);
+          if (verdict.ok) {
             resolve();
-          } else {
-            reject(new WebhookDeliveryError(`Webhook responded with status ${status}.`, "REQUEST_FAILED"));
+            return;
           }
+          reject(
+            new WebhookDeliveryError(
+              `Webhook rejected the delivery (${plan.dialect}): ${verdict.error}`,
+              status >= 200 && status < 300 ? "VENDOR_REJECTED" : "REQUEST_FAILED",
+            ),
+          );
+        };
+
+        res.on("data", (chunk: Buffer) => {
+          if (settled) return;
+          const room = MAX_RESPONSE_BYTES - received;
+          if (chunk.length >= room) {
+            if (room > 0) chunks.push(chunk.subarray(0, room));
+            received = MAX_RESPONSE_BYTES;
+            // Verdict first, then drop the socket: the promise is already
+            // settled, so the `error` a destroy can raise is a no-op.
+            finish();
+            res.destroy();
+            return;
+          }
+          chunks.push(chunk);
+          received += chunk.length;
         });
-        res.on("error", () => resolve()); // status already observed; a body-drain error doesn't change the outcome
+        // `close` covers the destroyed-socket path; `error` still has a valid
+        // status line, so it is judged on what was received rather than
+        // silently treated as success.
+        res.on("end", finish);
+        res.on("close", finish);
+        res.on("error", finish);
       },
     );
 
@@ -273,11 +392,14 @@ export async function deliverMonitorWebhook(url: string, payload: MonitorWebhook
       reject(new WebhookDeliveryError(`Webhook request failed: ${error.message}`, "REQUEST_FAILED"));
     });
 
-    req.write(body);
+    req.write(plan.body);
     req.end();
   }).catch((error) => {
+    // The URL is never logged — a webhook URL is itself the credential for
+    // WeCom and Slack. The dialect is enough to debug with.
     log.warn("quant_agent.monitor_webhook.delivery_failed", {
       requestId,
+      dialect: plan.dialect,
       code: error instanceof WebhookDeliveryError ? error.code : "UNKNOWN",
       error: error instanceof Error ? error.message : String(error),
     });

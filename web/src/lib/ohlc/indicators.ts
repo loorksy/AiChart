@@ -16,7 +16,14 @@ export interface ForexIndicatorsResult {
   symbol: string;
   interval: string;
   /** "metaapi" for the trader's linked account; a neutral reference-feed label when analysis-only fallback served it. */
-  computedFrom: OhlcSource | "reference_feed";
+  /**
+   * Which book the candles came from, when that is a fact worth carrying.
+   *
+   * `"unattributed"` is for callers that deliberately do NOT attribute — the
+   * Quant Agent analysis path computes shape, not provenance, and naming a
+   * feed there would put a provider identity on a value the model reads.
+   */
+  computedFrom: OhlcSource | "reference_feed" | "unattributed";
   rsi14: number | null;
   macd: { macd: number; signal: number; histogram: number } | null;
   sma20: number | null;
@@ -59,7 +66,7 @@ export function computeForexIndicators(
   symbol: string,
   interval: string,
   candles: OhlcCandle[],
-  computedFrom: OhlcSource | "reference_feed",
+  computedFrom: OhlcSource | "reference_feed" | "unattributed",
 ): ForexIndicatorsResult {
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);

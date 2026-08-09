@@ -310,6 +310,8 @@ const SCHEMA = `
     -- authorised it. Both are checked again at execution time.
     recommendation_revision_no INTEGER,
     authorization_source TEXT,
+    -- Opaque Quant Agent bot id when a live bot created this intent.
+    bot_id            TEXT,
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          REAL NOT NULL,
@@ -593,6 +595,115 @@ const SCHEMA = `
   -- interval) group, regardless of which user owns them.
   CREATE INDEX IF NOT EXISTS idx_quant_agent_monitors_due
     ON quant_agent_monitors (enabled, symbol, interval);
+
+  -- The Quant Agent's LLM trading-analysis history (Wave 1 contract). This is
+  -- the SECOND engine's own table: it is deliberately not 'recommendations',
+  -- so nothing here can be mistaken for — or silently promoted into —
+  -- Lonora's single canonical plan record. 'id' is a TEXT uuid rather than an
+  -- autoincrement, matching 'agent_chats'/'tracked_recommendations', because
+  -- the id is minted before the row exists so a failed run can still be
+  -- persisted under a stable identity.
+  --
+  -- 'created_at' is epoch milliseconds (the quant_agent_monitors convention,
+  -- not a SQL timestamp default) so the keyset cursor used by the history
+  -- endpoint compares identically on both backends; the API converts it to
+  -- ISO-8601 on the way out.
+  --
+  -- The *_json columns hold whole sub-objects rather than exploded columns
+  -- because they are read back as one unit by the report UI and never
+  -- queried on. The four score columns ARE exploded — the history list ranks
+  -- and filters on them.
+  CREATE TABLE IF NOT EXISTS quant_analyses (
+    id                 TEXT PRIMARY KEY,
+    user_id            INTEGER NOT NULL,
+    market             TEXT NOT NULL,
+    symbol             TEXT NOT NULL,
+    interval           TEXT NOT NULL,
+    status             TEXT NOT NULL,
+    decision           TEXT,
+    confidence         INTEGER,
+    current_price      REAL,
+    entry_price        REAL,
+    stop_loss          REAL,
+    take_profit        REAL,
+    position_size_pct  REAL,
+    horizon            TEXT,
+    summary            TEXT,
+    technical_score    INTEGER,
+    fundamental_score  INTEGER,
+    sentiment_score    INTEGER,
+    overall_score      INTEGER,
+    consensus_json     TEXT,
+    outlook_json       TEXT,
+    detail_json        TEXT,
+    reasons_json       TEXT,
+    risks_json         TEXT,
+    data_quality_json  TEXT,
+    error              TEXT,
+    created_at         INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS quant_analyses_user_created
+    ON quant_analyses (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS quant_analyses_symbol
+    ON quant_analyses (user_id, symbol, created_at DESC);
+
+  -- Persistent signal history: one append-only row per monitor FIRE. Before
+  -- this table a fired monitor left nothing behind but
+  -- 'quant_agent_monitors.last_fired_recommendation_id' — a single slot that
+  -- the next fire overwrote — so a Telegram message that failed to send left
+  -- no trace at all and nothing in-product could answer "what has this
+  -- monitor told me?".
+  --
+  -- The row is CLAIMED BEFORE delivery is attempted, not written after it:
+  -- that is what makes a failed send a queryable record rather than a
+  -- silence, and it is what makes 'quant_agent_signal_events_bar' a real
+  -- delivery lock instead of a de-duplicating afterthought.
+  --
+  -- 'quant_agent_signal_events_bar' UNIQUE (monitor_id, bar_time, decision):
+  -- one monitor, one bar, one decision => exactly one row and therefore
+  -- exactly one delivery, however many times the sweep runs inside that bar.
+  -- A genuine decision change inside the same bar (HOLD -> SELL) is a
+  -- different tuple and does fire. Adapted from QuantDinger's own
+  -- recommendation for the history table it never built
+  -- ('_signal_fingerprint' + "fingerprint UNIQUE with alert_id"); the columns
+  -- are spelled out rather than hashed so the constraint is readable and the
+  -- bar is renderable.
+  --
+  -- 'monitor_id' is ON DELETE SET NULL, not CASCADE: deleting a monitor stops
+  -- future fires, it does not retract the ones that already went out. Every
+  -- field the history page renders (symbol, interval, levels, rule) lives on
+  -- the event row itself, so a detached event still displays in full.
+  CREATE TABLE IF NOT EXISTS quant_agent_signal_events (
+    id                 TEXT PRIMARY KEY,
+    user_id            INTEGER NOT NULL,
+    monitor_id         INTEGER,
+    symbol             TEXT NOT NULL,
+    market             TEXT NOT NULL DEFAULT 'forex',
+    interval           TEXT NOT NULL,
+    decision           TEXT NOT NULL,
+    direction          TEXT,
+    entry_price        REAL,
+    stop_loss          REAL,
+    take_profit        REAL,
+    confidence         INTEGER,
+    rationale          TEXT,
+    fire_rule          TEXT NOT NULL DEFAULT 'always',
+    previous_decision  TEXT,
+    recommendation_id  TEXT,
+    bar_time           INTEGER NOT NULL,
+    delivery_json      TEXT NOT NULL DEFAULT '{}',
+    delivered          INTEGER NOT NULL DEFAULT 0,
+    created_at         INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (monitor_id) REFERENCES quant_agent_monitors(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS quant_agent_signal_events_user_created
+    ON quant_agent_signal_events (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS quant_agent_signal_events_monitor
+    ON quant_agent_signal_events (monitor_id, created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS quant_agent_signal_events_bar
+    ON quant_agent_signal_events (monitor_id, bar_time, decision);
 
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1788,6 +1899,9 @@ function migrate(db: Database.Database) {
   if (!intentCols.some((c) => c.name === "authorization_source")) {
     db.exec("ALTER TABLE trade_intents ADD COLUMN authorization_source TEXT");
   }
+  if (!intentCols.some((c) => c.name === "bot_id")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN bot_id TEXT");
+  }
   if (!tradeCols.some((c) => c.name === "limit_price")) {
     db.exec("ALTER TABLE trades ADD COLUMN limit_price REAL");
   }
@@ -2175,6 +2289,59 @@ function migrate(db: Database.Database) {
   ] as const) {
     if (!marketCaseCols.some((column) => column.name === name)) {
       db.exec(`ALTER TABLE market_cases ADD COLUMN ${name} ${definition}`);
+    }
+  }
+
+  // Quant Agent analysis memory + outcome validation (Wave 2). Additive only:
+  // Wave-1 rows keep NULLs and stay exactly as honest as they were — an
+  // analysis written before the validation cron existed genuinely has no
+  // outcome, and back-filling one would be inventing a result.
+  //
+  // `indicators_json` is the fingerprint the similar-pattern scorer compares
+  // ({rsi, macd_signal, ma_trend, volatility_level, price_position}); without
+  // it a stored analysis is unrecallable, which is why Wave 1's memory block
+  // could only offer plain recency.
+  //
+  // `was_correct` stays INTEGER, not a 0/1 text flag, and NULL means "not
+  // scored yet" — a third state neither 0 nor 1 may stand in for.
+  const quantAnalysisCols = db
+    .prepare("PRAGMA table_info(quant_analyses)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["indicators_json", "TEXT"],
+    ["validated_at", "INTEGER"],
+    ["was_correct", "INTEGER"],
+    ["realised_price", "REAL"],
+    ["realised_return_pct", "REAL"],
+  ] as const) {
+    if (!quantAnalysisCols.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE quant_analyses ADD COLUMN ${name} ${definition}`);
+    }
+  }
+  // Created here rather than in SCHEMA: on a database that predates these
+  // columns the schema pass runs first, so indexing them there would fail and
+  // take the whole initDb down with it (the decision_parity precedent above).
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS quant_analyses_unvalidated
+      ON quant_analyses (validated_at, created_at);
+    CREATE INDEX IF NOT EXISTS quant_analyses_validated
+      ON quant_analyses (user_id, symbol, validated_at DESC);
+  `);
+
+  // Per-monitor firing rule + the last decision that actually fired. Additive:
+  // every monitor that predates the column keeps upstream's behaviour
+  // ('always' — notify whenever a signal exists), and a NULL
+  // 'last_fired_decision' means "nothing has fired yet", which is a third
+  // state neither 'BUY' nor 'HOLD' may stand in for.
+  const monitorCols = db
+    .prepare("PRAGMA table_info(quant_agent_monitors)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["fire_rule", "TEXT NOT NULL DEFAULT 'always'"],
+    ["last_fired_decision", "TEXT"],
+  ] as const) {
+    if (!monitorCols.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE quant_agent_monitors ADD COLUMN ${name} ${definition}`);
     }
   }
 

@@ -900,6 +900,26 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "quant_agent_analysis_accuracy",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Returns this account's measured calibration: hit rate per confidence bucket over the last 90 days of VALIDATED analyses, plus the sample counts behind it. When: before quoting a confidence number to the operator — this is what says whether this engine's high-confidence calls have actually been the reliable ones. Not a promise about the next trade, and not Lonora's strategy performance (that is get_strategy_performance, a different engine). A bucket with too few samples is OMITTED rather than reported as a percentage — say \"not enough history\" for it; never infer a rate from validatedCount alone. read-only. Example: no arguments for the whole engine, or symbol=XAUUSD for one pair.",
+      "permission": "quant_agent.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_analysis_accuracy.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "quant_agent_chat_history",
       "version": "1.1.1",
       "description": "Reads the message history of a session on AiChart's separate, independent Quant Agent chat assistant — NOT Lonora's chat: a completely different conversation history, session store, and persona. Not Lonora's chat history — that lives in a completely different store; this only ever returns Quant Agent chat turns. read-only. When: reviewing what a Quant Agent chat session has said so far, e.g. before continuing it with quant_agent_chat_send. Example: chatId=qac_01h....",
@@ -935,6 +955,46 @@
       "timeoutMs": 30000,
       "telemetry": "server-audit-log",
       "inputSchemaRef": "mcp/schemas/tools/quant_agent_chat_send.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_create_monitor",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Creates a scheduled monitor that re-runs the Quant Agent analysis for one symbol+timeframe and notifies the operator when it fires. When: the operator asks to be alerted about a pair rather than asking now — check quant_agent_list_monitors first so an identical monitor is not created twice. Not a trading trigger: a fire sends a notification and writes a signal-event row, and can never open, size, or cancel a position. side-effect: writes a new ENABLED monitor row to Quant Agent's own store and schedules recurring analysis runs against this account. Requires idempotencyKey. Example: symbol=XAUUSD&interval=4h&notifyTelegram=true&idempotencyKey=monitor-xauusd-4h.",
+      "permission": "quant_agent.monitor",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_create_monitor.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_delete_monitor",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Permanently deletes one monitor this account owns. When: the operator explicitly wants the monitor GONE — if they only want it to stop alerting for now, call quant_agent_update_monitor with enabled=false instead, which is reversible. Not reversible: the schedule and its settings are destroyed, and recreating it means quant_agent_create_monitor from scratch. Its past fires in quant_agent_list_signals are a separate log and are NOT deleted with it. side-effect: destroys the monitor row. REFUSED unless confirmDelete=true, and requires idempotencyKey. Example: id=12&confirmDelete=true&idempotencyKey=delete-monitor-12.",
+      "permission": "quant_agent.monitor",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_delete_monitor.json",
       "outputValidation": "bridge-envelope",
       "aliases": [],
       "requiredFeatureFlags": []
@@ -980,6 +1040,26 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "quant_agent_get_analysis",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Returns one stored analysis in full by its id — verdict, confidence, scores, consensus, trend outlook, the trading plan, the detailed prose, reasons, risks, and the data-quality report. When: reading the result of a completed quant_agent_run_analysis job, or re-reading an analysis quant_agent_list_analyses returned. Not for Lonora recommendation ids — Quant Agent ids live in a completely separate id space and store, and another account's id answers \"not found\". read-only. Example: id=4f1c....",
+      "permission": "quant_agent.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_get_analysis.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "quant_agent_get_recommendation",
       "version": "1.1.1",
       "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: fetching one specific Quant Agent recommendation by its id, e.g. to check its current lifecycle state or full plan. Not for Lonora recommendation ids — Quant Agent ids live in a completely separate id space and store. read-only. Example: id=qr_01h....",
@@ -1000,6 +1080,66 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "quant_agent_get_signal",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Returns one fired signal in full by its id, with the decision, the monitor it came from, and the per-channel delivery outcome. When: investigating one alert the operator is asking about, e.g. \"did the 4h XAUUSD alert actually send?\". Not for an analysis id — signals and analyses have separate id spaces; another account's id answers \"not found\". read-only. Example: id=sig_....",
+      "permission": "quant_agent.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_get_signal.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_list_analyses",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Lists the caller's own analysis history, newest first, keyset-paginated. When: reviewing what this account has already analysed before spending a fresh run, or finding the id of a recent analysis to read in full. Not a cross-account feed — it only ever returns rows this account owns. read-only. Paging: pass the returned nextCursor back as cursor; limit is capped at 50 server-side. Example: symbol=XAUUSD&limit=10.",
+      "permission": "quant_agent.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_list_analyses.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_list_monitors",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Lists this account's scheduled Quant Agent monitors — symbol, timeframe, notification channels, enabled state, and when each last ran. When: before creating a monitor (so a duplicate is not added) or before updating/deleting one, to get its id. Not the fired-signal history — that is quant_agent_list_signals; this is the schedule, not what it produced. read-only.",
+      "permission": "quant_agent.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_list_monitors.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "quant_agent_list_recommendations",
       "version": "1.1.1",
       "description": "Runs AiChart's separate, independent Quant Agent strategy engine — NOT Lonora's analysis, and NOT create_recommendation. Produces its own buy/sell plan from deterministic strategies (ema_trend_v1, rsi_reversion_v1) and never touches the canonical recommendation lifecycle or any broker account. When: browsing or filtering Quant Agent's own recommendation feed by symbol and/or lifecycle state. Not Lonora's recommendation history — that lives in a completely different store; this only ever returns Quant Agent output. read-only. Example: symbol=EURUSD&state=active.",
@@ -1015,6 +1155,66 @@
       "timeoutMs": 30000,
       "telemetry": "server-audit-log",
       "inputSchemaRef": "mcp/schemas/tools/quant_agent_list_recommendations.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_list_signals",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Lists every monitor FIRE this account has had, newest first, with the decision that fired and the per-channel delivery outcome — including sends that failed. When: the operator asks what their alerts have been saying, or whether an alert actually got delivered. Not the monitor list itself (quant_agent_list_monitors) and not the analysis history (quant_agent_list_analyses) — this is the append-only record of what fired. There is no write or delete counterpart by design: a log the caller can rewrite is not evidence. read-only. Paging: pass the returned nextCursor back as cursor; limit is capped at 100 server-side. Example: symbol=XAUUSD&decision=SELL&limit=20.",
+      "permission": "quant_agent.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_list_signals.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_run_analysis",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Queues a FULL multi-timeframe analysis of one symbol — objective technical/fundamental/sentiment/macro scoring, cross-timeframe consensus, a 24h/3d/1w/1m trend outlook, a validated trading plan (entry/stop/take-profit), and a data-quality report naming every input that was absent — and returns job_id/status immediately; the run itself takes tens of seconds and never blocks this call. When: the operator wants Quant Agent's own read on a pair, or before quant_agent_create_monitor so there is a baseline to compare fires against. Not for a chart or raw candles — this returns DERIVED analysis only, never a plottable bar series; and not for Lonora's analysis, which is a different engine with a different store. side-effect: writes one row to Quant Agent's own analysis store; no order is placed, previewed, or sized, and position_size_pct in the result is display-only. Async contract: poll jobs_wait([job_id]) until all_terminal is true, then read the complete analysis object from that response — do not call this tool again to check status. One analysis per symbol+timeframe runs at a time; a duplicate while one is in flight is refused by the route, which is why idempotencyKey is required. Example: symbol=XAUUSD&interval=1h&idempotencyKey=xauusd-1h-2026-08-09T10.",
+      "permission": "quant_agent.analyze",
+      "riskClass": "recommendation",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 120000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_run_analysis.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "quant_agent_update_monitor",
+      "version": "1.1.1",
+      "description": "AiChart's separate, independent Quant Agent LLM analysis engine — NOT Lonora's analysis, and NOT create_recommendation. It reads market data, scores it, and writes only to Quant Agent's own analysis store; it never touches the canonical recommendation lifecycle, and it never places, modifies, cancels, or sizes any broker order. Updates one monitor this account owns — its timeframe, its notification channels, or whether it is enabled at all. When: the operator wants an existing alert paused, resumed, retimed, or re-routed. Pausing (enabled=false) is the right answer to \"stop alerting me\" — quant_agent_delete_monitor throws the monitor away instead, and a paused monitor can be resumed. Not a way to reach another account's monitor: an id that is not yours answers \"not found\", it never updates anything. side-effect: modifies the monitor's schedule and delivery. Requires idempotencyKey. Example: id=12&enabled=false&idempotencyKey=pause-monitor-12.",
+      "permission": "quant_agent.monitor",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/quant_agent_update_monitor.json",
       "outputValidation": "bridge-envelope",
       "aliases": [],
       "requiredFeatureFlags": []

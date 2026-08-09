@@ -6,8 +6,16 @@ import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
 import { generateQuantRecommendation, quantAgentServiceEnabled } from "@/lib/quantAgent/client";
 import { fetchQuantAgentAnalysisBars, QuantAgentMarketFeedError } from "@/lib/quantAgent/marketFeed";
-import { isMonitorDue, shouldFireForRecommendation } from "@/lib/quantAgent/monitorDue";
-import { dispatchMonitorNotification } from "@/lib/quantAgent/monitorNotify";
+import {
+  isMonitorDue,
+  recommendationBarTime,
+  recommendationConfidencePercent,
+  shouldFireForRecommendation,
+} from "@/lib/quantAgent/monitorDue";
+import {
+  dispatchMonitorNotification,
+  type MonitorNotificationOutcome,
+} from "@/lib/quantAgent/monitorNotify";
 import {
   listEnabledMonitorsGroupedBySymbolInterval,
   markMonitorFired,
@@ -38,17 +46,28 @@ function monitorNotificationText(rec: QuantRecommendation): string {
   return lines.filter((line): line is string => line != null).join("\n");
 }
 
-async function notifyDueMonitor(monitor: MonitorRow, recommendation: QuantRecommendation): Promise<void> {
-  await dispatchMonitorNotification(monitor.userId, monitor, {
+async function notifyDueMonitor(
+  monitor: MonitorRow,
+  recommendation: QuantRecommendation,
+): Promise<MonitorNotificationOutcome> {
+  return dispatchMonitorNotification(monitor.userId, monitor, {
     title: `Quant Agent monitor — ${monitor.symbol} (${monitor.interval})`,
     text: monitorNotificationText(recommendation),
     symbol: monitor.symbol,
+    market: recommendation.market,
     recommendationId: recommendation.id,
     interval: monitor.interval,
     direction: recommendation.direction,
     entry: recommendation.entry,
     stopLoss: recommendation.stop_loss,
     takeProfit: recommendation.take_profit,
+    // The signal-event row records what the ENGINE decided, so it gets the
+    // engine's own confidence, reasoning and bar — not the formatted Telegram
+    // message and a clock reading. Nothing here is defaulted: every field is
+    // present on the recommendation or the fire is not recorded as having it.
+    confidence: recommendationConfidencePercent(recommendation.confidence),
+    rationale: recommendation.rationale,
+    barTime: recommendationBarTime(recommendation.source_bar_close_time) ?? undefined,
   });
 }
 
@@ -62,6 +81,14 @@ async function notifyDueMonitor(monitor: MonitorRow, recommendation: QuantRecomm
  * service's own idempotency key means an unchanged symbol/interval returns
  * the SAME id, so this dedupe is also the webhook rate limit (no separate
  * counter table needed).
+ *
+ * Two further filters live INSIDE `dispatchMonitorNotification`, not here, and
+ * this sweep only reports their verdict: the monitor's own firing rule
+ * (`always` / `on_change`), and the per-bar delivery claim on
+ * `quant_agent_signal_events`. Both are deliberately downstream of this loop —
+ * they are properties of a fire, not of a sweep, and putting them here would
+ * mean a second caller could bypass them. `fired` therefore counts real
+ * deliveries; anything the two filters held back is reported separately.
  *
  * One candle fetch + one generateQuantRecommendation call per (symbol,
  * market, interval) GROUP, however many users are watching it — never
@@ -96,6 +123,7 @@ export async function POST(req: NextRequest) {
     let groupsChecked = 0;
     let monitorsChecked = 0;
     let fired = 0;
+    const suppressed = { unchanged: 0, duplicate: 0 };
     let notifyFailed = 0;
     let groupsFailed = 0;
     let skippedNotDue = 0;
@@ -141,9 +169,16 @@ export async function POST(req: NextRequest) {
           }
 
           try {
-            await notifyDueMonitor(monitor, recommendation);
+            const outcome = await notifyDueMonitor(monitor, recommendation);
+            // The recommendation id is recorded either way: it HAS been seen,
+            // and re-offering it next tick would only re-run the suppression.
             await markMonitorFired(monitor.id, recommendation.id, now);
-            fired += 1;
+            // `fired` counts deliveries, not attempts. A monitor whose
+            // `on_change` rule held, or whose bar was already claimed, sent
+            // nothing — counting it here would make the sweep's own telemetry
+            // the first thing to lie about whether an alert went out.
+            if (outcome.suppressed) suppressed[outcome.suppressed] += 1;
+            else fired += 1;
           } catch (error) {
             notifyFailed += 1;
             log.warn("monitor notification failed", {
@@ -178,6 +213,8 @@ export async function POST(req: NextRequest) {
       monitors_checked: monitorsChecked,
       monitors_skipped_not_due: skippedNotDue,
       fired,
+      suppressed_unchanged: suppressed.unchanged,
+      suppressed_duplicate: suppressed.duplicate,
       notify_failed: notifyFailed,
     };
   });

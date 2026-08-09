@@ -36,3 +36,42 @@ export function shouldFireForRecommendation(
 ): boolean {
   return lastFiredRecommendationId !== newRecommendationId;
 }
+
+/**
+ * The bar a recommendation belongs to, as epoch ms, read from the engine's own
+ * `source_bar_close_time`.
+ *
+ * This becomes the key of the per-bar delivery claim on
+ * `quant_agent_signal_events`, so it has to be the bar the DECISION was made
+ * on. `dispatchMonitorNotification` falls back to bucketing "now" when it is
+ * absent — right when nothing better is known, wrong here: a sweep that runs a
+ * few seconds after a candle closes buckets into the NEW candle and could
+ * deliver the same call twice across the boundary.
+ *
+ * Unparseable input returns null so that fallback still applies. An invented
+ * bar is worse than a bucketed one.
+ */
+export function recommendationBarTime(sourceBarCloseTime: string | null | undefined): number | null {
+  if (!sourceBarCloseTime) return null;
+  const parsed = Date.parse(sourceBarCloseTime);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Confidence, converted from the service's scale to the product's.
+ *
+ * Two scales meet at this seam and getting it wrong prints a number nobody
+ * typed. The quant-agent service's `Recommendation.confidence` is a FRACTION
+ * (`Field(ge=0.0, le=1.0)`); the signal event's `confidence` column and
+ * everything that renders it — the history page's `Math.round(c)%`, the webhook
+ * body — are a PERCENTAGE. Passing 0.72 straight through would record a
+ * permanent "1%" against a high-confidence call.
+ *
+ * A non-finite input is null, never 0: "we do not have it" and "we are not
+ * confident" are different claims and the log has to be able to tell them
+ * apart.
+ */
+export function recommendationConfidencePercent(fraction: number | null | undefined): number | null {
+  if (typeof fraction !== "number" || !Number.isFinite(fraction)) return null;
+  return Math.round(Math.max(0, Math.min(1, fraction)) * 100);
+}

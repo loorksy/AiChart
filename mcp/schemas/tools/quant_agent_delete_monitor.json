@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Quant Agent monitor id from quant_agent_list_monitors"
+    },
+    "confirmDelete": {
+      "description": "REQUIRED for this tool to do anything: pass true to confirm the deletion. Without it the call is refused and nothing is deleted.",
+      "type": "boolean"
+    },
+    "idempotencyKey": {
+      "description": "REQUIRED. A stable caller-chosen key (max 120 chars) that makes this call safe to retry — repeat the SAME key to retry, and the first result is replayed instead of a second write. Omitting it is refused, not defaulted. Scope: this MCP session's process (the web routes do not yet honour x-idempotency-key), so it protects a retried tool call, not a cross-process replay.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    }
+  },
+  "required": [
+    "id"
+  ]
+}

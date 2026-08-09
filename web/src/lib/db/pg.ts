@@ -304,6 +304,8 @@ const SCHEMA = `
     -- authorised it. Both are checked again at execution time.
     recommendation_revision_no INTEGER,
     authorization_source TEXT,
+    -- Opaque Quant Agent bot id when a live bot created this intent.
+    bot_id            TEXT,
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          DOUBLE PRECISION NOT NULL,
@@ -569,6 +571,78 @@ const SCHEMA = `
     ON quant_agent_monitors (user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_quant_agent_monitors_due
     ON quant_agent_monitors (enabled, symbol, interval);
+
+  -- The Quant Agent's LLM trading-analysis history — see the SQLite schema
+  -- for the full rationale (own table, never 'recommendations'; TEXT uuid id
+  -- minted before the row so a failed run still persists; 'created_at' epoch
+  -- milliseconds rather than a SQL timestamp default so the history endpoint's
+  -- keyset cursor compares identically on both backends).
+  CREATE TABLE IF NOT EXISTS quant_analyses (
+    id                 TEXT PRIMARY KEY,
+    user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    market             TEXT NOT NULL,
+    symbol             TEXT NOT NULL,
+    interval           TEXT NOT NULL,
+    status             TEXT NOT NULL,
+    decision           TEXT,
+    confidence         INTEGER,
+    current_price      DOUBLE PRECISION,
+    entry_price        DOUBLE PRECISION,
+    stop_loss          DOUBLE PRECISION,
+    take_profit        DOUBLE PRECISION,
+    position_size_pct  DOUBLE PRECISION,
+    horizon            TEXT,
+    summary            TEXT,
+    technical_score    INTEGER,
+    fundamental_score  INTEGER,
+    sentiment_score    INTEGER,
+    overall_score      INTEGER,
+    consensus_json     TEXT,
+    outlook_json       TEXT,
+    detail_json        TEXT,
+    reasons_json       TEXT,
+    risks_json         TEXT,
+    data_quality_json  TEXT,
+    error              TEXT,
+    created_at         BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS quant_analyses_user_created
+    ON quant_analyses (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS quant_analyses_symbol
+    ON quant_analyses (user_id, symbol, created_at DESC);
+
+  -- Persistent signal history for AI Scheduled Monitors — see the SQLite
+  -- schema for the full rationale. 'monitor_id' is ON DELETE SET NULL, not
+  -- CASCADE: deleting a monitor stops future fires, it does not retract the
+  -- ones that already went out.
+  CREATE TABLE IF NOT EXISTS quant_agent_signal_events (
+    id                 TEXT PRIMARY KEY,
+    user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    monitor_id         BIGINT REFERENCES quant_agent_monitors(id) ON DELETE SET NULL,
+    symbol             TEXT NOT NULL,
+    market             TEXT NOT NULL DEFAULT 'forex',
+    interval           TEXT NOT NULL,
+    decision           TEXT NOT NULL,
+    direction          TEXT,
+    entry_price        DOUBLE PRECISION,
+    stop_loss          DOUBLE PRECISION,
+    take_profit        DOUBLE PRECISION,
+    confidence         INTEGER,
+    rationale          TEXT,
+    fire_rule          TEXT NOT NULL DEFAULT 'always',
+    previous_decision  TEXT,
+    recommendation_id  TEXT,
+    bar_time           BIGINT NOT NULL,
+    delivery_json      TEXT NOT NULL DEFAULT '{}',
+    delivered          INTEGER NOT NULL DEFAULT 0,
+    created_at         BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS quant_agent_signal_events_user_created
+    ON quant_agent_signal_events (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS quant_agent_signal_events_monitor
+    ON quant_agent_signal_events (monitor_id, created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS quant_agent_signal_events_bar
+    ON quant_agent_signal_events (monitor_id, bar_time, decision);
 
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  SERIAL PRIMARY KEY,
@@ -1357,6 +1431,51 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS session_cost    DOUBLE PRECISION
   `).catch(() => {});
 
+  // Quant Agent analysis memory + outcome validation (Wave 2). Additive only:
+  // Wave-1 rows keep NULLs and stay exactly as honest as they were — an
+  // analysis written before the validation cron existed genuinely has no
+  // outcome, and back-filling one would be inventing a result.
+  //
+  // `indicators_json` is the fingerprint the similar-pattern scorer compares
+  // ({rsi, macd_signal, ma_trend, volatility_level, price_position}); without
+  // it a stored analysis is unrecallable, which is why Wave 1's memory block
+  // could only offer plain recency.
+  //
+  // `was_correct` stays INTEGER, not BOOLEAN — same reason the quant-agent
+  // monitor flags do (see the note above `quant_agent_monitors`): the store
+  // binds 1/0 uniformly across sqlite and pg. NULL means "not scored yet",
+  // which is a third state neither 0 nor 1 may stand in for.
+  await client.query(`
+    ALTER TABLE quant_analyses
+      ADD COLUMN IF NOT EXISTS indicators_json      TEXT,
+      ADD COLUMN IF NOT EXISTS validated_at         BIGINT,
+      ADD COLUMN IF NOT EXISTS was_correct          INTEGER,
+      ADD COLUMN IF NOT EXISTS realised_price       DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS realised_return_pct  DOUBLE PRECISION
+  `).catch(() => {});
+  // The validation cron's claim query: unvalidated rows, oldest first.
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS quant_analyses_unvalidated
+      ON quant_analyses (validated_at, created_at)
+  `).catch(() => {});
+  // Memory recall and the accuracy strip both read validated rows for one
+  // (user, symbol), newest validation first.
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS quant_analyses_validated
+      ON quant_analyses (user_id, symbol, validated_at DESC)
+  `).catch(() => {});
+
+  // Per-monitor firing rule + the last decision that actually fired. Additive:
+  // every monitor that predates the column keeps upstream's behaviour
+  // ('always' — notify whenever a signal exists), and a NULL
+  // 'last_fired_decision' means "nothing has fired yet", which is a third
+  // state neither 'BUY' nor 'HOLD' may stand in for.
+  await client.query(`
+    ALTER TABLE quant_agent_monitors
+      ADD COLUMN IF NOT EXISTS fire_rule           TEXT NOT NULL DEFAULT 'always',
+      ADD COLUMN IF NOT EXISTS last_fired_decision TEXT
+  `).catch(() => {});
+
   // Case-memory KNN (plan phase G infra). Every step is individually guarded:
   // a Postgres without pgvector, or without ANN index support, keeps the JS
   // similarity path — degraded and warned about, never fatal. The dimension
@@ -1469,7 +1588,8 @@ async function migratePg(client: PoolClient) {
     ALTER TABLE trade_intents
       ADD COLUMN IF NOT EXISTS deny_code TEXT,
       ADD COLUMN IF NOT EXISTS recommendation_revision_no INTEGER,
-      ADD COLUMN IF NOT EXISTS authorization_source TEXT
+      ADD COLUMN IF NOT EXISTS authorization_source TEXT,
+      ADD COLUMN IF NOT EXISTS bot_id TEXT
   `).catch(() => {});
 
   await client.query(`

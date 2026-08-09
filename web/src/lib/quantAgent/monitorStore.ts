@@ -15,6 +15,41 @@ import { execute, query, queryOne } from "@/lib/db";
 import { normalizeInterval } from "@/lib/intervals";
 import { normalizeWatchlistSymbol } from "./watchlistStore";
 
+/**
+ * How often a monitor is allowed to speak.
+ *
+ * - `always` — notify whenever the sweep finds a signal. Upstream's only
+ *   behaviour, and the default, so no existing monitor changes meaning.
+ * - `on_change` — notify only when the decision DIFFERS from the last one that
+ *   fired. HOLD -> SELL fires; SELL -> SELL does not. This is what a user
+ *   watching a slow timeframe actually wants: the second identical SELL is not
+ *   news, it is the same news again.
+ */
+export const MONITOR_FIRE_RULES = ["always", "on_change"] as const;
+export type MonitorFireRule = (typeof MONITOR_FIRE_RULES)[number];
+
+export function normalizeFireRule(value: string | null | undefined): MonitorFireRule {
+  return value === "on_change" ? "on_change" : "always";
+}
+
+/**
+ * The firing decision itself, pure so it is testable without a database.
+ *
+ * `lastDecision == null` means nothing has ever fired on this monitor, which
+ * must fire under BOTH rules — an `on_change` monitor that stayed silent
+ * forever because it had no previous decision to differ from would be a
+ * monitor that never works.
+ */
+export function shouldFireForDecision(
+  rule: MonitorFireRule,
+  lastDecision: string | null,
+  decision: string,
+): boolean {
+  if (rule !== "on_change") return true;
+  if (lastDecision == null || lastDecision === "") return true;
+  return lastDecision !== decision;
+}
+
 export interface MonitorRow {
   id: number;
   userId: number;
@@ -25,7 +60,10 @@ export interface MonitorRow {
   notifyPush: boolean;
   notifyWebhookUrl: string | null;
   enabled: boolean;
+  fireRule: MonitorFireRule;
   lastFiredRecommendationId: string | null;
+  /** The decision that last actually fired — null until one has. */
+  lastFiredDecision: string | null;
   lastCheckedAt: number | null;
   createdAt: number;
   updatedAt: number;
@@ -41,7 +79,9 @@ interface MonitorDbRow {
   notify_push: number;
   notify_webhook_url: string | null;
   enabled: number;
+  fire_rule: string | null;
   last_fired_recommendation_id: string | null;
+  last_fired_decision: string | null;
   last_checked_at: number | null;
   created_at: number;
   updated_at: number;
@@ -58,7 +98,9 @@ function toMonitor(row: MonitorDbRow): MonitorRow {
     notifyPush: Number(row.notify_push) === 1,
     notifyWebhookUrl: row.notify_webhook_url,
     enabled: Number(row.enabled) === 1,
+    fireRule: normalizeFireRule(row.fire_rule),
     lastFiredRecommendationId: row.last_fired_recommendation_id,
+    lastFiredDecision: row.last_fired_decision,
     lastCheckedAt: row.last_checked_at == null ? null : Number(row.last_checked_at),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
@@ -90,6 +132,7 @@ export interface CreateMonitorInput {
   notifyTelegram?: boolean;
   notifyPush?: boolean;
   notifyWebhookUrl?: string | null;
+  fireRule?: MonitorFireRule;
 }
 
 /** Creates a new monitor row, enabled by default. */
@@ -103,12 +146,13 @@ export async function createMonitor(
   const interval = normalizeInterval(input.interval);
   const notifyTelegram = input.notifyTelegram ?? true;
   const notifyPush = input.notifyPush ?? false;
+  const fireRule = normalizeFireRule(input.fireRule);
   const now = Date.now();
 
   await execute(
     `INSERT INTO quant_agent_monitors
-       (user_id, symbol, market, interval, notify_telegram, notify_push, notify_webhook_url, enabled, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+       (user_id, symbol, market, interval, notify_telegram, notify_push, notify_webhook_url, enabled, fire_rule, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
     [
       userId,
       symbol,
@@ -117,6 +161,7 @@ export async function createMonitor(
       notifyTelegram ? 1 : 0,
       notifyPush ? 1 : 0,
       input.notifyWebhookUrl ?? null,
+      fireRule,
       now,
       now,
     ],
@@ -137,6 +182,7 @@ export interface UpdateMonitorInput {
   notifyPush?: boolean;
   notifyWebhookUrl?: string | null;
   enabled?: boolean;
+  fireRule?: MonitorFireRule;
 }
 
 /** Partially updates a monitor the user owns. Returns null if it isn't theirs. */
@@ -169,6 +215,10 @@ export async function updateMonitor(
   if (patch.enabled !== undefined) {
     fields.push("enabled = ?");
     params.push(patch.enabled ? 1 : 0);
+  }
+  if (patch.fireRule !== undefined) {
+    fields.push("fire_rule = ?");
+    params.push(normalizeFireRule(patch.fireRule));
   }
   if (!fields.length) return existing;
 
@@ -235,6 +285,29 @@ export async function markMonitorFired(
         SET last_fired_recommendation_id = ?, last_checked_at = ?, updated_at = ?
       WHERE id = ?`,
     [recommendationId, checkedAt, checkedAt, id],
+  );
+}
+
+/**
+ * Records the DECISION a monitor just fired on — the state the `on_change`
+ * rule compares against next time.
+ *
+ * Separate from `markMonitorFired` (which records the recommendation id) on
+ * purpose: the recommendation id is written by the cron sweep after it decides
+ * a monitor fired, while the decision is written by the notification path,
+ * which is the only place that knows the fire actually cleared the rule and
+ * the per-bar delivery lock. Writing it from the sweep would advance
+ * `last_fired_decision` for fires that were deduplicated away, and the next
+ * genuine change would then be swallowed.
+ */
+export async function markMonitorDecisionFired(
+  id: number,
+  decision: string,
+  firedAt: number = Date.now(),
+): Promise<void> {
+  await execute(
+    "UPDATE quant_agent_monitors SET last_fired_decision = ?, updated_at = ? WHERE id = ?",
+    [decision, firedAt, id],
   );
 }
 

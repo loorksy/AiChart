@@ -2,20 +2,36 @@
 
 /**
  * Shared tab bar for `/quant-agent` (plan §4) — "Feed" (the existing,
- * unchanged `QuantAgentFeedClient`) and "Chat" (new). Mounted once in
- * `quant-agent/layout.tsx` so both routes share it without either page
- * needing to know about the other.
+ * unchanged `QuantAgentFeedClient`), "Chat", "Analysis" (the LLM
+ * trading-analysis surface), "Signals" (the persistent log of what the
+ * scheduled monitors have actually fired) and "Bots" (the SIMULATION-ONLY
+ * automated bot workbench — nothing there places an order). Mounted once in
+ * `quant-agent/layout.tsx` so the routes share it without any page needing to
+ * know about the others.
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ListChecks, MessageCircle } from "lucide-react";
+import { Bell, Bot, ListChecks, MessageCircle, Radar } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/quant-agent", labelKey: "qa.tabs.feed", icon: ListChecks },
   { href: "/quant-agent/chat", labelKey: "qa.tabs.chat", icon: MessageCircle },
+  { href: "/quant-agent/analysis", labelKey: "qa.tabs.analysis", icon: Radar },
+  { href: "/quant-agent/signals", labelKey: "qa.tabs.signals", icon: Bell },
+  { href: "/quant-agent/bots", labelKey: "qa.tabs.bots", icon: Bot },
 ] as const;
+
+/**
+ * Exact match for the index tab (otherwise it would own every route below it),
+ * prefix match for the rest so a sub-route like `/quant-agent/analysis/history`
+ * still highlights the section it belongs to.
+ */
+function isActive(pathname: string, href: string): boolean {
+  if (href === "/quant-agent") return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function QuantAgentTabs() {
   const { t, dir } = useLocale();
@@ -28,7 +44,7 @@ export function QuantAgentTabs() {
       className="mx-auto flex w-full max-w-6xl gap-1.5 overflow-x-auto pb-1"
     >
       {TABS.map((tab) => {
-        const active = pathname === tab.href;
+        const active = isActive(pathname, tab.href);
         const Icon = tab.icon;
         return (
           <Link

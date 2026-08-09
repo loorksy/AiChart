@@ -67,12 +67,25 @@ test("every bar-carrying call serialises through the one shared converter", () =
     "backtestQuantStrategy must not send raw epoch-ms bars",
   );
 
-  const converted = client.match(/bars:\s*toServiceBars\(/g) ?? [];
-  assert.equal(
-    converted.length,
-    2,
-    `expected both bar-carrying calls to use toServiceBars, found ${converted.length}`,
+  // Counting the converted calls alone would only prove that SOME call
+  // converts. What matters is that EVERY `bars:` property sent in a request
+  // body converts, so the two counts are compared instead of a fixed number —
+  // a new bar-carrying endpoint then passes only by using the converter.
+  // `toServiceBars`'s own parameter list is a declaration, not a call site.
+  const allBarProperties = (client.match(/\bbars:\s*[^,\n]+/g) ?? []).filter(
+    (line) => !line.includes("QuantOhlcBar"),
   );
+  const converted = allBarProperties.filter((line) => line.includes("toServiceBars("));
+  assert.ok(
+    allBarProperties.length >= 3,
+    `expected at least three bar-carrying calls, found ${allBarProperties.length}`,
+  );
+  assert.deepEqual(
+    allBarProperties.filter((line) => !line.includes("toServiceBars(")),
+    [],
+    "every bar-carrying call must serialise through toServiceBars",
+  );
+  assert.equal(converted.length, allBarProperties.length);
 });
 
 test("the converter emits the exact field set the Bar model accepts", () => {

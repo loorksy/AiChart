@@ -22,11 +22,22 @@ from typing import Any
 from app.storage.models import (
     BacktestMetrics,
     BacktestRun,
+    BotDefinition,
+    BotExecutionMode,
+    BotFill,
+    BotLedgerEntry,
+    BotRun,
     Recommendation,
     RecommendationEvent,
     StrategyDef,
+    StrategyStatus,
     utc_now_iso,
 )
+
+
+def _dumps(value: Any) -> str:
+    """The one JSON spelling this store uses for every JSON column."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 class SqliteQuantStore:
@@ -131,6 +142,105 @@ class SqliteQuantStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_quant_backtest_runs_strategy_created
                       ON quant_backtest_runs(strategy_id, created_at DESC);
+
+                    -- Automated bots. SIMULATION ONLY: every row under these
+                    -- four tables is the output of a replay against pushed-in
+                    -- bars, never a venue. `execution_mode` is stored rather
+                    -- than assumed so a row read years from now still says so
+                    -- out loud.
+                    --
+                    -- `owner_user_id` is on all four, not just the definition.
+                    -- Denormalized on purpose: it lets every by-id read filter
+                    -- on ownership in one indexed predicate instead of joining
+                    -- back to the parent, which is the shape an authz bug
+                    -- likes to hide in.
+                    CREATE TABLE IF NOT EXISTS quant_bots (
+                      id TEXT PRIMARY KEY,
+                      owner_user_id INTEGER NOT NULL,
+                      bot_type TEXT NOT NULL,
+                      name TEXT NOT NULL,
+                      symbol TEXT NOT NULL,
+                      market TEXT NOT NULL DEFAULT 'forex',
+                      interval TEXT NOT NULL,
+                      execution_mode TEXT NOT NULL DEFAULT 'simulation',
+                      initial_capital REAL NOT NULL DEFAULT 0,
+                      fee_rate REAL NOT NULL DEFAULT 0.001,
+                      config_json TEXT NOT NULL DEFAULT '{}',
+                      levels_json TEXT NOT NULL DEFAULT '[]',
+                      warnings_json TEXT NOT NULL DEFAULT '[]',
+                      diagnostics_json TEXT NOT NULL DEFAULT '[]',
+                      created_at TEXT NOT NULL,
+                      updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_bots_owner_created
+                      ON quant_bots(owner_user_id, created_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS quant_bot_runs (
+                      id TEXT PRIMARY KEY,
+                      bot_id TEXT NOT NULL,
+                      owner_user_id INTEGER NOT NULL,
+                      execution_mode TEXT NOT NULL DEFAULT 'simulation',
+                      status TEXT NOT NULL,
+                      bar_count INTEGER NOT NULL DEFAULT 0,
+                      from_time TEXT NOT NULL DEFAULT '',
+                      to_time TEXT NOT NULL DEFAULT '',
+                      cells_bootstrapped INTEGER NOT NULL DEFAULT 0,
+                      orders_placed INTEGER NOT NULL DEFAULT 0,
+                      fill_count INTEGER NOT NULL DEFAULT 0,
+                      matched_cycles INTEGER NOT NULL DEFAULT 0,
+                      realized_profit REAL NOT NULL DEFAULT 0,
+                      unrealized_profit REAL NOT NULL DEFAULT 0,
+                      total_commission REAL NOT NULL DEFAULT 0,
+                      ending_price REAL NOT NULL DEFAULT 0,
+                      resting_orders INTEGER NOT NULL DEFAULT 0,
+                      stop_reason TEXT NOT NULL DEFAULT '',
+                      warnings_json TEXT NOT NULL DEFAULT '[]',
+                      logs_json TEXT NOT NULL DEFAULT '[]',
+                      cells_json TEXT NOT NULL DEFAULT '[]',
+                      error TEXT,
+                      created_at TEXT NOT NULL,
+                      FOREIGN KEY(bot_id) REFERENCES quant_bots(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_bot_runs_bot_created
+                      ON quant_bot_runs(bot_id, created_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_quant_bot_runs_owner_created
+                      ON quant_bot_runs(owner_user_id, created_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS quant_bot_fills (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      run_id TEXT NOT NULL,
+                      owner_user_id INTEGER NOT NULL,
+                      sequence INTEGER NOT NULL,
+                      bar_time TEXT NOT NULL,
+                      cell_index INTEGER NOT NULL DEFAULT -1,
+                      purpose TEXT NOT NULL DEFAULT '',
+                      price REAL NOT NULL DEFAULT 0,
+                      quantity REAL NOT NULL DEFAULT 0,
+                      UNIQUE(run_id, sequence),
+                      FOREIGN KEY(run_id) REFERENCES quant_bot_runs(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_bot_fills_run
+                      ON quant_bot_fills(run_id, sequence);
+
+                    CREATE TABLE IF NOT EXISTS quant_bot_ledger (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      run_id TEXT NOT NULL,
+                      owner_user_id INTEGER NOT NULL,
+                      sequence INTEGER NOT NULL,
+                      trade_type TEXT NOT NULL,
+                      close_reason TEXT NOT NULL DEFAULT '',
+                      cell_index INTEGER NOT NULL DEFAULT -1,
+                      price REAL NOT NULL DEFAULT 0,
+                      amount REAL NOT NULL DEFAULT 0,
+                      commission REAL NOT NULL DEFAULT 0,
+                      profit REAL,
+                      matched_entry_price REAL,
+                      grid_matched_profit REAL,
+                      UNIQUE(run_id, sequence),
+                      FOREIGN KEY(run_id) REFERENCES quant_bot_runs(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quant_bot_ledger_run
+                      ON quant_bot_ledger(run_id, sequence);
                     """
                 )
                 self._migrate_strategy_defs_columns(connection)
@@ -164,6 +274,35 @@ class SqliteQuantStore:
             )
         if "source_code" not in existing:
             connection.execute("ALTER TABLE quant_strategy_defs ADD COLUMN source_code TEXT")
+        if "owner_user_id" not in existing:
+            # Ownership. NULL means a platform built-in, which every user's
+            # scan loads and nobody may modify.
+            #
+            # A GENERATED row that predates this column also lands on NULL, and
+            # that is deliberate rather than convenient: the owner is genuinely
+            # unknown, and guessing one would hand a stranger's LLM-written
+            # Python to whoever we guessed. So those rows are scoped out of
+            # every user's scan and simply stop influencing anyone — visible in
+            # history, never executed. There were no such rows in production
+            # when this shipped; this is the correct behaviour if there ever are.
+            connection.execute("ALTER TABLE quant_strategy_defs ADD COLUMN owner_user_id INTEGER")
+        if "status" not in existing:
+            # The user-facing lifecycle. `enabled` stays the executable switch
+            # the registry reads, derived from this and written with it in the
+            # same statement — see `set_strategy_status`.
+            connection.execute(
+                "ALTER TABLE quant_strategy_defs "
+                "ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'"
+            )
+            # Backfill from the one fact the old schema recorded.
+            connection.execute(
+                "UPDATE quant_strategy_defs SET status = CASE WHEN enabled = 1 "
+                "THEN 'active' ELSE 'ready' END"
+            )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_quant_strategy_defs_owner "
+            "ON quant_strategy_defs(owner_user_id, status)"
+        )
 
     # ------------------------------------------------------------------
     # recommendations
@@ -329,6 +468,28 @@ class SqliteQuantStore:
                 ).fetchall()
                 return [self._row_to_strategy_def(row) for row in rows]
 
+    async def list_strategy_defs_for_owner(self, owner_user_id: int) -> list[StrategyDef]:
+        """Built-ins plus this owner's own rows — never a stranger's.
+
+        This is the whole reason a user may now enable their own strategy. The
+        registry used to load every enabled generated row for everybody, so
+        turning one on injected LLM-written Python into other people's
+        recommendations; scoping the read is what makes ownership a real
+        boundary rather than a label.
+
+        Archived rows are excluded here rather than filtered later: an archived
+        strategy must never reach an evaluation path by any route."""
+        async with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    "SELECT * FROM quant_strategy_defs "
+                    "WHERE (owner_user_id IS NULL OR owner_user_id = ?) "
+                    "AND status <> 'archived' "
+                    "ORDER BY strategy_id",
+                    (owner_user_id,),
+                ).fetchall()
+                return [self._row_to_strategy_def(row) for row in rows]
+
     async def upsert_generated_strategy_def(self, strategy_def: StrategyDef) -> StrategyDef | None:
         """Insert or replace a `source_generated=True` row keyed by
         `strategy_id`. Returns `None` (rather than clobbering it) if a row
@@ -370,8 +531,9 @@ class SqliteQuantStore:
                         """INSERT INTO quant_strategy_defs (
                             strategy_id, version, display_name, description, enabled,
                             regime_affinity, source_generated, params_json,
-                            generation_mode, source_code, created_at, updated_at
-                        ) VALUES (?,?,?,?,?,?,1,?,?,?,?,?)""",
+                            generation_mode, source_code, status, owner_user_id,
+                            created_at, updated_at
+                        ) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?)""",
                         (
                             strategy_def.strategy_id,
                             strategy_def.version,
@@ -382,6 +544,8 @@ class SqliteQuantStore:
                             strategy_def.params_json,
                             strategy_def.generation_mode,
                             strategy_def.source_code,
+                            strategy_def.status,
+                            strategy_def.owner_user_id,
                             strategy_def.created_at,
                             now,
                         ),
@@ -392,13 +556,25 @@ class SqliteQuantStore:
                 ).fetchone()
                 return self._row_to_strategy_def(row)
 
-    async def set_generated_strategy_enabled(
-        self, strategy_id: str, enabled: bool
+    async def set_strategy_status(
+        self, strategy_id: str, status: StrategyStatus, owner_user_id: int
     ) -> StrategyDef | None:
-        """Toggle `enabled` for a `source_generated=True` row only. Returns
-        `None` if no such row exists or the row is not `source_generated`
-        (the hardcoded strategies must never be reachable through this
-        path)."""
+        """Move a strategy through its lifecycle, on behalf of its owner.
+
+        Returns `None` for every refusal — no such row, a built-in
+        (`source_generated=False`, which no user may touch), or a row owned by
+        somebody else. The caller cannot distinguish those, and should not: a
+        404 for "not yours" leaks less than a 403.
+
+        `enabled` is written HERE and only here, in the same statement as
+        `status`, because it is derived from it: `enabled = (status ==
+        "active")`. Two independently-writable switches is exactly how a
+        strategy the owner paused keeps producing signals.
+
+        A NULL-owner generated row is unreachable through this path. Those are
+        pre-ownership rows whose real owner is unknown, and the safe reading of
+        an unknown owner is "nobody", not "whoever asked".
+        """
         async with self._lock:
             with self._connect() as connection:
                 row = connection.execute(
@@ -406,12 +582,18 @@ class SqliteQuantStore:
                 ).fetchone()
                 if row is None or not bool(row["source_generated"]):
                     return None
+                row_owner = row["owner_user_id"] if "owner_user_id" in row.keys() else None
+                if row_owner is None or int(row_owner) != int(owner_user_id):
+                    return None
                 now = utc_now_iso()
+                enabled = status == "active"
                 connection.execute(
-                    "UPDATE quant_strategy_defs SET enabled=?, updated_at=? WHERE strategy_id=?",
-                    (1 if enabled else 0, now, strategy_id),
+                    "UPDATE quant_strategy_defs SET status=?, enabled=?, updated_at=? "
+                    "WHERE strategy_id=?",
+                    (status, 1 if enabled else 0, now, strategy_id),
                 )
                 updated = self._row_to_strategy_def(row)
+                updated.status = status
                 updated.enabled = enabled
                 updated.updated_at = now
                 return updated
@@ -444,6 +626,203 @@ class SqliteQuantStore:
                     "SELECT * FROM quant_backtest_runs WHERE id=?", (run_id,)
                 ).fetchone()
                 return self._row_to_backtest_run(row) if row else None
+
+    # ------------------------------------------------------------------
+    # bots (simulation only)
+    #
+    # EVERY accessor here takes `owner_user_id` and filters on it in SQL.
+    # There is no `get_bot(bot_id)` overload without an owner, deliberately:
+    # an unscoped read is the exact shape of the authz hole we closed on the
+    # strategy-enable route, and the cheapest way not to reintroduce it is not
+    # to offer the function.
+    # ------------------------------------------------------------------
+
+    async def create_bot(self, bot: BotDefinition) -> BotDefinition:
+        async with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """INSERT INTO quant_bots (
+                        id, owner_user_id, bot_type, name, symbol, market, interval,
+                        execution_mode, initial_capital, fee_rate, config_json, levels_json,
+                        warnings_json, diagnostics_json, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        bot.id,
+                        bot.owner_user_id,
+                        bot.bot_type,
+                        bot.name,
+                        bot.symbol,
+                        bot.market,
+                        bot.interval,
+                        bot.execution_mode,
+                        bot.initial_capital,
+                        bot.fee_rate,
+                        _dumps(bot.config),
+                        _dumps(bot.levels),
+                        _dumps(bot.warnings),
+                        _dumps(bot.risk_diagnostics),
+                        bot.created_at,
+                        bot.updated_at,
+                    ),
+                )
+                return bot
+
+    async def get_bot(self, owner_user_id: int, bot_id: str) -> BotDefinition | None:
+        async with self._lock:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT * FROM quant_bots WHERE id=? AND owner_user_id=?",
+                    (bot_id, int(owner_user_id)),
+                ).fetchone()
+                return self._row_to_bot(row) if row else None
+
+    async def list_bots(self, owner_user_id: int, *, limit: int = 50) -> list[BotDefinition]:
+        async with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """SELECT * FROM quant_bots WHERE owner_user_id=?
+                    ORDER BY created_at DESC LIMIT ?""",
+                    (int(owner_user_id), max(1, min(int(limit), 200))),
+                ).fetchall()
+                return [self._row_to_bot(row) for row in rows]
+
+    async def delete_bot(self, owner_user_id: int, bot_id: str) -> bool:
+        async with self._lock:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM quant_bots WHERE id=? AND owner_user_id=?",
+                    (bot_id, int(owner_user_id)),
+                )
+                return cursor.rowcount > 0
+
+    async def set_bot_execution_mode(
+        self,
+        owner_user_id: int,
+        bot_id: str,
+        execution_mode: str,
+        *,
+        updated_at: str,
+    ) -> BotDefinition | None:
+        """Owner-only arming switch. Does not place or cancel any order."""
+        if execution_mode not in ("simulation", "live"):
+            raise ValueError(f"unsupported_execution_mode:{execution_mode}")
+        async with self._lock:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    """UPDATE quant_bots
+                          SET execution_mode=?, updated_at=?
+                        WHERE id=? AND owner_user_id=?""",
+                    (execution_mode, updated_at, bot_id, int(owner_user_id)),
+                )
+                if cursor.rowcount < 1:
+                    return None
+                row = connection.execute(
+                    "SELECT * FROM quant_bots WHERE id=? AND owner_user_id=?",
+                    (bot_id, int(owner_user_id)),
+                ).fetchone()
+                return self._row_to_bot(row) if row else None
+
+    async def create_bot_run(
+        self,
+        run: BotRun,
+        fills: list[BotFill],
+        ledger: list[BotLedgerEntry],
+    ) -> BotRun:
+        """Persist a finished simulation and its two child logs in one
+        transaction — a run whose fills failed to land would misreport its own
+        arithmetic."""
+        async with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """INSERT INTO quant_bot_runs (
+                        id, bot_id, owner_user_id, execution_mode, status, bar_count,
+                        from_time, to_time, cells_bootstrapped, orders_placed, fill_count,
+                        matched_cycles, realized_profit, unrealized_profit, total_commission,
+                        ending_price, resting_orders, stop_reason, warnings_json, logs_json,
+                        cells_json, error, created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        run.id,
+                        run.bot_id,
+                        run.owner_user_id,
+                        run.execution_mode,
+                        run.status,
+                        run.bar_count,
+                        run.from_time,
+                        run.to_time,
+                        run.cells_bootstrapped,
+                        run.orders_placed,
+                        run.fill_count,
+                        run.matched_cycles,
+                        run.realized_profit,
+                        run.unrealized_profit,
+                        run.total_commission,
+                        run.ending_price,
+                        run.resting_orders,
+                        run.stop_reason,
+                        _dumps(run.warnings),
+                        _dumps(run.logs),
+                        _dumps(run.cells),
+                        run.error,
+                        run.created_at,
+                    ),
+                )
+                connection.executemany(
+                    """INSERT INTO quant_bot_fills (
+                        run_id, owner_user_id, sequence, bar_time, cell_index, purpose,
+                        price, quantity
+                    ) VALUES (?,?,?,?,?,?,?,?)""",
+                    [
+                        (
+                            fill.run_id,
+                            fill.owner_user_id,
+                            fill.sequence,
+                            fill.bar_time,
+                            fill.cell_index,
+                            fill.purpose,
+                            fill.price,
+                            fill.quantity,
+                        )
+                        for fill in fills
+                    ],
+                )
+                connection.executemany(
+                    """INSERT INTO quant_bot_ledger (
+                        run_id, owner_user_id, sequence, trade_type, close_reason, cell_index,
+                        price, amount, commission, profit, matched_entry_price,
+                        grid_matched_profit
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    [
+                        (
+                            entry.run_id,
+                            entry.owner_user_id,
+                            entry.sequence,
+                            entry.trade_type,
+                            entry.close_reason,
+                            entry.cell_index,
+                            entry.price,
+                            entry.amount,
+                            entry.commission,
+                            entry.profit,
+                            entry.matched_entry_price,
+                            entry.grid_matched_profit,
+                        )
+                        for entry in ledger
+                    ],
+                )
+                return run
+
+    async def list_bot_runs(
+        self, owner_user_id: int, bot_id: str, *, limit: int = 20
+    ) -> list[BotRun]:
+        async with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """SELECT * FROM quant_bot_runs WHERE bot_id=? AND owner_user_id=?
+                    ORDER BY created_at DESC LIMIT ?""",
+                    (bot_id, int(owner_user_id), max(1, min(int(limit), 100))),
+                ).fetchall()
+                return [self._row_to_bot_run(row) for row in rows]
 
     async def available(self) -> bool:
         try:
@@ -596,6 +975,59 @@ class SqliteQuantStore:
         )
 
     @staticmethod
+    def _row_to_bot(row: sqlite3.Row) -> BotDefinition:
+        raw_mode = str(row["execution_mode"] or "simulation")
+        execution_mode: BotExecutionMode = "live" if raw_mode == "live" else "simulation"
+        return BotDefinition(
+            id=row["id"],
+            owner_user_id=int(row["owner_user_id"]),
+            bot_type=row["bot_type"],
+            name=row["name"],
+            symbol=row["symbol"],
+            market=row["market"],
+            interval=row["interval"],
+            execution_mode=execution_mode,
+            initial_capital=float(row["initial_capital"]),
+            fee_rate=float(row["fee_rate"]),
+            config=json.loads(row["config_json"]),
+            levels=json.loads(row["levels_json"]),
+            warnings=json.loads(row["warnings_json"]),
+            risk_diagnostics=json.loads(row["diagnostics_json"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _row_to_bot_run(row: sqlite3.Row) -> BotRun:
+        return BotRun(
+            id=row["id"],
+            bot_id=row["bot_id"],
+            owner_user_id=int(row["owner_user_id"]),
+            # Read as the literal, never from the column: a row that somehow
+            # carried another value must not be able to relabel itself.
+            execution_mode="simulation",
+            status=row["status"],
+            bar_count=int(row["bar_count"]),
+            from_time=row["from_time"],
+            to_time=row["to_time"],
+            cells_bootstrapped=int(row["cells_bootstrapped"]),
+            orders_placed=int(row["orders_placed"]),
+            fill_count=int(row["fill_count"]),
+            matched_cycles=int(row["matched_cycles"]),
+            realized_profit=float(row["realized_profit"]),
+            unrealized_profit=float(row["unrealized_profit"]),
+            total_commission=float(row["total_commission"]),
+            ending_price=float(row["ending_price"]),
+            resting_orders=int(row["resting_orders"]),
+            stop_reason=row["stop_reason"],
+            warnings=json.loads(row["warnings_json"]),
+            logs=json.loads(row["logs_json"]),
+            cells=json.loads(row["cells_json"]),
+            error=row["error"],
+            created_at=row["created_at"],
+        )
+
+    @staticmethod
     def _row_to_strategy_def(row: sqlite3.Row) -> StrategyDef:
         # `source_generated`/`params_json`/`generation_mode`/`source_code`
         # are always present by the time any row is read through this
@@ -603,12 +1035,18 @@ class SqliteQuantStore:
         # before any query executes.
         row_keys = row.keys()
         generation_mode = row["generation_mode"] if "generation_mode" in row_keys else "declarative"
+        status = row["status"] if "status" in row_keys else None
         return StrategyDef(
             strategy_id=row["strategy_id"],
             version=row["version"],
             display_name=row["display_name"],
             description=row["description"],
             enabled=bool(row["enabled"]),
+            # A row read before the migration ran has no status column; derive
+            # it from the one fact the old schema recorded rather than
+            # defaulting every legacy row to "ready" and silently pausing it.
+            status=status or ("active" if bool(row["enabled"]) else "ready"),
+            owner_user_id=row["owner_user_id"] if "owner_user_id" in row_keys else None,
             regime_affinity=row["regime_affinity"],
             source_generated=bool(row["source_generated"]),
             params_json=row["params_json"],

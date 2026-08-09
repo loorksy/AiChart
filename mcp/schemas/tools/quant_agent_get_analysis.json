@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Quant Agent analysis id (a UUID from quant_agent_run_analysis / quant_agent_list_analyses)"
+    }
+  },
+  "required": [
+    "id"
+  ]
+}

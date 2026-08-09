@@ -1,3 +1,7 @@
+import {
+  QUANT_BOT_DEFAULT_EXECUTION_MODE,
+  isQuantBotExecutionMode,
+} from "./bots/brokerPort";
 import { QuantAgentServiceError } from "./errors";
 import {
   isTransientQuantAgentError,
@@ -5,7 +9,26 @@ import {
   type ServiceErrorBody,
 } from "./serviceErrors";
 import type {
+  CreateQuantBotParams,
+  PreviewQuantBotParams,
+  QuantBot,
+  QuantBotExecutionModeWire,
+  QuantBotLevel,
+  QuantBotLevelWire,
+  QuantBotPreview,
+  QuantBotPreviewWire,
+  QuantBotRiskDiagnostic,
+  QuantBotRun,
+  QuantBotRunWire,
+  QuantBotSimulation,
+  QuantBotSimulationWire,
+  QuantBotWire,
+  SetQuantBotExecutionModeParams,
+  SimulateQuantBotParams,
+} from "./bots/types";
+import type {
   BacktestQuantStrategyParams,
+  FinalizeQuantAnalysisParams,
   GenerateQuantRecommendationInput,
   GenerateQuantStrategyCodeParams,
   GenerateValidateQuantStrategyResult,
@@ -13,12 +36,17 @@ import type {
   GeneratedStrategySpec,
   ListQuantRecommendationsParams,
   QuantAgentCallerContext,
+  QuantAnalysisFinalizeResult,
+  QuantAnalysisScoreResult,
+  QuantAnalysisScoreResultWire,
   QuantBacktestResult,
   QuantBacktestResultWire,
   QuantOhlcBar,
   QuantRecommendation,
   QuantRecommendationWire,
   QuantStrategyDef,
+  ScoreQuantAnalysisParams,
+  QuantStrategyStatus,
 } from "./types";
 
 if (typeof window !== "undefined") {
@@ -69,6 +97,28 @@ function backtestTimeoutMs(): number {
   const configured = Number(process.env.QUANT_AGENT_BACKTEST_CLIENT_TIMEOUT_MS || 120_000);
   const resolved = Number.isFinite(configured) ? configured : 120_000;
   return Math.min(300_000, Math.max(clientTimeoutMs(), resolved));
+}
+
+/**
+ * The analysis endpoints get their own ceiling, for the opposite reason
+ * to the backtest one.
+ *
+ * `/analysis/score` and `/analysis/finalize` are pure arithmetic over a
+ * handful of pushed timeframes — milliseconds of real work — but they sit in
+ * the middle of an interactive request that has already spent its budget on
+ * candle collection and one LLM call. The global 30s cap is the wrong shape
+ * for both ends: too tight if the service is cold-starting behind the pm2
+ * ingress proxy, and far too generous as a "still working" signal. A separate
+ * knob lets an operator tune the analysis path without also lengthening every
+ * ordinary recommendation call.
+ *
+ * Override with QUANT_AGENT_ANALYSIS_CLIENT_TIMEOUT_MS. Floor is the global
+ * value (never shorter than an ordinary call), ceiling 120s.
+ */
+function analysisTimeoutMs(): number {
+  const configured = Number(process.env.QUANT_AGENT_ANALYSIS_CLIENT_TIMEOUT_MS || 45_000);
+  const resolved = Number.isFinite(configured) ? configured : 45_000;
+  return Math.min(120_000, Math.max(clientTimeoutMs(), resolved));
 }
 
 function serviceConfig(): { url: string; token: string } {
@@ -347,7 +397,9 @@ export async function generateAndValidateQuantStrategy(
     "/internal/quant-agent/strategies/generate-validate",
     {
       method: "POST",
-      body: JSON.stringify({ spec }),
+      // The owner is set at creation, not patched on later: an ownerless
+      // generated strategy is either everyone's or no one's.
+      body: JSON.stringify({ spec, owner_user_id: context.userId }),
     },
   );
 }
@@ -375,6 +427,7 @@ export async function generateAndValidateQuantStrategyCode(
     {
       method: "POST",
       body: JSON.stringify({
+        owner_user_id: context.userId,
         strategy_id: params.strategyId,
         version: params.version,
         display_name: params.displayName,
@@ -387,22 +440,29 @@ export async function generateAndValidateQuantStrategyCode(
 }
 
 /**
- * Enables (or disables) a strategy the generator persisted. Restricted
- * server-side to `source_generated=true` rows only (plan §5) — this can
- * never touch the platform's two fixed built-in strategies. The only path
- * that makes a generated strategy live.
+ * Moves one of the caller's OWN generated strategies through its lifecycle.
+ *
+ * The service checks ownership against the stored row and answers 404 for
+ * every refusal — not yours, not generated, no such id — so this cannot be
+ * used to enumerate other people's strategies or to touch a built-in.
+ *
+ * This replaced an admin-only enable toggle. That restriction existed because
+ * the registry loaded every enabled generated strategy for every user, so one
+ * owner enabling their own put their LLM-written Python into strangers'
+ * recommendations. The registry is scoped per owner now, which is what makes
+ * self-service safe rather than merely convenient.
  */
-export async function setQuantStrategyEnabled(
+export async function setQuantStrategyStatus(
   context: QuantAgentCallerContext,
   strategyId: string,
-  enabled: boolean,
+  status: QuantStrategyStatus,
 ): Promise<{ strategy: GeneratedQuantStrategyRecord }> {
   return serviceRequest<{ strategy: GeneratedQuantStrategyRecord }>(
     context,
     `/internal/quant-agent/strategies/${encodeURIComponent(strategyId)}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ status, owner_user_id: context.userId }),
     },
   );
 }
@@ -468,6 +528,305 @@ export async function backtestQuantStrategy(
   return normalizeQuantBacktestResult(raw);
 }
 
+/** Decodes the wire analysis score result (objective_by_timeframe/... → camelCase). */
+export function normalizeQuantAnalysisScore(
+  raw: QuantAnalysisScoreResultWire,
+): QuantAnalysisScoreResult {
+  const objectiveByTimeframe: QuantAnalysisScoreResult["objectiveByTimeframe"] = {};
+  for (const [timeframe, objective] of Object.entries(raw.objective_by_timeframe ?? {})) {
+    objectiveByTimeframe[timeframe] = {
+      technicalScore: objective.technical_score ?? null,
+      fundamentalScore: objective.fundamental_score ?? null,
+      sentimentScore: objective.sentiment_score ?? null,
+      macroScore: objective.macro_score ?? null,
+      overallScore: objective.overall_score,
+      decision: objective.decision,
+      absScore: objective.abs_score,
+    };
+  }
+  const consensus = raw.consensus;
+  const quality = raw.data_quality;
+  return {
+    objectiveByTimeframe,
+    consensus: {
+      decision: consensus.decision,
+      score: consensus.score,
+      agreement: consensus.agreement,
+      timeframeCount: consensus.timeframe_count,
+      votes: consensus.votes ?? {},
+      weightedScore: consensus.weighted_score,
+    },
+    trendOutlook: raw.trend_outlook,
+    similarPatterns: (raw.similar_patterns ?? []).map((pattern) => ({
+      id: pattern.id,
+      similarityScore: pattern.similarity_score,
+      decision: pattern.decision,
+      wasCorrect: pattern.was_correct,
+    })),
+    dataQuality: {
+      degraded: quality?.degraded ?? false,
+      confidencePenalty: quality?.confidence_penalty ?? 0,
+      missing: quality?.missing ?? [],
+    },
+  };
+}
+
+/**
+ * Pre-LLM half of the analysis engine (Wave 1 contract). Pushes the collected
+ * per-timeframe indicator snapshots and gets back every rule-side number:
+ * the objective scores, the multi-timeframe consensus, the trend outlook and
+ * the similar-pattern matches. quant-agent computes all of it because it has
+ * no network of its own — web collects, quant-agent decides.
+ *
+ * `fundamental`/`news`/`macro`/`crypto_factors` are sent as explicit `null`
+ * because no source for them exists on this platform. Upstream already
+ * weights over PRESENT components only, so an absent component is a real,
+ * supported state — never a fabricated 50.
+ */
+/*
+ * Note on the two analysis bodies below: unlike every other call in this file
+ * they do NOT carry `owner_user_id` / `request_id`. Both analysis request
+ * envelopes are declared `extra="forbid"` on the service side, so those two
+ * keys are a hard 422 rather than harmless redundancy. The tenant context
+ * still travels — `serviceRequestOnce` puts it in the `X-AiChart-User-Id` and
+ * `X-AiChart-Request-Id` headers on every request.
+ */
+export async function scoreQuantAnalysis(
+  context: QuantAgentCallerContext,
+  params: ScoreQuantAnalysisParams,
+): Promise<QuantAnalysisScoreResult> {
+  const raw = await serviceRequest<QuantAnalysisScoreResultWire>(
+    context,
+    "/internal/quant-agent/analysis/score",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        market: params.market,
+        symbol: params.symbol,
+        primary_timeframe: params.primaryTimeframe,
+        current_price: params.currentPrice,
+        timeframes: params.timeframes,
+        fundamental: null,
+        news: null,
+        macro: null,
+        crypto_factors: null,
+        memory_candidates: params.memoryCandidates,
+      }),
+    },
+    // Its own deadline — see analysisTimeoutMs. No timeout retry: this
+    // endpoint is pure arithmetic, so a request that ran past a 45s budget
+    // means the service is wedged, not flaky, and a second attempt would only
+    // double the wait a user is already sitting through.
+    { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
+  );
+  return normalizeQuantAnalysisScore(raw);
+}
+
+/**
+ * Post-LLM half of the analysis engine (Wave 1 contract). Hands the model's
+ * raw parsed output to quant-agent's validator, which owns the ±10% entry
+ * clamp, the direction-consistent stop/target geometry, the indicator veto
+ * and the consensus override. Web never adjusts a level itself — the whole
+ * point of the split is that one side computes numbers and the other side
+ * never invents them.
+ */
+export async function finalizeQuantAnalysis(
+  context: QuantAgentCallerContext,
+  params: FinalizeQuantAnalysisParams,
+): Promise<QuantAnalysisFinalizeResult> {
+  return serviceRequest<QuantAnalysisFinalizeResult>(
+    context,
+    "/internal/quant-agent/analysis/finalize",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        market: params.market,
+        symbol: params.symbol,
+        current_price: params.currentPrice,
+        indicators: params.indicators,
+        llm_output: params.llmOutput,
+        has_major_news: params.hasMajorNews,
+        has_macro_event: params.hasMacroEvent,
+        consensus: {
+          decision: params.consensus.decision,
+          score: params.consensus.score,
+          agreement: params.consensus.agreement,
+          timeframe_count: params.consensus.timeframeCount,
+          votes: params.consensus.votes,
+          weighted_score: params.consensus.weightedScore,
+        },
+        data_quality: params.dataQuality
+          ? {
+              degraded: params.dataQuality.degraded,
+              confidence_penalty: params.dataQuality.confidencePenalty,
+              missing: params.dataQuality.missing,
+            }
+          : null,
+      }),
+    },
+    { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
+  );
+}
+
+/* ------------------------------------------------------------------
+ * Outcome validation + threshold calibration (Wave 2).
+ *
+ * Unlike the score/finalize shapes, these request and response types live in
+ * THIS file rather than in `types.ts`. `types.ts` carries the frozen Wave-1
+ * analysis contract that the UI and the API routes both compile against;
+ * nothing outside this module and the validation cron ever names a validation
+ * payload, so it stays local — the same call `ServiceBar` makes above.
+ * ------------------------------------------------------------------ */
+
+/** One aged analysis plus the price it actually reached. */
+export interface QuantAnalysisValidationCandidate {
+  id: string;
+  decision: string;
+  priceAtAnalysis: number;
+  currentPrice: number;
+}
+
+export interface QuantAnalysisValidationOutcome {
+  id: string;
+  wasCorrect: boolean;
+  returnPct: number;
+}
+
+export interface QuantAnalysisValidationResult {
+  results: QuantAnalysisValidationOutcome[];
+  skipped: { id: string; reason: string }[];
+  stats: { validated: number; correct: number; incorrect: number; skipped: number };
+}
+
+interface QuantAnalysisValidationResultWire {
+  results: { id: string; was_correct: boolean; return_pct: number }[];
+  skipped: { id: string; reason: string }[];
+  stats: { validated: number; correct: number; incorrect: number; skipped: number };
+}
+
+/**
+ * Scores stored analyses against the price they actually reached.
+ *
+ * quant-agent owns the ±2%/±5% correctness rule because it owns every other
+ * threshold in this engine; web owns the price lookup because quant-agent has
+ * no network. Nothing is decided here — the caller writes back exactly what
+ * comes out, and a row the service declines to score (non-positive price)
+ * comes back under `skipped` rather than as a fabricated 0% move.
+ */
+export async function validateQuantAnalyses(
+  context: QuantAgentCallerContext,
+  analyses: QuantAnalysisValidationCandidate[],
+): Promise<QuantAnalysisValidationResult> {
+  const raw = await serviceRequest<QuantAnalysisValidationResultWire>(
+    context,
+    "/internal/quant-agent/analysis/validate",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        analyses: analyses.map((analysis) => ({
+          id: analysis.id,
+          decision: analysis.decision,
+          price_at_analysis: analysis.priceAtAnalysis,
+          current_price: analysis.currentPrice,
+        })),
+      }),
+    },
+    { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
+  );
+  return {
+    results: (raw.results ?? []).map((outcome) => ({
+      id: outcome.id,
+      wasCorrect: outcome.was_correct,
+      returnPct: outcome.return_pct,
+    })),
+    skipped: raw.skipped ?? [],
+    stats: raw.stats,
+  };
+}
+
+export interface QuantAnalysisCalibrationInput {
+  consensusScore: number;
+  actualReturnPct: number;
+  confidence: number | null;
+  wasCorrect: boolean | null;
+}
+
+export interface QuantAnalysisCalibrationReport {
+  thresholds: {
+    buyThreshold: number;
+    sellThreshold: number;
+    minConsensusAbsOverride: number;
+    qualityHoldThreshold: number;
+  };
+  /** False when the history was too thin — the live defaults come back as-is. */
+  applied: boolean;
+  reason: string | null;
+  bestAccuracy: number | null;
+  coverage: Record<string, number>;
+  sampleCount: number;
+  confidenceAccuracy: Record<string, number>;
+}
+
+interface QuantAnalysisCalibrationReportWire {
+  thresholds: {
+    buy_threshold: number;
+    sell_threshold: number;
+    min_consensus_abs_override: number;
+    quality_hold_threshold: number;
+  };
+  applied: boolean;
+  reason: string | null;
+  best_accuracy: number | null;
+  coverage: Record<string, number>;
+  sample_count: number;
+  confidence_accuracy: Record<string, number>;
+}
+
+/**
+ * Asks what the decision thresholds WOULD be if tuned on validated history.
+ *
+ * Read-only on both sides of the split: quant-agent runs the grid search and
+ * returns a report, and nothing in this codebase feeds the answer back into a
+ * live decision. Tuning a decision boundary automatically, on a ±2%/±5% proxy
+ * for "was that call right", is a product decision nobody has taken — so this
+ * exists to make the drift VISIBLE to an operator, not to act on it.
+ */
+export async function calibrateQuantAnalysisThresholds(
+  context: QuantAgentCallerContext,
+  samples: QuantAnalysisCalibrationInput[],
+): Promise<QuantAnalysisCalibrationReport> {
+  const raw = await serviceRequest<QuantAnalysisCalibrationReportWire>(
+    context,
+    "/internal/quant-agent/analysis/calibrate",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        samples: samples.map((sample) => ({
+          consensus_score: sample.consensusScore,
+          actual_return_pct: sample.actualReturnPct,
+          confidence: sample.confidence,
+          was_correct: sample.wasCorrect,
+        })),
+      }),
+    },
+    { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
+  );
+  return {
+    thresholds: {
+      buyThreshold: raw.thresholds.buy_threshold,
+      sellThreshold: raw.thresholds.sell_threshold,
+      minConsensusAbsOverride: raw.thresholds.min_consensus_abs_override,
+      qualityHoldThreshold: raw.thresholds.quality_hold_threshold,
+    },
+    applied: raw.applied,
+    reason: raw.reason ?? null,
+    bestAccuracy: raw.best_accuracy ?? null,
+    coverage: raw.coverage ?? {},
+    sampleCount: raw.sample_count,
+    confidenceAccuracy: raw.confidence_accuracy ?? {},
+  };
+}
+
 /** Returns null on 404 (not found) instead of throwing, mirroring §4's "or 404". */
 export async function getQuantRecommendation(
   context: QuantAgentCallerContext,
@@ -488,4 +847,306 @@ export async function getQuantRecommendation(
     }
     throw error;
   }
+}
+
+/* ------------------------------------------------------------------
+ * Automated bots (grid / DCA / martingale / layered martingale).
+ *
+ * The service engine stays on `SimulatedQuantBroker`. `execution_mode: live`
+ * is an arming flag web reads before createIntent → executeIntent — this
+ * client never opens a venue connection.
+ *
+ * `owner_user_id` rides on EVERY request, including the reads. The service has
+ * no unscoped bot accessor, so a caller that omits it gets a 422 rather than
+ * someone else's bot.
+ * ------------------------------------------------------------------ */
+
+function normalizeBotExecutionMode(raw: unknown): QuantBotExecutionModeWire {
+  return isQuantBotExecutionMode(raw) ? raw : QUANT_BOT_DEFAULT_EXECUTION_MODE;
+}
+
+function normalizeBotLevels(levels: QuantBotLevelWire[] | undefined): QuantBotLevel[] {
+  return (levels ?? []).map((level) => ({
+    level: level.level,
+    layerIndex: level.layer_index,
+    orderIndex: level.order_index,
+    action: level.action,
+    side: level.side,
+    price: level.price,
+    amountQuote: level.amount_quote,
+    takeProfitPrice: level.take_profit_price,
+    triggerPct: level.trigger_pct,
+    scheduledOffsetMinutes: level.scheduled_offset_minutes ?? null,
+    cumulativeAmountQuote: level.cumulative_amount_quote ?? null,
+  }));
+}
+
+function normalizeBotDiagnostics(
+  raw: Record<string, unknown>[] | undefined,
+): QuantBotRiskDiagnostic[] {
+  return (raw ?? []).map((item) => ({
+    code: String(item.code ?? ""),
+    beforeLevel: Number(item.before_level ?? 0),
+    basketAverage: Number(item.basket_average ?? 0),
+    hardStopPrice: Number(item.hard_stop_price ?? 0),
+    nextLevelPrice: Number(item.next_level_price ?? 0),
+    configuredStopPct: Number(item.configured_stop_pct ?? 0),
+    requiredStopPct: Number(item.required_stop_pct ?? 0),
+    suggestedStopPct: Number(item.suggested_stop_pct ?? 0),
+  }));
+}
+
+export function normalizeQuantBotPreview(raw: QuantBotPreviewWire): QuantBotPreview {
+  const summary = raw.summary;
+  return {
+    // Previews are never armed — a ladder draft cannot place an order.
+    executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE,
+    status: raw.status,
+    botType: raw.bot_type ?? "",
+    config: raw.config ?? {},
+    levels: normalizeBotLevels(raw.levels),
+    summary: summary
+      ? {
+          levelCount: Number(summary.level_count ?? 0),
+          totalAmountQuote: Number(summary.total_amount_quote ?? 0),
+          longLevelCount: Number(summary.long_level_count ?? 0),
+          shortLevelCount: Number(summary.short_level_count ?? 0),
+          firstPrice: Number(summary.first_price ?? 0),
+          lastPrice: Number(summary.last_price ?? 0),
+        }
+      : null,
+    warnings: raw.warnings ?? [],
+    riskDiagnostics: normalizeBotDiagnostics(raw.risk_diagnostics),
+    blockingWarning: raw.blocking_warning ?? "",
+    error: raw.error ?? null,
+  };
+}
+
+export function normalizeQuantBot(raw: QuantBotWire): QuantBot {
+  return {
+    id: raw.id,
+    ownerUserId: raw.owner_user_id,
+    botType: raw.bot_type,
+    name: raw.name,
+    symbol: raw.symbol,
+    market: raw.market,
+    interval: raw.interval,
+    executionMode: normalizeBotExecutionMode(raw.execution_mode),
+    initialCapital: raw.initial_capital,
+    feeRate: raw.fee_rate,
+    config: raw.config ?? {},
+    levels: normalizeBotLevels(raw.levels),
+    warnings: raw.warnings ?? [],
+    riskDiagnostics: normalizeBotDiagnostics(raw.risk_diagnostics),
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+export function normalizeQuantBotRun(raw: QuantBotRunWire): QuantBotRun {
+  return {
+    id: raw.id,
+    botId: raw.bot_id,
+    ownerUserId: raw.owner_user_id,
+    // Runs are always simulation replays from this service.
+    executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE,
+    status: raw.status,
+    barCount: raw.bar_count,
+    fromTime: raw.from_time,
+    toTime: raw.to_time,
+    cellsBootstrapped: raw.cells_bootstrapped,
+    ordersPlaced: raw.orders_placed,
+    fillCount: raw.fill_count,
+    matchedCycles: raw.matched_cycles,
+    realizedProfit: raw.realized_profit,
+    unrealizedProfit: raw.unrealized_profit,
+    totalCommission: raw.total_commission,
+    endingPrice: raw.ending_price,
+    restingOrders: raw.resting_orders,
+    stopReason: raw.stop_reason ?? "",
+    warnings: raw.warnings ?? [],
+    logs: raw.logs ?? [],
+    cells: raw.cells ?? [],
+    error: raw.error ?? null,
+    createdAt: raw.created_at,
+  };
+}
+
+/** Pure: nothing is stored and nothing is simulated. Safe to call on typing. */
+export async function previewQuantBot(
+  context: QuantAgentCallerContext,
+  params: PreviewQuantBotParams,
+): Promise<QuantBotPreview> {
+  const raw = await serviceRequest<QuantBotPreviewWire>(
+    context,
+    "/internal/quant-agent/bots/preview",
+    {
+      method: "POST",
+      body: JSON.stringify({ bot_type: params.botType, config: params.config }),
+    },
+  );
+  return normalizeQuantBotPreview(raw);
+}
+
+/** Saving a bot is NOT starting one — nothing runs until bars are pushed. */
+export async function createQuantBot(
+  context: QuantAgentCallerContext,
+  params: CreateQuantBotParams,
+): Promise<QuantBot> {
+  const raw = await serviceRequest<QuantBotWire>(context, "/internal/quant-agent/bots", {
+    method: "POST",
+    body: JSON.stringify({
+      owner_user_id: context.userId,
+      bot_type: params.botType,
+      name: params.name,
+      symbol: params.symbol,
+      market: params.market,
+      interval: params.interval,
+      initial_capital: params.initialCapital,
+      fee_rate: params.feeRate,
+      config: params.config,
+    }),
+  });
+  return normalizeQuantBot(raw);
+}
+
+export async function listQuantBots(
+  context: QuantAgentCallerContext,
+  limit = 50,
+): Promise<QuantBot[]> {
+  const query = new URLSearchParams({
+    owner_user_id: String(context.userId),
+    limit: String(limit),
+  });
+  const raw = await serviceRequest<{ bots: QuantBotWire[] }>(
+    context,
+    `/internal/quant-agent/bots?${query.toString()}`,
+  );
+  return (raw.bots ?? []).map(normalizeQuantBot);
+}
+
+/** Returns null on 404 — which is also what another tenant's id returns. */
+export async function getQuantBot(
+  context: QuantAgentCallerContext,
+  botId: string,
+): Promise<QuantBot | null> {
+  const query = new URLSearchParams({ owner_user_id: String(context.userId) });
+  try {
+    const raw = await serviceRequest<QuantBotWire>(
+      context,
+      `/internal/quant-agent/bots/${encodeURIComponent(botId)}?${query.toString()}`,
+    );
+    return normalizeQuantBot(raw);
+  } catch (error) {
+    if (error instanceof QuantAgentServiceError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function deleteQuantBot(
+  context: QuantAgentCallerContext,
+  botId: string,
+): Promise<boolean> {
+  const query = new URLSearchParams({ owner_user_id: String(context.userId) });
+  try {
+    await serviceRequest<{ ok: boolean }>(
+      context,
+      `/internal/quant-agent/bots/${encodeURIComponent(botId)}?${query.toString()}`,
+      { method: "DELETE" },
+    );
+    return true;
+  } catch (error) {
+    if (error instanceof QuantAgentServiceError && error.status === 404) return false;
+    throw error;
+  }
+}
+
+/** Owner-only arming switch. Does not place an order. */
+export async function setQuantBotExecutionMode(
+  context: QuantAgentCallerContext,
+  params: SetQuantBotExecutionModeParams,
+): Promise<QuantBot> {
+  const raw = await serviceRequest<QuantBotWire>(
+    context,
+    `/internal/quant-agent/bots/${encodeURIComponent(params.botId)}/execution-mode`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        owner_user_id: context.userId,
+        execution_mode: params.executionMode,
+      }),
+    },
+  );
+  return normalizeQuantBot(raw);
+}
+
+/**
+ * Replay a saved bot over pushed-in candles.
+ *
+ * Bars go through `toServiceBars` for the same reason every other push does:
+ * the service declares `time: str` and pydantic will not coerce an epoch
+ * number into one, so skipping the conversion is a hard 422.
+ *
+ * Given its own deadline and no timeout retry — a replay over thousands of
+ * bars is legitimately slow, and a second attempt would only double a wait the
+ * user is already sitting through.
+ */
+export async function simulateQuantBot(
+  context: QuantAgentCallerContext,
+  params: SimulateQuantBotParams,
+): Promise<QuantBotSimulation> {
+  const raw = await serviceRequest<QuantBotSimulationWire>(
+    context,
+    `/internal/quant-agent/bots/${encodeURIComponent(params.botId)}/simulate`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        owner_user_id: context.userId,
+        bars: toServiceBars(params.bars),
+      }),
+    },
+    { timeoutMs: backtestTimeoutMs(), retryOnTimeout: false },
+  );
+  return {
+    executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE,
+    status: raw.status,
+    run: raw.run ? normalizeQuantBotRun(raw.run) : null,
+    fills: (raw.fills ?? []).map((fill) => ({
+      sequence: fill.sequence,
+      barTime: fill.bar_time,
+      cellIndex: fill.cell_index,
+      purpose: fill.purpose,
+      price: fill.price,
+      quantity: fill.quantity,
+    })),
+    ledger: (raw.ledger ?? []).map((entry) => ({
+      sequence: entry.sequence,
+      tradeType: entry.trade_type,
+      closeReason: entry.close_reason,
+      cellIndex: entry.cell_index,
+      price: entry.price,
+      amount: entry.amount,
+      commission: entry.commission,
+      profit: entry.profit ?? null,
+      matchedEntryPrice: entry.matched_entry_price ?? null,
+      gridMatchedProfit: entry.grid_matched_profit ?? null,
+    })),
+    error: raw.error ?? null,
+  };
+}
+
+export async function listQuantBotRuns(
+  context: QuantAgentCallerContext,
+  botId: string,
+  limit = 20,
+): Promise<QuantBotRun[]> {
+  const query = new URLSearchParams({
+    owner_user_id: String(context.userId),
+    limit: String(limit),
+  });
+  const raw = await serviceRequest<{ runs: QuantBotRunWire[] }>(
+    context,
+    `/internal/quant-agent/bots/${encodeURIComponent(botId)}/runs?${query.toString()}`,
+  );
+  return (raw.runs ?? []).map(normalizeQuantBotRun);
 }

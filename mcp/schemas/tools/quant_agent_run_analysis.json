@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "e.g. EURUSD, XAUUSD"
+    },
+    "market": {
+      "type": "string",
+      "const": "forex"
+    },
+    "interval": {
+      "description": "Primary timeframe, e.g. 1h. Defaults to 1h.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16
+    },
+    "locale": {
+      "description": "Language of the analysis prose. Defaults to the account locale.",
+      "type": "string",
+      "enum": [
+        "ar",
+        "en"
+      ]
+    },
+    "idempotencyKey": {
+      "description": "REQUIRED. A stable caller-chosen key (max 120 chars) that makes this call safe to retry — repeat the SAME key to retry, and the first result is replayed instead of a second write. Omitting it is refused, not defaulted. Scope: this MCP session's process (the web routes do not yet honour x-idempotency-key), so it protects a retried tool call, not a cross-process replay.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    }
+  },
+  "required": [
+    "symbol"
+  ]
+}

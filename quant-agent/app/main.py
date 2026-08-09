@@ -8,7 +8,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from app import __version__
+from app.api.analysis import router as analysis_router
 from app.api.backtests import router as backtests_router
+from app.api.bots import router as bots_router
+from app.api.factors import router as factors_router
 from app.api.health import router as health_router
 from app.api.recommendations import router as recommendations_router
 from app.api.strategies import router as strategies_router
@@ -82,6 +85,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(recommendations_router)
     app.include_router(strategies_router)
     app.include_router(backtests_router)
+    app.include_router(analysis_router)
+    app.include_router(factors_router)
+    app.include_router(bots_router)
     return app
 
 

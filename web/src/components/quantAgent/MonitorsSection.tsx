@@ -41,13 +41,24 @@ interface Monitor {
   notifyPush: boolean;
   notifyWebhookUrl: string | null;
   enabled: boolean;
+  fireRule: MonitorFireRule;
   lastFiredRecommendationId: string | null;
+  lastFiredDecision: string | null;
   lastCheckedAt: number | null;
 }
 
 /** Deliberately shorter than the full chart interval list — a monitor's
  * cadence is also its re-check cost, so only sane scan intervals are offered. */
 const MONITOR_INTERVALS = ["5m", "15m", "30m", "1h", "4h", "1d"] as const;
+
+/**
+ * How often a monitor is allowed to speak. `always` is the default and the
+ * pre-existing behaviour, so an untouched monitor keeps saying exactly what it
+ * said before; `on_change` is for the user watching a slow timeframe, for whom
+ * the second identical SELL is not news, it is the same news again.
+ */
+const MONITOR_FIRE_RULE_OPTIONS = ["always", "on_change"] as const;
+type MonitorFireRule = (typeof MONITOR_FIRE_RULE_OPTIONS)[number];
 
 export function MonitorsSection({ activeSymbol }: { activeSymbol: string }) {
   const { t } = useLocale();
@@ -58,6 +69,7 @@ export function MonitorsSection({ activeSymbol }: { activeSymbol: string }) {
   const [intervalValue, setIntervalValue] = useState<string>("1h");
   const [notifyTelegram, setNotifyTelegram] = useState(true);
   const [notifyPush, setNotifyPush] = useState(false);
+  const [fireRule, setFireRule] = useState<MonitorFireRule>("always");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +95,7 @@ export function MonitorsSection({ activeSymbol }: { activeSymbol: string }) {
     setIntervalValue("1h");
     setNotifyTelegram(true);
     setNotifyPush(false);
+    setFireRule("always");
     setWebhookUrl("");
     setError(null);
     setOpen(true);
@@ -100,6 +113,7 @@ export function MonitorsSection({ activeSymbol }: { activeSymbol: string }) {
           interval: intervalValue,
           notifyTelegram,
           notifyPush,
+          fireRule,
           notifyWebhookUrl: webhookUrl.trim() || null,
         }),
       });
@@ -217,8 +231,19 @@ export function MonitorsSection({ activeSymbol }: { activeSymbol: string }) {
                   </button>
                 </div>
               </div>
-              {monitor.notifyTelegram || monitor.notifyPush || monitor.notifyWebhookUrl ? (
+              {monitor.notifyTelegram ||
+              monitor.notifyPush ||
+              monitor.notifyWebhookUrl ||
+              monitor.fireRule === "on_change" ? (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  {/* Only the non-default rule is shown: a badge on every row
+                      saying "any signal" is noise that trains the eye to skip
+                      the row where it actually differs. */}
+                  {monitor.fireRule === "on_change" ? (
+                    <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      {t("qa.monitors.fire_rule.on_change")}
+                    </span>
+                  ) : null}
                   {monitor.notifyTelegram ? (
                     <span className="flex items-center gap-1 rounded-full border border-info/40 bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
                       <Send className="h-2.5 w-2.5" aria-hidden="true" />
@@ -276,6 +301,26 @@ export function MonitorsSection({ activeSymbol }: { activeSymbol: string }) {
                   {MONITOR_INTERVALS.map((iv) => (
                     <SelectItem key={iv} value={iv}>
                       <span dir="ltr">{iv}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="qa-monitor-fire-rule">{t("qa.monitors.field.fire_rule")}</Label>
+              <Select
+                value={fireRule}
+                onValueChange={(value) => {
+                  if (value) setFireRule(value as MonitorFireRule);
+                }}
+              >
+                <SelectTrigger id="qa-monitor-fire-rule" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONITOR_FIRE_RULE_OPTIONS.map((rule) => (
+                    <SelectItem key={rule} value={rule}>
+                      {t(`qa.monitors.fire_rule.${rule}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
