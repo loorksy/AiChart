@@ -175,6 +175,12 @@ export interface TradeIntent {
   /** Revision of that recommendation the levels came from. */
   recommendation_revision_no?: number | null;
   /**
+   * Opaque Quant Agent bot id when this intent was created by a live bot.
+   * Standing-auto intents bound to a bot re-verify the bot's `live` mode at
+   * execute time instead of a recommendation revision CAS.
+   */
+  bot_id?: string | null;
+  /**
    * Explicit per-trade approval, or the operator's standing auto mode.
    * `trade_management` marks an SL/TP-modification proposal for an already-open
    * trade — such an intent is NEVER an order and must not reach executeIntent.

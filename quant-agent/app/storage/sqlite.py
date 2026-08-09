@@ -23,6 +23,7 @@ from app.storage.models import (
     BacktestMetrics,
     BacktestRun,
     BotDefinition,
+    BotExecutionMode,
     BotFill,
     BotLedgerEntry,
     BotRun,
@@ -694,6 +695,33 @@ class SqliteQuantStore:
                 )
                 return cursor.rowcount > 0
 
+    async def set_bot_execution_mode(
+        self,
+        owner_user_id: int,
+        bot_id: str,
+        execution_mode: str,
+        *,
+        updated_at: str,
+    ) -> BotDefinition | None:
+        """Owner-only arming switch. Does not place or cancel any order."""
+        if execution_mode not in ("simulation", "live"):
+            raise ValueError(f"unsupported_execution_mode:{execution_mode}")
+        async with self._lock:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    """UPDATE quant_bots
+                          SET execution_mode=?, updated_at=?
+                        WHERE id=? AND owner_user_id=?""",
+                    (execution_mode, updated_at, bot_id, int(owner_user_id)),
+                )
+                if cursor.rowcount < 1:
+                    return None
+                row = connection.execute(
+                    "SELECT * FROM quant_bots WHERE id=? AND owner_user_id=?",
+                    (bot_id, int(owner_user_id)),
+                ).fetchone()
+                return self._row_to_bot(row) if row else None
+
     async def create_bot_run(
         self,
         run: BotRun,
@@ -948,6 +976,8 @@ class SqliteQuantStore:
 
     @staticmethod
     def _row_to_bot(row: sqlite3.Row) -> BotDefinition:
+        raw_mode = str(row["execution_mode"] or "simulation")
+        execution_mode: BotExecutionMode = "live" if raw_mode == "live" else "simulation"
         return BotDefinition(
             id=row["id"],
             owner_user_id=int(row["owner_user_id"]),
@@ -956,7 +986,7 @@ class SqliteQuantStore:
             symbol=row["symbol"],
             market=row["market"],
             interval=row["interval"],
-            execution_mode="simulation",
+            execution_mode=execution_mode,
             initial_capital=float(row["initial_capital"]),
             fee_rate=float(row["fee_rate"]),
             config=json.loads(row["config_json"]),

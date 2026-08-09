@@ -4,7 +4,7 @@ import { handleError } from "@/lib/api";
 import { quantAgentServiceEnabled } from "@/lib/quantAgent/client";
 import { resolveQuantAgentUserId } from "@/lib/quantAgent/webAuth";
 import { previewBotConfig } from "@/lib/quantAgent/botStore";
-import { QUANT_BOT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
+import { QUANT_BOT_DEFAULT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
 import {
   BotRecommendationError,
   recommendBotConfig,
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({
-      executionMode: QUANT_BOT_EXECUTION_MODE,
+      executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE,
       recommendation,
       preview,
       barCount: bars.length,

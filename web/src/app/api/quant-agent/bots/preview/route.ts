@@ -4,7 +4,7 @@ import { handleError } from "@/lib/api";
 import { quantAgentServiceEnabled } from "@/lib/quantAgent/client";
 import { resolveQuantAgentUserId } from "@/lib/quantAgent/webAuth";
 import { previewBotConfig } from "@/lib/quantAgent/botStore";
-import { QUANT_BOT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
+import { QUANT_BOT_DEFAULT_EXECUTION_MODE } from "@/lib/quantAgent/bots/brokerPort";
 import { QUANT_BOT_TYPES } from "@/lib/quantAgent/bots/types";
 
 /**
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       body.botType as (typeof QUANT_BOT_TYPES)[number],
       body.config,
     );
-    return NextResponse.json({ executionMode: QUANT_BOT_EXECUTION_MODE, preview });
+    return NextResponse.json({ executionMode: QUANT_BOT_DEFAULT_EXECUTION_MODE, preview });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(

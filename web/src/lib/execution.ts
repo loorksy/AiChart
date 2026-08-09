@@ -36,6 +36,7 @@ import { getBrokerAdapter } from "./brokers";
 import { metrics } from "./metrics";
 import { validateExecutionIntent } from "./executionSafety";
 import { emitActivity, type ActivityListener, type AgentActivity } from "./agentActivity";
+import { isBotStandingAuthorized } from "./quantAgent/bots/botStandingAuth";
 import type { BrokerKind } from "./markets/types";
 import type { TradeIntent } from "./types";
 
@@ -101,6 +102,7 @@ export interface ExecuteIntentOptions {
 export type AuthorizationRefusalCode =
   | "unauthorized_source"
   | "auto_mode_revoked"
+  | "bot_mode_revoked"
   | "approval_not_verified";
 
 /**
@@ -157,6 +159,23 @@ async function checkAuthorizationSource(
   const source = intent.authorization_source ?? null;
 
   if (source === "standing_auto") {
+    // Bot-bound standing grant. Distinct from recommendation auto mode: the
+    // owner's per-bot `live` switch is the grant, re-verified here. Requiring
+    // agent trade-mode `auto` as well would be two keys for one question.
+    const botId = typeof intent.bot_id === "string" ? intent.bot_id.trim() : "";
+    if (botId) {
+      const botStillLive = await isBotStandingAuthorized(userId, botId).catch(() => false);
+      if (!botStillLive) {
+        return {
+          ok: false,
+          code: "bot_mode_revoked",
+          reason:
+            "أُلغي تفويض البوت (bot_mode_revoked): البوت لم يعد في وضع live أو أُوقف تنفيذ البوتات على مستوى النشر — لم يُرسل أي أمر.",
+        };
+      }
+      return { ok: true };
+    }
+
     const stillAuthorized = await isAutoExecutionAuthorized(userId).catch(() => false);
     if (!stillAuthorized) {
       return {

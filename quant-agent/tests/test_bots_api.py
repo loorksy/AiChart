@@ -185,6 +185,43 @@ def test_deleting_someone_elses_bot_does_nothing(client: TestClient) -> None:
     )
 
 
+def test_owner_can_arm_and_disarm_execution_mode(client: TestClient) -> None:
+    bot = create_bot(client)
+    assert bot["execution_mode"] == "simulation"
+    armed = client.patch(
+        f"{BASE}/{bot['id']}/execution-mode",
+        json={"owner_user_id": OWNER, "execution_mode": "live"},
+        headers=headers(),
+    )
+    assert armed.status_code == 200
+    assert armed.json()["execution_mode"] == "live"
+    reread = client.get(
+        f"{BASE}/{bot['id']}", params={"owner_user_id": OWNER}, headers=headers()
+    )
+    assert reread.json()["execution_mode"] == "live"
+    disarmed = client.patch(
+        f"{BASE}/{bot['id']}/execution-mode",
+        json={"owner_user_id": OWNER, "execution_mode": "simulation"},
+        headers=headers(),
+    )
+    assert disarmed.status_code == 200
+    assert disarmed.json()["execution_mode"] == "simulation"
+
+
+def test_arming_someone_elses_bot_is_a_404(client: TestClient) -> None:
+    bot = create_bot(client)
+    denied = client.patch(
+        f"{BASE}/{bot['id']}/execution-mode",
+        json={"owner_user_id": INTRUDER, "execution_mode": "live"},
+        headers=headers(),
+    )
+    assert denied.status_code == 404
+    still = client.get(
+        f"{BASE}/{bot['id']}", params={"owner_user_id": OWNER}, headers=headers()
+    )
+    assert still.json()["execution_mode"] == "simulation"
+
+
 def test_simulating_someone_elses_bot_is_a_404(client: TestClient) -> None:
     bot = create_bot(client)
     response = client.post(

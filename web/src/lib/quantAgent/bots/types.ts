@@ -1,9 +1,8 @@
 /**
  * Shared types for the Quant Agent's automated bots.
  *
- * SIMULATION ONLY — see `./brokerPort.ts`. `executionMode` is a union of one
- * value on purpose: a compile error is the cheapest possible guard against a
- * surface quietly starting to render "live".
+ * `executionMode` is the owner's per-bot arming switch. Live orders never leave
+ * this tree for a venue — see `./brokerPort.ts` and `./liveExecution.ts`.
  *
  * Convention follows `lib/quantAgent/types.ts`: hand-built request/response
  * shapes are camelCase, `*Wire` siblings mirror the service's snake_case and
@@ -15,6 +14,7 @@
  * absent because upstream has no engine for it, only a parameter schema.
  */
 import type { QuantOhlcBar } from "../types";
+import type { QuantBotExecutionMode } from "./brokerPort";
 
 export type QuantBotType = "grid" | "dca" | "martingale" | "layered_martingale";
 
@@ -28,7 +28,7 @@ export const QUANT_BOT_TYPES: readonly QuantBotType[] = [
 /** Only grid has a replay engine; the rest preview a ladder and stop there. */
 export const QUANT_BOT_SIMULATABLE_TYPES: readonly QuantBotType[] = ["grid"] as const;
 
-export type QuantBotExecutionModeWire = "simulation";
+export type QuantBotExecutionModeWire = QuantBotExecutionMode;
 
 export type QuantBotSide = "long" | "short" | "neutral";
 
@@ -275,6 +275,11 @@ export interface CreateQuantBotParams {
   initialCapital: number;
   feeRate: number;
   config: Record<string, unknown>;
+}
+
+export interface SetQuantBotExecutionModeParams {
+  botId: string;
+  executionMode: QuantBotExecutionModeWire;
 }
 
 export interface SimulateQuantBotParams {

@@ -1,9 +1,9 @@
 import { BotsClient } from "@/components/quantAgent/bots/BotsClient";
 
 /**
- * `/quant-agent/bots` — the automated bot workbench. SIMULATION ONLY: a bot
- * here replays a configuration against historical candles and never places an
- * order (see `lib/quantAgent/bots/brokerPort.ts`).
+ * `/quant-agent/bots` — the automated bot workbench. Configure, replay, and
+ * arm bots bot-by-bot. Live orders go through createIntent → executeIntent
+ * (see `lib/quantAgent/bots/liveExecution.ts`).
  *
  * A trivial server component rendering one client component, matching
  * `/quant-agent` and `/quant-agent/analysis/history`. Auth, subscription

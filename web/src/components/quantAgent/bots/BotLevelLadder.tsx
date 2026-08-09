@@ -29,7 +29,7 @@ import type {
   QuantBotPreviewSummary,
   QuantBotRiskDiagnostic,
 } from "@/lib/quantAgent/bots/types";
-import { SimulationOnlyBadge } from "./SimulationOnlyBanner";
+import { BotModeBadge } from "./BotStatusBanner";
 
 /** Prices and sizes vary by orders of magnitude across symbols and budgets. */
 function formatAmount(value: number): string {
@@ -72,7 +72,7 @@ export function BotLevelLadder({
             </span>
           ) : null}
           {/* These prices are levels a replay would arm, not resting orders. */}
-          <SimulationOnlyBadge className="ms-auto" />
+          <BotModeBadge mode="simulation" className="ms-auto" />
         </div>
 
         {warnings.length > 0 ? (

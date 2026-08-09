@@ -913,6 +913,8 @@ export async function createIntent(
     recommendation_id?: number | null;
     /** Revision of that recommendation these levels came from (CAS at execute). */
     recommendation_revision_no?: number | null;
+    /** Opaque Quant Agent bot id for bot-originated standing orders. */
+    bot_id?: string | null;
     /** How this order was authorised: explicit approval or a standing mode.
      *  `trade_management` marks an SL/TP-modify proposal, never an order. */
     authorization_source?: "user_approved" | "standing_auto" | "trade_management" | null;
@@ -938,14 +940,19 @@ export async function createIntent(
   const market: MarketType = resolveActiveMarket(intent.market ?? DEFAULT_MARKET);
   const broker: BrokerKind =
     intent.broker ?? (await resolveBrokerForMarket(userId, market));
+  const botId =
+    typeof intent.bot_id === "string" && intent.bot_id.trim()
+      ? intent.bot_id.trim()
+      : null;
   const id = await insertReturningId(
     `INSERT INTO trade_intents
-      (user_id, recommendation_id, recommendation_revision_no, authorization_source, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, recommendation_id, recommendation_revision_no, bot_id, authorization_source, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       intent.recommendation_id ?? null,
       intent.recommendation_revision_no ?? null,
+      botId,
       intent.authorization_source ?? null,
       // Broker spellings are case-sensitive (XAUUSDm). Folding here made every
       // cloud order ask MetaApi for an instrument that does not exist.

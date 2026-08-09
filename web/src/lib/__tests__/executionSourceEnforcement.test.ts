@@ -213,6 +213,28 @@ describe("authorization source enforcement at the choke point", () => {
     assert.equal(result.ok, false);
     assert.equal(result.errorCode, UNAUTHORIZED);
   });
+
+  it("refuses a bot-bound standing_auto intent when the bot is no longer live", async () => {
+    process.env.QUANT_AGENT_BOT_EXECUTION_ENABLED = "1";
+    const { createIntent } = await import("@/lib/store");
+    const { executeIntent } = await import("@/lib/execution");
+    const intent = await createIntent(owner, {
+      bot_id: "qbot_missing",
+      authorization_source: "standing_auto",
+      symbol: "EURUSD",
+      side: "buy",
+      notional: 0,
+      market: "forex",
+      broker: "metaapi",
+      entry: 1.1,
+      stop_loss: 1.09,
+      take_profit: 1.12,
+    });
+    const result = await executeIntent(owner, intent.id, { explicitApproval: false });
+    assert.equal(result.ok, false);
+    assert.equal(result.errorCode, "bot_mode_revoked");
+    delete process.env.QUANT_AGENT_BOT_EXECUTION_ENABLED;
+  });
 });
 
 describe("stale-revision CAS on every order that references a recommendation", () => {

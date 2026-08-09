@@ -2,11 +2,10 @@
 
 /**
  * `/quant-agent/bots` — configure an automated bot, see the ladder it would
- * arm, save it, and replay it against real candles.
+ * arm, save it, replay it, and arm it bot-by-bot.
  *
- * SIMULATION ONLY. The banner at the top of this surface is not boilerplate:
- * nothing on this page can place an order, and there is no configuration that
- * changes that. See `lib/quantAgent/bots/brokerPort.ts`.
+ * Live orders never leave this page for a venue SDK: arming sets
+ * `execution_mode`, and orders go through createIntent → executeIntent.
  *
  * Ported from QuantDinger (https://github.com/OpenByteInc/QuantDinger),
  * Copyright Open Byte Inc., licensed under the Apache License, Version 2.0
@@ -16,10 +15,8 @@
  *  - Upstream is a three-pane desktop workbench (catalog aside, config centre,
  *    preview right). This console is mobile-first, so the three panes stack:
  *    type chips, then the config, then the ladder.
- *  - Upstream's `execution_mode` radio group — `Signal` / `Live`, with a
- *    credential picker appearing when Live is chosen — is GONE. There is no
- *    live mode to offer. Offering the control and refusing the choice would be
- *    worse than not offering it.
+ *  - Per-bot `execution_mode` is owner-controlled; account demo/live comes
+ *    from the linked broker, not a second bot toggle.
  *  - Percent inputs are 0-100 in the UI and 0-100 on the wire; the service's
  *    `ratio()` applies upstream's own `> 1 → /100` conversion, so there is no
  *    second conversion here to disagree with it.
@@ -27,6 +24,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Bot, Play, Sparkles, Trash2 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import {
+  AccountTypeBadge,
+  type AccountType,
+} from "@/components/agent/AccountTypeBadge";
 import { EmptyState, PageHeader, Surface } from "@/components/foundation";
 import { Button } from "@/components/squareui/button";
 import { Input } from "@/components/squareui/input";
@@ -42,6 +43,7 @@ import { SkeletonBlock } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type {
   QuantBot,
+  QuantBotExecutionModeWire,
   QuantBotPreview,
   QuantBotRun,
   QuantBotType,
@@ -49,7 +51,7 @@ import type {
 import { QUANT_BOT_SIMULATABLE_TYPES, QUANT_BOT_TYPES } from "@/lib/quantAgent/bots/types";
 import { BotLevelLadder } from "./BotLevelLadder";
 import { BotRunSummary } from "./BotRunSummary";
-import { SimulationOnlyBadge, SimulationOnlyBanner } from "./SimulationOnlyBanner";
+import { BotModeBadge, BotStatusBanner } from "./BotStatusBanner";
 
 const INTERVALS = ["5m", "15m", "30m", "1h", "4h", "1d"] as const;
 const PREVIEW_DEBOUNCE_MS = 400;
@@ -240,9 +242,11 @@ export function BotsClient() {
   const [preview, setPreview] = useState<QuantBotPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [bots, setBots] = useState<QuantBot[] | null>(null);
+  const [accountType, setAccountType] = useState<AccountType>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [modeBusyId, setModeBusyId] = useState<string | null>(null);
 
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [run, setRun] = useState<QuantBotRun | null>(null);
@@ -270,9 +274,13 @@ export function BotsClient() {
       try {
         const res = await fetch("/api/quant-agent/bots", { cache: "no-store" });
         if (!res.ok) throw new Error("list failed");
-        const json = (await res.json()) as { bots?: QuantBot[] };
+        const json = (await res.json()) as {
+          bots?: QuantBot[];
+          accountType?: AccountType;
+        };
         if (!alive) return;
         setBots(json.bots ?? []);
+        setAccountType(json.accountType ?? null);
         setListError(null);
       } catch {
         if (!alive) return;
@@ -372,6 +380,33 @@ export function BotsClient() {
     [reloadBots, selectedBotId, t],
   );
 
+  const setBotMode = useCallback(
+    async (id: string, executionMode: QuantBotExecutionModeWire) => {
+      setModeBusyId(id);
+      setListError(null);
+      try {
+        const res = await fetch(
+          `/api/quant-agent/bots/${encodeURIComponent(id)}/execution-mode`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ executionMode }),
+          },
+        );
+        if (!res.ok) {
+          setListError(t("qa.bots.mode.failed"));
+          return;
+        }
+        reloadBots();
+      } catch {
+        setListError(t("qa.bots.mode.failed"));
+      } finally {
+        setModeBusyId(null);
+      }
+    },
+    [reloadBots, t],
+  );
+
   const simulate = useCallback(
     async (id: string) => {
       setRunning(true);
@@ -468,10 +503,10 @@ export function BotsClient() {
         title={t("qa.bots.title")}
         description={t("qa.bots.subtitle")}
         icon={<Bot aria-hidden="true" />}
-        actions={<SimulationOnlyBadge />}
+        actions={<AccountTypeBadge type={accountType} size="md" />}
       />
 
-      <SimulationOnlyBanner />
+      <BotStatusBanner accountType={accountType} />
 
       {/* Describe it in words */}
       <Surface padding="sm" className="space-y-2">
@@ -666,10 +701,27 @@ export function BotsClient() {
                   <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-foreground">
                     {t(`qa.bots.type.${bot.botType}`)}
                   </span>
+                  <BotModeBadge mode={bot.executionMode} />
+                  <AccountTypeBadge type={accountType} />
                   <span className="text-[11px] text-muted-foreground">
                     {t("qa.bots.list.levels", { count: String(bot.levels.length) })}
                   </span>
-                  <div className="ms-auto flex items-center gap-1.5">
+                  <div className="ms-auto flex flex-wrap items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={modeBusyId === bot.id}
+                      onClick={() =>
+                        void setBotMode(
+                          bot.id,
+                          bot.executionMode === "live" ? "simulation" : "live",
+                        )
+                      }
+                    >
+                      {bot.executionMode === "live"
+                        ? t("qa.bots.mode.set_simulation")
+                        : t("qa.bots.mode.set_live")}
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
