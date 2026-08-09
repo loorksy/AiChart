@@ -1054,6 +1054,7 @@ export const en = {
   "qa.analysis.status.failed": "Failed",
   "qa.analysis.price.live": "Live price",
   "qa.analysis.price.change_since": "vs. analysis",
+  "qa.analysis.price.as_of": "priced at {time}",
   "qa.analysis.price.needs_link": "Live prices come from your linked MetaTrader account.",
   "qa.analysis.price.current": "Current price",
   "qa.analysis.price.entry": "Entry price",

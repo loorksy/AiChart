@@ -1050,6 +1050,7 @@ export const ar: Record<TranslationKey, string> = {
   "qa.analysis.status.failed": "فشل",
   "qa.analysis.price.live": "السعر الحي",
   "qa.analysis.price.change_since": "مقابل سعر التحليل",
+  "qa.analysis.price.as_of": "سعر الإغلاق عند {time}",
   "qa.analysis.price.needs_link": "الأسعار الحية تأتي من حساب MetaTrader المربوط بحسابك.",
   "qa.analysis.price.current": "السعر الحالي",
   "qa.analysis.price.entry": "سعر الدخول",

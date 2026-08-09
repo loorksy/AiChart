@@ -105,6 +105,7 @@ function collection(): QuantAnalysisCollection {
     missing: ["fundamentals", "news_sentiment", "macro", "analysis_memory"],
     degraded: false,
     warnings: [],
+    primaryAsOfMs: 1_754_700_000_000,
   };
 }
 

@@ -200,7 +200,7 @@ export interface CreateQuantAnalysisInput {
   detail?: { technical: string; fundamental: string; sentiment: string } | null;
   reasons?: string[];
   risks?: string[];
-  dataQuality?: { degraded: boolean; missing: string[] } | null;
+  dataQuality?: QuantAnalysisRecord["dataQuality"];
   error?: string | null;
   /**
    * The primary timeframe's indicator fingerprint. Optional so a `failed` row

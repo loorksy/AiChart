@@ -283,6 +283,16 @@ export interface BuildAnalysisPromptInput {
   missing: string[];
   /** Already-rendered memory block — see `formatMemoryContext`. */
   memoryContext: string;
+  /**
+   * Close time of the newest bar the facts were derived from, epoch ms.
+   *
+   * Upstream labelled this block "REAL-TIME DATA". It never was: it is the
+   * last CLOSED bar, which on a 1h frame can be nearly an hour old and over a
+   * weekend is days old. Telling the model its inputs are real-time invites it
+   * to write "price is currently…", and the reader then compares that sentence
+   * to a live chart. Passing the timestamp lets the block say what it is.
+   */
+  asOfMs?: number | null;
 }
 
 export interface AnalysisPrompt {
@@ -320,6 +330,8 @@ export function buildAnalysisPrompt(input: BuildAnalysisPromptInput): AnalysisPr
 - AVAILABLE: price and OHLC history for ${input.symbol} on the ${input.interval} timeframe, and the technical indicators derived from it (RSI, MACD, moving averages, Bollinger bands, ATR, price position, volume ratio, support/resistance).
 - NOT AVAILABLE on this platform, and therefore absent from every section below: ${missingText}.
 - You must NOT assume, infer, recall, or invent any of the unavailable inputs. Do not describe news, macro conditions, fundamentals, or historical accuracy you were not given.
+- The prices you are given are the LAST CLOSED BAR, not a live quote. Write about them as the level at which the setup was measured, never as where price "is now" or "is currently trading" — the reader may have a live chart open, and it will not match to the tick.
+- Never name, guess at, or allude to which data provider, feed, book, or venue supplied these numbers. It is not part of the analysis and you have not been told it.
 - When a factor has no data, set its score to 50 (neutral) and state plainly in the matching analysis field that no data was available for it. An honest "no data" is a correct answer; a plausible-sounding invention is not.`
     : "";
 
@@ -348,7 +360,7 @@ ${dataAvailability}
 
 ${decisionGuidance}
 
-📐 TECHNICAL LEVELS (Pre-calculated from chart data):
+📐 TECHNICAL LEVELS (derived from the closed bars below, not from the reader's chart):
 - Support: $${fmt(facts.support)} | Resistance: $${fmt(facts.resistance)} | Pivot: $${fmt(facts.pivot)}
 - ATR (14): $${fmt(facts.atr, 4)} (${fmt(facts.volatilityPct)}% volatility)
 - Suggested Stop Loss: $${fmt(facts.suggestedStopLoss, 4)} (based on 2x ATR below support)
@@ -417,7 +429,14 @@ The system will calculate an objective score from the technical indicators acros
 Your decision should align with this objective score when it's significant (>=20 or <=-20).
 When the score is neutral (-20 to +20), you can use your judgment, but still consider giving BUY/SELL if technical indicators are clear.`;
 
-  const marketData = `📊 REAL-TIME DATA:
+  // Not "REAL-TIME DATA" (upstream's label): these are the last CLOSED bar's
+  // numbers. The as-of stamp is what stops the model from narrating them as a
+  // live quote to a reader who has a live chart open next to it.
+  const asOf =
+    typeof input.asOfMs === "number" && Number.isFinite(input.asOfMs)
+      ? new Date(input.asOfMs).toISOString()
+      : null;
+  const marketData = `📊 MARKET SNAPSHOT — last closed bar${asOf ? `, as of ${asOf}` : ""}:
 - Current Price: $${fmt(currentPrice)}
 - 24h Change: ${fmt(facts.change24hPct)}%
 - Support: $${fmt(facts.support)}

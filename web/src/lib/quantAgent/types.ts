@@ -567,7 +567,25 @@ export interface QuantAnalysisRecord {
   detail: { technical: string; fundamental: string; sentiment: string } | null;
   reasons: string[];
   risks: string[];
-  dataQuality: { degraded: boolean; missing: string[] } | null;
+  dataQuality: {
+    degraded: boolean;
+    missing: string[];
+    /**
+     * Close time of the newest bar every price in this row was derived from,
+     * epoch ms. Null only when the primary frame came back empty.
+     *
+     * A price with no as-of time reads as a live quote, and the reader has no
+     * way to tell a market that moved from an analysis that is wrong. This is
+     * what lets the surface say "priced at 14:00" instead of implying "now".
+     */
+    asOfMs?: number | null;
+    /**
+     * Set when the feed itself reported the series as behind wall clock. The
+     * warning was already produced upstream and used to be discarded here, so
+     * a three-day-old-but-complete series was reported as fully healthy.
+     */
+    staleness?: string[];
+  } | null;
   error: string | null;
   createdAt: string;
 }

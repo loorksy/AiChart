@@ -150,6 +150,18 @@ function AnalysisPageBody() {
       ? ((livePrice - analysis.currentPrice) / analysis.currentPrice) * 100
       : null;
 
+  // The bar the analysis priced off. Rendered next to the percentage above so
+  // the difference is attributable to elapsed time rather than reading as an
+  // unexplained disagreement with the user's own chart.
+  const asOfMs = analysis?.dataQuality?.asOfMs ?? null;
+  const analysisAsOf =
+    typeof asOfMs === "number" && Number.isFinite(asOfMs)
+      ? new Date(asOfMs).toLocaleTimeString(locale === "ar" ? "ar" : "en", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+
   const runAnalysis = useCallback(async () => {
     const target = symbol.trim().toUpperCase();
     if (!target) return;
@@ -290,6 +302,17 @@ function AnalysisPageBody() {
             >
               {changePct == null ? "—" : `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%`}
             </dd>
+            {/*
+              This percentage is a difference between two measurements, so it
+              has to say which two. Without the as-of stamp it reads as "the
+              analysis is wrong by 0.4%", when the honest reading is "the last
+              closed bar was N minutes ago and price has moved since".
+            */}
+            {analysisAsOf ? (
+              <dd dir="ltr" className="truncate font-mono text-[10px] text-muted-foreground">
+                {t("qa.analysis.price.as_of").replace("{time}", analysisAsOf)}
+              </dd>
+            ) : null}
           </div>
         </dl>
 

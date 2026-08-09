@@ -428,6 +428,7 @@ export async function runQuantAnalysis(
     interval,
     locale,
     facts: collection.promptFacts,
+    asOfMs: collection.primaryAsOfMs,
     // The SAME filter the stored row gets, and for a stronger reason. The
     // DATA AVAILABILITY block says "NOT AVAILABLE ... validated outcomes of
     // past analyses. You must NOT assume, infer, recall, or invent any of the
@@ -528,12 +529,24 @@ export async function runQuantAnalysis(
     dataQuality: {
       // Structural absence is NOT degradation — it is a permanent property of
       // this platform. Degradation means a frame we asked for came back short
-      // or empty, or quant-agent penalised the inputs it received.
-      degraded: collection.degraded || score.dataQuality.degraded,
+      // or empty, quant-agent penalised the inputs it received, or the feed
+      // told us the series is behind wall clock.
+      //
+      // That last clause is the fix for a real defect: the feed builds a
+      // staleness warning ("this series is N hours behind — do not base price
+      // decisions on it"), collection carried it, and this function never read
+      // it. A three-day-old but fully-stocked series therefore reported
+      // `degraded: false`, and the report printed "every input was available".
+      // It was available; it was just not current, which is the thing a price
+      // reader actually needs to know.
+      degraded:
+        collection.degraded || score.dataQuality.degraded || collection.warnings.length > 0,
       missing: withRecalledMemory(
         mergeMissing(collection.missing, score.dataQuality.missing),
         recalledPatterns.length > 0,
       ),
+      asOfMs: collection.primaryAsOfMs,
+      ...(collection.warnings.length > 0 ? { staleness: collection.warnings } : {}),
     },
     // A completed run still records that the model's own JSON had to be
     // repaired — the row is real, the caveat travels with it.

@@ -204,6 +204,18 @@ export interface QuantAnalysisCollection {
   /** True when a timeframe we asked for came back empty or short. */
   degraded: boolean;
   warnings: string[];
+  /**
+   * Close time of the newest bar on the PRIMARY frame, epoch ms, or null when
+   * that frame came back empty.
+   *
+   * Every price this engine emits — current price, entry, stop, target,
+   * support/resistance — is derived from that bar. Without this timestamp the
+   * report implies the numbers are current, and a reader comparing them to a
+   * live chart has no way to know whether a gap is the market having moved or
+   * the analysis being wrong. It is the single fact that makes the rest of the
+   * price block interpretable, so it travels with the row.
+   */
+  primaryAsOfMs: number | null;
 }
 
 export interface CollectQuantAnalysisInputsOptions {
@@ -375,7 +387,7 @@ function buildTimeframeSnapshot(
   // upstream-specific derivations below are computed on top of it, never
   // instead of it.
   const computed = bars.length
-    ? computeForexIndicators(symbol, interval, bars, "reference_feed")
+    ? computeForexIndicators(symbol, interval, bars, "unattributed")
     : null;
 
   const rsiValue = computed?.rsi14 ?? null;
@@ -571,5 +583,6 @@ export async function collectQuantAnalysisInputs(
     missing: [...QUANT_ANALYSIS_UNAVAILABLE_COMPONENTS],
     degraded,
     warnings,
+    primaryAsOfMs: primary?.bars.at(-1)?.time ?? null,
   };
 }
