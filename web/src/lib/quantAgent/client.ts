@@ -15,6 +15,7 @@ import type {
   QuantAgentCallerContext,
   QuantBacktestResult,
   QuantBacktestResultWire,
+  QuantOhlcBar,
   QuantRecommendation,
   QuantRecommendationWire,
   QuantStrategyDef,
@@ -252,6 +253,40 @@ export async function listQuantAgentStrategies(
 }
 
 /**
+ * The one place a `QuantOhlcBar` becomes the service's wire `Bar`.
+ *
+ * `QuantOhlcBar.time` is epoch milliseconds everywhere on this side; the
+ * service declares `time: str` (ISO 8601) and pydantic does not coerce an int
+ * into a str, so sending the raw bar is a hard HTTP 422 — not a soft
+ * mismatch. Both callers go through this function specifically so they cannot
+ * drift: the backtest path converted correctly while the recommendation path
+ * passed `input.bars` straight through, which meant the recommendation
+ * endpoint had never once succeeded from web. It stayed invisible because
+ * both crons skip the call entirely when the feed returns no bars, so the
+ * request was only ever built once real candles existed.
+ */
+interface ServiceBar {
+  /** ISO 8601. The service's `Bar.time` is a str, not an epoch number. */
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number | null;
+}
+
+function toServiceBars(bars: QuantOhlcBar[]): ServiceBar[] {
+  return bars.map((bar) => ({
+    time: new Date(bar.time).toISOString(),
+    open: bar.open,
+    high: bar.high,
+    low: bar.low,
+    close: bar.close,
+    volume: bar.volume ?? null,
+  }));
+}
+
+/**
  * Assembles candles are pushed here (§2 — web gathers, quant-agent decides).
  * Returns null on "no signal", never throws for that case.
  */
@@ -267,7 +302,7 @@ export async function generateQuantRecommendation(
       symbol: input.symbol,
       market: input.market,
       interval: input.interval,
-      bars: input.bars,
+      bars: toServiceBars(input.bars),
       owner_user_id: context.userId,
       request_id: context.requestId,
     }),
@@ -399,9 +434,9 @@ export function normalizeQuantBacktestResult(raw: QuantBacktestResultWire): Quan
  * plan §4/§5). POSTs the strategy's own historical bars to quant-agent's
  * isolated backtest engine (single subprocess for the whole batch, never the
  * live per-candle sandbox path) and reads back R-multiple performance
- * metrics. `bars[].time` is converted to ISO 8601 here — `QuantOhlcBar.time`
- * is epoch milliseconds everywhere else in this client, but the backtest
- * contract's bar shape is ISO8601 strings. Mirrors every other function in
+ * metrics. Bars go through `toServiceBars`, shared with the recommendation
+ * call so the epoch-ms → ISO conversion cannot be applied to one and not the
+ * other. Mirrors every other function in
  * this file: same `serviceRequest` call, same `QuantAgentServiceError` path.
  * It differs in exactly one way — its own timeout, because this is the only
  * call whose server-side deadline exceeds the 30s global cap.
@@ -416,14 +451,7 @@ export async function backtestQuantStrategy(
     {
       method: "POST",
       body: JSON.stringify({
-        bars: params.bars.map((bar) => ({
-          time: new Date(bar.time).toISOString(),
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-          volume: bar.volume ?? null,
-        })),
+        bars: toServiceBars(params.bars),
         symbol: params.symbol,
         market: params.market,
         interval: params.interval,
