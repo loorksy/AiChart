@@ -48,6 +48,28 @@ function clientTimeoutMs(): number {
   return Number.isFinite(configured) ? Math.min(30_000, Math.max(100, configured)) : 10_000;
 }
 
+/**
+ * Backtests get their own, much larger ceiling.
+ *
+ * `clientTimeoutMs` is hard-capped at 30s, which is right for the ordinary
+ * request/response calls in this file but is BELOW what the backtest endpoint
+ * is allowed to take: the service's own `backtest_batch_timeout_seconds`
+ * defaults to 90 and is settable up to 300. Sharing the global value means the
+ * client aborts a run the server is still legitimately working on, and the
+ * wizard reports a timeout for a backtest that would have produced real
+ * numbers — the caller giving up before the callee's own deadline is never a
+ * correct pairing.
+ *
+ * Override with QUANT_AGENT_BACKTEST_CLIENT_TIMEOUT_MS. Floor is the global
+ * value (never shorter than an ordinary call), ceiling 300s to match the
+ * service's own maximum.
+ */
+function backtestTimeoutMs(): number {
+  const configured = Number(process.env.QUANT_AGENT_BACKTEST_CLIENT_TIMEOUT_MS || 120_000);
+  const resolved = Number.isFinite(configured) ? configured : 120_000;
+  return Math.min(300_000, Math.max(clientTimeoutMs(), resolved));
+}
+
 function serviceConfig(): { url: string; token: string } {
   requireQuantAgentServiceEnabled();
   const url = process.env.QUANT_AGENT_SERVICE_URL?.trim().replace(/\/$/, "");
@@ -62,17 +84,31 @@ function serviceConfig(): { url: string; token: string } {
   return { url, token };
 }
 
+/** Per-call overrides. Omitted fields keep this file's ordinary behaviour. */
+interface ServiceRequestOptions {
+  /** Abort deadline for this one call. Defaults to `clientTimeoutMs()`. */
+  timeoutMs?: number;
+  /**
+   * Whether a timeout is worth one automatic retry. True for cheap calls; set
+   * false for anything long-running, where retrying doubles the worst-case
+   * wall clock for work that already had its full deadline.
+   */
+  retryOnTimeout?: boolean;
+}
+
 async function serviceRequestOnce<T>(
   context: QuantAgentCallerContext,
   path: string,
   init: RequestInit = {},
+  options: ServiceRequestOptions = {},
 ): Promise<T> {
   if (!Number.isInteger(context.userId) || context.userId <= 0 || !context.requestId) {
     throw new QuantAgentServiceError("QUANT_AGENT_SERVICE_ERROR", "Invalid tenant context", 400);
   }
   const { url, token } = serviceConfig();
+  const timeoutMs = options.timeoutMs ?? clientTimeoutMs();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), clientTimeoutMs());
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${url}${path}`, {
       ...init,
@@ -99,7 +135,7 @@ async function serviceRequestOnce<T>(
     if (error instanceof Error && error.name === "AbortError") {
       throw new QuantAgentServiceError(
         "QUANT_AGENT_SERVICE_TIMEOUT",
-        `Quant Agent Service request timed out after ${clientTimeoutMs()}ms (path=${path})`,
+        `Quant Agent Service request timed out after ${timeoutMs}ms (path=${path})`,
         504,
       );
     }
@@ -122,13 +158,21 @@ async function serviceRequest<T>(
   context: QuantAgentCallerContext,
   path: string,
   init: RequestInit = {},
+  options: ServiceRequestOptions = {},
 ): Promise<T> {
   try {
-    return await serviceRequestOnce<T>(context, path, init);
+    return await serviceRequestOnce<T>(context, path, init, options);
   } catch (error) {
     if (!isTransientQuantAgentError(error)) throw error;
+    if (
+      options.retryOnTimeout === false &&
+      error instanceof QuantAgentServiceError &&
+      error.code === "QUANT_AGENT_SERVICE_TIMEOUT"
+    ) {
+      throw error;
+    }
     await sleep(250);
-    return serviceRequestOnce<T>(context, path, init);
+    return serviceRequestOnce<T>(context, path, init, options);
   }
 }
 
@@ -358,8 +402,9 @@ export function normalizeQuantBacktestResult(raw: QuantBacktestResultWire): Quan
  * metrics. `bars[].time` is converted to ISO 8601 here — `QuantOhlcBar.time`
  * is epoch milliseconds everywhere else in this client, but the backtest
  * contract's bar shape is ISO8601 strings. Mirrors every other function in
- * this file: same `serviceRequest` call, same `QuantAgentServiceError` /
- * transient-retry path.
+ * this file: same `serviceRequest` call, same `QuantAgentServiceError` path.
+ * It differs in exactly one way — its own timeout, because this is the only
+ * call whose server-side deadline exceeds the 30s global cap.
  */
 export async function backtestQuantStrategy(
   context: QuantAgentCallerContext,
@@ -386,6 +431,11 @@ export async function backtestQuantStrategy(
         request_id: context.requestId,
       }),
     },
+    // Its own deadline, not the 30s-capped global one — see backtestTimeoutMs.
+    // No timeout retry: the run already had its full budget, and a second
+    // attempt would double the wizard's worst case for the same work. A
+    // connection-level failure is still retried once, as everywhere else.
+    { timeoutMs: backtestTimeoutMs(), retryOnTimeout: false },
   );
   return normalizeQuantBacktestResult(raw);
 }
