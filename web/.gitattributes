@@ -1,5 +1,0 @@
-# TradingView Advanced Charts is vendored verbatim. Mark it -text so git never
-# rewrites line endings on it: this is a licensed third-party build and the
-# bytes checked out on Linux must equal the bytes the vendor shipped.
-/public/charting_library/** -text
-/src/vendor/tradingview/** -text
