@@ -6,6 +6,7 @@ import {
   normalizeActivationRule,
   describeActivationRule,
   evaluateActivationRule,
+  explainActivationRuleIncoherence,
   parseActivationRule,
   serializeActivationRule,
   type ActivationRule,
@@ -333,6 +334,112 @@ describe("parsing", () => {
     // The safe direction: no rule means nothing fires, rather than falling back
     // to a touch.
     assert.equal(parseActivationRule("{}"), null);
+  });
+});
+
+describe("explainActivationRuleIncoherence — issue-time price coherence", () => {
+  // Regression: the XAUUSD conditional-sell incident. Sell plan, entry
+  // 4348.27; the rule armed on an event whose relationship to the CURRENT
+  // price made the stored condition grade a different event than the
+  // sentence shown to the user.
+  it("rejects a close-below sell trigger when price is already below the level", () => {
+    const violation = explainActivationRuleIncoherence({
+      rule: { kind: "candle_close_below", level: 4348.27, timeframe: "15m" },
+      direction: "sell",
+      currentPrice: 4340,
+      tolerance: 0.5,
+    });
+    assert.ok(violation, "expected an already-satisfied violation");
+    assert.match(violation!, /already satisfied/);
+  });
+
+  it("accepts the same rule when price is still above the level", () => {
+    assert.equal(
+      explainActivationRuleIncoherence({
+        rule: { kind: "candle_close_below", level: 4348.27, timeframe: "15m" },
+        direction: "sell",
+        currentPrice: 4355,
+        tolerance: 0.5,
+      }),
+      null,
+    );
+  });
+
+  it("rejects a rejection_confirmed whose level price has already crossed beyond", () => {
+    // Sentence says "price returns UP to 4348 and gets rejected", but price is
+    // already above the level — the stored rule would grade a plain break.
+    const violation = explainActivationRuleIncoherence({
+      rule: {
+        kind: "rejection_confirmed",
+        level: 4348.27,
+        direction: "below",
+        timeframe: "15m",
+      },
+      direction: "sell",
+      currentPrice: 4356,
+      tolerance: 0.5,
+    });
+    assert.ok(violation, "expected a wrong-side violation");
+    assert.match(violation!, /beyond it/);
+  });
+
+  it("accepts a coherent rejection sell: price below POI, awaiting return up into it", () => {
+    assert.equal(
+      explainActivationRuleIncoherence({
+        rule: {
+          kind: "rejection_confirmed",
+          level: 4348.27,
+          direction: "below",
+          timeframe: "15m",
+        },
+        direction: "sell",
+        currentPrice: 4330,
+        tolerance: 0.5,
+      }),
+      null,
+    );
+  });
+
+  it("rejects a breakout trigger that argues against the plan's direction", () => {
+    const violation = explainActivationRuleIncoherence({
+      rule: {
+        kind: "breakout_confirmed",
+        level: 4360,
+        direction: "above",
+        timeframe: "15m",
+      },
+      direction: "sell",
+      currentPrice: 4340,
+    });
+    assert.ok(violation, "expected a direction contradiction");
+    assert.match(violation!, /contradicts/);
+  });
+
+  it("checks every leaf of a composite", () => {
+    const violation = explainActivationRuleIncoherence({
+      rule: {
+        kind: "composite",
+        operator: "all",
+        rules: [
+          { kind: "price_touch", level: 4350, timeframe: "15m" },
+          { kind: "candle_close_below", level: 4348, timeframe: "15m" },
+        ],
+      },
+      direction: "sell",
+      currentPrice: 4340,
+    });
+    assert.ok(violation, "expected the already-satisfied leaf to be flagged");
+  });
+
+  it("price_touch is never flagged (instant by design)", () => {
+    assert.equal(
+      explainActivationRuleIncoherence({
+        rule: { kind: "price_touch", level: 4350, timeframe: "15m" },
+        direction: "sell",
+        currentPrice: 4340,
+      }),
+      null,
+    );
   });
 });
 

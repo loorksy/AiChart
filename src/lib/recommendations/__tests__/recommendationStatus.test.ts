@@ -61,8 +61,12 @@ describe("evaluateRecommendation", () => {
     assert.equal(r.status, "triggered");
   });
 
-  it("does not count TP before entry is triggered", () => {
-    // A candle spikes to TP1 but never touches the entry → no trigger, no TP.
+  it("does not count TP before entry is triggered — and closes the plan as missed", () => {
+    // A candle spikes to TP1 but never touches the entry → no trigger, no TP
+    // credited. The predicted move happened WITHOUT a fill, so the plan ends
+    // as a missed opportunity (expired + missedWithoutFill) instead of
+    // waiting forever for an entry the market already ran away from (the
+    // XAUUSD conditional-sell incident).
     const r = evaluateRecommendation({
       recommendation: rec({ entry: 99 }),
       candles: [candle(1, 101, 103, 100, 102)],
@@ -70,7 +74,22 @@ describe("evaluateRecommendation", () => {
     });
     assert.equal(r.triggered, false);
     assert.equal(r.tp1HitAt, undefined);
+    assert.equal(r.status, "expired");
+    assert.equal(r.missedWithoutFill, true);
+    assert.equal(r.outcome, "expired");
+  });
+
+  it("stays pending when price moves toward TP1 but does not reach it", () => {
+    // Same shape as above but the spike stops short of TP1 (102) → still a
+    // live plan waiting for its entry, NOT a missed opportunity.
+    const r = evaluateRecommendation({
+      recommendation: rec({ entry: 99 }),
+      candles: [candle(1, 101, 101.8, 100, 101.5)],
+      now: T + MIN,
+    });
+    assert.equal(r.triggered, false);
     assert.equal(r.status, "pending_entry");
+    assert.equal(r.missedWithoutFill ?? false, false);
   });
 
   it("ignores the creation candle", () => {

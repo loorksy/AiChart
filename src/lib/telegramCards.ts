@@ -61,6 +61,7 @@ const LIFECYCLE_EMOJI: Record<LifecycleEventType, string> = {
   sl_hit: "🛑",
   invalidated: "❌",
   expired: "⌛",
+  missed_no_fill: "🚫",
   executed_auto: "🤖",
   execution_skipped: "⏸️",
 };
@@ -103,6 +104,8 @@ export function lifecycleEventLabel(type: LifecycleEventType): string {
       return "أُبطلت الخطة";
     case "expired":
       return "انتهت الصلاحية";
+    case "missed_no_fill":
+      return "فاتت الفرصة دون تنفيذ";
     case "executed_auto":
       return "نُفّذت آلياً";
     case "execution_skipped":

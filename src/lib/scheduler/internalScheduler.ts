@@ -38,14 +38,24 @@ export interface InternalSchedulerStatus {
   sweepLastError: string | null;
 }
 
-const state: InternalSchedulerStatus = {
+/**
+ * State lives on globalThis, NOT at module level: Next.js compiles the
+ * instrumentation hook and API routes into separate module graphs, so a
+ * module-level object here would exist twice — the scheduler would write to
+ * one instance while /api/healthz reads the other and forever reports
+ * `enabled: false`. One process ⇒ one shared status object.
+ */
+const globalState = globalThis as typeof globalThis & {
+  __aichartInternalSchedulerState?: InternalSchedulerStatus;
+};
+const state: InternalSchedulerStatus = (globalState.__aichartInternalSchedulerState ??= {
   enabled: false,
   startedAt: null,
   warmLastRunAt: null,
   warmLastError: null,
   sweepLastRunAt: null,
   sweepLastError: null,
-};
+});
 
 /** Exposed for the healthz diagnostics endpoint. */
 export function internalSchedulerStatus(): InternalSchedulerStatus {
