@@ -37,6 +37,7 @@ import {
   fetchQuantAgentAnalysisBars,
   QUANT_AGENT_DEFAULT_BAR_LIMIT,
 } from "../marketFeed";
+import { isAnchored, resolvePriceBasis, shiftBars, type PriceBasis } from "./priceBasis";
 import type {
   QuantAnalysisCollectionMetaWire,
   QuantAnalysisIndicatorsWire,
@@ -216,6 +217,12 @@ export interface QuantAnalysisCollection {
    * price block interpretable, so it travels with the row.
    */
   primaryAsOfMs: number | null;
+  /**
+   * How the prices below relate to the reader's own broker. `divergent` means
+   * the two books disagree too much to reconcile and the caller must publish
+   * the direction WITHOUT levels.
+   */
+  priceBasis: PriceBasis;
 }
 
 export interface CollectQuantAnalysisInputsOptions {
@@ -223,6 +230,12 @@ export interface CollectQuantAnalysisInputsOptions {
   market?: string;
   interval?: string;
   limit?: number;
+  /**
+   * Whose book to express the result in. Absent (a cron, an unlinked user)
+   * leaves the numbers in the shared reference space, which is correct: there
+   * is no second book to reconcile against, so there is nothing to translate.
+   */
+  userId?: number | null;
 }
 
 export class QuantAnalysisCollectionError extends Error {}
@@ -506,6 +519,18 @@ export async function collectQuantAnalysisInputs(
   const snapshots = new Map<string, TimeframeSnapshot>();
   let symbol = options.symbol;
 
+  /*
+   * Two passes, because anchoring needs a number that only exists after the
+   * first one.
+   *
+   * The offset between the reference series and the reader's own book is
+   * measured at the primary frame's last close, and every frame has to be
+   * shifted by that same offset — a per-frame offset would tilt the frames
+   * relative to each other and corrupt the consensus. So: read every frame
+   * raw, measure once, then shift and derive.
+   */
+  const rawFrames = new Map<string, { interval: string; symbol: string; bars: QuantOhlcBar[] }>();
+
   // Sequential, not parallel: every frame hits the same warehouse rows for the
   // same symbol, and the feed's own live-backfill path is the expensive part —
   // firing five of those at once is how one analysis becomes five OANDA pulls.
@@ -520,7 +545,7 @@ export async function collectQuantAnalysisInputs(
       });
       symbol = fed.symbol;
       if (fed.warning) warnings.push(`${label}: ${fed.warning}`);
-      snapshots.set(label, buildTimeframeSnapshot(label, tfInterval, fed.symbol, fed.bars));
+      rawFrames.set(label, { interval: tfInterval, symbol: fed.symbol, bars: fed.bars });
     } catch (error) {
       // One unavailable horizon must not sink the whole analysis — the frame
       // is recorded as failed and quant-agent weights over what did arrive.
@@ -529,8 +554,25 @@ export async function collectQuantAnalysisInputs(
         timeframe: label,
         error: error instanceof Error ? error.message : String(error),
       });
-      snapshots.set(label, buildTimeframeSnapshot(label, tfInterval, options.symbol, []));
+      rawFrames.set(label, { interval: tfInterval, symbol: options.symbol, bars: [] });
     }
+  }
+
+  const priceBasis = await resolvePriceBasis({
+    userId: options.userId,
+    symbol,
+    referencePrice: rawFrames.get(primaryLabel)?.bars.at(-1)?.close ?? null,
+  });
+
+  // Shift the SERIES, never the derived outputs. Every level this engine
+  // produces is an affine combination of bar prices with weights summing to
+  // one, so shifting the inputs moves each output by exactly the same offset
+  // and leaves every distance — stop distance, R:R, ATR — untouched. Doing it
+  // here rather than field-by-field downstream is what makes that structural
+  // instead of a list someone has to remember to extend.
+  for (const [label, frame] of rawFrames) {
+    const bars = isAnchored(priceBasis) ? shiftBars(frame.bars, priceBasis.delta) : frame.bars;
+    snapshots.set(label, buildTimeframeSnapshot(label, frame.interval, frame.symbol, bars));
   }
 
   const daily = snapshots.get("1D");
@@ -584,5 +626,6 @@ export async function collectQuantAnalysisInputs(
     degraded,
     warnings,
     primaryAsOfMs: primary?.bars.at(-1)?.time ?? null,
+    priceBasis,
   };
 }

@@ -585,6 +585,20 @@ export interface QuantAnalysisRecord {
      * a three-day-old-but-complete series was reported as fully healthy.
      */
     staleness?: string[];
+    /**
+     * How the prices in this row relate to the reader's own broker.
+     *
+     * `anchored` means every level was translated into their price space by
+     * `delta`; `divergent` means the two books disagreed too much to reconcile
+     * and the level fields were withheld rather than shown in the wrong space.
+     * Recorded because "this number was moved, by this much" is a materially
+     * different claim from "this number is as measured".
+     */
+    priceBasis?: {
+      status: string;
+      delta: number;
+      divergenceRatio: number | null;
+    };
   } | null;
   error: string | null;
   createdAt: string;

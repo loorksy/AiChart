@@ -91,6 +91,14 @@ function collection(overrides: Partial<QuantAnalysisCollection> = {}): QuantAnal
     degraded: false,
     warnings: [],
     primaryAsOfMs: 1_754_700_000_000,
+    priceBasis: {
+      status: "unlinked",
+      delta: 0,
+      brokerMid: null,
+      referencePrice: 4342.23,
+      divergenceRatio: null,
+      suppressLevels: false,
+    },
     ...overrides,
   };
 }

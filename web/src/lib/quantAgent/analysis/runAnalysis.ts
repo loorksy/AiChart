@@ -343,7 +343,16 @@ export async function runQuantAnalysis(
 
   let collection: QuantAnalysisCollection;
   try {
-    collection = await deps.collectInputs({ symbol, market, interval });
+    collection = await deps.collectInputs({
+      symbol,
+      market,
+      interval,
+      // Whose book to express the levels in. Without this the reader
+      // compares our entry to their own chart and finds it in the wrong
+      // place — see `priceBasis.ts` for why the offset is applied to the
+      // series rather than to each level.
+      userId: input.userId,
+    });
   } catch (error) {
     return persistFailure(error instanceof Error ? error.message : String(error));
   }
@@ -495,6 +504,29 @@ export async function runQuantAnalysis(
   const detail = coerceDetail(finalized.analysis);
   const parseFailureReport = typeof finalized.report === "string" ? finalized.report : null;
 
+  /*
+   * The divergence guard.
+   *
+   * `resolvePriceBasis` refuses to reconcile two books that disagree by more
+   * than half a percent, because at that width the gap is not a spread — it is
+   * a different instrument, or a reference series old enough that the market
+   * has moved away from it. Both make the LEVELS untrustworthy while leaving
+   * the DIRECTION intact: RSI, MACD, trend and consensus are computed from
+   * differences and ratios, and none of them cares which book measured them.
+   *
+   * So the row keeps its verdict, its scores and its reasoning, and drops the
+   * four numbers a reader would otherwise place an order against. Publishing a
+   * direction with no entry is a smaller failure than publishing an entry in
+   * the wrong price space, and the UI can say which of the two happened.
+   */
+  const withholdLevels = collection.priceBasis.suppressLevels;
+  if (withholdLevels) {
+    log.warn("quant_agent.analysis.levels_withheld", {
+      symbol: collection.symbol,
+      divergenceRatio: collection.priceBasis.divergenceRatio,
+    });
+  }
+
   const record = await deps.createAnalysis(input.userId, {
     market,
     symbol: collection.symbol,
@@ -502,10 +534,10 @@ export async function runQuantAnalysis(
     status: "completed",
     decision: coerceDecision(finalized.decision),
     confidence: clampScore(finalized.confidence),
-    currentPrice,
-    entryPrice: finiteOrNull(finalized.entry_price),
-    stopLoss: finiteOrNull(finalized.stop_loss),
-    takeProfit: finiteOrNull(finalized.take_profit),
+    currentPrice: withholdLevels ? null : currentPrice,
+    entryPrice: withholdLevels ? null : finiteOrNull(finalized.entry_price),
+    stopLoss: withholdLevels ? null : finiteOrNull(finalized.stop_loss),
+    takeProfit: withholdLevels ? null : finiteOrNull(finalized.take_profit),
     positionSizePct: finiteOrNull(finalized.position_size_pct),
     horizon: coerceHorizon(finalized.timeframe),
     summary: typeof finalized.summary === "string" ? finalized.summary : null,
@@ -547,6 +579,13 @@ export async function runQuantAnalysis(
       ),
       asOfMs: collection.primaryAsOfMs,
       ...(collection.warnings.length > 0 ? { staleness: collection.warnings } : {}),
+      // The transform has to be auditable: a level that was moved, and by how
+      // much, is a different claim from one that was never touched.
+      priceBasis: {
+        status: collection.priceBasis.status,
+        delta: collection.priceBasis.delta,
+        divergenceRatio: collection.priceBasis.divergenceRatio,
+      },
     },
     // A completed run still records that the model's own JSON had to be
     // repaired — the row is real, the caveat travels with it.
