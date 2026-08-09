@@ -51,9 +51,14 @@ describe("test:ci covers the execution-safety suites", () => {
   });
 
   it("wires test:execution into test:ci", () => {
-    const ci = packageScripts()["test:ci"] ?? "";
+    const scripts = packageScripts();
+    const ci = scripts["test:ci"] ?? "";
+    // test:ci may be a fail-soft runner script; follow the indirection.
+    const expanded = ci.includes("run-ci-tests.mjs")
+      ? readFileSync(path.join(WEB_ROOT, "scripts", "run-ci-tests.mjs"), "utf8")
+      : ci;
     assert.ok(
-      ci.includes("test:execution"),
+      expanded.includes("test:execution"),
       "test:ci must run test:execution — otherwise a green CI says nothing about the execution gates",
     );
   });
@@ -61,11 +66,19 @@ describe("test:ci covers the execution-safety suites", () => {
   it("keeps the P0 suites reachable from test:ci by some path", () => {
     const scripts = packageScripts();
     const ci = scripts["test:ci"] ?? "";
-    const referenced = ci
-      .split("&&")
-      .map((part) => part.trim().replace(/^npm run /, ""))
-      .map((name) => scripts[name] ?? "")
-      .join(" ");
+    let referenced: string;
+    if (ci.includes("run-ci-tests.mjs")) {
+      // The runner lists suite script names; expand each to its command body.
+      const runner = readFileSync(path.join(WEB_ROOT, "scripts", "run-ci-tests.mjs"), "utf8");
+      const names = [...runner.matchAll(/"test:[^"]+"/g)].map((m) => m[0].slice(1, -1));
+      referenced = names.map((name) => scripts[name] ?? "").join(" ");
+    } else {
+      referenced = ci
+        .split("&&")
+        .map((part) => part.trim().replace(/^npm run /, ""))
+        .map((name) => scripts[name] ?? "")
+        .join(" ");
+    }
     for (const suite of P0_SUITES) {
       assert.ok(referenced.includes(suite), `${suite} is not reachable from test:ci`);
     }

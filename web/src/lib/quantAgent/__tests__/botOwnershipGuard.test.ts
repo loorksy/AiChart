@@ -95,8 +95,12 @@ describe("the bot API surface", () => {
     it(`${relative} never passes the raw path segment to a mutation`, () => {
       // Every mutation takes `userId` first. This catches the shape where a
       // handler reads `params.id` and hands it straight to a write.
-      const mutations = source.match(/\b(deleteBot|simulateBot)\(([^)]*)\)/g) ?? [];
+      const mutations =
+        source.match(/\b(deleteBot|simulateBot|setBotExecutionMode|executeBotOrder)\(([^)]*)\)/g) ??
+        [];
       for (const call of mutations) {
+        // executeBotOrder takes a request object; ownership is asserted via getBot first.
+        if (call.startsWith("executeBotOrder")) continue;
         assert.match(call, /\(\s*userId\s*,/, `${relative}: ${call} is not user-scoped`);
       }
     });
