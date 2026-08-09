@@ -73,13 +73,6 @@ const PROVIDERS: { id: string; label: string }[] = [
   { id: "openrouter", label: "OpenRouter (اختبار)" },
 ];
 
-/** Curated OpenRouter route ids offered for testing (id → label). */
-const OPENROUTER_MODELS: { id: string; label: string }[] = [
-  { id: "openai/gpt-4o-mini", label: "GPT-4o Mini" },
-  { id: "anthropic/claude-sonnet-4", label: "Claude Sonnet 4" },
-  { id: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash" },
-];
-
 export function AdminKeysPanel() {
   const [fields, setFields] = useState<ConfigField[]>([]);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -129,6 +122,12 @@ export function AdminKeysPanel() {
     const patch: Record<string, string> = {};
     for (const [key, value] of Object.entries(draft)) {
       if (value.trim()) patch[key] = value.trim();
+    }
+    // Pasting an OpenRouter key should make the gateway usable immediately —
+    // only skip auto-enable when the operator explicitly set the kill-switch
+    // to off in this same save.
+    if (patch.OPENROUTER_API_KEY && patch.OPENROUTER_ENABLED !== "0") {
+      patch.OPENROUTER_ENABLED = "1";
     }
     if (Object.keys(patch).length === 0) {
       setMsg({
@@ -405,12 +404,16 @@ export function AdminKeysPanel() {
                       >
                         openrouter.ai
                       </a>
-                      . المفتاح وحده لا يكفي — يجب تفعيل المفتاح أدناه، ويمكن
-                      إلغاء التفعيل في أي وقت دون حذف المفتاح.
+                      . بعد حفظ المفتاح تُجلب النماذج مباشرة من OpenRouter، ويمكن
+                      إيقاف التفعيل في أي وقت دون حذف المفتاح.
                     </p>
                     {openrouterEnabledField && (
                       <ConfigFieldRow
-                        f={openrouterEnabledField}
+                        f={{
+                          ...openrouterEnabledField,
+                          // Unset = enabled (opt-out kill-switch).
+                          value: openrouterEnabledField.value ?? "1",
+                        }}
                         draft={draft}
                         setDraftValue={setDraftValue}
                       />
@@ -422,44 +425,18 @@ export function AdminKeysPanel() {
                         setDraftValue={setDraftValue}
                       />
                     )}
-                    {openrouterModelField && (
-                      <Field
-                        label={
-                          <>
-                            نموذج OpenRouter
-                            <span
-                              className="ms-2 text-[10px] text-muted-foreground"
-                              dir="ltr"
-                            >
-                              OPENROUTER_MODEL
-                            </span>
-                          </>
-                        }
-                        htmlFor="OPENROUTER_MODEL"
-                      >
-                        <select
-                          id="OPENROUTER_MODEL"
-                          dir="ltr"
-                          className="admin-input focus-ring tap-target h-10 w-full text-sm"
-                          value={currentOpenRouterModel}
-                          onChange={(e) =>
-                            setDraftValue("OPENROUTER_MODEL", e.target.value)
-                          }
-                        >
-                          {OPENROUTER_MODELS.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label} — {m.id}
-                            </option>
-                          ))}
-                          {!OPENROUTER_MODELS.some(
-                            (m) => m.id === currentOpenRouterModel,
-                          ) && (
-                            <option value={currentOpenRouterModel}>
-                              {currentOpenRouterModel}
-                            </option>
-                          )}
-                        </select>
-                      </Field>
+                    {openrouterKeyField && (
+                      <OpenAIModelPicker
+                        apiKeyDraft={draft.OPENROUTER_API_KEY ?? ""}
+                        apiKeyConfigured={openrouterKeyField.configured}
+                        currentModel={currentOpenRouterModel}
+                        draftModel={draft.OPENROUTER_MODEL ?? ""}
+                        onSelectModel={(id) => setDraftValue("OPENROUTER_MODEL", id)}
+                        endpoint="/api/admin/config/openrouter-models"
+                        title="نموذج OpenRouter الافتراضي"
+                        emptyHint="أدخل مفتاح OpenRouter أعلاه لجلب النماذج المتاحة ديناميكياً."
+                        loadingHint="جارٍ جلب النماذج من OpenRouter…"
+                      />
                     )}
                   </div>
 

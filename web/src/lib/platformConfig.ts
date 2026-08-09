@@ -85,10 +85,10 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "claude-opus-5",
   },
   {
-    // Test-only gateway. Off by default — the key alone must not expose
-    // OpenRouter until the operator flips this toggle in the admin panel.
+    // Test gateway kill-switch. Unset = on (key alone is enough to use it);
+    // set to 0 to disable without deleting the key.
     key: "OPENROUTER_ENABLED",
-    label: "تفعيل OpenRouter (للاختبارات)",
+    label: "تفعيل OpenRouter (للاختبارات — أوقف لإلغائه)",
     labelEn: "OPENROUTER_ENABLED",
     group: "ai",
     secret: false,
