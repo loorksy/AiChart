@@ -6,12 +6,14 @@ import {
   getActiveModel,
   getActiveProvider,
   isLLMConfigured,
+  isOfferedModelRef,
   isOpenRouterEnabled,
   isProviderReady,
   parseModelRef,
   parsePlatformProvider,
   resolveUserModelSelection,
 } from "@/lib/llm";
+import { listOpenRouterModels } from "@/lib/openaiCompat";
 
 const ENV_KEYS = [
   "AI_PROVIDER",
@@ -54,12 +56,12 @@ describe("OpenRouter provider (test gateway)", () => {
     assert.equal(isAllowedModelRef("openrouter/not-a-real-model"), false);
   });
 
-  it("stays disabled unless the admin toggle is on", () => {
+  it("is enabled by default; only an explicit off kills it", () => {
     clearPlatformConfigCache();
     process.env.OPENROUTER_API_KEY = "sk-or-test";
     delete process.env.OPENROUTER_ENABLED;
-    assert.equal(isOpenRouterEnabled(), false);
-    assert.equal(isProviderReady("openrouter"), false);
+    assert.equal(isOpenRouterEnabled(), true);
+    assert.equal(isProviderReady("openrouter"), true);
 
     process.env.OPENROUTER_ENABLED = "1";
     clearPlatformConfigCache();
@@ -72,12 +74,12 @@ describe("OpenRouter provider (test gateway)", () => {
     assert.equal(isProviderReady("openrouter"), false);
   });
 
-  it("activates OpenRouter as platform default only when ready", () => {
+  it("activates OpenRouter as platform default when key is present", () => {
     clearPlatformConfigCache();
     process.env.AI_PROVIDER = "openrouter";
     process.env.OPENROUTER_API_KEY = "sk-or-test";
     process.env.OPENROUTER_MODEL = "openai/gpt-4o-mini";
-    process.env.OPENROUTER_ENABLED = "1";
+    delete process.env.OPENROUTER_ENABLED;
 
     assert.equal(parsePlatformProvider("openrouter"), "openrouter");
     assert.equal(getActiveProvider(), "openrouter");
@@ -90,7 +92,7 @@ describe("OpenRouter provider (test gateway)", () => {
     assert.equal(isLLMConfigured(), false);
   });
 
-  it("resolveUserModelSelection ignores OpenRouter when disabled", async () => {
+  it("resolveUserModelSelection accepts dynamic OpenRouter ids when ready", async () => {
     clearPlatformConfigCache();
     process.env.OPENROUTER_API_KEY = "sk-or-test";
     process.env.OPENROUTER_ENABLED = "0";
@@ -100,11 +102,61 @@ describe("OpenRouter provider (test gateway)", () => {
       null,
     );
 
-    process.env.OPENROUTER_ENABLED = "1";
+    delete process.env.OPENROUTER_ENABLED;
     clearPlatformConfigCache();
     assert.deepEqual(
       await resolveUserModelSelection("openrouter/openai/gpt-4o-mini"),
       { provider: "openrouter", model: "openai/gpt-4o-mini" },
     );
+    assert.deepEqual(
+      await resolveUserModelSelection("openrouter/google/gemini-2.0-flash-001"),
+      { provider: "openrouter", model: "google/gemini-2.0-flash-001" },
+    );
+    assert.equal(
+      await isOfferedModelRef({
+        provider: "openrouter",
+        model: "meta-llama/llama-3.1-8b-instruct",
+      }),
+      true,
+    );
+  });
+
+  it("listOpenRouterModels maps the live catalogue", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: "openai/gpt-4o-mini",
+              name: "OpenAI: GPT-4o Mini",
+              created: 2,
+              architecture: {
+                modality: "text+image->text",
+                input_modalities: ["text", "image"],
+                output_modalities: ["text"],
+              },
+            },
+            {
+              id: "vendor/embed-only",
+              name: "Embed",
+              created: 3,
+              architecture: {
+                modality: "text->embeddings",
+                output_modalities: ["embeddings"],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+    try {
+      const models = await listOpenRouterModels("sk-or-test");
+      assert.equal(models.length, 1);
+      assert.equal(models[0]?.id, "openai/gpt-4o-mini");
+      assert.equal(models[0]?.display_name, "OpenAI: GPT-4o Mini");
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });

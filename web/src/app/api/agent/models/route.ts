@@ -5,13 +5,16 @@ import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/anthropic";
 import {
   ANTHROPIC_MODEL_CHOICES,
   OPENAI_MODEL_CHOICES,
-  OPENROUTER_MODEL_CHOICES,
 } from "@/lib/modelCatalog";
 import {
   isOpenRouterEnabledAsync,
   parsePlatformProvider,
 } from "@/lib/llm";
+import { listOpenRouterModels } from "@/lib/openaiCompat";
 import { getSettings } from "@/lib/store";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("agent.models");
 
 export interface AgentModelOption {
   /** "provider/model" — what the client stores as the preference. */
@@ -24,12 +27,10 @@ export interface AgentModelOption {
 /**
  * Models THIS user may pick from, for the chat composer's model selector.
  *
- * The list is the platform's curated catalogue, not the provider's: an API key
- * exposes dozens of ids the platform never vetted, and offering them all put
- * broken or unintended choices one tap away. A provider appears only when the
- * operator has configured its key — the admin owns credentials, the user picks
- * among the committed models. OpenRouter additionally requires the admin
- * enable toggle (test-only). Never exposes key material.
+ * OpenAI/Anthropic stay on the curated catalogue. OpenRouter is a test
+ * gateway: when the key is present and not explicitly disabled, the live
+ * openrouter.ai catalogue is fetched so the operator can trial any route.
+ * Never exposes key material.
  */
 export async function GET() {
   try {
@@ -65,8 +66,6 @@ export async function GET() {
           label: m.label,
         })),
       );
-      // The admin's configured default must stay pickable even if it predates
-      // (or was deliberately set outside) the curated catalogue.
       const adminModel = defaultOpenAiModel?.trim();
       if (adminModel && !OPENAI_MODEL_CHOICES.some((m) => m.id === adminModel)) {
         options.push({
@@ -90,18 +89,27 @@ export async function GET() {
     }
 
     if (openrouterKey && openrouterEnabled) {
-      options.push(
-        ...OPENROUTER_MODEL_CHOICES.map((m) => ({
-          ref: `openrouter/${m.id}`,
-          provider: "openrouter" as const,
-          model: m.id,
-          label: m.label,
-        })),
-      );
+      try {
+        const live = await listOpenRouterModels(openrouterKey);
+        options.push(
+          ...live.map((m) => ({
+            ref: `openrouter/${m.id}`,
+            provider: "openrouter" as const,
+            model: m.id,
+            label: m.display_name || m.id,
+          })),
+        );
+      } catch (err) {
+        // Key present but catalogue unreachable — still surface the admin
+        // default so the picker is not empty for OpenRouter.
+        log.warn("openrouter.models.list_failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       const adminOrModel = defaultOpenRouterModel?.trim();
       if (
         adminOrModel &&
-        !OPENROUTER_MODEL_CHOICES.some((m) => m.id === adminOrModel)
+        !options.some((o) => o.provider === "openrouter" && o.model === adminOrModel)
       ) {
         options.push({
           ref: `openrouter/${adminOrModel}`,
@@ -125,8 +133,6 @@ export async function GET() {
       models: options,
       selected: settings.preferred_model_ref ?? null,
       platformDefault,
-      // The picker is meaningless without a key; the UI hides itself instead of
-      // offering a choice that cannot work.
       configured: options.length > 0,
     });
   } catch (err) {

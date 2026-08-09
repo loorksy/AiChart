@@ -88,12 +88,14 @@ export async function isOfferedModelRef(
   parsed: RequestModelSelection,
 ): Promise<boolean> {
   if (isAllowedModelRef(`${parsed.provider}/${parsed.model}`)) return true;
+  // OpenRouter is a live gateway: any well-formed route id is offered once the
+  // operator's key is ready (and not explicitly disabled).
+  if (parsed.provider === "openrouter") {
+    if (!(await isProviderReadyAsync("openrouter"))) return false;
+    return /^[A-Za-z0-9._:/-]{1,120}$/.test(parsed.model);
+  }
   const configuredField =
-    parsed.provider === "anthropic"
-      ? "ANTHROPIC_MODEL"
-      : parsed.provider === "openrouter"
-        ? "OPENROUTER_MODEL"
-        : "AI_MODEL";
+    parsed.provider === "anthropic" ? "ANTHROPIC_MODEL" : "AI_MODEL";
   const configured = (await getPlatformValueAsync(configuredField))?.trim();
   return Boolean(configured) && configured === parsed.model;
 }
@@ -133,18 +135,22 @@ const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
 const DEFAULT_MODEL = "gpt-4.1";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-4o-mini";
 
-function normalizeProviderFlag(raw?: string | null): boolean {
+function isExplicitlyDisabled(raw?: string | null): boolean {
   const v = raw?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
+  return v === "0" || v === "false" || v === "off" || v === "no";
 }
 
-/** OpenRouter is opt-in for testing; missing/blank means off. */
+/**
+ * OpenRouter is available once a key exists unless the admin explicitly turns
+ * it off. Unset/blank means enabled — matching "paste key → it works", with an
+ * admin kill-switch still available.
+ */
 export function isOpenRouterEnabled(): boolean {
-  return normalizeProviderFlag(getPlatformValue("OPENROUTER_ENABLED"));
+  return !isExplicitlyDisabled(getPlatformValue("OPENROUTER_ENABLED"));
 }
 
 export async function isOpenRouterEnabledAsync(): Promise<boolean> {
-  return normalizeProviderFlag(await getPlatformValueAsync("OPENROUTER_ENABLED"));
+  return !isExplicitlyDisabled(await getPlatformValueAsync("OPENROUTER_ENABLED"));
 }
 
 export function parsePlatformProvider(raw?: string | null): LLMProvider {

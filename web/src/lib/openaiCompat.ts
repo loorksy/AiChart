@@ -651,3 +651,57 @@ export async function listOpenAIRealtimeModels(
     .map((m) => ({ id: m.id, display_name: m.id, created: m.created }))
     .sort((a, b) => (b.created ?? 0) - (a.created ?? 0) || b.id.localeCompare(a.id));
 }
+
+type OpenRouterModelRow = {
+  id?: string;
+  name?: string;
+  created?: number;
+  architecture?: {
+    modality?: string;
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
+};
+
+/**
+ * Live catalogue from https://openrouter.ai/api/v1/models.
+ * Keeps text-capable chat routes; drops image/audio-only endpoints.
+ */
+export async function listOpenRouterModels(
+  apiKey: string,
+): Promise<CompatModelInfo[]> {
+  const res = await fetchWithTimeout(
+    "https://openrouter.ai/api/v1/models",
+    {
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      cache: "no-store",
+    },
+    { timeoutMs: httpTimeoutMs(), label: "OpenRouter models" },
+  );
+  if (!res.ok) throw new Error(await readError(res, "OpenRouter"));
+  const data = (await res.json()) as { data?: OpenRouterModelRow[] };
+  const exclude = /embed|whisper|tts|moderation|image-edit|upscal/i;
+  return (data.data ?? [])
+    .filter((m) => {
+      const id = m.id?.trim();
+      if (!id || exclude.test(id)) return false;
+      const outs = m.architecture?.output_modalities ?? [];
+      const modality = m.architecture?.modality ?? "";
+      // Prefer text-producing models; if OpenRouter omits architecture, keep it.
+      if (outs.length > 0) return outs.includes("text");
+      if (modality) return modality.includes("text");
+      return true;
+    })
+    .map((m) => ({
+      id: m.id!.trim(),
+      display_name: (m.name ?? m.id)!.trim(),
+      created: m.created,
+    }))
+    .sort(
+      (a, b) =>
+        (b.created ?? 0) - (a.created ?? 0) || a.id.localeCompare(b.id),
+    );
+}
