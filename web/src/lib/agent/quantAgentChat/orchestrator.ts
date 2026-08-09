@@ -38,6 +38,7 @@ import {
   backtestQuantStrategy,
   generateAndValidateQuantStrategy,
   generateAndValidateQuantStrategyCode,
+  setQuantStrategyStatus,
   getQuantRecommendation as clientGetQuantRecommendation,
   listQuantRecommendations as clientListQuantRecommendations,
 } from "@/lib/quantAgent/client";
@@ -61,6 +62,7 @@ import type {
   QuantBacktestMetrics,
   QuantBacktestResult,
   QuantRecommendation,
+  QuantStrategyStatus,
 } from "@/lib/quantAgent/types";
 import { searchSemanticMemoriesByKeyword } from "@/lib/semanticMemory";
 import {
@@ -154,6 +156,16 @@ export interface QuantAgentChatDeps {
     context: QuantAgentCallerContext,
     params: BacktestQuantStrategyParams,
   ) => Promise<QuantBacktestResult>;
+  /**
+   * Lifecycle transition for one of the OWNER'S strategies. Used to activate a
+   * strategy that cleared the quality gate, so the good case needs no second
+   * click; ownership is checked service-side against the stored row.
+   */
+  setStrategyStatus: (
+    context: QuantAgentCallerContext,
+    strategyId: string,
+    status: QuantStrategyStatus,
+  ) => Promise<{ strategy: GeneratedQuantStrategyRecord }>;
   /** Bar source for the backtest loop — analysis-only, no `userId`/broker-link concept (plan §4). */
   fetchAnalysisBars: (options: FetchQuantAgentAnalysisBarsOptions) => Promise<QuantAgentBarsResult>;
   callLLM: typeof callLLM;
@@ -183,6 +195,7 @@ const defaultDeps: QuantAgentChatDeps = {
   generateAndValidate: generateAndValidateQuantStrategy,
   generateAndValidateCode: generateAndValidateQuantStrategyCode,
   backtestQuantStrategy,
+  setStrategyStatus: setQuantStrategyStatus,
   fetchAnalysisBars: fetchQuantAgentAnalysisBars,
   callLLM,
   callLLMStream,
@@ -811,6 +824,41 @@ export async function generateAndBacktestQuantStrategyCodeFromDescription(
 
     const passed = backtestResult.status === "completed" && passesBacktestQualityGate(backtestResult.metrics);
     if (passed) {
+      /*
+       * A strategy that cleared the gate goes live for its OWNER, here, without
+       * a second click.
+       *
+       * This used to be forbidden, and the reason was real: strategies were
+       * global, so activating one put LLM-written Python into every user's
+       * recommendations. Now a strategy has an owner and the registry is scoped
+       * to it, so "live" means "evaluated on this person's own scans" — the
+       * blast radius is the person who asked for it.
+       *
+       * Given that, making them go and find a toggle teaches them nothing: they
+       * described a strategy, the engine wrote it, backtested it over 5000 bars
+       * and it cleared an objective bar. A strategy that FAILS still does not
+       * auto-activate — it lands in `needs_work` and takes a deliberate
+       * activation that shows the failing numbers first.
+       *
+       * Live means signals. It never means orders.
+       */
+      const strategyId = currentOutcome.strategy?.strategy_id;
+      if (strategyId) {
+        try {
+          await deps.setStrategyStatus(
+            { userId, requestId },
+            strategyId,
+            "active",
+          );
+        } catch (error) {
+          // Activation failing must not lose the strategy. It is persisted and
+          // it passed; the owner can activate it from the card.
+          log.warn("quant_agent_chat.backtest_gate.auto_activate_failed", {
+            strategyId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       return { passedGate: true, roundsUsed: round, generation: currentOutcome, backtest: backtestResult };
     }
     if (round === BACKTEST_MAX_ROUNDS) {
@@ -1236,6 +1284,7 @@ async function buildBacktestGateReply(
     strategy,
     code,
     backtest: outcome.backtest ?? undefined,
+    autoActivated: outcome.passedGate,
   };
 
   const metricsBlock = untrustedDataBlock(
@@ -1251,11 +1300,11 @@ async function buildBacktestGateReply(
       backtest: outcome.backtest,
     }),
   );
-  const codeBlock = untrustedDataBlock("Persisted (disabled) strategy — generated Python code", code);
+  const codeBlock = untrustedDataBlock("Persisted strategy — generated Python code", code);
 
   const instruction = outcome.passedGate
-    ? `Summarize in plain language what this newly proposed strategy does: the market condition it looks for, its stop/target logic if apparent from the code, and its regime affinity. Then state the REAL backtest numbers plainly (resolved trade count, win rate, profit factor, max drawdown) — the strategy CLEARED the quality bar (minimum 30 resolved trades, profit factor >= 1.2, max drawdown <= 40%). Even so, state clearly that it was saved DISABLED and still requires the user's explicit action to enable it — a good backtest never enables a strategy automatically.`
-    : `Summarize in plain language what this newly proposed strategy does. Then explicitly state that after ${outcome.roundsUsed} backtest round(s) it did NOT clear the quality bar (minimum 30 resolved trades, profit factor >= 1.2, max drawdown <= 40%) — state the actual (failing) numbers plainly. Never invent a good number, never omit or soften a bad one. State clearly it was saved DISABLED for the user's own review.`;
+    ? `Summarize in plain language what this newly proposed strategy does: the market condition it looks for, its stop/target logic if apparent from the code, and its regime affinity. Then state the REAL backtest numbers plainly (resolved trade count, win rate, profit factor, max drawdown) — the strategy CLEARED the quality bar (minimum 30 resolved trades, profit factor >= 1.2, max drawdown <= 40%). Then state that because it cleared the bar it is now ACTIVE on their own scans, that it produces signals and notifications only and never places an order, and that they can pause it at any time from the card.`
+    : `Summarize in plain language what this newly proposed strategy does. Then explicitly state that after ${outcome.roundsUsed} backtest round(s) it did NOT clear the quality bar (minimum 30 resolved trades, profit factor >= 1.2, max drawdown <= 40%) — state the actual (failing) numbers plainly. Never invent a good number, never omit or soften a bad one. State clearly that it was therefore NOT activated, and that they can still activate it themselves from the card if they want to run it despite those numbers.`;
 
   const summarySystem = `${identity}\n\n${codeBlock}\n\n${metricsBlock}\n\n${instruction} Do not reproduce the raw code in your summary — the user can already see it separately.`;
   const reply = await finalAnswer(deps, summarySystem, [{ role: "user", content: contextMessage }], onDelta);

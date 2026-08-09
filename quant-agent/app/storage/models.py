@@ -110,12 +110,30 @@ class RecommendationEvent(BaseModel):
     created_at: str
 
 
+StrategyStatus = Literal["ready", "needs_work", "active", "paused", "archived"]
+
+
 class StrategyDef(BaseModel):
     strategy_id: str
     version: str
     display_name: str
     description: str
+    #: The executable switch the registry reads. DERIVED from `status` and
+    #: written in the same statement by `set_strategy_status`, never on its
+    #: own — two independently-writable switches is how a paused strategy
+    #: keeps trading.
     enabled: bool = True
+    #: The user-facing lifecycle.
+    #:
+    #: `ready`      backtested, cleared the quality gate, awaiting the owner
+    #: `needs_work` backtested, missed the gate; the owner may still activate
+    #: `active`     evaluated on the owner's scans (signals only, never orders)
+    #: `paused`     the owner turned it off
+    #: `archived`   soft-deleted; never loaded again
+    status: StrategyStatus = "ready"
+    #: Who owns it. NULL is a platform built-in: loaded for every user, and
+    #: modifiable by none of them.
+    owner_user_id: int | None = None
     regime_affinity: str | None = None
     source_generated: bool = False
     params_json: str | None = None
@@ -169,6 +187,12 @@ class GenerateValidateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     spec: dict[str, Any]
+    #: Who this strategy will belong to. Without it a generated strategy has
+    #: no owner, and an ownerless row is either everybody's (unsafe) or
+    #: nobody's (useless) — so it is required at the moment of creation
+    #: rather than patched on afterwards.
+    owner_user_id: int = Field(gt=0)
+
 
 
 class GenerateValidateResponse(BaseModel):
@@ -177,9 +201,17 @@ class GenerateValidateResponse(BaseModel):
     errors: list[dict[str, str]] = Field(default_factory=list)
 
 
-class EnableStrategyRequest(BaseModel):
+class SetStrategyStatusRequest(BaseModel):
+    """A lifecycle transition, requested by the strategy's owner.
+
+    `owner_user_id` is mandatory and is checked against the stored row before
+    anything is written — the caller asserting who they are is not the same as
+    the row agreeing, and the store is where that gets settled.
+    """
+
     model_config = ConfigDict(extra="forbid")
-    enabled: bool
+    status: StrategyStatus
+    owner_user_id: int = Field(gt=0)
 
 
 class BacktestMetrics(BaseModel):
@@ -267,6 +299,11 @@ class GenerateValidateCodeRequest(BaseModel):
     it disabled."""
 
     model_config = ConfigDict(extra="forbid")
+    #: Who this strategy will belong to. Without it a generated strategy has
+    #: no owner, and an ownerless row is either everybody's (unsafe) or
+    #: nobody's (useless) — so it is required at the moment of creation
+    #: rather than patched on afterwards.
+    owner_user_id: int = Field(gt=0)
     strategy_id: str
     version: str
     display_name: str

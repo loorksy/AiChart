@@ -53,6 +53,13 @@ export type QuantAgentStrategyProposal =
       spec: GeneratedStrategySpec;
       /** Only ever set by the sandboxed-code chat wizard's bounded backtest loop (plan §4/§5) — the DSL path never backtests. */
       backtest?: QuantBacktestResult;
+      /**
+       * True when the backtest cleared the quality gate and the strategy was
+       * therefore activated for its owner without a second click. The card
+       * reads this so it opens in the state the strategy is actually in,
+       * rather than offering to enable something already running.
+       */
+      autoActivated?: boolean;
     }
   | {
       status: "persisted";
@@ -67,6 +74,11 @@ export type QuantAgentStrategyProposal =
        * which does not backtest this round.
        */
       backtest?: QuantBacktestResult;
+      /**
+       * True when the backtest cleared the quality gate and the strategy was
+       * therefore activated for its owner without a second click.
+       */
+      autoActivated?: boolean;
     }
   | { status: "invalid"; errors: GenerateValidateQuantStrategyError[] };
 

@@ -264,6 +264,25 @@ export interface BacktestQuantStrategyParams {
  * rather than substituted with an invented number.
  * ------------------------------------------------------------------ */
 
+/**
+ * A generated strategy's lifecycle.
+ *
+ * `ready`      backtested, cleared the quality gate, awaiting its owner
+ * `needs_work` backtested, missed the gate; the owner may still activate it
+ * `active`     evaluated on the owner's scans — signals only, never orders
+ * `paused`     the owner turned it off
+ * `archived`   soft-deleted; never loaded again
+ */
+export const QUANT_STRATEGY_STATUSES = [
+  "ready",
+  "needs_work",
+  "active",
+  "paused",
+  "archived",
+] as const;
+
+export type QuantStrategyStatus = (typeof QUANT_STRATEGY_STATUSES)[number];
+
 export type QuantAnalysisDecision = "BUY" | "SELL" | "HOLD";
 
 export interface QuantAnalysisOutlookLeg {

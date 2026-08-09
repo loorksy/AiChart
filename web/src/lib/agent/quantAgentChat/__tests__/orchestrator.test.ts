@@ -117,6 +117,7 @@ function buildDeps(overrides: Partial<QuantAgentChatDeps> = {}): {
     // itself (that gets its own dedicated tests below), so the default keeps
     // `generateAndValidateCode` calls at exactly 1 unless a test overrides.
     backtestQuantStrategy: async () => passingBacktestResult(),
+    setStrategyStatus: async () => ({ strategy: { strategy_id: "s", version: "1", display_name: "s", enabled: true, source_generated: true } }),
     fetchAnalysisBars: async ({ symbol, interval }) => ({
       symbol,
       market: "forex" as const,

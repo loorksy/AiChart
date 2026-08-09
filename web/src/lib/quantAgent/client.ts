@@ -41,6 +41,7 @@ import type {
   QuantRecommendationWire,
   QuantStrategyDef,
   ScoreQuantAnalysisParams,
+  QuantStrategyStatus,
 } from "./types";
 
 if (typeof window !== "undefined") {
@@ -391,7 +392,9 @@ export async function generateAndValidateQuantStrategy(
     "/internal/quant-agent/strategies/generate-validate",
     {
       method: "POST",
-      body: JSON.stringify({ spec }),
+      // The owner is set at creation, not patched on later: an ownerless
+      // generated strategy is either everyone's or no one's.
+      body: JSON.stringify({ spec, owner_user_id: context.userId }),
     },
   );
 }
@@ -419,6 +422,7 @@ export async function generateAndValidateQuantStrategyCode(
     {
       method: "POST",
       body: JSON.stringify({
+        owner_user_id: context.userId,
         strategy_id: params.strategyId,
         version: params.version,
         display_name: params.displayName,
@@ -431,22 +435,29 @@ export async function generateAndValidateQuantStrategyCode(
 }
 
 /**
- * Enables (or disables) a strategy the generator persisted. Restricted
- * server-side to `source_generated=true` rows only (plan §5) — this can
- * never touch the platform's two fixed built-in strategies. The only path
- * that makes a generated strategy live.
+ * Moves one of the caller's OWN generated strategies through its lifecycle.
+ *
+ * The service checks ownership against the stored row and answers 404 for
+ * every refusal — not yours, not generated, no such id — so this cannot be
+ * used to enumerate other people's strategies or to touch a built-in.
+ *
+ * This replaced an admin-only enable toggle. That restriction existed because
+ * the registry loaded every enabled generated strategy for every user, so one
+ * owner enabling their own put their LLM-written Python into strangers'
+ * recommendations. The registry is scoped per owner now, which is what makes
+ * self-service safe rather than merely convenient.
  */
-export async function setQuantStrategyEnabled(
+export async function setQuantStrategyStatus(
   context: QuantAgentCallerContext,
   strategyId: string,
-  enabled: boolean,
+  status: QuantStrategyStatus,
 ): Promise<{ strategy: GeneratedQuantStrategyRecord }> {
   return serviceRequest<{ strategy: GeneratedQuantStrategyRecord }>(
     context,
     `/internal/quant-agent/strategies/${encodeURIComponent(strategyId)}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ status, owner_user_id: context.userId }),
     },
   );
 }

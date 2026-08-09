@@ -29,6 +29,7 @@ from app.storage.models import (
     Recommendation,
     RecommendationEvent,
     StrategyDef,
+    StrategyStatus,
     utc_now_iso,
 )
 
@@ -272,6 +273,35 @@ class SqliteQuantStore:
             )
         if "source_code" not in existing:
             connection.execute("ALTER TABLE quant_strategy_defs ADD COLUMN source_code TEXT")
+        if "owner_user_id" not in existing:
+            # Ownership. NULL means a platform built-in, which every user's
+            # scan loads and nobody may modify.
+            #
+            # A GENERATED row that predates this column also lands on NULL, and
+            # that is deliberate rather than convenient: the owner is genuinely
+            # unknown, and guessing one would hand a stranger's LLM-written
+            # Python to whoever we guessed. So those rows are scoped out of
+            # every user's scan and simply stop influencing anyone — visible in
+            # history, never executed. There were no such rows in production
+            # when this shipped; this is the correct behaviour if there ever are.
+            connection.execute("ALTER TABLE quant_strategy_defs ADD COLUMN owner_user_id INTEGER")
+        if "status" not in existing:
+            # The user-facing lifecycle. `enabled` stays the executable switch
+            # the registry reads, derived from this and written with it in the
+            # same statement — see `set_strategy_status`.
+            connection.execute(
+                "ALTER TABLE quant_strategy_defs "
+                "ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'"
+            )
+            # Backfill from the one fact the old schema recorded.
+            connection.execute(
+                "UPDATE quant_strategy_defs SET status = CASE WHEN enabled = 1 "
+                "THEN 'active' ELSE 'ready' END"
+            )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_quant_strategy_defs_owner "
+            "ON quant_strategy_defs(owner_user_id, status)"
+        )
 
     # ------------------------------------------------------------------
     # recommendations
@@ -437,6 +467,28 @@ class SqliteQuantStore:
                 ).fetchall()
                 return [self._row_to_strategy_def(row) for row in rows]
 
+    async def list_strategy_defs_for_owner(self, owner_user_id: int) -> list[StrategyDef]:
+        """Built-ins plus this owner's own rows — never a stranger's.
+
+        This is the whole reason a user may now enable their own strategy. The
+        registry used to load every enabled generated row for everybody, so
+        turning one on injected LLM-written Python into other people's
+        recommendations; scoping the read is what makes ownership a real
+        boundary rather than a label.
+
+        Archived rows are excluded here rather than filtered later: an archived
+        strategy must never reach an evaluation path by any route."""
+        async with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    "SELECT * FROM quant_strategy_defs "
+                    "WHERE (owner_user_id IS NULL OR owner_user_id = ?) "
+                    "AND status <> 'archived' "
+                    "ORDER BY strategy_id",
+                    (owner_user_id,),
+                ).fetchall()
+                return [self._row_to_strategy_def(row) for row in rows]
+
     async def upsert_generated_strategy_def(self, strategy_def: StrategyDef) -> StrategyDef | None:
         """Insert or replace a `source_generated=True` row keyed by
         `strategy_id`. Returns `None` (rather than clobbering it) if a row
@@ -478,8 +530,9 @@ class SqliteQuantStore:
                         """INSERT INTO quant_strategy_defs (
                             strategy_id, version, display_name, description, enabled,
                             regime_affinity, source_generated, params_json,
-                            generation_mode, source_code, created_at, updated_at
-                        ) VALUES (?,?,?,?,?,?,1,?,?,?,?,?)""",
+                            generation_mode, source_code, status, owner_user_id,
+                            created_at, updated_at
+                        ) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?)""",
                         (
                             strategy_def.strategy_id,
                             strategy_def.version,
@@ -490,6 +543,8 @@ class SqliteQuantStore:
                             strategy_def.params_json,
                             strategy_def.generation_mode,
                             strategy_def.source_code,
+                            strategy_def.status,
+                            strategy_def.owner_user_id,
                             strategy_def.created_at,
                             now,
                         ),
@@ -500,13 +555,25 @@ class SqliteQuantStore:
                 ).fetchone()
                 return self._row_to_strategy_def(row)
 
-    async def set_generated_strategy_enabled(
-        self, strategy_id: str, enabled: bool
+    async def set_strategy_status(
+        self, strategy_id: str, status: StrategyStatus, owner_user_id: int
     ) -> StrategyDef | None:
-        """Toggle `enabled` for a `source_generated=True` row only. Returns
-        `None` if no such row exists or the row is not `source_generated`
-        (the hardcoded strategies must never be reachable through this
-        path)."""
+        """Move a strategy through its lifecycle, on behalf of its owner.
+
+        Returns `None` for every refusal — no such row, a built-in
+        (`source_generated=False`, which no user may touch), or a row owned by
+        somebody else. The caller cannot distinguish those, and should not: a
+        404 for "not yours" leaks less than a 403.
+
+        `enabled` is written HERE and only here, in the same statement as
+        `status`, because it is derived from it: `enabled = (status ==
+        "active")`. Two independently-writable switches is exactly how a
+        strategy the owner paused keeps producing signals.
+
+        A NULL-owner generated row is unreachable through this path. Those are
+        pre-ownership rows whose real owner is unknown, and the safe reading of
+        an unknown owner is "nobody", not "whoever asked".
+        """
         async with self._lock:
             with self._connect() as connection:
                 row = connection.execute(
@@ -514,12 +581,18 @@ class SqliteQuantStore:
                 ).fetchone()
                 if row is None or not bool(row["source_generated"]):
                     return None
+                row_owner = row["owner_user_id"] if "owner_user_id" in row.keys() else None
+                if row_owner is None or int(row_owner) != int(owner_user_id):
+                    return None
                 now = utc_now_iso()
+                enabled = status == "active"
                 connection.execute(
-                    "UPDATE quant_strategy_defs SET enabled=?, updated_at=? WHERE strategy_id=?",
-                    (1 if enabled else 0, now, strategy_id),
+                    "UPDATE quant_strategy_defs SET status=?, enabled=?, updated_at=? "
+                    "WHERE strategy_id=?",
+                    (status, 1 if enabled else 0, now, strategy_id),
                 )
                 updated = self._row_to_strategy_def(row)
+                updated.status = status
                 updated.enabled = enabled
                 updated.updated_at = now
                 return updated
@@ -932,12 +1005,18 @@ class SqliteQuantStore:
         # before any query executes.
         row_keys = row.keys()
         generation_mode = row["generation_mode"] if "generation_mode" in row_keys else "declarative"
+        status = row["status"] if "status" in row_keys else None
         return StrategyDef(
             strategy_id=row["strategy_id"],
             version=row["version"],
             display_name=row["display_name"],
             description=row["description"],
             enabled=bool(row["enabled"]),
+            # A row read before the migration ran has no status column; derive
+            # it from the one fact the old schema recorded rather than
+            # defaulting every legacy row to "ready" and silently pausing it.
+            status=status or ("active" if bool(row["enabled"]) else "ready"),
+            owner_user_id=row["owner_user_id"] if "owner_user_id" in row_keys else None,
             regime_affinity=row["regime_affinity"],
             source_generated=bool(row["source_generated"]),
             params_json=row["params_json"],

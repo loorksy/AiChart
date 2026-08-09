@@ -80,7 +80,9 @@ def strategy_from_def(definition: StrategyDef) -> Strategy | None:
     return DeclarativeStrategy(spec)
 
 
-async def registered_strategies_with_generated(store: SqliteQuantStore) -> tuple[Strategy, ...]:
+async def registered_strategies_with_generated(
+    store: SqliteQuantStore, owner_user_id: int | None = None
+) -> tuple[Strategy, ...]:
     """`STRATEGIES` plus every enabled, `source_generated` strategy stored
     in `quant_strategy_defs` that still passes its generation mode's
     validation:
@@ -92,10 +94,20 @@ async def registered_strategies_with_generated(store: SqliteQuantStore) -> tuple
         silently keep running it).
     A row that fails its check is skipped, never raised — a stale or
     corrupted row must never crash recommendation creation."""
-    defs = await store.list_strategy_defs()
+    defs = (
+        await store.list_strategy_defs()
+        if owner_user_id is None
+        else await store.list_strategy_defs_for_owner(owner_user_id)
+    )
     generated: list[Strategy] = []
     for definition in defs:
         if not (definition.enabled and definition.source_generated):
+            continue
+        # Belt and braces on top of the scoped read. The SQL already excludes
+        # other owners, but this loop is the last thing standing between a
+        # stranger's LLM-written Python and a recommendation, so it re-checks
+        # rather than trusting the query it was handed.
+        if owner_user_id is not None and definition.owner_user_id != owner_user_id:
             continue
         strategy = strategy_from_def(definition)
         if strategy is not None:

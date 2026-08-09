@@ -111,6 +111,7 @@ function buildDeps(overrides: Partial<QuantAgentChatDeps> = {}): {
     generateAndValidateCode: async () => {
       throw new Error("not used");
     },
+    setStrategyStatus: async () => ({ strategy: { strategy_id: "s", version: "1", display_name: "s", enabled: true, source_generated: true } }),
     backtestQuantStrategy: async () => {
       throw new Error("not used");
     },

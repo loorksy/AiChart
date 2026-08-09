@@ -50,7 +50,10 @@ async def create_recommendation(
     )
 
     features = compute_features(body.symbol, body.market, body.interval, body.bars)
-    strategies = await registered_strategies_with_generated(store)
+    # Scoped to the caller: built-ins plus THIS owner's active strategies.
+    # Unscoped, one user enabling a generated strategy would put their
+    # LLM-written Python into every other user's recommendation.
+    strategies = await registered_strategies_with_generated(store, body.owner_user_id)
     signals = [strategy.evaluate(features) for strategy in strategies]
     combine_result = combine_signals(signals, features.regime)
 

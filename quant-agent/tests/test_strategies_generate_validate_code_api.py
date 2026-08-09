@@ -25,6 +25,7 @@ _UNSAFE_CODE = "import os\n\ndef evaluate(features):\n    os.system('id')\n    r
 
 def _valid_body(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
+        "owner_user_id": 7001,
         "strategy_id": "sandboxed_ema_v1",
         "version": "1.0.0",
         "display_name": "Sandboxed Code Strategy",
@@ -131,7 +132,7 @@ def test_patch_enable_toggles_sandboxed_code_strategy(client: TestClient) -> Non
     response = client.patch(
         "/internal/quant-agent/strategies/sandboxed_ema_v1",
         headers=headers(),
-        json={"enabled": True},
+        json={"status": "active", "owner_user_id": 7001},
     )
     assert response.status_code == 200
     body = response.json()
@@ -141,7 +142,7 @@ def test_patch_enable_toggles_sandboxed_code_strategy(client: TestClient) -> Non
     disable_response = client.patch(
         "/internal/quant-agent/strategies/sandboxed_ema_v1",
         headers=headers(),
-        json={"enabled": False},
+        json={"status": "paused", "owner_user_id": 7001},
     )
     assert disable_response.status_code == 200
     assert disable_response.json()["enabled"] is False

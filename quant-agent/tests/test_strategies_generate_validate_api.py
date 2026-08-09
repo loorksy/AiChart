@@ -45,7 +45,7 @@ def test_generate_validate_persists_valid_spec_disabled(client: TestClient) -> N
     response = client.post(
         "/internal/quant-agent/strategies/generate-validate",
         headers=headers(),
-        json={"spec": _valid_spec()},
+        json={"spec": _valid_spec(), "owner_user_id": 7001},
     )
     assert response.status_code == 200
     payload = response.json()
@@ -77,7 +77,10 @@ def test_generate_validate_rejects_invalid_spec_without_writing_a_row(client: Te
     response = client.post(
         "/internal/quant-agent/strategies/generate-validate",
         headers=headers(),
-        json={"spec": _valid_spec(entry_conditions={"all": [{"type": "not_a_real_type"}]})},
+        json={
+            "owner_user_id": 7001,
+            "spec": _valid_spec(entry_conditions={"all": [{"type": "not_a_real_type"}]}),
+        },
     )
     assert response.status_code == 200
     payload = response.json()
@@ -99,6 +102,7 @@ def test_generate_validate_rejects_out_of_range_values_without_writing_a_row(
         "/internal/quant-agent/strategies/generate-validate",
         headers=headers(),
         json={
+            "owner_user_id": 7001,
             "spec": _valid_spec(
                 entry_conditions={
                     "all": [{"type": "rsi_threshold", "operator": "above", "value": 500.0}]
@@ -117,7 +121,10 @@ def test_generate_validate_rejects_strategy_id_colliding_with_builtin(client: Te
     response = client.post(
         "/internal/quant-agent/strategies/generate-validate",
         headers=headers(),
-        json={"spec": _valid_spec(strategy_id="ema_trend_v1")},
+        json={
+            "owner_user_id": 7001,
+            "spec": _valid_spec(strategy_id="ema_trend_v1"),
+        },
     )
     assert response.status_code == 200
     payload = response.json()
@@ -138,7 +145,7 @@ def test_generate_validate_rejects_extra_unknown_top_level_field(client: TestCli
     response = client.post(
         "/internal/quant-agent/strategies/generate-validate",
         headers=headers(),
-        json={"spec": _valid_spec(), "unexpected": True},
+        json={"spec": _valid_spec(), "owner_user_id": 7001, "unexpected": True},
     )
     assert response.status_code == 422  # GenerateValidateRequest forbids extra fields
 
@@ -147,13 +154,13 @@ def test_patch_enable_toggles_generated_strategy(client: TestClient) -> None:
     client.post(
         "/internal/quant-agent/strategies/generate-validate",
         headers=headers(),
-        json={"spec": _valid_spec()},
+        json={"spec": _valid_spec(), "owner_user_id": 7001},
     )
 
     response = client.patch(
         "/internal/quant-agent/strategies/declarative_ema_cross_v1",
         headers=headers(),
-        json={"enabled": True},
+        json={"status": "active", "owner_user_id": 7001},
     )
     assert response.status_code == 200
     body = response.json()
@@ -171,7 +178,7 @@ def test_patch_enable_toggles_generated_strategy(client: TestClient) -> None:
     disable_response = client.patch(
         "/internal/quant-agent/strategies/declarative_ema_cross_v1",
         headers=headers(),
-        json={"enabled": False},
+        json={"status": "paused", "owner_user_id": 7001},
     )
     assert disable_response.status_code == 200
     assert disable_response.json()["enabled"] is False
@@ -181,7 +188,7 @@ def test_patch_rejects_hardcoded_strategy_ema_trend_v1(client: TestClient) -> No
     response = client.patch(
         "/internal/quant-agent/strategies/ema_trend_v1",
         headers=headers(),
-        json={"enabled": False},
+        json={"status": "paused", "owner_user_id": 7001},
     )
     assert response.status_code == 404
 
@@ -196,7 +203,7 @@ def test_patch_rejects_hardcoded_strategy_rsi_reversion_v1(client: TestClient) -
     response = client.patch(
         "/internal/quant-agent/strategies/rsi_reversion_v1",
         headers=headers(),
-        json={"enabled": False},
+        json={"status": "paused", "owner_user_id": 7001},
     )
     assert response.status_code == 404
 
@@ -211,6 +218,6 @@ def test_patch_rejects_unknown_strategy_id(client: TestClient) -> None:
     response = client.patch(
         "/internal/quant-agent/strategies/does_not_exist_v1",
         headers=headers(),
-        json={"enabled": True},
+        json={"status": "active", "owner_user_id": 7001},
     )
     assert response.status_code == 404

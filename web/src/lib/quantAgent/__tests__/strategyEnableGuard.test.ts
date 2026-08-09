@@ -1,87 +1,110 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
-import { z } from "zod";
+import test from "node:test";
 
 /**
- * Enabling a generated strategy is the single most consequential write in the
- * Quant Agent surface: it admits LLM-written Python into
- * `registered_strategies_with_generated`, which the every-15-minutes
- * `quant-agent-scan` cron then executes to emit Telegram recommendations on
- * the SHARED, symbol-scoped feed — for every user, not just whoever generated
- * it. Two properties of that route are therefore worth pinning down.
+ * Making a generated strategy live is the one action here that starts LLM-
+ * written Python running on a schedule. This guards the properties that make
+ * that safe.
  *
- * Source inspection rather than a live request, matching
- * `quantAgentCronCandleSource.test.ts`'s reasoning: exercising the route for
- * real needs a session cookie, the DB, and the isolated quant-agent service.
- * What is cheap and reliable to assert is that the two specific footguns that
- * were present cannot silently return.
+ * It used to guard a different mechanism: the toggle was admin-only. That was
+ * the right call at the time and for a specific reason — strategy rows were
+ * global and `registered_strategies_with_generated` loaded every enabled one
+ * for every caller, so an owner activating their own strategy injected it into
+ * OTHER people's recommendations. With no owner column there was nothing to
+ * check ownership against, and admin-only was the honest minimum.
+ *
+ * Strategies now carry an owner and the registry is scoped to it, so the
+ * isolation is real rather than administrative. The guard therefore moved with
+ * it: it no longer asserts "only admins", it asserts the three things that
+ * actually keep one user's strategy out of another user's signals.
+ *
+ * If you are here because this failed, the question is not how to make it pass
+ * — it is whether the change you made lets one account's generated code run
+ * for a different account.
  */
-const ROUTE = "src/app/api/quant-agent/strategies/[strategyId]/enable/route.ts";
-const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
 
+const SRC = join(process.cwd(), "src");
 /**
- * Comments are stripped before matching. The route's own header explains what
- * the old shape was and quotes it, so a naive text search finds the very
- * pattern it is meant to forbid — the assertions below are about the CODE,
- * not about whether anyone is allowed to describe the bug in prose.
+ * Comments here EXPLAIN the old defaulting bug and quote it, so an assertion
+ * that reads raw source matches the very text warning against the thing. Only
+ * executable code can actually reintroduce it.
  */
-function codeOf(relativePath: string): string {
-  return readFileSync(join(REPO_ROOT, relativePath), "utf-8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
-const source = codeOf(ROUTE);
+const route = stripComments(
+  readFileSync(
+    join(SRC, "app", "api", "quant-agent", "strategies", "[strategyId]", "status", "route.ts"),
+    "utf8",
+  ),
+);
+const client = stripComments(readFileSync(join(SRC, "lib", "quantAgent", "client.ts"), "utf8"));
 
-/**
- * Regression: the schema read `z.object({ enabled: z.boolean().optional() })`
- * and the handler read `body.enabled ?? true`. An empty or malformed body —
- * a stray curl, a client bug, a retried request that lost its payload — took
- * the ENABLE branch. The default action of the endpoint must never be to make
- * generated code live.
- */
-test("enable route: a missing `enabled` field is rejected, never defaulted to true", () => {
-  assert.doesNotMatch(
-    source,
-    /enabled\s*\?\?\s*true/,
-    "`body.enabled ?? true` makes an empty body an enable — pass the value through instead",
-  );
-  assert.doesNotMatch(
-    source,
-    /enabled:\s*z\.boolean\(\)\.optional\(\)/,
-    "`enabled` must be required so zod rejects an empty body with a 400",
-  );
-  assert.match(source, /enabled:\s*z\.boolean\(\)/, "`enabled` must still be a required boolean");
-
-  // Prove the shape actually behaves: the schema the route uses rejects {}.
-  const schema = z.object({ enabled: z.boolean() });
-  assert.equal(schema.safeParse({}).success, false, "an empty body must not parse");
-  assert.equal(schema.safeParse({ enabled: true }).success, true);
-  assert.equal(schema.safeParse({ enabled: false }).success, true);
+test("the old enable route is gone, not merely bypassed", () => {
+  // A leftover route with the previous `body.enabled ?? true` default would be
+  // a second, weaker door into the same action.
+  let exists = true;
+  try {
+    readFileSync(
+      join(SRC, "app", "api", "quant-agent", "strategies", "[strategyId]", "enable", "route.ts"),
+      "utf8",
+    );
+  } catch {
+    exists = false;
+  }
+  assert.equal(exists, false, "the enable route was replaced by the status route; delete it");
 });
 
-/**
- * Regression: the route resolved a user id and then did nothing with it.
- * Strategy rows are global and carry no owner column, so any signed-in
- * account — or any holder of AICHART_SERVICE_TOKEN via the bridge branch of
- * `resolveQuantAgentUserId` — could enable any other account's generated
- * strategy for the whole platform. Admin-only is the honest minimum until
- * strategies are genuinely user-scoped.
- */
-test("enable route: the toggle is admin-only, checked on the resolved user", () => {
+test("status route: the transition is required, never defaulted", () => {
   assert.match(
-    source,
-    /getPublicUser\(userId\)/,
-    "the actor must be loaded from the RESOLVED id so the bridge path is held to the same bar",
+    route,
+    /z\.enum\(QUANT_STRATEGY_STATUSES\)/,
+    "the status must be validated against the known set",
   );
-  assert.match(source, /role\s*!==\s*"admin"/, "non-admins must be rejected");
-  assert.match(source, /403/, "the rejection must be a 403");
+  assert.ok(
+    !/\?\?\s*"active"/.test(route) && !/\?\?\s*true/.test(route),
+    'no defaulting: the predecessor read `body.enabled ?? true`, so an empty ' +
+      "body took the enable branch. A missing status must be a 400.",
+  );
+  assert.match(route, /400/, "a malformed body must be rejected, not interpreted");
+});
 
-  // The check has to precede the write, not merely exist somewhere in the file.
-  const adminCheck = source.indexOf('role !== "admin"');
-  const write = source.indexOf("setQuantStrategyEnabled(");
-  assert.ok(adminCheck >= 0 && write >= 0, "both the admin check and the write must be present");
-  assert.ok(adminCheck < write, "the admin check must run BEFORE the enable write");
+test("status route: ownership travels to the service and is settled there", () => {
+  assert.match(
+    route,
+    /resolveQuantAgentUserId\(req\)/,
+    "the actor must come from the resolved id, so the bridge path (service " +
+      "token + user header) is held to the same bar as a browser session",
+  );
+  // The route must hand the RESOLVED id to the client, not anything the caller
+  // supplied in the body.
+  assert.match(
+    route,
+    /setQuantStrategyStatus\(\s*\{\s*userId,/,
+    "the resolved userId must be the one sent to the service",
+  );
+  assert.ok(
+    !/owner_user_id/.test(route),
+    "the route must not read an owner from the request body — a caller " +
+      "asserting who they are is not the same as the row agreeing",
+  );
+});
+
+test("client: the owner is stamped at creation and on every transition", () => {
+  // An ownerless generated strategy is either everybody's or nobody's, and the
+  // first of those is the bug this whole change exists to close.
+  const generateCalls = client.match(/owner_user_id: context\.userId/g) ?? [];
+  assert.ok(
+    generateCalls.length >= 3,
+    "both generate paths and the status transition must send the owner; " +
+      `found ${generateCalls.length}`,
+  );
+  assert.match(
+    client,
+    /body: JSON\.stringify\(\{ status, owner_user_id: context\.userId \}\)/,
+    "the transition must carry the owner for the service to check against",
+  );
 });
