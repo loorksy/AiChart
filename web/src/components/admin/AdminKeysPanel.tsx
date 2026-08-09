@@ -70,6 +70,14 @@ const ANTHROPIC_MODELS: { id: string; label: string }[] = [
 const PROVIDERS: { id: string; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "anthropic", label: "Anthropic (Claude)" },
+  { id: "openrouter", label: "OpenRouter (اختبار)" },
+];
+
+/** Curated OpenRouter route ids offered for testing (id → label). */
+const OPENROUTER_MODELS: { id: string; label: string }[] = [
+  { id: "openai/gpt-4o-mini", label: "GPT-4o Mini" },
+  { id: "anthropic/claude-sonnet-4", label: "Claude Sonnet 4" },
+  { id: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash" },
 ];
 
 export function AdminKeysPanel() {
@@ -175,12 +183,20 @@ export function AdminKeysPanel() {
   const providerField = fields.find((f) => f.key === "AI_PROVIDER");
   const anthropicKeyField = fields.find((f) => f.key === "ANTHROPIC_API_KEY");
   const anthropicModelField = fields.find((f) => f.key === "ANTHROPIC_MODEL");
+  const openrouterEnabledField = fields.find((f) => f.key === "OPENROUTER_ENABLED");
+  const openrouterKeyField = fields.find((f) => f.key === "OPENROUTER_API_KEY");
+  const openrouterModelField = fields.find((f) => f.key === "OPENROUTER_MODEL");
+  const providerRaw = draft.AI_PROVIDER ?? providerField?.value ?? "openai";
   const activeProvider =
-    (draft.AI_PROVIDER ?? providerField?.value ?? "openai") === "anthropic"
-      ? "anthropic"
+    providerRaw === "anthropic" || providerRaw === "openrouter"
+      ? providerRaw
       : "openai";
   const currentAnthropicModel =
     draft.ANTHROPIC_MODEL ?? anthropicModelField?.value ?? "claude-opus-5";
+  const currentOpenRouterModel =
+    draft.OPENROUTER_MODEL ??
+    openrouterModelField?.value ??
+    "openai/gpt-4o-mini";
 
   const aiExtraFields = fields.filter(
     (f) =>
@@ -190,7 +206,10 @@ export function AdminKeysPanel() {
       f.key !== "OPENAI_REALTIME_MODEL" &&
       f.key !== "AI_PROVIDER" &&
       f.key !== "ANTHROPIC_API_KEY" &&
-      f.key !== "ANTHROPIC_MODEL",
+      f.key !== "ANTHROPIC_MODEL" &&
+      f.key !== "OPENROUTER_ENABLED" &&
+      f.key !== "OPENROUTER_API_KEY" &&
+      f.key !== "OPENROUTER_MODEL",
   );
 
   if (loading && fields.length === 0) {
@@ -371,6 +390,79 @@ export function AdminKeysPanel() {
                       </select>
                     </Field>
                   )}
+
+                  <div className="space-y-3 rounded-lg border border-border/70 bg-muted/30 px-3 py-3">
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">OpenRouter</span>
+                      {" — "}
+                      بوابة اختبار عبر{" "}
+                      <a
+                        href="https://openrouter.ai/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline underline-offset-2"
+                        dir="ltr"
+                      >
+                        openrouter.ai
+                      </a>
+                      . المفتاح وحده لا يكفي — يجب تفعيل المفتاح أدناه، ويمكن
+                      إلغاء التفعيل في أي وقت دون حذف المفتاح.
+                    </p>
+                    {openrouterEnabledField && (
+                      <ConfigFieldRow
+                        f={openrouterEnabledField}
+                        draft={draft}
+                        setDraftValue={setDraftValue}
+                      />
+                    )}
+                    {openrouterKeyField && (
+                      <ConfigFieldRow
+                        f={openrouterKeyField}
+                        draft={draft}
+                        setDraftValue={setDraftValue}
+                      />
+                    )}
+                    {openrouterModelField && (
+                      <Field
+                        label={
+                          <>
+                            نموذج OpenRouter
+                            <span
+                              className="ms-2 text-[10px] text-muted-foreground"
+                              dir="ltr"
+                            >
+                              OPENROUTER_MODEL
+                            </span>
+                          </>
+                        }
+                        htmlFor="OPENROUTER_MODEL"
+                      >
+                        <select
+                          id="OPENROUTER_MODEL"
+                          dir="ltr"
+                          className="admin-input focus-ring tap-target h-10 w-full text-sm"
+                          value={currentOpenRouterModel}
+                          onChange={(e) =>
+                            setDraftValue("OPENROUTER_MODEL", e.target.value)
+                          }
+                        >
+                          {OPENROUTER_MODELS.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label} — {m.id}
+                            </option>
+                          ))}
+                          {!OPENROUTER_MODELS.some(
+                            (m) => m.id === currentOpenRouterModel,
+                          ) && (
+                            <option value={currentOpenRouterModel}>
+                              {currentOpenRouterModel}
+                            </option>
+                          )}
+                        </select>
+                      </Field>
+                    )}
+                  </div>
+
                   {agentModel && (
                     <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                       نموذج المنصة (MCP):{" "}
@@ -429,7 +521,8 @@ function ConfigFieldRow({
   setDraftValue: (key: string, value: string) => void;
 }) {
   if (f.type === "toggle") {
-    const on = (draft[f.key] ?? f.value ?? "0") === "1" || f.value === "1";
+    // Draft wins so unchecking an already-on toggle can persist as "0".
+    const on = (draft[f.key] ?? f.value ?? "0") === "1";
     return (
       <Field
         label={

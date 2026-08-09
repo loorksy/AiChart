@@ -20,6 +20,10 @@ export async function GET(req: NextRequest) {
     // SECURITY: never expose key values — only report whether the key is configured.
     const providerConfigured: Record<string, { configured: boolean }> = {
       openai: { configured: Boolean(getProviderApiKey("openai")) },
+      anthropic: { configured: Boolean(getProviderApiKey("anthropic")) },
+      openrouter: {
+        configured: Boolean(getProviderApiKey("openrouter")),
+      },
     };
     // Never let a misconfigured FOREX_BACKEND take down capabilities — this is
     // the first call of every session, before the agent has any other tool to
