@@ -5,13 +5,18 @@ import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/anthropic";
 import {
   ANTHROPIC_MODEL_CHOICES,
   OPENAI_MODEL_CHOICES,
+  OPENROUTER_MODEL_CHOICES,
 } from "@/lib/modelCatalog";
+import {
+  isOpenRouterEnabledAsync,
+  parsePlatformProvider,
+} from "@/lib/llm";
 import { getSettings } from "@/lib/store";
 
 export interface AgentModelOption {
   /** "provider/model" — what the client stores as the preference. */
   ref: string;
-  provider: "openai" | "anthropic";
+  provider: "openai" | "anthropic" | "openrouter";
   model: string;
   label: string;
 }
@@ -23,19 +28,31 @@ export interface AgentModelOption {
  * exposes dozens of ids the platform never vetted, and offering them all put
  * broken or unintended choices one tap away. A provider appears only when the
  * operator has configured its key — the admin owns credentials, the user picks
- * among the committed models. Never exposes key material.
+ * among the committed models. OpenRouter additionally requires the admin
+ * enable toggle (test-only). Never exposes key material.
  */
 export async function GET() {
   try {
     const user = await requirePaidAccess();
-    const [openaiKey, anthropicKey, defaultProvider, defaultOpenAiModel, defaultClaudeModel] =
-      await Promise.all([
-        getPlatformValueAsync("OPENAI_API_KEY"),
-        getPlatformValueAsync("ANTHROPIC_API_KEY"),
-        getPlatformValueAsync("AI_PROVIDER"),
-        getPlatformValueAsync("AI_MODEL"),
-        getPlatformValueAsync("ANTHROPIC_MODEL"),
-      ]);
+    const [
+      openaiKey,
+      anthropicKey,
+      openrouterKey,
+      openrouterEnabled,
+      defaultProvider,
+      defaultOpenAiModel,
+      defaultClaudeModel,
+      defaultOpenRouterModel,
+    ] = await Promise.all([
+      getPlatformValueAsync("OPENAI_API_KEY"),
+      getPlatformValueAsync("ANTHROPIC_API_KEY"),
+      getPlatformValueAsync("OPENROUTER_API_KEY"),
+      isOpenRouterEnabledAsync(),
+      getPlatformValueAsync("AI_PROVIDER"),
+      getPlatformValueAsync("AI_MODEL"),
+      getPlatformValueAsync("ANTHROPIC_MODEL"),
+      getPlatformValueAsync("OPENROUTER_MODEL"),
+    ]);
 
     const options: AgentModelOption[] = [];
 
@@ -72,11 +89,37 @@ export async function GET() {
       );
     }
 
+    if (openrouterKey && openrouterEnabled) {
+      options.push(
+        ...OPENROUTER_MODEL_CHOICES.map((m) => ({
+          ref: `openrouter/${m.id}`,
+          provider: "openrouter" as const,
+          model: m.id,
+          label: m.label,
+        })),
+      );
+      const adminOrModel = defaultOpenRouterModel?.trim();
+      if (
+        adminOrModel &&
+        !OPENROUTER_MODEL_CHOICES.some((m) => m.id === adminOrModel)
+      ) {
+        options.push({
+          ref: `openrouter/${adminOrModel}`,
+          provider: "openrouter",
+          model: adminOrModel,
+          label: adminOrModel,
+        });
+      }
+    }
+
     const settings = await getSettings(user.id);
+    const provider = parsePlatformProvider(defaultProvider);
     const platformDefault =
-      defaultProvider?.trim() === "anthropic"
+      provider === "anthropic"
         ? `anthropic/${defaultClaudeModel?.trim() || DEFAULT_ANTHROPIC_MODEL}`
-        : `openai/${defaultOpenAiModel?.trim() || "gpt-4.1"}`;
+        : provider === "openrouter"
+          ? `openrouter/${defaultOpenRouterModel?.trim() || "openai/gpt-4o-mini"}`
+          : `openai/${defaultOpenAiModel?.trim() || "gpt-4.1"}`;
 
     return NextResponse.json({
       models: options,

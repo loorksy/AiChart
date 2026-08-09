@@ -30,7 +30,10 @@ const settingsPatchSchema = z
     preferred_model_ref: z
       .string()
       .trim()
-      .regex(/^(openai|anthropic)\/[A-Za-z0-9._:-]{1,80}$/, "معرّف نموذج غير صالح.")
+      .regex(
+        /^(openai|anthropic|openrouter)\/[A-Za-z0-9._:/-]{1,120}$/,
+        "معرّف نموذج غير صالح.",
+      )
       .nullable()
       .optional(),
     send_screenshot: z.boolean().optional(),

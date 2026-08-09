@@ -1,9 +1,10 @@
 /**
- * Unified LLM layer. Two first-class providers: OpenAI (via the
- * OpenAI-compatible client) and Anthropic Claude (native Messages API client).
+ * Unified LLM layer. First-class providers: OpenAI (OpenAI-compatible client),
+ * Anthropic Claude (native Messages API), and OpenRouter (OpenAI-compatible
+ * gateway at https://openrouter.ai — test-only, admin-toggleable).
  * The operator picks the provider + model from the admin keys panel
- * (AI_PROVIDER / AI_MODEL / ANTHROPIC_MODEL); every chat/analysis call routes
- * through the active provider.
+ * (AI_PROVIDER / AI_MODEL / ANTHROPIC_MODEL / OPENROUTER_*); every
+ * chat/analysis call routes through the active provider.
  */
 
 import {
@@ -26,6 +27,7 @@ import { isAllowedModelRef } from "./modelCatalog";
 import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
 import { recordLLMUsage } from "./billing/usageMeter";
 import { createLogger } from "./logger";
+import { getPublicAppUrl } from "./appUrl";
 
 const llmLog = createLogger("llm");
 
@@ -60,18 +62,13 @@ export function currentRequestModel(): RequestModelSelection | undefined {
 }
 
 /**
- * Parse a "provider/model" reference. Returns null for anything unusable so a
- * stale or hand-edited preference silently falls back to the platform default
- * rather than failing the request.
- */
-/**
  * Resolve a user's stored preference into an applicable selection.
  *
  * Returns null — meaning "use the platform default" — when the preference is
  * unset, malformed, outside the curated model catalogue, or names a provider
- * whose key the operator has not configured. A user must never be able to
- * point the platform at a provider it cannot authenticate against, nor at a
- * model the platform has not committed to.
+ * that is not ready (missing key, or OpenRouter disabled). A user must never
+ * be able to point the platform at a provider it cannot authenticate against,
+ * nor at a model the platform has not committed to.
  */
 export async function resolveUserModelSelection(
   ref?: string | null,
@@ -79,8 +76,7 @@ export async function resolveUserModelSelection(
   const parsed = parseModelRef(ref);
   if (!parsed) return null;
   if (!(await isOfferedModelRef(parsed))) return null;
-  const key = await getPlatformValueAsync(PROVIDER_KEY_FIELD[parsed.provider]);
-  return key ? parsed : null;
+  return (await isProviderReadyAsync(parsed.provider)) ? parsed : null;
 }
 
 /**
@@ -93,7 +89,11 @@ export async function isOfferedModelRef(
 ): Promise<boolean> {
   if (isAllowedModelRef(`${parsed.provider}/${parsed.model}`)) return true;
   const configuredField =
-    parsed.provider === "anthropic" ? "ANTHROPIC_MODEL" : "AI_MODEL";
+    parsed.provider === "anthropic"
+      ? "ANTHROPIC_MODEL"
+      : parsed.provider === "openrouter"
+        ? "OPENROUTER_MODEL"
+        : "AI_MODEL";
   const configured = (await getPlatformValueAsync(configuredField))?.trim();
   return Boolean(configured) && configured === parsed.model;
 }
@@ -106,39 +106,85 @@ export function parseModelRef(ref?: string | null): RequestModelSelection | null
   const provider = raw.slice(0, slash);
   const model = raw.slice(slash + 1).trim();
   if (!model) return null;
-  if (provider !== "openai" && provider !== "anthropic") return null;
+  if (
+    provider !== "openai" &&
+    provider !== "anthropic" &&
+    provider !== "openrouter"
+  ) {
+    return null;
+  }
   return { provider, model };
 }
 
-export type LLMProvider = "openai" | "anthropic";
+export type LLMProvider = "openai" | "anthropic" | "openrouter";
 
 export const LLM_PROVIDERS: { id: LLMProvider; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "anthropic", label: "Anthropic (Claude)" },
+  { id: "openrouter", label: "OpenRouter (اختبار)" },
 ];
 
 const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
 };
 
 const DEFAULT_MODEL = "gpt-4.1";
+const DEFAULT_OPENROUTER_MODEL = "openai/gpt-4o-mini";
+
+function normalizeProviderFlag(raw?: string | null): boolean {
+  const v = raw?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+/** OpenRouter is opt-in for testing; missing/blank means off. */
+export function isOpenRouterEnabled(): boolean {
+  return normalizeProviderFlag(getPlatformValue("OPENROUTER_ENABLED"));
+}
+
+export async function isOpenRouterEnabledAsync(): Promise<boolean> {
+  return normalizeProviderFlag(await getPlatformValueAsync("OPENROUTER_ENABLED"));
+}
+
+export function parsePlatformProvider(raw?: string | null): LLMProvider {
+  const v = raw?.trim();
+  if (v === "anthropic") return "anthropic";
+  if (v === "openrouter") return "openrouter";
+  return "openai";
+}
+
+/** Key present, and (for OpenRouter) the admin enable toggle is on. */
+export function isProviderReady(provider: LLMProvider): boolean {
+  if (!getProviderApiKey(provider)?.trim()) return false;
+  if (provider === "openrouter") return isOpenRouterEnabled();
+  return true;
+}
+
+export async function isProviderReadyAsync(provider: LLMProvider): Promise<boolean> {
+  const key = (await getPlatformValueAsync(PROVIDER_KEY_FIELD[provider]))?.trim();
+  if (!key) return false;
+  if (provider === "openrouter") return isOpenRouterEnabledAsync();
+  return true;
+}
 
 export function getActiveProvider(): LLMProvider {
   // The user's per-request pick wins over the platform default.
   const picked = requestModel.getStore();
   if (picked) return picked.provider;
-  return getPlatformValue("AI_PROVIDER")?.trim() === "anthropic"
-    ? "anthropic"
-    : "openai";
+  return parsePlatformProvider(getPlatformValue("AI_PROVIDER"));
 }
 
 /** Active model for the active provider (with safe defaults). */
 export function getActiveModel(): string {
   const picked = requestModel.getStore();
   if (picked) return picked.model;
-  if (getActiveProvider() === "anthropic") {
+  const provider = getActiveProvider();
+  if (provider === "anthropic") {
     return getPlatformValue("ANTHROPIC_MODEL")?.trim() || DEFAULT_ANTHROPIC_MODEL;
+  }
+  if (provider === "openrouter") {
+    return getPlatformValue("OPENROUTER_MODEL")?.trim() || DEFAULT_OPENROUTER_MODEL;
   }
   return getPlatformValue("AI_MODEL")?.trim() || DEFAULT_MODEL;
 }
@@ -163,8 +209,12 @@ export function getQuickModel(): string {
   // An explicit user pick is honoured for every tier — splitting their chosen
   // model across tiers would silently answer with a model they did not choose.
   if (requestModel.getStore()) return getDeepModel();
-  if (getActiveProvider() === "anthropic") {
+  const provider = getActiveProvider();
+  if (provider === "anthropic") {
     return getPlatformValue("ANTHROPIC_QUICK_MODEL")?.trim() || getDeepModel();
+  }
+  if (provider === "openrouter") {
+    return getPlatformValue("OPENROUTER_QUICK_MODEL")?.trim() || getDeepModel();
   }
   return getPlatformValue("AI_QUICK_MODEL")?.trim() || getDeepModel();
 }
@@ -182,7 +232,7 @@ export function getProviderApiKey(provider: LLMProvider = "openai"): string | un
 }
 
 export function isLLMConfigured(): boolean {
-  return Boolean(getProviderApiKey(getActiveProvider()));
+  return isProviderReady(getActiveProvider());
 }
 
 /**
@@ -191,11 +241,10 @@ export function isLLMConfigured(): boolean {
  * cold render. This awaits the DB, avoiding a false "AI off".
  */
 export async function isLLMConfiguredAsync(): Promise<boolean> {
-  const provider: LLMProvider =
-    (await getPlatformValueAsync("AI_PROVIDER"))?.trim() === "anthropic"
-      ? "anthropic"
-      : "openai";
-  return Boolean(await getPlatformValueAsync(PROVIDER_KEY_FIELD[provider]));
+  const provider = parsePlatformProvider(
+    await getPlatformValueAsync("AI_PROVIDER"),
+  );
+  return isProviderReadyAsync(provider);
 }
 
 function compatModelId(model: string): string {
@@ -203,7 +252,7 @@ function compatModelId(model: string): string {
   return model.startsWith("openai/") ? model.slice("openai/".length) : model;
 }
 
-function compatTarget(model: string): OpenAICompatTarget {
+function openaiCompatTarget(model: string): OpenAICompatTarget {
   const apiKey = getProviderApiKey("openai");
   if (!apiKey) {
     throw new Error("مفتاح OpenAI غير مُعدّ. أضِفه من لوحة المفاتيح.");
@@ -212,7 +261,36 @@ function compatTarget(model: string): OpenAICompatTarget {
     baseUrl: "https://api.openai.com/v1",
     apiKey,
     model: compatModelId(model),
+    resilienceKey: "openai",
   };
+}
+
+function openRouterCompatTarget(model: string): OpenAICompatTarget {
+  if (!isOpenRouterEnabled()) {
+    throw new Error(
+      "OpenRouter معطّل من لوحة الإدارة. فعّل OPENROUTER_ENABLED للاختبارات.",
+    );
+  }
+  const apiKey = getProviderApiKey("openrouter");
+  if (!apiKey) {
+    throw new Error("مفتاح OpenRouter غير مُعدّ. أضِفه من لوحة المفاتيح.");
+  }
+  // OpenRouter model ids keep the upstream vendor prefix (openai/…, anthropic/…).
+  return {
+    baseUrl: "https://openrouter.ai/api/v1",
+    apiKey,
+    model,
+    resilienceKey: "openrouter",
+    headers: {
+      "HTTP-Referer": getPublicAppUrl(),
+      "X-Title": "AiChart",
+    },
+  };
+}
+
+function compatTargetFor(provider: LLMProvider, model: string): OpenAICompatTarget {
+  if (provider === "openrouter") return openRouterCompatTarget(model);
+  return openaiCompatTarget(model);
 }
 
 /**
@@ -267,7 +345,7 @@ export async function callLLM(
         ? // Native Messages API — the platform's internal wire shape already IS
           // Anthropic's, so no translation layer is needed on this path.
           await callAnthropic({ ...params, model, signal: opts?.signal })
-        : await callOpenAICompat(compatTarget(model), {
+        : await callOpenAICompat(compatTargetFor(provider, model), {
             ...params,
             system: flattenSystem(params.system),
             signal: opts?.signal,
@@ -297,7 +375,7 @@ export async function callLLMStream(
             handlers,
           )
         : await callOpenAICompatStream(
-            compatTarget(model),
+            compatTargetFor(provider, model),
             { ...params, system: flattenSystem(params.system), signal: opts?.signal },
             handlers,
           );

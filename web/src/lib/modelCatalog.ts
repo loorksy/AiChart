@@ -27,9 +27,20 @@ export const ANTHROPIC_MODEL_CHOICES: ModelChoice[] = [
   { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
 ];
 
+/**
+ * OpenRouter route ids keep the upstream vendor prefix (e.g. openai/gpt-4o-mini).
+ * Offered only when the admin enables OpenRouter for testing.
+ */
+export const OPENROUTER_MODEL_CHOICES: ModelChoice[] = [
+  { id: "openai/gpt-4o-mini", label: "GPT-4o Mini (OpenRouter)" },
+  { id: "anthropic/claude-sonnet-4", label: "Claude Sonnet 4 (OpenRouter)" },
+  { id: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash (OpenRouter)" },
+];
+
 const ALLOWED_REFS = new Set<string>([
   ...OPENAI_MODEL_CHOICES.map((m) => `openai/${m.id}`),
   ...ANTHROPIC_MODEL_CHOICES.map((m) => `anthropic/${m.id}`),
+  ...OPENROUTER_MODEL_CHOICES.map((m) => `openrouter/${m.id}`),
 ]);
 
 /** Is this "provider/model" ref one the platform offers? */

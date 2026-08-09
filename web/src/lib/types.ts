@@ -49,7 +49,8 @@ export interface TradingSettings {
   market_data_source?: "auto" | "metaapi" | null;
   /**
    * "provider/model" the user chose for their own analyses (e.g.
-   * "openai/gpt-5.6-sol", "anthropic/claude-opus-5"). null = platform default.
+   * "openai/gpt-5.6-sol", "anthropic/claude-opus-5",
+   * "openrouter/openai/gpt-4o-mini"). null = platform default.
    * The admin supplies the API keys; the user picks which brain answers.
    */
   preferred_model_ref?: string | null;

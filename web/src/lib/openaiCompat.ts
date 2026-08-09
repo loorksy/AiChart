@@ -29,6 +29,12 @@ export interface OpenAICompatTarget {
   model: string;
   /** Extra optional HTTP headers for the upstream API */
   headers?: Record<string, string>;
+  /**
+   * Circuit-breaker key. Defaults to "openai" for the OpenAI endpoint;
+   * OpenRouter (and any other gateway) must use its own key so an outage
+   * there does not trip the OpenAI breaker.
+   */
+  resilienceKey?: string;
 }
 
 // ---------- request conversion ----------
@@ -265,7 +271,7 @@ export async function callOpenAICompat(
   // callers that retry (the final-decision synthesizer) keep sole ownership of
   // retry policy, so this never double-retries.
   const res = await resilientFetch(
-    "openai",
+    target.resilienceKey ?? "openai",
     `${target.baseUrl}/chat/completions`,
     {
       method: "POST",

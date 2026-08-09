@@ -65,7 +65,7 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     group: "ai",
     secret: false,
     plainStorage: false,
-    placeholder: "openai | anthropic",
+    placeholder: "openai | anthropic | openrouter",
   },
   {
     key: "ANTHROPIC_API_KEY",
@@ -85,6 +85,34 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "claude-opus-5",
   },
   {
+    // Test-only gateway. Off by default — the key alone must not expose
+    // OpenRouter until the operator flips this toggle in the admin panel.
+    key: "OPENROUTER_ENABLED",
+    label: "تفعيل OpenRouter (للاختبارات)",
+    labelEn: "OPENROUTER_ENABLED",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    type: "toggle",
+  },
+  {
+    key: "OPENROUTER_API_KEY",
+    label: "مفتاح OpenRouter",
+    labelEn: "OPENROUTER_API_KEY",
+    group: "ai",
+    secret: true,
+    plainStorage: false,
+  },
+  {
+    key: "OPENROUTER_MODEL",
+    label: "نموذج OpenRouter",
+    labelEn: "OPENROUTER_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "openai/gpt-4o-mini",
+  },
+  {
     // Both quick-model keys are optional: llm.ts falls back to the deep model
     // when they are blank, so an empty field changes nothing.
     key: "AI_QUICK_MODEL",
@@ -99,6 +127,15 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     key: "ANTHROPIC_QUICK_MODEL",
     label: "نموذج Claude السريع (اختياري)",
     labelEn: "ANTHROPIC_QUICK_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "اتركه فارغاً لاستخدام النموذج الأساسي",
+  },
+  {
+    key: "OPENROUTER_QUICK_MODEL",
+    label: "نموذج OpenRouter السريع (اختياري)",
+    labelEn: "OPENROUTER_QUICK_MODEL",
     group: "ai",
     secret: false,
     plainStorage: false,

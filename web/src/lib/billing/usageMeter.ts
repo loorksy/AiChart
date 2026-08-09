@@ -46,6 +46,10 @@ const SEED_PRICES: Array<[provider: string, model: string, inUsd: number, outUsd
   ["anthropic", "claude-opus-4-8", 5, 25],
   ["anthropic", "claude-sonnet-5", 3, 15],
   ["anthropic", "claude-haiku-4-5", 1, 5],
+  // OpenRouter test gateway — approximate list prices; admin can edit.
+  ["openrouter", "openai/gpt-4o-mini", 0.15, 0.6],
+  ["openrouter", "anthropic/claude-sonnet-4", 3, 15],
+  ["openrouter", "google/gemini-2.0-flash-001", 0.1, 0.4],
 ];
 
 let seeded = false;
@@ -77,7 +81,9 @@ interface PriceRow {
 }
 
 /** Normalize stored/legacy ids ("openai/gpt-…", date-suffixed) to price keys. */
-function priceModelKey(model: string): string {
+function priceModelKey(provider: string, model: string): string {
+  // OpenRouter ids keep the upstream vendor prefix (openai/…, anthropic/…).
+  if (provider === "openrouter") return model.toLowerCase();
   return model.replace(/^openai\//, "").toLowerCase();
 }
 
@@ -85,7 +91,7 @@ async function lookupPrice(provider: string, model: string): Promise<PriceRow | 
   await ensureSeedPrices();
   return queryOne<PriceRow>(
     "SELECT input_usd_per_m, output_usd_per_m FROM model_prices WHERE provider = ? AND model = ?",
-    [provider, priceModelKey(model)],
+    [provider, priceModelKey(provider, model)],
   );
 }
 
@@ -156,7 +162,7 @@ export function recordLLMUsage(entry: LLMUsageEntry): void {
           ctx?.userId ?? null,
           Date.now(),
           entry.provider,
-          priceModelKey(entry.model),
+          priceModelKey(entry.provider, entry.model),
           ctx?.kind ?? "other",
           entry.inputTokens,
           entry.outputTokens,
@@ -166,7 +172,10 @@ export function recordLLMUsage(entry: LLMUsageEntry): void {
         ],
       );
       if (!price) {
-        log.warn("price.missing", { provider: entry.provider, model: priceModelKey(entry.model) });
+        log.warn("price.missing", {
+          provider: entry.provider,
+          model: priceModelKey(entry.provider, entry.model),
+        });
       }
       // V2-A2: the retail cost drains the user's credit buckets. Dynamic
       // import keeps the ledger out of this module's dependency edge for
