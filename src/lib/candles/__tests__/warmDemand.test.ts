@@ -103,15 +103,24 @@ test("fresh candles serve the warehouse first when its tail is fresh", () => {
     resolve(process.cwd(), "src/lib/agent/marketContext/getFreshAgentCandles.ts"),
     "utf8",
   );
-  // The warehouse read must come before any blocking live pull...
+  // The warehouse read must come before the last-resort unbounded live pull.
+  // (The sentinel used to be the two-attempt retry loop "for (let attempt";
+  // that loop was replaced by a single awaited pullLive() at the tail — the
+  // fallback for an EMPTY warehouse — and the stale sentinel made this test
+  // fail while the guarantee it protects still held.)
   const warehouseFirst = source.indexOf("FEATURES.boundedColdStartV1()");
-  const blockingLive = source.indexOf("for (let attempt = 0");
+  const blockingLive = source.indexOf("liveCandles = await pullLive()");
   assert.ok(
     warehouseFirst >= 0 && warehouseFirst < blockingLive,
-    "warehouse-first gate must precede the blocking live loop",
+    "warehouse-first gate must precede the last-resort blocking live pull",
   );
-  // ...the live refresh happens off the critical path...
+  // ...a FRESH tail refreshes off the critical path...
   assert.match(source, /void pullLive\(\)/);
+  // ...a STALE tail on an open market may wait for live data, but only behind
+  // an explicit time budget (Promise.race against a timeout) so cold MetaApi
+  // connects can never eat the whole market-data deadline...
+  assert.match(source, /AGENT_LIVE_RESCUE_TIMEOUT_MS/);
+  assert.match(source, /Promise\.race\(\[pull, timeout\]\)/);
   // ...and freshness is judged, not assumed.
   assert.match(source, /candleFreshnessToleranceMs\(interval\)/);
 });

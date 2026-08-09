@@ -12,10 +12,22 @@ test("context v2 stays flag-gated so an explicit 0 preserves the legacy route pa
 });
 
 test("context remains a language aid and is not passed to market or risk agents", () => {
-  assert.doesNotMatch(orchestrator, /runMarketDataAgent\([\s\S]*?conversationContext/);
-  assert.doesNotMatch(orchestrator, /runRiskAgent\([\s\S]*?conversationContext/);
-  assert.doesNotMatch(orchestrator, /runExecutionGuardAgent\([\s\S]*?conversationContext/);
+  // Bound each check to the call STATEMENT (no `;` inside an argument list
+  // here) — the old `[\s\S]*?` span reached from the market-agent call to any
+  // later mention of conversationContext in the file, so the sanctioned
+  // language-aid uses further down (the synthesizer's continuity block) made
+  // it a false positive. What is forbidden is the context appearing in these
+  // agents' ARGUMENTS, not existing later in the module.
+  assert.doesNotMatch(orchestrator, /runMarketDataAgent\([^;]*conversationContext/);
+  assert.doesNotMatch(orchestrator, /runRiskAgent\([^;]*conversationContext/);
+  assert.doesNotMatch(orchestrator, /runExecutionGuardAgent\([^;]*conversationContext/);
   assert.match(orchestrator, /contextualizeIntentMessage\(userMessage, input\.conversationContext\)/);
+  // The synthesizer receives conversation history ONLY through the sanctioned
+  // compactor, which frames it as untrusted continuity context — never raw.
+  assert.match(
+    orchestrator,
+    /conversationBlock: conversationBlockForSynth\(input\.conversationContext\)/,
+  );
   // The general-answer path gained a third argument when answers began
   // streaming (the emitAnswerText sink). What this guards is which agents see
   // conversationContext, not the arity of the call, so it matches the two
