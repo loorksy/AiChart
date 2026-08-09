@@ -29,6 +29,8 @@ import {
 import { buildEvidenceDimensions } from "../evidenceDimensions";
 import {
   activationRuleSchema,
+  describeActivationRule,
+  explainActivationRuleIncoherence,
   normalizeActivationRule,
 } from "@/lib/recommendations/activationRule";
 import {
@@ -401,6 +403,20 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - The direction is mandatory; an entry at the current price is NOT. If price is a poor entry, or the move does not pay for its spread and slippage, keep the direction and make the plan conditional at the price or condition that WOULD make it worth taking. Never invent a weak entry, and never stretch a target or tighten a stop to make the numbers look acceptable.
 - A conditional plan is NOT a license for a distant level. An actionable entry is one the market can realistically reach within validityCandles — near the current price relative to recent volatility. The platform grades every plan's reachability and REFUSES entries too far from the market; when your best level is far away, keep the direction, name the level as what you are WATCHING in the summary and alternativeScenario, and do not dress it as an entry.
 
+## Choosing the plan type — the decision procedure
+Ask, in order:
+1. Is the current price INSIDE a validated POI/zone for my direction, with acceptable net cost? → immediate. Waiting for a "better price" you do not need is how good entries are missed.
+2. Is price NEAR the zone and approaching it, with a forming structure whose boundary is itself a defensible entry? → anticipatory, and say the structure may still fail.
+3. Otherwise → conditional, and the trigger must be an event that CONFIRMS your idea, not one that merely reaches a number. Rank triggers by evidence value: rejection/retest at a real POI > candle close beyond a level > bare touch. Use price_touch only when a touch genuinely completes the setup (e.g. a limit at the far edge of a fresh zone).
+- The trigger must be REACHABLE and PLAUSIBLE from where price is NOW: a "wait for pullback to X" needs X on the correct side of the current price and within recent swing distance; a "close beyond Y" needs Y not yet closed beyond. The platform re-checks this against the live price and rejects contradictions — a condition already satisfied at issue time is not a condition, and a condition on the wrong side of price grades a different event than your sentence describes.
+- Example (correct): price 4330, sell idea, POI 4345–4350 above. Conditional sell — rejection_confirmed at 4348 with direction:"below": price must RISE into the zone, get rejected, close back under. If instead price were already at 4355, the same rule is WRONG (price is beyond the level); the honest plan is a close-below trigger or a different POI.
+- Example (wrong): price 4330, sell idea, activationRule candle_close_below 4340. Price is already below 4340 — the "condition" fires on the next candle. That is an immediate plan hiding behind a conditional label.
+
+## Choosing the entry LEVEL
+- Enter at the EDGE of the POI/zone nearest the current price plus a spread margin — not the middle of the zone and not its far side. The middle "feels safer" but gives up half the zone's R for no evidence.
+- Respect the spread: on instruments with a wide spread (gold, exotics), an entry closer than ~2 spreads to the trigger level will fill on noise. Place the entry past the trigger by a real margin.
+- The stop goes past the structural invalidation with a volatility buffer (as stated below); the entry choice must never be moved closer to "improve" the R ratio — the R ratio reports the trade, it does not design it.
+
 ## The charts
 - When chart images are attached, each one arrives immediately after a label naming its timeframe and carrying that timeframe's numbers. Read the picture and the numbers together, and bind each chart to the timeframe it belongs to.
 - Images confirm SHAPE — a rejection, a gap, a formation, where a structure sits. Every precise level you quote must come from the numeric evidence, never estimated off the pixels.
@@ -580,7 +596,34 @@ export async function runFinalDecisionSynthesizer(
 ${correction}`
         : user;
       const raw = await callModel(system, userMsg);
-      parsed = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
+      const candidate = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
+      // Issue-time price coherence (the XAUUSD conditional-sell incident):
+      // schema validation cannot see the live price, so a rule that is
+      // already satisfied — or that grades a different event than the
+      // sentence describes — passed cleanly and betrayed the user later.
+      // Checked HERE so the corrective retry can feed the exact violation
+      // back to the model instead of persisting a contradictory plan.
+      if (candidate.activationRule && input.market.currentPrice != null) {
+        const violation = explainActivationRuleIncoherence({
+          rule: candidate.activationRule,
+          direction: candidate.direction,
+          currentPrice: input.market.currentPrice,
+          tolerance: Math.max(
+            input.market.spread ?? 0,
+            (input.market.atr ?? 0) * 0.1,
+          ),
+        });
+        if (violation) {
+          throw new z.ZodError([
+            {
+              code: z.ZodIssueCode.custom,
+              path: ["activationRule"],
+              message: violation,
+            },
+          ]);
+        }
+      }
+      parsed = candidate;
       failure = null;
       break;
     } catch (error) {
@@ -1074,11 +1117,21 @@ function applyModelDecision(
   const activationClass: "immediate" | "conditional" =
     planType === "immediate" ? "immediate" : "conditional";
   const netRr = selected?.netRr;
-  const cleanedActivationCondition =
-    sanitizePublicText(activationCondition ?? "").slice(0, 400) || undefined;
   const normalizedActivationRule = activationRule
     ? normalizeActivationRule(activationRule, input.market.interval)
     : undefined;
+  // Single source of truth (the XAUUSD incident): the sentence the user reads
+  // is DERIVED from the structured rule the tracker grades, so they can never
+  // disagree. The model's own free-text sentence survives only when there is
+  // no structured rule to derive from (Arabic locale; the deterministic
+  // description is Arabic-only, so English operators keep the model text).
+  const derivedCondition =
+    normalizedActivationRule && input.locale !== "en"
+      ? describeActivationRule(normalizedActivationRule)
+      : null;
+  const cleanedActivationCondition =
+    sanitizePublicText(derivedCondition ?? activationCondition ?? "").slice(0, 400) ||
+    undefined;
   const plan: AgentRecommendation | null = resolved.levels
     ? {
         action: direction,

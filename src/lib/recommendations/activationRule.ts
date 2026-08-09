@@ -544,6 +544,110 @@ export function evaluateActivationRule(
   return { activated: false };
 }
 
+/**
+ * Issue-time coherence: is this rule a REAL condition given where price is NOW?
+ *
+ * Two failure families surfaced in production (the XAUUSD conditional-sell
+ * incident) that schema validation cannot catch because they depend on the
+ * live price:
+ *
+ *   1. Already satisfied — a `candle_close_below` arming a sell while price
+ *      already sits below the level. The "condition" fires on the very next
+ *      candle regardless of what the market does; the user reads a sentence
+ *      that promises patience and gets an instant fill.
+ *   2. Wrong side — a `rejection_confirmed` whose level sits on the opposite
+ *      side of price from what the sentence implies ("عودة السعر إلى المستوى
+ *      ثم رفض" while price already crossed beyond it). Combined with the
+ *      evaluator's pierce+close-back semantics, the stored rule grades a
+ *      different event than the sentence describes.
+ *
+ * Returns a violation message (fed back to the model through the corrective
+ * retry) or null when the rule is coherent. Pure: caller passes price/context.
+ */
+export function explainActivationRuleIncoherence(input: {
+  rule: ActivationRule;
+  direction: "buy" | "sell";
+  currentPrice: number;
+  /** Price-unit tolerance for "at the level" judgments (e.g. spread or ATR fraction). */
+  tolerance?: number;
+}): string | null {
+  const { rule, direction, currentPrice } = input;
+  const tol = Math.max(input.tolerance ?? 0, 0);
+  const leaves: LeafActivationRule[] =
+    rule.kind === "composite" ? rule.rules : [rule];
+
+  for (const leaf of leaves) {
+    switch (leaf.kind) {
+      case "candle_close_above": {
+        if (currentPrice > leaf.level + (leaf.tolerance ?? 0) + tol) {
+          return `activationRule candle_close_above(${fmt(leaf.level)}) is already satisfied — current price ${fmt(currentPrice)} is above the level, so the plan would activate on the next candle with no real condition. Either raise the level to a future trigger or use planType:"immediate".`;
+        }
+        break;
+      }
+      case "candle_close_below": {
+        if (currentPrice < leaf.level - (leaf.tolerance ?? 0) - tol) {
+          return `activationRule candle_close_below(${fmt(leaf.level)}) is already satisfied — current price ${fmt(currentPrice)} is below the level, so the plan would activate on the next candle with no real condition. Either lower the level to a future trigger or use planType:"immediate".`;
+        }
+        break;
+      }
+      case "breakout_confirmed": {
+        // A breakout that arms a trade must break IN the trade's direction —
+        // "close above X then sell" waits for the market to argue against the
+        // plan before entering it.
+        const required = direction === "buy" ? "above" : "below";
+        if (leaf.direction !== required) {
+          return `activationRule breakout_confirmed.direction:"${leaf.direction}" contradicts a ${direction} plan — a breakout arming a ${direction} must be direction:"${required}".`;
+        }
+        const satisfied =
+          leaf.direction === "above"
+            ? currentPrice > leaf.level + (leaf.tolerance ?? 0) + tol
+            : currentPrice < leaf.level - (leaf.tolerance ?? 0) - tol;
+        if (satisfied) {
+          return `activationRule breakout_confirmed(${fmt(leaf.level)}, ${leaf.direction}) is already satisfied at current price ${fmt(currentPrice)} — pick a future level or use planType:"immediate".`;
+        }
+        break;
+      }
+      case "rejection_confirmed": {
+        // direction is the side the candle must CLOSE on. For that wick-through
+        // + close-back sequence to mean what the sentence says, price must
+        // currently BE on the close side — otherwise the "rejection" degrades
+        // into a plain break of the level.
+        const wrongSide =
+          leaf.direction === "below"
+            ? currentPrice > leaf.level + (leaf.tolerance ?? 0) + tol
+            : currentPrice < leaf.level - (leaf.tolerance ?? 0) - tol;
+        if (wrongSide) {
+          return `activationRule rejection_confirmed(${fmt(leaf.level)}, close ${leaf.direction}) expects price to approach the level from the "${leaf.direction}" side, but current price ${fmt(currentPrice)} is already beyond it — the stored rule would grade a plain break, not the rejection your sentence describes. Move the level or restate the condition as candle_close_${leaf.direction === "below" ? "below" : "above"}.`;
+        }
+        break;
+      }
+      case "retest_confirmed": {
+        const alreadyBroken =
+          leaf.direction === "above"
+            ? currentPrice > leaf.level + (leaf.tolerance ?? 0) + tol
+            : currentPrice < leaf.level - (leaf.tolerance ?? 0) - tol;
+        // Already broken is fine (the retest is pending) — but the retest zone
+        // must sit between the current price and beyond-the-level territory in
+        // a way price can actually revisit. Only flag the impossible shape:
+        // zone entirely on the far side of the level from the break direction.
+        if (
+          alreadyBroken &&
+          (leaf.direction === "above"
+            ? leaf.retestZone.low > currentPrice
+            : leaf.retestZone.high < currentPrice)
+        ) {
+          return `activationRule retest_confirmed(${fmt(leaf.level)}) has a retestZone price cannot return to from ${fmt(currentPrice)} — the zone must sit between the current price and the broken level.`;
+        }
+        break;
+      }
+      case "price_touch":
+        // A touch is instant by design; nothing price-dependent to reject.
+        break;
+    }
+  }
+  return null;
+}
+
 /** The plain-language restatement stored alongside the rule and shown to the operator. */
 export function describeActivationRule(rule: ActivationRule): string {
   if (rule.kind === "composite") {
@@ -551,18 +655,23 @@ export function describeActivationRule(rule: ActivationRule): string {
     return rule.rules.map(describeActivationRule).join(joiner);
   }
   const level = fmt(rule.level);
+  const tf = rule.timeframe ?? "الإطار المعتمد";
+  const closesOf = (n: number | undefined, dirWord: string) =>
+    (n ?? 1) <= 1
+      ? `إغلاق شمعة ${tf} ${dirWord} ${level}`
+      : `إغلاق ${n} شموع ${tf} متتالية ${dirWord} ${level}`;
   switch (rule.kind) {
     case "price_touch":
-      return `لمس السعر ${level}`;
+      return `لمس السعر مستوى ${level}`;
     case "candle_close_above":
-      return `إغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe ?? "الإطار المعتمد"} فوق ${level}`;
+      return closesOf(rule.closes, "فوق");
     case "candle_close_below":
-      return `إغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe ?? "الإطار المعتمد"} تحت ${level}`;
+      return closesOf(rule.closes, "تحت");
     case "breakout_confirmed":
-      return `كسر مؤكد ${rule.direction === "above" ? "فوق" : "تحت"} ${level} بإغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe ?? "الإطار المعتمد"}`;
+      return `اختراق مستوى ${level} ${rule.direction === "above" ? "صعوداً" : "هبوطاً"} مع ${closesOf(rule.closes, rule.direction === "above" ? "فوق" : "تحت")}`;
     case "retest_confirmed":
-      return `كسر ${level} ثم إعادة اختباره بين ${fmt(rule.retestZone.low)} و${fmt(rule.retestZone.high)} ثم تأكيد الإغلاق`;
+      return `اختراق مستوى ${level} ثم عودة السعر لإعادة اختباره بين ${fmt(rule.retestZone.low)} و${fmt(rule.retestZone.high)} ثم إغلاق شمعة ${tf} ${rule.direction === "above" ? "فوق" : "تحت"} المستوى`;
     case "rejection_confirmed":
-      return `ارتداد مؤكد عن ${level} على ${rule.timeframe}`;
+      return `وصول السعر إلى مستوى ${level} ثم رفضه: اختراق المستوى بالذيل وإغلاق شمعة ${tf} ${rule.direction === "above" ? "فوقه" : "تحته"}`;
   }
 }

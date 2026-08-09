@@ -228,6 +228,7 @@ export async function trackOneRecommendation(
     atr,
     retestLevel,
     excursionAtr,
+    missedWithoutFill: result.missedWithoutFill ?? null,
     revisionNo: rec.revisionNo ?? null,
   });
   if (result.outcome !== "pending") {
@@ -415,7 +416,7 @@ export async function trackRecommendations(
             dedupeKey: `${rec.id}:${rec.revisionNo ?? 0}:executed_auto`,
             detail: outcome.dryRun
               ? `${rec.symbol}: كان سيُنفَّذ آلياً الآن (وضع المحاكاة).`
-              : `${rec.symbol}: نُفِّذت الصفقة آلياً بعد تحقق شرط التفعيل.`,
+              : `${rec.symbol}: نُفِّذت ��لصفقة آلياً بعد تحقق شرط التفعيل.`,
             terminal: false,
             occurredAt: Date.now(),
           });

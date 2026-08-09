@@ -10,5 +10,14 @@ export async function register() {
     // any non-node runtime bundle.
     const { startEventLoopLagSampler } = await import("./src/lib/metrics");
     startEventLoopLagSampler();
+
+    // In-process fallback scheduler (VPS/standalone): warms the candle
+    // warehouse and sweeps tracked recommendations without depending on an
+    // externally installed cron. Lease-locked, so it coexists safely with
+    // external cron and multiple replicas. See internalScheduler.ts.
+    const { startInternalScheduler } = await import(
+      "./src/lib/scheduler/internalScheduler"
+    );
+    startInternalScheduler();
   }
 }

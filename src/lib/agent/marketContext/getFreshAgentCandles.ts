@@ -70,6 +70,43 @@ export async function getFreshAgentCandles(input: {
     });
   };
 
+  /**
+   * Stale-warehouse rescue: wait a *bounded* slice of the market-data budget
+   * for one live pull instead of guaranteeing a first-request freshness
+   * failure. On a VPS after any idle period the warehouse tail is always
+   * older than the sync guard's 3-bar window, so the old "serve cold + refresh
+   * in background" behavior made the FIRST analysis fail every time and only
+   * the retry succeed. A short await (default 5s) fixes the common case —
+   * warm broker connection — while the timeout keeps cold MetaApi
+   * connect/deploy waits (up to 120s) off the request path. On timeout the
+   * pull keeps running in the background so the warehouse still heals.
+   */
+  const boundedLive = async (): Promise<AgentCandle[] | null> => {
+    const budgetMs = Number(process.env.AGENT_LIVE_RESCUE_TIMEOUT_MS ?? "5000");
+    if (!Number.isFinite(budgetMs) || budgetMs <= 0) return null;
+    const pull = pullLive();
+    // Keep the warehouse healing even if we stop waiting.
+    pull.catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), budgetMs);
+      if (typeof timer.unref === "function") timer.unref();
+    });
+    try {
+      const result = await Promise.race([pull, timeout]);
+      return result;
+    } catch (error) {
+      log.debug("bounded live rescue failed", {
+        symbol,
+        interval,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
   if (FEATURES.boundedColdStartV1()) {
     const warehouse = (await getCandles({
       symbol,
@@ -86,17 +123,38 @@ export async function getFreshAgentCandles(input: {
     // and deepen via feeder/background instead of blocking on cold RPC.
     if (warehouse.length) {
       void recordWarmDemand({ symbol, interval });
-      backgroundLive();
-      if (!tailFresh && isForexMarketOpen(symbol)) {
-        void backfillCandles({
+      if (tailFresh || !isForexMarketOpen(symbol)) {
+        backgroundLive();
+        return {
+          currentTfCandles: warehouse,
+          liveCandles: [],
+          liveError: null,
+        };
+      }
+
+      // Stale tail + open market: try one bounded live pull so the first
+      // request after idle succeeds instead of bouncing off the sync guard.
+      const rescued = await boundedLive();
+      void backfillCandles({
+        symbol,
+        interval,
+        limit,
+        maxPages: 1,
+        feederUserId: input.userId,
+      }).catch(() => {
+        // Best-effort deepen; analysis already has bars to reason on.
+      });
+      if (rescued && rescued.length) {
+        const refreshed = (await getCandles({
           symbol,
           interval,
           limit,
-          maxPages: 1,
-          feederUserId: input.userId,
-        }).catch(() => {
-          // Best-effort deepen; analysis already has bars to reason on.
-        });
+        })) as AgentCandle[];
+        return {
+          currentTfCandles: refreshed.length ? refreshed : rescued,
+          liveCandles: rescued,
+          liveError: null,
+        };
       }
       return {
         currentTfCandles: warehouse,

@@ -38,6 +38,12 @@ export type LifecycleEventType =
   | "sl_hit"
   | "invalidated"
   | "expired"
+  /**
+   * Price ran to TP1 while the plan was still waiting for its entry or
+   * activation condition — the predicted move happened without a fill. Ends
+   * the plan with an honest "missed" instead of a silent eternal pending.
+   */
+  | "missed_no_fill"
   | "executed_auto"
   | "execution_skipped";
 
@@ -96,6 +102,8 @@ export interface DeriveEventsInput {
    * Past RETEST_ABANDONED_ATR the move has run and a retest entry will not fill.
    */
   excursionAtr?: number | null;
+  /** The evaluator flagged this expiry as "TP1 reached without a fill". */
+  missedWithoutFill?: boolean | null;
   now?: number;
 }
 
@@ -125,6 +133,7 @@ const TERMINAL_EVENTS = new Set<LifecycleEventType>([
   "sl_hit",
   "invalidated",
   "expired",
+  "missed_no_fill",
 ]);
 
 /**
@@ -163,7 +172,14 @@ export function deriveLifecycleEvents(input: DeriveEventsInput): LifecycleEvent[
   }
 
   if (input.nextStatus !== input.previousStatus) {
-    const type = STATUS_EVENTS[input.nextStatus];
+    // An expiry caused by the market running to TP1 without a fill is a
+    // different fact than a time expiry — and hearing WHICH one it was is the
+    // difference between "the agent contradicted itself" and "the trigger
+    // never armed before the move went".
+    const type =
+      input.nextStatus === "expired" && input.missedWithoutFill
+        ? ("missed_no_fill" as const)
+        : STATUS_EVENTS[input.nextStatus];
     if (type) push(type, statusDetail(type, rec.symbol));
   }
 
@@ -273,6 +289,8 @@ function statusDetail(type: LifecycleEventType, symbol: string): string {
       return `${symbol}: أُبطلت الخطة.`;
     case "expired":
       return `${symbol}: انتهت صلاحية الخطة.`;
+    case "missed_no_fill":
+      return `${symbol}: تحرك السعر إلى الهدف الأول دون تحقق شرط الدخول — فاتت الفرصة وأُغلقت الخطة.`;
     case "retest_started":
       return `${symbol}: بدأ اختبار مستوى الكسر.`;
     case "breakout_no_retest":

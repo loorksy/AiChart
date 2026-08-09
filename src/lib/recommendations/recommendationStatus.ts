@@ -82,6 +82,15 @@ export interface EvaluateResult {
   changed: boolean;
   /** Proof of WHICH candle satisfied a structured activation rule, for audit. */
   activationEvidence?: ActivationEvidence;
+  /**
+   * The plan expired because price ran to TP1 WITHOUT the entry ever filling —
+   * the opportunity happened and the plan watched it go by. Distinguished from
+   * a plain time expiry so the operator hears "فاتت الفرصة" instead of a
+   * silent pending card that never resolves (the XAUUSD conditional-sell
+   * incident: the market did exactly what the plan predicted and the plan
+   * stayed "بانتظار الشرط" forever).
+   */
+  missedWithoutFill?: boolean;
 }
 
 const WIN_BY_TP: Record<1 | 2 | 3, TrackedRecommendationOutcome> = {
@@ -214,6 +223,18 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
         triggeredAt = candle.time;
         activationEvidence = activation?.evidence;
       } else {
+        // Missed-opportunity detection: price reached TP1 while the plan was
+        // still waiting for its entry/condition. The move the plan predicted
+        // has happened WITHOUT it — waiting longer is hoping the market gives
+        // the same opportunity twice. Terminal now, announced as missed.
+        const tp1 = targets[0];
+        if (tp1 != null && tpReached(dir, candle, tp1)) {
+          return {
+            ...finalize("expired", "expired"),
+            expiredAt: candle.time,
+            missedWithoutFill: true,
+          };
+        }
         continue; // still waiting for entry — SL/TP do not count pre-trigger
       }
     }
