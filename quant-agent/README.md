@@ -88,6 +88,26 @@ curl -s http://127.0.0.1:8091/internal/quant-agent/strategies \
   -H "Authorization: Bearer $QUANT_AGENT_INTERNAL_TOKEN"
 ```
 
+## LLM analysis scoring
+
+Two stateless endpoints (`app/api/analysis.py`, engine in
+`app/engine/analysis/`) serve the deterministic half of the LLM
+trading-analysis pipeline. They are pure functions over data `web/` pushes
+in — no store, no network, no model call:
+
+- `POST /internal/quant-agent/analysis/score` (pre-LLM) — takes the
+  per-timeframe indicator snapshots and returns the objective scores, the
+  multi-timeframe consensus, the trend outlook, the similar-pattern matches
+  and a data-quality report.
+- `POST /internal/quant-agent/analysis/finalize` (post-LLM) — takes the
+  model's raw parsed output and returns it constrained and vetoed: the ±10%
+  entry clamp, direction-consistent stop/target geometry, the indicator veto,
+  the consensus override, and an `applied` block naming every change.
+
+`web/` owns everything either endpoint cannot do here: collecting the
+candles, calling the model, persistence, auth and billing. The arithmetic is
+ported from QuantDinger — see `NOTICE.md`.
+
 ## Storage
 
 `app/storage/sqlite.py` owns a private SQLite database

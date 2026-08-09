@@ -570,6 +570,45 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_quant_agent_monitors_due
     ON quant_agent_monitors (enabled, symbol, interval);
 
+  -- The Quant Agent's LLM trading-analysis history — see the SQLite schema
+  -- for the full rationale (own table, never 'recommendations'; TEXT uuid id
+  -- minted before the row so a failed run still persists; 'created_at' epoch
+  -- milliseconds rather than a SQL timestamp default so the history endpoint's
+  -- keyset cursor compares identically on both backends).
+  CREATE TABLE IF NOT EXISTS quant_analyses (
+    id                 TEXT PRIMARY KEY,
+    user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    market             TEXT NOT NULL,
+    symbol             TEXT NOT NULL,
+    interval           TEXT NOT NULL,
+    status             TEXT NOT NULL,
+    decision           TEXT,
+    confidence         INTEGER,
+    current_price      DOUBLE PRECISION,
+    entry_price        DOUBLE PRECISION,
+    stop_loss          DOUBLE PRECISION,
+    take_profit        DOUBLE PRECISION,
+    position_size_pct  DOUBLE PRECISION,
+    horizon            TEXT,
+    summary            TEXT,
+    technical_score    INTEGER,
+    fundamental_score  INTEGER,
+    sentiment_score    INTEGER,
+    overall_score      INTEGER,
+    consensus_json     TEXT,
+    outlook_json       TEXT,
+    detail_json        TEXT,
+    reasons_json       TEXT,
+    risks_json         TEXT,
+    data_quality_json  TEXT,
+    error              TEXT,
+    created_at         BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS quant_analyses_user_created
+    ON quant_analyses (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS quant_analyses_symbol
+    ON quant_analyses (user_id, symbol, created_at DESC);
+
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  SERIAL PRIMARY KEY,
     user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

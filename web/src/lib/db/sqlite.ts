@@ -594,6 +594,58 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_quant_agent_monitors_due
     ON quant_agent_monitors (enabled, symbol, interval);
 
+  -- The Quant Agent's LLM trading-analysis history (Wave 1 contract). This is
+  -- the SECOND engine's own table: it is deliberately not 'recommendations',
+  -- so nothing here can be mistaken for — or silently promoted into —
+  -- Lonora's single canonical plan record. 'id' is a TEXT uuid rather than an
+  -- autoincrement, matching 'agent_chats'/'tracked_recommendations', because
+  -- the id is minted before the row exists so a failed run can still be
+  -- persisted under a stable identity.
+  --
+  -- 'created_at' is epoch milliseconds (the quant_agent_monitors convention,
+  -- not a SQL timestamp default) so the keyset cursor used by the history
+  -- endpoint compares identically on both backends; the API converts it to
+  -- ISO-8601 on the way out.
+  --
+  -- The *_json columns hold whole sub-objects rather than exploded columns
+  -- because they are read back as one unit by the report UI and never
+  -- queried on. The four score columns ARE exploded — the history list ranks
+  -- and filters on them.
+  CREATE TABLE IF NOT EXISTS quant_analyses (
+    id                 TEXT PRIMARY KEY,
+    user_id            INTEGER NOT NULL,
+    market             TEXT NOT NULL,
+    symbol             TEXT NOT NULL,
+    interval           TEXT NOT NULL,
+    status             TEXT NOT NULL,
+    decision           TEXT,
+    confidence         INTEGER,
+    current_price      REAL,
+    entry_price        REAL,
+    stop_loss          REAL,
+    take_profit        REAL,
+    position_size_pct  REAL,
+    horizon            TEXT,
+    summary            TEXT,
+    technical_score    INTEGER,
+    fundamental_score  INTEGER,
+    sentiment_score    INTEGER,
+    overall_score      INTEGER,
+    consensus_json     TEXT,
+    outlook_json       TEXT,
+    detail_json        TEXT,
+    reasons_json       TEXT,
+    risks_json         TEXT,
+    data_quality_json  TEXT,
+    error              TEXT,
+    created_at         INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS quant_analyses_user_created
+    ON quant_analyses (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS quant_analyses_symbol
+    ON quant_analyses (user_id, symbol, created_at DESC);
+
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id             INTEGER NOT NULL,

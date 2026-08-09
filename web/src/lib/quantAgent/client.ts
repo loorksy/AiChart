@@ -6,6 +6,7 @@ import {
 } from "./serviceErrors";
 import type {
   BacktestQuantStrategyParams,
+  FinalizeQuantAnalysisParams,
   GenerateQuantRecommendationInput,
   GenerateQuantStrategyCodeParams,
   GenerateValidateQuantStrategyResult,
@@ -13,12 +14,16 @@ import type {
   GeneratedStrategySpec,
   ListQuantRecommendationsParams,
   QuantAgentCallerContext,
+  QuantAnalysisFinalizeResult,
+  QuantAnalysisScoreResult,
+  QuantAnalysisScoreResultWire,
   QuantBacktestResult,
   QuantBacktestResultWire,
   QuantOhlcBar,
   QuantRecommendation,
   QuantRecommendationWire,
   QuantStrategyDef,
+  ScoreQuantAnalysisParams,
 } from "./types";
 
 if (typeof window !== "undefined") {
@@ -69,6 +74,28 @@ function backtestTimeoutMs(): number {
   const configured = Number(process.env.QUANT_AGENT_BACKTEST_CLIENT_TIMEOUT_MS || 120_000);
   const resolved = Number.isFinite(configured) ? configured : 120_000;
   return Math.min(300_000, Math.max(clientTimeoutMs(), resolved));
+}
+
+/**
+ * The two analysis endpoints get their own ceiling, for the opposite reason
+ * to the backtest one.
+ *
+ * `/analysis/score` and `/analysis/finalize` are pure arithmetic over a
+ * handful of pushed timeframes — milliseconds of real work — but they sit in
+ * the middle of an interactive request that has already spent its budget on
+ * candle collection and one LLM call. The global 30s cap is the wrong shape
+ * for both ends: too tight if the service is cold-starting behind the pm2
+ * ingress proxy, and far too generous as a "still working" signal. A separate
+ * knob lets an operator tune the analysis path without also lengthening every
+ * ordinary recommendation call.
+ *
+ * Override with QUANT_AGENT_ANALYSIS_CLIENT_TIMEOUT_MS. Floor is the global
+ * value (never shorter than an ordinary call), ceiling 120s.
+ */
+function analysisTimeoutMs(): number {
+  const configured = Number(process.env.QUANT_AGENT_ANALYSIS_CLIENT_TIMEOUT_MS || 45_000);
+  const resolved = Number.isFinite(configured) ? configured : 45_000;
+  return Math.min(120_000, Math.max(clientTimeoutMs(), resolved));
 }
 
 function serviceConfig(): { url: string; token: string } {
@@ -466,6 +493,146 @@ export async function backtestQuantStrategy(
     { timeoutMs: backtestTimeoutMs(), retryOnTimeout: false },
   );
   return normalizeQuantBacktestResult(raw);
+}
+
+/** Decodes the wire analysis score result (objective_by_timeframe/... → camelCase). */
+export function normalizeQuantAnalysisScore(
+  raw: QuantAnalysisScoreResultWire,
+): QuantAnalysisScoreResult {
+  const objectiveByTimeframe: QuantAnalysisScoreResult["objectiveByTimeframe"] = {};
+  for (const [timeframe, objective] of Object.entries(raw.objective_by_timeframe ?? {})) {
+    objectiveByTimeframe[timeframe] = {
+      technicalScore: objective.technical_score ?? null,
+      fundamentalScore: objective.fundamental_score ?? null,
+      sentimentScore: objective.sentiment_score ?? null,
+      macroScore: objective.macro_score ?? null,
+      overallScore: objective.overall_score,
+      decision: objective.decision,
+      absScore: objective.abs_score,
+    };
+  }
+  const consensus = raw.consensus;
+  const quality = raw.data_quality;
+  return {
+    objectiveByTimeframe,
+    consensus: {
+      decision: consensus.decision,
+      score: consensus.score,
+      agreement: consensus.agreement,
+      timeframeCount: consensus.timeframe_count,
+      votes: consensus.votes ?? {},
+      weightedScore: consensus.weighted_score,
+    },
+    trendOutlook: raw.trend_outlook,
+    similarPatterns: (raw.similar_patterns ?? []).map((pattern) => ({
+      id: pattern.id,
+      similarityScore: pattern.similarity_score,
+      decision: pattern.decision,
+      wasCorrect: pattern.was_correct,
+    })),
+    dataQuality: {
+      degraded: quality?.degraded ?? false,
+      confidencePenalty: quality?.confidence_penalty ?? 0,
+      missing: quality?.missing ?? [],
+    },
+  };
+}
+
+/**
+ * Pre-LLM half of the analysis engine (Wave 1 contract). Pushes the collected
+ * per-timeframe indicator snapshots and gets back every rule-side number:
+ * the objective scores, the multi-timeframe consensus, the trend outlook and
+ * the similar-pattern matches. quant-agent computes all of it because it has
+ * no network of its own — web collects, quant-agent decides.
+ *
+ * `fundamental`/`news`/`macro`/`crypto_factors` are sent as explicit `null`
+ * because no source for them exists on this platform. Upstream already
+ * weights over PRESENT components only, so an absent component is a real,
+ * supported state — never a fabricated 50.
+ */
+/*
+ * Note on the two analysis bodies below: unlike every other call in this file
+ * they do NOT carry `owner_user_id` / `request_id`. Both analysis request
+ * envelopes are declared `extra="forbid"` on the service side, so those two
+ * keys are a hard 422 rather than harmless redundancy. The tenant context
+ * still travels — `serviceRequestOnce` puts it in the `X-AiChart-User-Id` and
+ * `X-AiChart-Request-Id` headers on every request.
+ */
+export async function scoreQuantAnalysis(
+  context: QuantAgentCallerContext,
+  params: ScoreQuantAnalysisParams,
+): Promise<QuantAnalysisScoreResult> {
+  const raw = await serviceRequest<QuantAnalysisScoreResultWire>(
+    context,
+    "/internal/quant-agent/analysis/score",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        market: params.market,
+        symbol: params.symbol,
+        primary_timeframe: params.primaryTimeframe,
+        current_price: params.currentPrice,
+        timeframes: params.timeframes,
+        fundamental: null,
+        news: null,
+        macro: null,
+        crypto_factors: null,
+        memory_candidates: params.memoryCandidates,
+      }),
+    },
+    // Its own deadline — see analysisTimeoutMs. No timeout retry: this
+    // endpoint is pure arithmetic, so a request that ran past a 45s budget
+    // means the service is wedged, not flaky, and a second attempt would only
+    // double the wait a user is already sitting through.
+    { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
+  );
+  return normalizeQuantAnalysisScore(raw);
+}
+
+/**
+ * Post-LLM half of the analysis engine (Wave 1 contract). Hands the model's
+ * raw parsed output to quant-agent's validator, which owns the ±10% entry
+ * clamp, the direction-consistent stop/target geometry, the indicator veto
+ * and the consensus override. Web never adjusts a level itself — the whole
+ * point of the split is that one side computes numbers and the other side
+ * never invents them.
+ */
+export async function finalizeQuantAnalysis(
+  context: QuantAgentCallerContext,
+  params: FinalizeQuantAnalysisParams,
+): Promise<QuantAnalysisFinalizeResult> {
+  return serviceRequest<QuantAnalysisFinalizeResult>(
+    context,
+    "/internal/quant-agent/analysis/finalize",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        market: params.market,
+        symbol: params.symbol,
+        current_price: params.currentPrice,
+        indicators: params.indicators,
+        llm_output: params.llmOutput,
+        has_major_news: params.hasMajorNews,
+        has_macro_event: params.hasMacroEvent,
+        consensus: {
+          decision: params.consensus.decision,
+          score: params.consensus.score,
+          agreement: params.consensus.agreement,
+          timeframe_count: params.consensus.timeframeCount,
+          votes: params.consensus.votes,
+          weighted_score: params.consensus.weightedScore,
+        },
+        data_quality: params.dataQuality
+          ? {
+              degraded: params.dataQuality.degraded,
+              confidence_penalty: params.dataQuality.confidencePenalty,
+              missing: params.dataQuality.missing,
+            }
+          : null,
+      }),
+    },
+    { timeoutMs: analysisTimeoutMs(), retryOnTimeout: false },
+  );
 }
 
 /** Returns null on 404 (not found) instead of throwing, mirroring §4's "or 404". */
