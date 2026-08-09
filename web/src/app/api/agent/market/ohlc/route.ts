@@ -4,7 +4,6 @@ import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { marketDataBookLabel } from "@/lib/markets";
-import { ANALYSIS_BOOK_LABEL, fetchAnalysisCandleFeed } from "@/lib/markets/analysisCandleFeed";
 
 /** Bridge: OHLC candles from the trader's resolved market-data pipe. */
 export const GET = withBridge(async ({ req, userId }) => {
@@ -37,26 +36,6 @@ export const GET = withBridge(async ({ req, userId }) => {
   }
   if (cursor !== undefined && !Number.isFinite(cursor)) {
     throw new ApiError(400, "cursor must be a millisecond timestamp.");
-  }
-
-  // No linked account to read from — analysis-only reference data instead of
-  // an empty series (plan §5: get_ohlc is analysis-only, no account tie-in).
-  if (!decision.available.metaapi) {
-    const fed = await fetchAnalysisCandleFeed(ohlcSymbol, interval, Math.min(limit, OHLC_MAX_LIMIT));
-    return {
-      symbol: fed.symbol,
-      interval: fed.interval,
-      market,
-      candles: fed.candles,
-      source: decision.source,
-      book: ANALYSIS_BOOK_LABEL,
-      cachedAt: Date.now(),
-      ageMs: 0,
-      fromCache: false,
-      warning: fed.warning,
-      nextCursor: null,
-      hasMore: false,
-    };
   }
 
   const result = await fetchOhlc({

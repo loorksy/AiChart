@@ -87,7 +87,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_ohlc",
     domain: "market",
     description:
-      "Returns raw OHLC candles for a symbol and interval, paginated via cursor with limit≤500. Served from the user's linked account when one exists, or a neutral analysis-reference book otherwise (the response's book field says which) — never invent candles when this returns an empty series. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "Returns raw OHLC candles for a symbol and interval from the user's linked MetaTrader account, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
     inputSchema: {
       symbol: zSymbol.describe("EURUSD"),
       interval: zInterval,

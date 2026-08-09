@@ -21,11 +21,23 @@ const FORBIDDEN_IMPORT_PATTERNS = [
   /from\s+["']\.\.?\/.*analysisCandleRepository["']/,
   /from\s+["']@\/lib\/markets\/oanda["']/,
   /from\s+["']\.\.?\/.*\/markets\/oanda["']/,
+  // `analysisCandleFeed.ts` is the read-side wrapper around the two modules
+  // above. Guarding only the two let an OANDA series reach `get_ohlc`
+  // through the wrapper — raw candles a client can plot as a chart. Any file
+  // below must be unreachable from OANDA by EVERY route, wrapper included.
+  /from\s+["']@\/lib\/markets\/analysisCandleFeed["']/,
+  /from\s+["']\.\.?\/.*\/markets\/analysisCandleFeed["']/,
 ];
 
 const MUST_STAY_CHART_OR_LIVE_ONLY = [
   "src/lib/candles/warehouseOhlc.ts",
   "src/app/api/market/klines/route.ts",
+  // Raw plottable candles. `show_live_chart` renders this tool's output as a
+  // visual candle card, so "the chart" is not just the /chart page — an
+  // analysis fallback here IS an OANDA chart. Derived-number tools
+  // (get_forex_indicators, scan_market, detect_levels, detect_market_regime)
+  // may still fall back; they return analysis results, not a drawable series.
+  "src/app/api/agent/market/ohlc/route.ts",
   "src/lib/chartSnapshot.ts",
   "src/lib/chart/multiTimeframeCapture.ts",
   "src/lib/agent/orchestrator.ts",
