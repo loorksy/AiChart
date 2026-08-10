@@ -4,20 +4,29 @@ set -euo pipefail
 
 REPO="${AICHART_INSTALL_DIR:-/opt/aichart}"
 MCP_DIR="$REPO/mcp"
-WEB_ENV="$REPO/web/.env"
+# App root owns .env after the web/ → root merge; keep a one-release fallback
+# for boxes that still only have the leftover web/.env copy.
+APP_ENV="$REPO/.env"
+if [[ ! -f "$APP_ENV" && -f "$REPO/web/.env" ]]; then
+  APP_ENV="$REPO/web/.env"
+fi
 
 cd "$MCP_DIR"
 
-if [[ -f "$WEB_ENV" ]]; then
+if [[ -f "$APP_ENV" ]]; then
   set -a
   # shellcheck disable=SC1090
-  source <(grep -E '^(AICHART_API_URL|AICHART_SERVICE_TOKEN|GIT_COMMIT=|MCP_|PORT=|DB_PATH=|DATABASE_URL=|BRIDGE_FETCH_TIMEOUT_MS=)' "$WEB_ENV" 2>/dev/null | sed 's/\r$//')
+  source <(grep -E '^(AICHART_API_URL|AICHART_SERVICE_TOKEN|GIT_COMMIT=|MCP_|PORT=|DB_PATH=|DATABASE_URL=|BRIDGE_FETCH_TIMEOUT_MS=)' "$APP_ENV" 2>/dev/null | sed 's/\r$//')
   set +a
   PORT="${PORT:-3010}"
   export AICHART_API_URL="${AICHART_API_URL:-http://127.0.0.1:${PORT}}"
   DB_PATH="${DB_PATH:-data/aichart.db}"
   if [[ "$DB_PATH" != /* ]]; then
-    export DB_PATH="$REPO/web/$DB_PATH"
+    if [[ -e "$REPO/$DB_PATH" || ! -e "$REPO/web/$DB_PATH" ]]; then
+      export DB_PATH="$REPO/$DB_PATH"
+    else
+      export DB_PATH="$REPO/web/$DB_PATH"
+    fi
   else
     export DB_PATH="$DB_PATH"
   fi

@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Install /etc/cron.d/aichart from infra/aichart.cron + web/.env CRON_SECRET
+# Install /etc/cron.d/aichart from infra/aichart.cron + root .env CRON_SECRET
 set -euo pipefail
 
 ROOT="${1:-/opt/aichart}"
-ENV_FILE="$ROOT/web/.env"
+ENV_FILE="$ROOT/.env"
+if [[ ! -f "$ENV_FILE" && -f "$ROOT/web/.env" ]]; then
+  ENV_FILE="$ROOT/web/.env"
+fi
 CRON_SRC="$ROOT/infra/aichart.cron"
 CRON_DST=/etc/cron.d/aichart
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Missing $ENV_FILE" >&2
+  echo "Missing $ENV_FILE (also checked $ROOT/web/.env)" >&2
   exit 1
 fi
 if [[ ! -f "$CRON_SRC" ]]; then

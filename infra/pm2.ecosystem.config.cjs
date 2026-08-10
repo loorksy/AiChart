@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "aichart-web",
-      cwd: "./web",
+      cwd: ".",
       script: "npm",
       args: "start",
       instances: 1,
@@ -28,7 +28,7 @@ module.exports = {
       // unset the web process runs jobs inline and this worker idles. Scale by
       // raising `instances` and/or WORKER_CONCURRENCY.
       name: "aichart-worker",
-      cwd: "./web",
+      cwd: ".",
       script: "npm",
       args: "run worker",
       instances: 1,

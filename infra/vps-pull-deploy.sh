@@ -16,11 +16,17 @@ git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 log "Now at: $(git log --oneline -1)"
 
-cd "$INSTALL_DIR/web"
+# App lives at repo root after the web/ → root merge.
+cd "$INSTALL_DIR"
 log "npm ci..."
 npm ci
 log "npm run build..."
 npm run build
+
+if [[ -d "$INSTALL_DIR/mcp" ]]; then
+  log "mcp: npm ci + build..."
+  (cd "$INSTALL_DIR/mcp" && npm ci && npm run build)
+fi
 
 if pm2 describe "$APP_WEB" >/dev/null 2>&1; then
   log "Restarting $APP_WEB..."
@@ -34,7 +40,7 @@ if pm2 describe "$APP_WORKER" >/dev/null 2>&1; then
   pm2 restart "$APP_WORKER" --update-env
 else
   log "Starting $APP_WORKER (first deploy)..."
-  pm2 start npm --name "$APP_WORKER" --cwd "$INSTALL_DIR/web" -- run worker
+  pm2 start npm --name "$APP_WORKER" --cwd "$INSTALL_DIR" -- run worker
 fi
 
 if pm2 describe "$APP_MCP" >/dev/null 2>&1; then
@@ -45,7 +51,7 @@ fi
 pm2 save
 log "Health check..."
 
-if [[ -f "$INSTALL_DIR/infra/aichart.cron" ]] && [[ -f "$INSTALL_DIR/web/.env" ]]; then
+if [[ -f "$INSTALL_DIR/infra/aichart.cron" ]] && { [[ -f "$INSTALL_DIR/.env" ]] || [[ -f "$INSTALL_DIR/web/.env" ]]; }; then
   log "install cron (bots + scalp + event-monitor)"
   bash "$INSTALL_DIR/infra/vps-install-cron.sh" "$INSTALL_DIR" || log "cron install warn"
 fi
