@@ -16,7 +16,7 @@
  */
 import { query } from "@/lib/db";
 import { createLogger } from "@/lib/logger";
-import { warehouseKey } from "@/lib/candles/candleRepository";
+import { warehouseKey, INDEXER_VERSION } from "./caseIndexer";
 import {
   fingerprintSimilarity,
   type CaseFingerprint,
@@ -35,7 +35,6 @@ import {
   type ForwardOutcome,
   type OutcomeStats,
 } from "./forwardOutcome";
-import { INDEXER_VERSION } from "./caseIndexer";
 import {
   caseEmbeddingLiteral,
   caseVectorSearchReady,

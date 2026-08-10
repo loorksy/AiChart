@@ -26,32 +26,6 @@ before(async () => {
   );
 });
 
-describe("shouldUndeploy", () => {
-  const now = 10 * HOUR;
-  it("undeploys after the grace, keeps within it, always keeps pinned", () => {
-    assert.equal(
-      lifecycle.shouldUndeploy({ lastSeen: now - 16 * 60_000, now, pinned: false }),
-      true,
-      "16 min idle > 15 min grace",
-    );
-    assert.equal(
-      lifecycle.shouldUndeploy({ lastSeen: now - 10 * 60_000, now, pinned: false }),
-      false,
-      "10 min idle is within grace",
-    );
-    assert.equal(
-      lifecycle.shouldUndeploy({ lastSeen: now - 100 * HOUR, now, pinned: true }),
-      false,
-      "live auto-execution pins the deployment forever",
-    );
-    assert.equal(
-      lifecycle.shouldUndeploy({ lastSeen: null, now, pinned: false }),
-      true,
-      "no heartbeat ever recorded → treat as idle",
-    );
-  });
-});
-
 describe("computeSessionHours", () => {
   it("is minute-resolution and never negative", () => {
     assert.equal(lifecycle.computeSessionHours(0, 2 * HOUR), 2);

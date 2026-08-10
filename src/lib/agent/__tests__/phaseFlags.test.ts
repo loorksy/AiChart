@@ -64,10 +64,10 @@ afterEach(() => {
 });
 
 describe("phase flags exist for every phase in the plan", () => {
-  it("covers all ten phases A–J", () => {
+  it("covers every surviving phase A–J (Phase I, deep research, was removed with the candle warehouse it required)", () => {
     assert.deepEqual(
       Object.keys(PHASE_FLAGS).sort(),
-      ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+      ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
       "a phase with no flag cannot be rolled back",
     );
   });
@@ -103,7 +103,6 @@ describe("phase flags exist for every phase in the plan", () => {
       "patternAtlasV1",
       "caseMemoryV1",
       "evidencePipelineV2",
-      "deepResearchV2",
       "performanceJournalV1",
       "reevaluationTriggersV1",
     ]) {
@@ -133,7 +132,6 @@ describe("each flag actually gates its phase", () => {
       minReaders: 1,
       where: ["lib/agent/agents/finalDecisionSynthesizer.ts"],
     },
-    deepResearchV2: { minReaders: 1, where: ["lib/agent/deepAnalysis/completion.ts"] },
     performanceJournalV1: { minReaders: 1, where: ["lib/recommendations/performanceJournal.ts"] },
   };
 

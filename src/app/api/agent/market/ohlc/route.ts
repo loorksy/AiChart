@@ -1,7 +1,7 @@
 import { withBridge } from "@/lib/bridge";
 import { ApiError } from "@/lib/api";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
-import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
+import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { marketDataBookLabel } from "@/lib/markets";
 
@@ -44,7 +44,7 @@ export const GET = withBridge(async ({ req, userId }) => {
     interval,
     market,
     source: decision.source,
-    limit: Math.min(limit, OHLC_MAX_LIMIT),
+    limit,
     cursor,
   });
   return {

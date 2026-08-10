@@ -5,30 +5,46 @@ import { readFileSync } from "node:fs";
 import { computeSessionHours, METER_ROLL_MS } from "../lifecycle";
 
 /**
- * Always-on removed the undeploy. Billing lived INSIDE the undeploy.
- *
- * closeDeploySession is the only place deploy hours turn into a credit burn,
- * and it ran only from undeployAccount. Stopping the undeploy therefore stopped
- * the meter entirely — an account up 24/7 and charged for none of it, against
- * a cost model whose whole premise is that the owner never pays out of pocket.
+ * Always-on has no undeploy at all, anywhere in this module. Billing used to
+ * live INSIDE the undeploy — closeDeploySession only ran from undeployAccount
+ * — so removing the undeploy without replacing that would have stopped the
+ * meter entirely: an account up 24/7 and charged for none of it, against a
+ * cost model whose whole premise is that the owner never pays out of pocket.
  *
  * The sweep rolls the meter instead: close the open session, bill what it
- * accrued, open a fresh one, never touch the deployment.
+ * accrued, open a fresh one, never touch the deployment. There is no config
+ * flag or branch that can fall back to undeploying — always-on is
+ * unconditional.
  */
 
 const LIFECYCLE = readFileSync(new URL("../lifecycle.ts", import.meta.url), "utf8");
 
 describe("an always-on account still bills", () => {
-  it("routes the always-on branch through the meter roll, not an early return", () => {
-    const sweep = LIFECYCLE.slice(LIFECYCLE.indexOf("export async function sweepIdleDeployments"));
-    const branch = sweep.slice(sweep.indexOf("metaapiAlwaysOn()"), sweep.indexOf("const open"));
+  it("has no undeploy path left anywhere in the module", () => {
     assert.ok(
-      branch.includes("rollOpenDeploySessions"),
-      "always-on must roll the meter — a bare `return 0` bills nothing, forever",
+      !LIFECYCLE.includes("undeployAccount"),
+      "there must be no function left that can take a deployment down",
     );
     assert.ok(
-      branch.includes("ensureAlwaysOnDeployed"),
-      "always-on must also bring a parked account back, or it waits on presence after all",
+      !LIFECYCLE.includes("shouldUndeploy"),
+      "there must be no idle decision left to make — always-on is unconditional",
+    );
+    assert.ok(
+      !LIFECYCLE.includes("metaapiAlwaysOn"),
+      "always-on must not be behind a togglable flag — it is the only behaviour",
+    );
+  });
+
+  it("the sweep unconditionally rolls the meter and keeps deployments up", () => {
+    const sweep = LIFECYCLE.slice(LIFECYCLE.indexOf("export async function sweepIdleDeployments"));
+    const body = sweep.slice(sweep.indexOf("{"));
+    assert.ok(
+      body.includes("rollOpenDeploySessions"),
+      "the sweep must roll the meter — a bare `return 0` bills nothing, forever",
+    );
+    assert.ok(
+      body.includes("ensureAlwaysOnDeployed"),
+      "the sweep must also bring a parked account back, or it waits on presence after all",
     );
   });
 

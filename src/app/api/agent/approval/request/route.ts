@@ -23,6 +23,8 @@ const schema = z.object({
     .enum(["trade", "practice"])
     .optional(),
   photo_url: z.string().nullish(),
+  order_type: z.enum(["market", "limit", "stop"]).default("market"),
+  limit_price: z.number().positive().optional(),
   /** Preview only: shows the card that would be sent, sends nothing. */
   dry_run: z.boolean().default(false),
 }).strict();
@@ -53,6 +55,8 @@ export async function POST(req: NextRequest) {
           stop_loss: body.stop_loss ?? null,
           take_profit: body.take_profit ?? null,
           rationale: body.rationale ?? null,
+          order_type: body.order_type,
+          limit_price: body.limit_price ?? null,
         },
         computed: budget
           ? {
@@ -80,6 +84,8 @@ export async function POST(req: NextRequest) {
       practice: body.practice,
       kind: body.kind,
       photoUrl: body.photo_url ?? null,
+      order_type: body.order_type,
+      limit_price: body.limit_price ?? null,
     });
 
     await logAudit(
@@ -114,6 +120,8 @@ export async function POST(req: NextRequest) {
             broker: intent.broker,
             rationale: intent.rationale,
             status: intent.status,
+            order_type: intent.order_type,
+            limit_price: intent.limit_price,
           }
         : null,
     });

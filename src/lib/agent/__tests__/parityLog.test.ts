@@ -323,7 +323,7 @@ describe("both surfaces are labelled at their entry points", () => {
     );
     // The anchor must never re-derive candle ordering by hand.
     assert.ok(
-      route.includes("getLatestClosedCandle("),
+      route.includes("getLastClosedCandleLive("),
       "the parity anchor must use the shared newest-closed-candle helper",
     );
     assert.equal(

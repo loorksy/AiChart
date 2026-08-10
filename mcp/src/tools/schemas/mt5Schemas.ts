@@ -109,6 +109,120 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     },
     annotations: DESTRUCTIVE,
   },
+  {
+    name: "get_position",
+    domain: "mt5",
+    description:
+      "Reads one open MT5 position by its own MetaApi position id (not the display ticket) — full detail including swap, commission, and unrealized profit. When: a single position's current broker-side state is needed by id, e.g. after get_live_account/get_open_trades returned its id and more detail is wanted. Not for listing every open position — get_live_account/get_open_trades already do that; this is the single-item lookup. MetaApi-only (not the self-hosted mt5local bridge). read-only.",
+    inputSchema: { position_id: z.string().min(1) },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "get_order",
+    domain: "mt5",
+    description:
+      "Reads one pending MT5 order by its MetaApi order id. When: a single pending order's current state is needed by id. Not for listing every pending order — get_orders does that. MetaApi-only. read-only.",
+    inputSchema: { order_id: z.string().min(1) },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "get_orders",
+    domain: "mt5",
+    description:
+      "Lists every pending order currently on the account (limit/stop orders awaiting trigger) — the full order book, not a filtered view. When: the operator wants to see or count all pending orders. MetaApi-only. read-only.",
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  {
+    name: "get_history_orders",
+    domain: "mt5",
+    description:
+      "Reads completed (filled or cancelled) MT5 orders — full order history, not just open positions. mode=ticket looks up one order by ticket; mode=position returns every order tied to a position id (its full life, including partial fills); mode=range walks a [from,to] window (ISO 8601 timestamps), paginated via offset/limit (server default limit 1000). When: the operator asks about past orders, a specific historical ticket, or an order's full lifecycle by position. Not for open positions — get_live_account/get_position cover those. MetaApi-only. read-only. Example: mode=range&from=2026-07-01T00:00:00Z&to=2026-08-01T00:00:00Z.",
+    inputSchema: {
+      mode: z.enum(["ticket", "position", "range"]),
+      ticket: z.string().optional(),
+      position_id: z.string().optional(),
+      from: z.string().datetime({ offset: true }).optional(),
+      to: z.string().datetime({ offset: true }).optional(),
+      offset: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).max(1000).optional(),
+    },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "get_deals",
+    domain: "mt5",
+    description:
+      "Reads executed MT5 deals (actual fills — entries, exits, partial closes) — the ground truth of what happened on the account, distinct from orders (intent) or positions (current state). mode=ticket looks up deals for one ticket; mode=position returns every deal against a position id (its full fill history, e.g. a scaled entry or partial closes); mode=range walks a [from,to] window (ISO 8601), paginated via offset/limit (server default limit 1000). When: the operator asks what actually filled, wants a position's realized P&L trail, or needs trade history for a date range. MetaApi-only. read-only. Example: mode=range&from=2026-07-01T00:00:00Z&to=2026-08-01T00:00:00Z.",
+    inputSchema: {
+      mode: z.enum(["ticket", "position", "range"]),
+      ticket: z.string().optional(),
+      position_id: z.string().optional(),
+      from: z.string().datetime({ offset: true }).optional(),
+      to: z.string().datetime({ offset: true }).optional(),
+      offset: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).max(1000).optional(),
+    },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "get_server_time",
+    domain: "mt5",
+    description:
+      "Reads the broker's own server time (and broker-local time string), straight from MetaApi. When: aligning session/calendar logic to the broker's actual clock instead of assuming UTC, or explaining why a daily/weekly bar just opened or closed. MetaApi-only. read-only.",
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  {
+    name: "calculate_margin",
+    domain: "mt5",
+    description:
+      "Calculates the margin the broker would require to open a hypothetical order, at the account's own leverage and symbol contract spec — before anything is sent. When: sizing a plan and checking it against free margin before proposing a trade, or answering 'how much margin would this need'. Not a trade — nothing is opened; this is pure calculation. MetaApi-only. read-only. Example: symbol=EURUSD&side=buy&volume=1&open_price=1.09.",
+    inputSchema: {
+      symbol: zSymbol,
+      side: z.enum(["buy", "sell"]),
+      volume: z.number().positive(),
+      open_price: z.number().positive(),
+    },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "get_current_tick",
+    domain: "mt5",
+    description:
+      "Reads the single most recent tick for a symbol (bid/ask/last at the moment of the broker's last update) — finer-grained than get_market_price when the exact last-tick timestamp matters. When: the operator needs the freshest possible quote moment, not just current bid/ask. Not for historical tick-by-tick data — MetaApi's RPC connection exposes only the latest tick, no tick history; use get_ohlc for historical price action instead. MetaApi-only. read-only. Example: symbol=EURUSD.",
+    inputSchema: { symbol: zSymbol },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "propose_modify_order",
+    domain: "mt5",
+    description:
+      "Proposes changing a pending order's trigger price and/or SL/TP for operator approval — creates a pending intent and sends approve/reject buttons to Telegram, exactly like request_approval's two-step protocol. Nothing is sent to the broker until the operator approves via respond_approval. When: a pending limit/stop order (placed via open_trade or request_approval with order_type set) needs its price or protective levels changed. Not for an open position's SL/TP — that's modify_sl_tp, which acts under standing authorisation, not approval. At least one of open_price/stop_loss/take_profit is required. side-effect: creates a pending intent and sends a Telegram message; the broker is untouched until approved. Call get_pending_approvals next to confirm it queued. Example: order_id=123456&stop_loss=1.0850.",
+    inputSchema: {
+      order_id: z.string().min(1),
+      open_price: z.number().positive().optional(),
+      stop_loss: z.number().positive().optional(),
+      take_profit: z.number().positive().optional(),
+    },
+    annotations: DESTRUCTIVE,
+  },
+  {
+    name: "propose_cancel_order",
+    domain: "mt5",
+    description:
+      "Proposes cancelling a pending order for operator approval — creates a pending intent and sends approve/reject buttons to Telegram, exactly like request_approval's two-step protocol. Nothing is sent to the broker until the operator approves via respond_approval. When: a pending order should be withdrawn but the operator has not already granted standing execution authority. Not the same as cancel_mt5_order, which cancels immediately under standing authorisation — use that one when the operator has already approved acting without a per-call check. side-effect: creates a pending intent and sends a Telegram message; the broker is untouched until approved. Call get_pending_approvals next to confirm it queued. Example: order_id=123456.",
+    inputSchema: { order_id: z.string().min(1) },
+    annotations: DESTRUCTIVE,
+  },
+  {
+    name: "propose_close_position_by_symbol",
+    domain: "mt5",
+    description:
+      "Proposes closing EVERY open position on a symbol for operator approval — including positions not opened through this platform (no local trade record required, unlike close_trade) — creates a pending intent and sends approve/reject buttons to Telegram, exactly like request_approval's two-step protocol. Nothing is sent to the broker until the operator approves via respond_approval. When: the operator wants every position on a symbol closed at once, e.g. a pre-existing position on a newly-linked account, or clearing exposure before news. Not for a single AiChart-tracked position — close_trade/close_partial are narrower and act under standing authorisation. side-effect: creates a pending intent and sends a Telegram message; the broker is untouched until approved. Call get_pending_approvals next to confirm it queued, then get_live_account after approval to confirm the positions are actually gone. Example: symbol=EURUSD.",
+    inputSchema: { symbol: zSymbol },
+    annotations: DESTRUCTIVE,
+  },
 ];
 
 export const MT5_TOOL_BY_NAME = Object.fromEntries(

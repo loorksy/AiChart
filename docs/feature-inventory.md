@@ -48,21 +48,32 @@ Default-on unless noted:
 
 | Flag | Default | What it gates |
 |---|---|---|
-| `FEATURE_CANDLE_WAREHOUSE` | on | Warehouse-first klines |
 | `FEATURE_AGENT_SKILLS` | on | Skill discovery / load |
 | `AGENT_CONTEXT_V2` | on | Persisted chat context |
 | `AGENT_RUN_TRACE_V1` | on | Run/step audit |
 | `VISION_DECISION_V1` | on | Chart images in decision calls |
-| `CASE_MEMORY_V1` | on | Historical case evidence |
+| `CASE_MEMORY_V1` | on | Historical case evidence (frozen — see §1.3.1) |
 | `AGENT_DOCTRINE_V3` | on | Three-layer doctrine |
 | `REC_REVISIONS_V1` | on | Effective revisions |
 | `REC_LIFECYCLE_ALERTS_V1` | on | Lifecycle Telegram/in-app delivery |
 | `AGENT_TRADE_MODE_V1` | on | Advisory / auto mode state (auto *placement* still staged separately) |
 | `PATTERN_ATLAS_V1` | on | Pattern atlas skills |
 | `EVIDENCE_PIPELINE_V2` | on | Session costs / statistical evidence |
-| `DEEP_RESEARCH_V2` | on | Research → optional revision proposals |
 | `PERFORMANCE_JOURNAL_V1` | (see flags file) | Journal phase |
 | `AGENT_MEMORY_WRITE_V1` | **off** | Conservative memory writes |
+
+#### 1.3.1 Candle warehouse removed
+
+The persistent candle warehouse (`market_candles`), `FEATURE_CANDLE_WAREHOUSE`,
+`BOUNDED_COLD_START_V1`, the mass-backtest pipeline (`run_backtest`,
+`STRATEGY_PIPELINE_*`), and Deep Analysis (`DEEP_RESEARCH_V2`, Phase I) were
+deleted together: every candle now comes live from the user's own linked
+MetaTrader account on every call, with no server-side store, cache, or
+per-request timeout in between. Backtest and Deep Analysis needed a bulk
+historical export that only the warehouse could serve cheaply and cannot be
+rebuilt on live-only data. `CASE_MEMORY_V1` (Phase G) survives read-only: the
+`market_cases` table keeps answering `find_similar_cases`, but nothing indexes
+new cases into it anymore.
 
 Session-start MCP sequence (steering): `get_agent_capabilities` → `get_account_overview` → `get_agent_trade_mode`.
 

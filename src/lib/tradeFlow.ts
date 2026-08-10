@@ -18,7 +18,7 @@ export interface ProcessedIntent {
   status: string;
   reason?: string;
   entry?: number | null;
-  order_type?: "market" | "limit";
+  order_type?: "market" | "limit" | "stop";
   limit_price?: number | null;
   telegramDelivered?: boolean;
   telegramReasonAr?: string;

@@ -10,7 +10,7 @@
         "type": "string",
         "minLength": 1
       },
-      "description": "job_id values from run_backtest/run_market_analysis, 1-12 per call"
+      "description": "job_id values from run_market_analysis and similar, 1-12 per call"
     }
   },
   "required": [

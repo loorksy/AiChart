@@ -7,10 +7,6 @@ import type { OhlcCandle } from "@/lib/ohlc/fetchOhlc";
 const METAAPI_INTERVALS = new Set(["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]);
 /** One page; the picker and the chart both ask for far less than this. */
 const MAX_CANDLES = 1000;
-/** Longer than a healthy broker round-trip, far shorter than the SDK's retries. */
-const HISTORY_TIMEOUT_MS = 12_000;
-/** Range fetches page backward; bounded so one request cannot spiral. */
-const MAX_RANGE_PAGES = 10;
 
 interface MetaApiHistoricalCandle {
   time: string | Date;
@@ -94,19 +90,18 @@ async function fetchPage(
   limit: number,
 ): Promise<OhlcCandle[]> {
   /*
-   * Bounded. The SDK retries an unknown symbol for over a minute — a wrong
-   * spelling once cost 75s before answering "Symbol XAUUSDM does not exist",
-   * and the chart has no business hanging that long on a bar request.
+   * No client-side timeout: the agent needs to be able to page arbitrarily
+   * far back into a broker's real history, and a bar request that takes a
+   * while is still a bar request that should finish, not one that gets cut
+   * off mid-fetch. The SDK's own retry/error behavior (e.g. failing fast on
+   * an unknown symbol) governs how long this can take.
    */
-  const raw = (await Promise.race([
-    mtAccount.getHistoricalCandles(symbol, interval, new Date(toMs), limit),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("مهلة جلب الشموع من حساب MetaApi انتهت.")),
-        HISTORY_TIMEOUT_MS,
-      ),
-    ),
-  ])) as MetaApiHistoricalCandle[];
+  const raw = (await mtAccount.getHistoricalCandles(
+    symbol,
+    interval,
+    new Date(toMs),
+    limit,
+  )) as MetaApiHistoricalCandle[];
   return toOhlc(raw);
 }
 
@@ -153,17 +148,17 @@ export async function fetchMetaApiOhlc(
 
 /**
  * An inclusive [fromMs, toMs] window, paged backward through the account's
- * history — what the warehouse backfill needs. MetaApi's history call only
- * anchors on an END time plus a count, so the range is walked newest-first
- * until the window's start is covered, the broker runs out of history, or the
- * page budget is spent (partial coverage is reported honestly via
- * `reachedStart`).
+ * full history. MetaApi's history call only anchors on an END time plus a
+ * count, so the range is walked newest-first, page after page, until the
+ * window's start is covered or the broker itself runs out of history —
+ * there is no page cap here, the agent is meant to be able to browse a
+ * symbol's entire history, not a bounded slice of it.
  */
 export async function fetchMetaApiOhlcRange(
   userId: number,
   symbol: string,
   interval: string,
-  opts: { fromMs: number; toMs?: number; maxPages?: number },
+  opts: { fromMs: number; toMs?: number },
 ): Promise<{ candles: OhlcCandle[]; reachedStart: boolean; warning?: string }> {
   const iv = normalizeInterval(interval);
   if (!METAAPI_INTERVALS.has(iv)) {
@@ -178,12 +173,11 @@ export async function fetchMetaApiOhlcRange(
     const { mtAccount, warning } = await getHistoryAccount(userId);
     if (!mtAccount) return { candles: [], reachedStart: false, warning };
 
-    const maxPages = Math.min(Math.max(opts.maxPages ?? MAX_RANGE_PAGES, 1), MAX_RANGE_PAGES);
     const collected = new Map<number, OhlcCandle>();
     let cursor = opts.toMs ?? Date.now();
     let reachedStart = false;
 
-    for (let page = 0; page < maxPages; page++) {
+    for (;;) {
       const batch = await fetchPage(mtAccount, symbol, iv, cursor, pageSizeFor(iv));
       if (batch.length === 0) break;
       for (const c of batch) {

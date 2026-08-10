@@ -19,7 +19,6 @@ import {
   buildBacktestStrategySpec,
   isBacktestStrategyId,
 } from "@/lib/strategies/catalog";
-import { pipelineConfig, pipelineTargets, pipelineDateRange, MAX_BACKTEST_BARS } from "@/lib/strategies/pipeline";
 import { barDurationMs } from "@/lib/intervals";
 import type { ResearchTimeframe } from "@/lib/research";
 
@@ -40,7 +39,6 @@ const SUPPORTED_LEAF_TYPES = new Set([
 ]);
 
 const TIMEFRAMES: ResearchTimeframe[] = ["1m", "5m", "15m", "30m", "1h", "4h"];
-const SCALP_TIMEFRAMES: ResearchTimeframe[] = ["1m", "5m", "15m"];
 
 describe("generated catalog", () => {
   it("contains the planned family sizes (15 scalp + 60 general + 3 legacy)", () => {
@@ -227,50 +225,3 @@ describe("scalp prioritisation", () => {
   });
 });
 
-describe("pipeline targets and ranges", () => {
-  it("wave matrix is timeframe-appropriate, not the full cross product", () => {
-    const config = {
-      userId: 1,
-      symbols: ["XAUUSD"],
-      timeframes: SCALP_TIMEFRAMES,
-      batch: 2,
-    };
-    const targets = pipelineTargets(config);
-    // Each timeframe contributes legacy(3) + its own filtered catalog.
-    const expected = SCALP_TIMEFRAMES.reduce(
-      (sum, tf) => sum + 3 + catalogEntriesForTimeframe(tf).length,
-      0,
-    );
-    assert.equal(targets.length, expected);
-    assert.ok(targets.length < 78 * SCALP_TIMEFRAMES.length, "must be filtered");
-    // Deterministic ordering (stable ids for idempotency keys).
-    assert.deepEqual(targets[0], {
-      strategyId: "ema_trend_follow_v1",
-      symbol: "XAUUSD",
-      timeframe: "1m",
-    });
-  });
-
-  it("every pipeline date range fits the 50k-bar export budget", () => {
-    for (const timeframe of TIMEFRAMES) {
-      const { fromMs, toMs } = pipelineDateRange(timeframe);
-      const bars = Math.ceil((toMs - fromMs) / barDurationMs(timeframe));
-      assert.ok(bars <= MAX_BACKTEST_BARS, `${timeframe}: ${bars} bars`);
-      assert.ok(toMs < Date.now(), "range must end in the past");
-      // And is deep enough to plausibly clear the 100-trade gate.
-      assert.ok(bars >= 5_000, `${timeframe}: ${bars} bars is too shallow`);
-    }
-  });
-
-  it("config defaults prioritise scalp timeframes", () => {
-    delete process.env.STRATEGY_PIPELINE_USER_ID;
-    delete process.env.STRATEGY_PIPELINE_SYMBOLS;
-    delete process.env.STRATEGY_PIPELINE_TIMEFRAMES;
-    delete process.env.STRATEGY_PIPELINE_BATCH;
-    const config = pipelineConfig();
-    assert.equal(config.userId, null); // tick refuses to run without it
-    assert.deepEqual(config.symbols, ["XAUUSD"]);
-    assert.deepEqual(config.timeframes, ["1m", "5m", "15m"]);
-    assert.equal(config.batch, 2);
-  });
-});

@@ -914,8 +914,14 @@ export async function createIntent(
     /** Revision of that recommendation these levels came from (CAS at execute). */
     recommendation_revision_no?: number | null;
     /** How this order was authorised: explicit approval or a standing mode.
-     *  `trade_management` marks an SL/TP-modify proposal, never an order. */
-    authorization_source?: "user_approved" | "standing_auto" | "trade_management" | null;
+     *  `trade_management` marks an SL/TP-modify proposal, never an order.
+     *  `broker_action` marks a raw account action, also never an order. */
+    authorization_source?:
+      | "user_approved"
+      | "standing_auto"
+      | "trade_management"
+      | "broker_action"
+      | null;
     symbol: string;
     side: "buy" | "sell";
     notional: number;
@@ -931,8 +937,9 @@ export async function createIntent(
     practice?: boolean;
     market_type?: "spot" | "futures";
     leverage?: number;
-    order_type?: "market" | "limit";
+    order_type?: "market" | "limit" | "stop";
     limit_price?: number | null;
+    action_json?: string | null;
   },
 ): Promise<TradeIntent> {
   const market: MarketType = resolveActiveMarket(intent.market ?? DEFAULT_MARKET);
@@ -940,8 +947,8 @@ export async function createIntent(
     intent.broker ?? (await resolveBrokerForMarket(userId, market));
   const id = await insertReturningId(
     `INSERT INTO trade_intents
-      (user_id, recommendation_id, recommendation_revision_no, authorization_source, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, recommendation_id, recommendation_revision_no, authorization_source, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price, action_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       intent.recommendation_id ?? null,
@@ -966,6 +973,7 @@ export async function createIntent(
       intent.leverage ?? 1,
       intent.order_type ?? "market",
       intent.limit_price ?? null,
+      intent.action_json ?? null,
     ],
   );
   return (await getIntent(id))!;

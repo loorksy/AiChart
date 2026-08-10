@@ -16,8 +16,6 @@ function flag(name: string, defaultOn: boolean): boolean {
 
 export const FEATURES = {
   /** The docked Smart Chart Agent chat + unified orchestrator. ON by default. */
-  /** Warehouse-first /api/market/klines reads. ON by default. */
-  candleWarehouse: () => flag("FEATURE_CANDLE_WAREHOUSE", true),
   /** News & Macro Risk agent participation. */
   /** Execution Guard — ON by default; only an explicit "false" disables it. */
   /** Route MCP run_market_analysis through the unified engine. ON by default. */
@@ -73,17 +71,6 @@ export const FEATURES = {
    * but never the measurement.
    */
   tradabilityGateV1: () => flag("TRADABILITY_GATE_V1", true),
-
-  /**
-   * Cap the cold-start backfill at one history page inside a request, and let
-   * the cron warm the depth from recorded demand.
-   *
-   * ON by default: an uncapped pull could take ~2 minutes behind a 10s
-   * market-data deadline, so it never delivered — it only failed slowly and
-   * left orphaned pages running. OFF restores the old unbounded pull, which is
-   * the rollback valve if one page ever proves too thin to answer with.
-   */
-  boundedColdStartV1: () => flag("BOUNDED_COLD_START_V1", true),
 
   /**
    * Forex Factory weekly calendar as a news source (no API key). ON by
@@ -156,15 +143,6 @@ export const FEATURES = {
   evidencePipelineV2: () => flag("EVIDENCE_PIPELINE_V2", true),
 
   /**
-   * Phase I — deep research producing verdicts and revisions. ON by default.
-   *
-   * OFF returns deep research to reporting only: it still runs and still records
-   * its findings, but proposes no revision. Nothing silently edits a plan either
-   * way — that is structural, not flagged.
-   */
-  deepResearchV2: () => flag("DEEP_RESEARCH_V2", true),
-
-  /**
    * Phase J — performance journal. ON by default; read-only and descriptive.
    *
    * OFF stops building the journal and stops feeding personal notes into the
@@ -186,7 +164,6 @@ export const FEATURES = {
 /** Snapshot of every feature flag's current runtime value (for /api/debug/features). */
 export function featureFlagSnapshot(): Record<string, boolean> {
   return {
-    candleWarehouse: FEATURES.candleWarehouse(),
     agentSkillsV1: FEATURES.agentSkillsV1(),
     agentContextV2: FEATURES.agentContextV2(),
     agentMemoryWriteV1: FEATURES.agentMemoryWriteV1(),
@@ -195,7 +172,6 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     caseMemoryV1: FEATURES.caseMemoryV1(),
     agentDoctrineV3: FEATURES.agentDoctrineV3(),
     tradabilityGateV1: FEATURES.tradabilityGateV1(),
-    boundedColdStartV1: FEATURES.boundedColdStartV1(),
     forexFactoryCalendarV1: FEATURES.forexFactoryCalendarV1(),
     macroEvidenceV1: FEATURES.macroEvidenceV1(),
     cotEvidenceV1: FEATURES.cotEvidenceV1(),
@@ -204,7 +180,6 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     agentTradeModeV1: FEATURES.agentTradeModeV1(),
     patternAtlasV1: FEATURES.patternAtlasV1(),
     evidencePipelineV2: FEATURES.evidencePipelineV2(),
-    deepResearchV2: FEATURES.deepResearchV2(),
     performanceJournalV1: FEATURES.performanceJournalV1(),
     reevaluationTriggersV1: FEATURES.reevaluationTriggersV1(),
   };
@@ -226,6 +201,5 @@ export const PHASE_FLAGS: Record<string, { env: string; read: () => boolean; def
   F: { env: "PATTERN_ATLAS_V1", read: FEATURES.patternAtlasV1, defaultOn: true },
   G: { env: "CASE_MEMORY_V1", read: FEATURES.caseMemoryV1, defaultOn: true },
   H: { env: "EVIDENCE_PIPELINE_V2", read: FEATURES.evidencePipelineV2, defaultOn: true },
-  I: { env: "DEEP_RESEARCH_V2", read: FEATURES.deepResearchV2, defaultOn: true },
   J: { env: "PERFORMANCE_JOURNAL_V1", read: FEATURES.performanceJournalV1, defaultOn: true },
 };

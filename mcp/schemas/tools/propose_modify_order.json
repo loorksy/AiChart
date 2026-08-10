@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "open_price": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "stop_loss": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "take_profit": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  },
+  "required": [
+    "order_id"
+  ]
+}

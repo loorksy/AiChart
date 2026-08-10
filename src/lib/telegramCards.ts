@@ -199,6 +199,10 @@ export function approvalCard(input: {
   stop_loss?: number | null;
   take_profit?: number | null;
   profile: AccountProfile;
+  /** 'market' (default), 'limit', or 'stop' — a pending order proposal. */
+  orderType?: "market" | "limit" | "stop";
+  /** Trigger price for a pending order (limit or stop). */
+  limitPrice?: number | null;
 }): string {
   const sideAr = input.side === "buy" ? "شراء 🟢" : "بيع 🔴";
   const fields = [
@@ -210,6 +214,10 @@ export function approvalCard(input: {
         : input.profile.accountCurrency,
     )}`,
   ];
+  if (input.orderType === "limit" || input.orderType === "stop") {
+    const kind = input.orderType === "limit" ? "معلّق (Limit)" : "معلّق (Stop)";
+    fields.push(`🔹 نوع الأمر: ${kind} عند ${input.limitPrice ?? "—"}`);
+  }
   if (input.entry) {
     const sl = input.stop_loss ? ` · SL: ${input.stop_loss}` : "";
     const tp = input.take_profit ? ` · TP: ${input.take_profit}` : "";

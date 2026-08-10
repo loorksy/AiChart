@@ -14,9 +14,9 @@ import { describe, it } from "node:test";
  * route that exists in the code is either scheduled or explicitly documented as
  * optional.
  */
-const CRON_FILE = fileURLToPath(new URL("../../../../../infra/aichart.cron", import.meta.url));
+const CRON_FILE = fileURLToPath(new URL("../../../../infra/aichart.cron", import.meta.url));
 const EXAMPLE_FILE = fileURLToPath(
-  new URL("../../../../../infra/crontab.example", import.meta.url),
+  new URL("../../../../infra/crontab.example", import.meta.url),
 );
 const CRON_ROUTES_DIR = fileURLToPath(new URL("../../../app/api/cron", import.meta.url));
 
@@ -29,10 +29,10 @@ function cronRoutes(): string[] {
 }
 
 describe("deployment cron schedule", () => {
-  it("schedules candle-warehouse maintenance every 10 minutes", () => {
+  it("schedules the recommendation sweep every 5 minutes", () => {
     assert.match(
       cron,
-      /^\*\/10 \* \* \* \* (?:root )?curl .*?-X POST .*?\/api\/cron\/candle-warehouse(?:\s|$)/m,
+      /^\*\/5 \* \* \* \* (?:root )?curl .*?-X POST .*?\/api\/cron\/recommendation-sweep(?:\s|$)/m,
     );
   });
 

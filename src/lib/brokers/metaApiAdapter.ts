@@ -70,13 +70,21 @@ export const metaApiAdapter: BrokerAdapter = {
     const spec = metaApiSpecToEaSpec(intent.symbol, rawSpec, priceQuote);
     const sideQuote =
       intent.side === "buy" ? Number(spec.ask) : Number(spec.bid);
+    const orderType = intent.order_type ?? "market";
     const refPrice = resolveSizingReferencePrice({
-      orderType: "market",
+      orderType,
+      limitPrice: intent.limit_price,
       analysedEntry: intent.entry,
       sideQuote,
       ask: Number(spec.ask),
       bid: Number(spec.bid),
     });
+    if ((orderType === "limit" || orderType === "stop") && !(refPrice > 0)) {
+      const reason = `أمر ${orderType === "limit" ? "معلّق (limit)" : "معلّق (stop)"} بلا سعر تفعيل صالح.`;
+      push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "error", detail: reason });
+      await updateIntentStatus(intent.id, "failed", reason);
+      return { ok: false, status: "failed", reason };
+    }
     const sizing = computeForexLots(riskAmount, refPrice, intent.stop_loss, spec);
     if (!sizing.ok) {
       push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "error", detail: sizing.reason });
@@ -100,22 +108,19 @@ export const metaApiAdapter: BrokerAdapter = {
     try {
       const sl = intent.stop_loss ?? undefined;
       const tp = intent.take_profit ?? undefined;
+      const comment = { comment: `Lonora #${intent.id}` };
       const result =
-        intent.side === "buy"
-          ? await conn.createMarketBuyOrder(
-              intent.symbol,
-              sizing.lots,
-              sl,
-              tp,
-              { comment: `Lonora #${intent.id}` },
-            )
-          : await conn.createMarketSellOrder(
-              intent.symbol,
-              sizing.lots,
-              sl,
-              tp,
-              { comment: `Lonora #${intent.id}` },
-            );
+        orderType === "limit"
+          ? intent.side === "buy"
+            ? await conn.createLimitBuyOrder(intent.symbol, sizing.lots, refPrice, sl, tp, comment)
+            : await conn.createLimitSellOrder(intent.symbol, sizing.lots, refPrice, sl, tp, comment)
+          : orderType === "stop"
+            ? intent.side === "buy"
+              ? await conn.createStopBuyOrder(intent.symbol, sizing.lots, refPrice, sl, tp, comment)
+              : await conn.createStopSellOrder(intent.symbol, sizing.lots, refPrice, sl, tp, comment)
+            : intent.side === "buy"
+              ? await conn.createMarketBuyOrder(intent.symbol, sizing.lots, sl, tp, comment)
+              : await conn.createMarketSellOrder(intent.symbol, sizing.lots, sl, tp, comment);
 
       const ticket =
         result.orderId != null
@@ -124,6 +129,10 @@ export const metaApiAdapter: BrokerAdapter = {
             ? String(result.positionId)
             : null;
       const fillPrice = refPrice;
+      // A limit/stop order is PLACED, not filled — it has no position yet, so
+      // it must never read as an open trade (get_open_trades filters on
+      // status='open' exactly to keep a resting order out of that list).
+      const pending = orderType === "limit" || orderType === "stop";
 
       const trade = await recordTrade(userId, {
         intent_id: intent.id,
@@ -136,26 +145,28 @@ export const metaApiAdapter: BrokerAdapter = {
         env: meta.platform,
         market: "forex",
         broker: "metaapi",
-        status: "open",
+        status: pending ? "pending" : "open",
       });
 
       push({
         id: "order",
-        label: `تنفيذ ${sideLabel} · ${sizing.lots} لوت ${intent.symbol}`,
+        label: `${pending ? "وضع" : "تنفيذ"} ${sideLabel} · ${sizing.lots} لوت ${intent.symbol}`,
         status: "done",
-        detail: ticket ? `تذكرة #${ticket}` : "نُفّذت",
+        detail: ticket ? `تذكرة #${ticket}` : pending ? "أمر معلّق" : "نُفّذت",
       });
       push({ id: "record", label: "تسجيل الصفقة وإرسال الإشعار", status: "done" });
 
       await updateIntentStatus(
         intent.id,
         "executed",
-        ticket ? `نُفّذت (تذكرة #${ticket}).` : "نُفّذت عبر MetaTrader.",
+        ticket
+          ? `${pending ? "وُضع الأمر المعلّق" : "نُفّذت"} (تذكرة #${ticket}).`
+          : "نُفّذت عبر MetaTrader.",
       );
       return {
         ok: true,
         status: "executed",
-        reason: "تم التنفيذ.",
+        reason: pending ? "وُضع الأمر المعلّق." : "تم التنفيذ.",
         tradeId: trade.id,
         trade: {
           symbol: trade.symbol,

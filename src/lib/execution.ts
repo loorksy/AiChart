@@ -203,15 +203,18 @@ async function checkAuthorizationSource(
     return { ok: true };
   }
 
-  // trade_management (an SL/TP proposal for an open position, never an order)
-  // or a source this build does not recognise.
+  // trade_management (an SL/TP proposal for an open position, never an order),
+  // broker_action (a raw account action, never an order), or a source this
+  // build does not recognise.
   return {
     ok: false,
     code: "unauthorized_source",
     reason:
       source === "trade_management"
         ? "هذا الطلب اقتراح تعديل وقف/هدف لصفقة مفتوحة (unauthorized_source) وليس أمر دخول — مساره اعتماد التعديل، وليس التنفيذ."
-        : `مصدر تفويض غير معروف (unauthorized_source): "${source}" — لم يُرسل أي أمر.`,
+        : source === "broker_action"
+          ? "هذا الطلب إجراء خام على الحساب (unauthorized_source) وليس أمر دخول — مساره التطبيق المباشر عند الموافقة، وليس التنفيذ."
+          : `مصدر تفويض غير معروف (unauthorized_source): "${source}" — لم يُرسل أي أمر.`,
   };
 }
 

@@ -182,15 +182,6 @@ const NEXT_STEP_BY_TOOL: Record<string, NextStepFn> = {
     };
   },
 
-  // run_backtest no longer goes through bridgeCall (Phase 3: it queues a job
-  // and returns immediately — see core.ts) so this table is never consulted
-  // for it; its next_step (-> jobs_wait) is embedded directly in that
-  // response. The REAL next step after a completed backtest — pulling
-  // get_strategy_performance for the live-vs-expected comparison before
-  // citing it as evidence — is stated in run_backtest's own description
-  // instead, since it only makes sense once jobs_wait reports all_terminal,
-  // not immediately.
-
   // request_approval only queues an intent and messages Telegram — confirm
   // it actually queued with the id the operator will see, before reporting success.
   request_approval: (_args, data) => {

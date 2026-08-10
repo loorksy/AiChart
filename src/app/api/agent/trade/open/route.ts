@@ -46,7 +46,7 @@ const schema = z
     approved_by_user: z.boolean().default(false),
     practice: z.boolean().default(false),
     market_type: z.literal("spot").default("spot"),
-    order_type: z.enum(["market", "limit"]).default("market"),
+    order_type: z.enum(["market", "limit", "stop"]).default("market"),
     limit_price: z.number().positive().optional(),
     idempotencyKey: z.string().max(128).optional(),
     /** Preview only: computes the same checks and sizing figures below, places nothing. */

@@ -123,4 +123,107 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
         bridge.post("/api/agent/mt/close-partial", body),
       ),
   );
+
+  server.registerTool(
+    "get_position",
+    mcpToolConfig("get_position"),
+    async (args) => {
+      const { position_id } = args as { position_id: string };
+      return bridgeCall("get_position", args as Record<string, unknown>, () =>
+        bridge.get("/api/agent/mt/position", { position_id }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_order",
+    mcpToolConfig("get_order"),
+    async (args) => {
+      const { order_id } = args as { order_id: string };
+      return bridgeCall("get_order", args as Record<string, unknown>, () =>
+        bridge.get("/api/agent/mt/order", { order_id }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_orders",
+    mcpToolConfig("get_orders"),
+    bridgeWrap("get_orders", bridge, () => bridge.get("/api/agent/mt/orders")),
+  );
+
+  server.registerTool(
+    "get_history_orders",
+    mcpToolConfig("get_history_orders"),
+    async (args) => {
+      const params = (args ?? {}) as Record<string, string | number | undefined>;
+      return bridgeCall("get_history_orders", params, () =>
+        bridge.get("/api/agent/mt/history-orders", params),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_deals",
+    mcpToolConfig("get_deals"),
+    async (args) => {
+      const params = (args ?? {}) as Record<string, string | number | undefined>;
+      return bridgeCall("get_deals", params, () =>
+        bridge.get("/api/agent/mt/deals", params),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_server_time",
+    mcpToolConfig("get_server_time"),
+    bridgeWrap("get_server_time", bridge, () => bridge.get("/api/agent/mt/server-time")),
+  );
+
+  server.registerTool(
+    "calculate_margin",
+    mcpToolConfig("calculate_margin"),
+    async (body) =>
+      bridgeCall("calculate_margin", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/mt/margin", body),
+      ),
+  );
+
+  server.registerTool(
+    "get_current_tick",
+    mcpToolConfig("get_current_tick"),
+    async (args) => {
+      const { symbol } = args as { symbol: string };
+      return bridgeCall("get_current_tick", args as Record<string, unknown>, () =>
+        bridge.get("/api/agent/mt/tick", { symbol }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "propose_modify_order",
+    mcpToolConfig("propose_modify_order"),
+    async (body) =>
+      bridgeCall("propose_modify_order", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/mt/propose-modify-order", body),
+      ),
+  );
+
+  server.registerTool(
+    "propose_cancel_order",
+    mcpToolConfig("propose_cancel_order"),
+    async (body) =>
+      bridgeCall("propose_cancel_order", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/mt/propose-cancel-order", body),
+      ),
+  );
+
+  server.registerTool(
+    "propose_close_position_by_symbol",
+    mcpToolConfig("propose_close_position_by_symbol"),
+    async (body) =>
+      bridgeCall("propose_close_position_by_symbol", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/mt/propose-close-by-symbol", body),
+      ),
+  );
 }

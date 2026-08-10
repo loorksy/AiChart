@@ -52,10 +52,12 @@
       "type": "string",
       "enum": [
         "market",
-        "limit"
+        "limit",
+        "stop"
       ]
     },
     "limit_price": {
+      "description": "Trigger price — required (and sized off it, not the live quote) when order_type is limit or stop.",
       "type": "number",
       "exclusiveMinimum": 0
     },

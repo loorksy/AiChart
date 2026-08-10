@@ -222,18 +222,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     type: "toggle",
   },
   {
-    // On by default in code; this field exists to turn it OFF. Idle-undeploy
-    // saves MetaApi hours but drops the broker link 15 minutes after the
-    // operator closes the tab.
-    key: "METAAPI_ALWAYS_ON",
-    label: "إبقاء الاتصال بالوسيط على مدار الساعة",
-    labelEn: "METAAPI_ALWAYS_ON",
-    group: "markets",
-    secret: false,
-    plainStorage: false,
-    placeholder: "1 = دائم (الافتراضي) · 0 = فصل عند الخمول",
-  },
-  {
     // V2-B: measured deploy-hour rate — set from the first real MetaApi invoice.
     key: "METAAPI_HOURLY_USD",
     label: "تكلفة ساعة النشر في MetaApi (دولار)",

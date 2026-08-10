@@ -392,43 +392,16 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     ui: { widget: "lessons-card" },
   },
   {
-    name: "run_backtest",
-    domain: "core",
-    description:
-      "Queues a deterministic historical backtest of a catalog strategy over the given symbol, timeframe, and date_range; returns job_id/status immediately (well under 1s) — the simulation itself can take up to 120s and never blocks this call. When: before trusting a catalog strategy live, or before citing statistical support for it. Not for a strategy already backtested for this exact symbol+timeframe — check get_strategy_performance first, a repeat run wastes 120s for the same evidence. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity — and executes no trades. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call, long-polls up to ~20s) until all_terminal is true, then read result from that response — do not call this tool again to check status. If polling several backtests, batch every job_id into ONE jobs_wait call, never one call per job. Once the job completes, call get_strategy_performance with the same strategy_id/symbol/timeframe before citing the result — that comparison against live outcomes and deployment state (shadow/active/suspended) is the actual evidence a recommendation needs, not the raw backtest numbers alone. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
-    inputSchema: {
-      strategy_id: zBacktestStrategyId,
-      symbol: zSymbol,
-      timeframe: zBacktestTimeframe,
-      date_range: z
-        .object({
-          from: z.string().datetime({ offset: true }),
-          to: z.string().datetime({ offset: true }),
-        })
-        .strict(),
-      notional_capital: z
-        .number()
-        .finite()
-        .min(100)
-        .max(10_000_000)
-        .optional()
-        .describe(
-          "Simulation capital for historical position sizing only (default 10000). Not live broker equity.",
-        ),
-    },
-    annotations: IDEMPOTENT_WRITE,
-  },
-  {
     name: "jobs_wait",
     domain: "core",
     description:
-      "Long-polls 1-12 bucket-C job ids together (run_backtest, run_market_analysis) and returns as soon as every job is terminal (completed or failed), or after ~20s if some are still running — check all_terminal, not just that the call returned. When: immediately after queuing one or more async jobs, and again after poll_after_seconds if all_terminal was false. Not for a job_id you already saw reported completed/failed — that result is final, re-polling wastes a call. Never poll one job at a time in a loop when several are outstanding — pass every job_id in one call; the 12-job cap is enforced, not a suggestion. Job ids are process-local — after a server restart every previously issued job_id reports not_found, which is expected, not an error to retry. read-only.",
+      "Long-polls 1-12 bucket-C job ids together (run_market_analysis and similar) and returns as soon as every job is terminal (completed or failed), or after ~20s if some are still running — check all_terminal, not just that the call returned. When: immediately after queuing one or more async jobs, and again after poll_after_seconds if all_terminal was false. Not for a job_id you already saw reported completed/failed — that result is final, re-polling wastes a call. Never poll one job at a time in a loop when several are outstanding — pass every job_id in one call; the 12-job cap is enforced, not a suggestion. Job ids are process-local — after a server restart every previously issued job_id reports not_found, which is expected, not an error to retry. read-only.",
     inputSchema: {
       jobs: z
         .array(z.string().min(1))
         .min(1)
         .max(12)
-        .describe("job_id values from run_backtest/run_market_analysis, 1-12 per call"),
+        .describe("job_id values from run_market_analysis and similar, 1-12 per call"),
     },
     annotations: READ_ONLY,
   },
@@ -436,7 +409,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_jobs_by_ids",
     domain: "core",
     description:
-      "Renders a completed batch of bucket-C jobs (run_backtest, run_market_analysis) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to show the operator the results together. Not before all_terminal — call jobs_wait again first, don't guess at a still-running job's outcome. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. read-only.",
+      "Renders a completed batch of bucket-C jobs (run_market_analysis and similar) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to show the operator the results together. Not before all_terminal — call jobs_wait again first, don't guess at a still-running job's outcome. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. read-only.",
     inputSchema: {
       jobs: z
         .array(z.string().min(1))
@@ -451,7 +424,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_strategy_performance",
     domain: "core",
     description:
-      "Compares a strategy's live outcomes against its backtest expectation and reports its deployment state (shadow/active/suspended). When: after a run_backtest job completes, or before create_recommendation to obtain a server-issued backtested_confidence. Not a source of confidence numbers to invent from — only a confidence value THIS tool returned may be passed to create_recommendation's backtested_confidence field. read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "Compares a strategy's live outcomes against its existing backtest evidence and reports its deployment state (shadow/active/suspended). Evidence is whatever was already computed for this strategy/symbol/timeframe — there is no tool to run a new backtest, so an unbacktested combination reports no evidence rather than one. When: before create_recommendation to obtain a server-issued backtested_confidence. Not a source of confidence numbers to invent from — only a confidence value THIS tool returned may be passed to create_recommendation's backtested_confidence field. read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
     inputSchema: {
       strategy_id: zBacktestStrategyId,
       symbol: z.string().optional(),
@@ -472,7 +445,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_trade",
     domain: "core",
     description:
-      "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. Not when mode=approval — use request_approval there instead; this route only ever executes under the operator's own standing auto-mode authorisation, never a per-call approved_by_user claim. stop_loss is mandatory; confidence is audit-only; lots/notional cannot be passed — sizing is always server-computed, never accepted from the caller. side-effect: places a real order (idempotencyKey deduplicates for 24h). Pass dry_run:true to run every check (failure brake, authorization, market session, verified equity) and return the real risk_amount/equity figures without placing anything — use it to preview before the first live call on a symbol; the response is never cached under idempotencyKey. If recovery_tool is returned on a failure, call it immediately — don't explain or ask the operator first. On a real (non-preview) success, call get_open_trades next to confirm the order actually opened before telling the operator it worked.",
+      "Opens a live trade on the connected broker account — market by default, or a pending limit/stop order when order_type is set; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata (a limit/stop order is sized off its own limit_price, not the live quote), and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. Not when mode=approval — use request_approval there instead, which also accepts order_type/limit_price for a pending order; this route only ever executes under the operator's own standing auto-mode authorisation, never a per-call approved_by_user claim. stop_loss is mandatory; confidence is audit-only; lots/notional cannot be passed — sizing is always server-computed, never accepted from the caller. side-effect: places a real order or pending order (idempotencyKey deduplicates for 24h). Pass dry_run:true to run every check (failure brake, authorization, market session, verified equity) and return the real risk_amount/equity figures without placing anything — use it to preview before the first live call on a symbol; the response is never cached under idempotencyKey. If recovery_tool is returned on a failure, call it immediately — don't explain or ask the operator first. On a real (non-preview) success, call get_open_trades (market fill) or get_orders (pending limit/stop) next to confirm it actually landed before telling the operator it worked.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -486,8 +459,12 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       approved_by_user: z.boolean().optional(),
       practice: z.boolean().optional(),
       market_type: z.literal("spot").optional(),
-      order_type: z.enum(["market", "limit"]).optional(),
-      limit_price: z.number().positive().optional(),
+      order_type: z.enum(["market", "limit", "stop"]).optional(),
+      limit_price: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Trigger price — required (and sized off it, not the live quote) when order_type is limit or stop."),
       idempotencyKey: z.string().max(128).optional().describe("idempotency 24h"),
       dry_run: zDryRun,
     },
@@ -530,7 +507,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_approval",
     domain: "core",
     description:
-      "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram; the response also renders an approval-card with its own Approve/Reject buttons wired to respond_approval. When: mode=approval — do not use in direct mode, where open_trade acts on the operator's standing authorisation instead. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons. Pass dry_run:true to see the risk_amount/equity the card would show and confirm the card would send, without creating the intent or messaging Telegram. On a real (non-preview) success, call get_pending_approvals next to confirm the intent actually queued before telling the operator it was sent.",
+      "Submits a proposed trade — market, or a pending limit/stop order when order_type is set — for operator approval, creating a pending intent and sending approve/reject buttons to Telegram; the response also renders an approval-card with its own Approve/Reject buttons wired to respond_approval. When: mode=approval — do not use in direct mode, where open_trade acts on the operator's standing authorisation instead. This is the only path to propose a pending (limit/stop) order without standing auto-mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons. Pass dry_run:true to see the risk_amount/equity the card would show and confirm the card would send, without creating the intent or messaging Telegram. On a real (non-preview) success, call get_pending_approvals next to confirm the intent actually queued before telling the operator it was sent.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -542,6 +519,12 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       rationale: z.string().optional(),
       recommendation_id: z.number().optional(),
       practice: z.boolean().optional(),
+      order_type: z.enum(["market", "limit", "stop"]).optional(),
+      limit_price: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Trigger price — required (and sized off it, not the live quote) when order_type is limit or stop."),
       dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,

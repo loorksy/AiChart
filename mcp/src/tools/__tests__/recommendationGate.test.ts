@@ -271,9 +271,8 @@ describe("create_recommendation structural gate", () => {
 });
 
 describe("accuracy MCP tools are registered", () => {
-  it("exposes run_backtest, get_strategy_performance, detect_market_regime", () => {
+  it("exposes get_strategy_performance, detect_market_regime", () => {
     for (const name of [
-      "run_backtest",
       "get_strategy_performance",
       "detect_market_regime",
     ]) {

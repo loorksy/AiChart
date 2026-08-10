@@ -5,34 +5,18 @@ import { createLogger } from "@/lib/logger";
 const log = createLogger("metaapi.lifecycle");
 
 /**
- * V2-B (#96): presence-based deploy lifecycle — the cost model's heart.
+ * V2-B (#96): presence-based deploy lifecycle.
  *
- * MetaApi bills per DEPLOYED hour; an undeployed account is free. So the
- * account is deployed only while its owner is actually around: every open
- * app session heartbeats; IDLE_GRACE_MS after the last beat the account is
- * undeployed and the deploy-session row is closed, its hours burned from
- * the owner's credits at METAAPI_HOURLY_USD × the retail multiplier. The
- * next heartbeat redeploys silently. Accounts running live auto-execution
- * are PINNED — never undeployed, whatever the presence says.
+ * Every linked account stays deployed around the clock, unconditionally —
+ * there is no idle-undeploy path and nothing in this module can drop the
+ * broker connection. The account bills while deployed, at METAAPI_HOURLY_USD
+ * × the retail multiplier; rollOpenDeploySessions rolls the meter every hour
+ * without ever taking the deployment down. See sweepIdleDeployments.
  */
-
-export const IDLE_GRACE_MS = 15 * 60 * 1000;
 
 export async function metaapiUxEnabled(): Promise<boolean> {
   const flag = await getPlatformValueAsync("METAAPI_UX_ENABLED");
   return flag === "1" || flag === "true";
-}
-
-/**
- * Keep every linked account deployed around the clock.
- *
- * Defaults ON: a broker connection that drops because the operator closed a
- * browser tab is not a connection they can plan a trade around. Set
- * METAAPI_ALWAYS_ON=0 to bring back idle-undeploy and its lower bill.
- */
-export async function metaapiAlwaysOn(): Promise<boolean> {
-  const flag = (await getPlatformValueAsync("METAAPI_ALWAYS_ON"))?.trim();
-  return flag !== "0" && flag !== "false";
 }
 
 async function metaapiHourlyUsd(): Promise<number> {
@@ -49,32 +33,6 @@ async function retailMultiplier(): Promise<number> {
 export function computeSessionHours(deployedAt: number, undeployedAt: number): number {
   const ms = Math.max(0, undeployedAt - deployedAt);
   return Math.round((ms / 3_600_000) * 60) / 60;
-}
-
-/** Pure: the undeploy decision. Pinned accounts never undeploy. */
-export function shouldUndeploy(input: {
-  lastSeen: number | null;
-  now: number;
-  pinned: boolean;
-  graceMs?: number;
-}): boolean {
-  if (input.pinned) return false;
-  const grace = input.graceMs ?? IDLE_GRACE_MS;
-  if (input.lastSeen == null) return true;
-  return input.now - input.lastSeen > grace;
-}
-
-/**
- * Live auto-execution pins the deployment: the agent needs the broker link
- * to manage positions while the owner sleeps. Mode lives in trading_settings
- * (agent_trade_mode = 'auto').
- */
-export async function isLiveExecutionPinned(userId: number): Promise<boolean> {
-  const row = await queryOne<{ agent_trade_mode: string | null }>(
-    "SELECT agent_trade_mode FROM trading_settings WHERE user_id = ?",
-    [userId],
-  );
-  return row?.agent_trade_mode === "auto";
 }
 
 export async function markPresence(userId: number): Promise<{ redeployed: boolean }> {
@@ -167,29 +125,14 @@ export async function deployAccount(userId: number, metaapiAccountId: string): P
   log.info("deployed", { userId });
 }
 
-export async function undeployAccount(
-  userId: number,
-  metaapiAccountId: string,
-  reason: string,
-): Promise<void> {
-  const account = await sdkAccount(metaapiAccountId);
-  await account.undeploy();
-  await execute("UPDATE mt_accounts SET state = 'undeployed_idle' WHERE user_id = ?", [
-    userId,
-  ]);
-  const closed = await closeDeploySession(userId, metaapiAccountId, reason);
-  log.info("undeployed", { userId, reason, hours: closed?.hours });
-}
-
 /**
  * Bring every linked account back up, and keep it up.
  *
- * Stopping the undeploy is only half of "connected around the clock": an
- * account already parked as undeployed_idle would otherwise stay parked until
- * its owner next opened the app, which is exactly the dependence on presence
- * that always-on removes. The sweep runs every five minutes, so a link that
- * drops for any reason is back within one cycle whether or not anyone is
- * looking.
+ * There is no undeploy anywhere in this module, so this is the only thing
+ * standing between a dropped broker link and the user noticing: the sweep
+ * runs every five minutes, so a link that drops for any reason (a MetaApi
+ * restart, a transient error) is back within one cycle whether or not
+ * anyone is looking.
  */
 export async function ensureAlwaysOnDeployed(): Promise<number> {
   const accounts = await query<{ user_id: number; metaapi_account_id: string | null; state: string }>(
@@ -290,58 +233,25 @@ export async function rollOpenDeploySessions(now = Date.now()): Promise<number> 
 }
 
 /**
- * The worker's 5-minute sweep: undeploy every idle, unpinned account.
- * Fail-soft per account — one broken account never stalls the sweep.
+ * The worker's 5-minute sweep: keep every linked account deployed and roll
+ * its billing meter. Fail-soft per account — one broken account never
+ * stalls the sweep.
  */
 export async function sweepIdleDeployments(now = Date.now()): Promise<number> {
   if (!(await metaapiUxEnabled())) return 0;
   /*
-   * Always-on: leaving the platform must not drop the broker link.
+   * Always-on, unconditionally: leaving the platform must never drop the
+   * broker link. There is no idle-undeploy branch here and no config flag
+   * that can bring one back — the link a trader expects to be up around the
+   * clock, like the terminal it replaces, cannot quietly go down because
+   * they walked away or an admin flipped a setting.
    *
-   * The idle sweep was built to cut MetaApi's per-deployed-hour bill, and it
-   * did that by undeploying an account 15 minutes after its owner closed the
-   * tab. That also means the link a trader expects to be up around the clock
-   * — like the terminal it replaces — quietly goes down when they walk away.
-   * Connection continuity wins; METAAPI_ALWAYS_ON=0 restores the old
-   * cost-saving behaviour if the bill ever argues otherwise.
-   *
-   * Hours still bill — but only because the sweep rolls the meter. Billing
-   * lives in closeDeploySession, which used to run ONLY on undeploy: stopping
-   * the undeploy without this would mean no session ever closes and not one
-   * hour is ever charged, on an account that is now up 24/7. The whole point
-   * of the cost model was that the owner never pays out of pocket.
+   * Hours still bill — the sweep rolls the meter instead of undeploying.
+   * Billing lives in closeDeploySession, called from rollOpenDeploySessions
+   * on every roll, so an account up 24/7 is still charged for every hour of
+   * it. The cost model's premise (the owner never pays out of pocket) holds
+   * without needing to ever take the deployment down.
    */
-  if (await metaapiAlwaysOn()) {
-    await ensureAlwaysOnDeployed();
-    return rollOpenDeploySessions(now);
-  }
-  const open = await query<{ user_id: number; account_id: string }>(
-    "SELECT DISTINCT user_id, account_id FROM metaapi_deploy_sessions WHERE undeployed_at IS NULL",
-  );
-  let undeployed = 0;
-  for (const session of open) {
-    try {
-      const presence = await queryOne<{ last_seen: number }>(
-        "SELECT last_seen FROM mt_presence WHERE user_id = ?",
-        [session.user_id],
-      );
-      const pinned = await isLiveExecutionPinned(session.user_id);
-      if (
-        shouldUndeploy({
-          lastSeen: presence ? Number(presence.last_seen) : null,
-          now,
-          pinned,
-        })
-      ) {
-        await undeployAccount(session.user_id, session.account_id, "idle");
-        undeployed += 1;
-      }
-    } catch (e) {
-      log.warn("sweep.account_failed", {
-        userId: session.user_id,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-  return undeployed;
+  await ensureAlwaysOnDeployed();
+  return rollOpenDeploySessions(now);
 }

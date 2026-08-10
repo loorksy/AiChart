@@ -1,14 +1,8 @@
 import { DEFAULT_MARKET, rejectNonForexMarket } from "@/lib/marketPolicy";
 import { normalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
-import { getCached, setCached } from "@/lib/bridge/cache";
 import { freshnessMeta, type FreshnessMeta } from "@/lib/bridge/freshness";
-import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 import { fetchMetaApiOhlc, fetchMetaApiOhlcRange } from "@/lib/ohlc/metaApiOhlc";
-
-/** @deprecated Prefer interval-aware {@link ohlcCacheTtlMs}. Kept for callers. */
-export const OHLC_CACHE_TTL_MS = 45_000;
-export const OHLC_MAX_LIMIT = 5000;
 
 export interface OhlcCandle {
   time: number;
@@ -53,10 +47,6 @@ export interface FetchOhlcOptions {
   toMs?: number;
   /** Kept for call-site compatibility; the only value is "metaapi". */
   source?: OhlcSource;
-}
-
-export function ohlcCacheResource(symbol: string, interval: string): string {
-  return `ohlc:${symbol.toUpperCase()}:${normalizeInterval(interval)}`;
 }
 
 /**
@@ -113,9 +103,12 @@ async function fetchAccountCandles(
 }
 
 /**
- * Fetches OHLC with bridge cache — forex from the user's linked MetaTrader
- * account via MetaApi, the only pipe. An unlinked user gets an empty series
- * with a warning naming the missing link, never a substitute feed.
+ * Fetches OHLC live, every call — forex from the user's linked MetaTrader
+ * account via MetaApi, the only pipe. There is no cache and no staleness
+ * window here: the agent (and the chart) always sees the broker's own
+ * current answer, at whatever timeframe and however far back it asks for.
+ * An unlinked user gets an empty series with a warning naming the missing
+ * link, never a substitute feed.
  */
 export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcResult> {
   const interval = normalizeInterval(options.interval ?? "1h");
@@ -124,10 +117,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   if (marketBlock) {
     throw new Error(marketBlock);
   }
-  const limit = Math.min(
-    Math.max(1, options.limit ?? 200),
-    OHLC_MAX_LIMIT,
-  );
+  const limit = Math.max(1, options.limit ?? 200);
 
   /*
    * Broker feeds answer to the broker's own spelling — and that spelling is
@@ -142,23 +132,6 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
     const { resolveBrokerSymbol } = await import("@/lib/markets/symbolCatalogue");
     symbol = await resolveBrokerSymbol(options.userId, symbol);
   }
-  const cacheKey = `${ohlcCacheResource(symbol, interval)}:metaapi`;
-  if (
-    !options.skipCache &&
-    !options.cursor &&
-    !options.beforeMs &&
-    options.fromMs == null
-  ) {
-    const hit = await getCached<FetchOhlcResult>(options.userId, cacheKey);
-    if (hit.fromCache) {
-      return {
-        ...hit.value,
-        cachedAt: hit.cachedAt,
-        ageMs: hit.ageMs,
-        fromCache: true,
-      };
-    }
-  }
 
   const toMs = options.toMs ?? options.beforeMs;
   const live = await fetchAccountCandles(options, symbol, interval, limit, toMs);
@@ -166,7 +139,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   const candles =
     options.fromMs != null ? live.candles : live.candles.slice(-limit);
 
-  const result: FetchOhlcResult = {
+  return {
     symbol,
     interval,
     market,
@@ -180,10 +153,4 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
     hasMore: false,
     freshness: freshnessMeta("live", 0),
   };
-
-  if (!options.cursor && !options.beforeMs && options.fromMs == null) {
-    await setCached(options.userId, cacheKey, result, ohlcCacheTtlMs(interval));
-  }
-
-  return result;
 }
