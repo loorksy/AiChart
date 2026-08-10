@@ -1,6 +1,7 @@
 import type { AgentRunContext } from "../types";
 import type { AgentMarketContext } from "../marketContext/buildAgentMarketContext";
 import { biasFromCandles, type Bias } from "../marketContext/detectors";
+import { biasParamsForSymbol } from "../symbolProfiles";
 
 export interface MultiTimeframeResult {
   currentBias: Bias;
@@ -22,9 +23,11 @@ export async function runMultiTimeframeAgent(
     visible: false,
   });
 
-  const currentBias = biasFromCandles(market.currentTfCandles);
-  const higherBias = biasFromCandles(market.higherTfCandles);
-  const dailyBias = biasFromCandles(market.dailyCandles);
+  // One shared engine, parameterized per symbol — see agent/symbolProfiles.ts.
+  const biasParams = biasParamsForSymbol(market.symbol);
+  const currentBias = biasFromCandles(market.currentTfCandles, biasParams);
+  const higherBias = biasFromCandles(market.higherTfCandles, biasParams);
+  const dailyBias = biasFromCandles(market.dailyCandles, biasParams);
 
   const conflict =
     currentBias !== "unknown" &&

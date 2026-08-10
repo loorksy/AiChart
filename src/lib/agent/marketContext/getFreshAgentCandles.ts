@@ -35,7 +35,7 @@ export async function getFreshAgentCandles(input: {
       market: "forex",
       limit,
       skipCache: true,
-      source: "metaapi",
+      source: "oanda",
     });
     const candles = live.candles as AgentCandle[];
     return { currentTfCandles: candles, liveCandles: candles, liveError: live.warning ?? null };

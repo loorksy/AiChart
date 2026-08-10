@@ -6,6 +6,10 @@ import { handleError } from "@/lib/api";
 import { resolveScanAssetsForMarket } from "@/lib/allowedAssets.server";
 import { getSettings } from "@/lib/store";
 import { scanForexSymbol } from "@/lib/monitor";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { TRADABLE_SYMBOLS } from "@/lib/markets/forexInstruments";
+
+const TRADABLE_SET = new Set(TRADABLE_SYMBOLS.map((s) => forexCanonicalKey(s)));
 
 const schema = z.object({
   symbols: z.array(z.string()).max(30).optional(),
@@ -32,7 +36,9 @@ export async function POST(req: NextRequest) {
 
     const symbols =
       body.symbols && body.symbols.length > 0
-        ? body.symbols.map((s) => s.toUpperCase())
+        ? body.symbols
+            .map((s) => s.toUpperCase())
+            .filter((s) => TRADABLE_SET.has(forexCanonicalKey(s)))
         : await resolveScanAssetsForMarket(settings.allowed_assets, market, userId);
 
     const candidates = [];

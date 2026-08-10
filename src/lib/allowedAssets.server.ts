@@ -1,6 +1,6 @@
 import type { MarketType } from "./markets/types";
-import { listBrokerCatalogue } from "./markets/symbolCatalogue";
 import { forexCanonicalKey } from "./markets/forexCanonical";
+import { TRADABLE_SYMBOLS } from "./markets/forexInstruments";
 import {
   MONITOR_TOP_SYMBOL_LIMIT,
   isOpenAssetsPolicy,
@@ -9,11 +9,26 @@ import {
   resolveScanAssets,
 } from "./allowedAssets";
 
+const TRADABLE_SET = new Set(TRADABLE_SYMBOLS.map((s) => forexCanonicalKey(s)));
+
+/** Hard allowlist intersection — never returns a symbol outside the fixed 20-instrument universe. */
+function restrictToTradableUniverse(symbols: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of symbols) {
+    const key = forexCanonicalKey(raw);
+    if (!TRADABLE_SET.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
 /**
- * Server-only scan resolver. The forex universe comes exclusively from the
- * broker-seeded symbol catalogue (populated from linked MetaTrader accounts);
- * when it is empty the resolver returns [] so callers surface a setup state —
- * never a substitute feed.
+ * Server-only scan resolver. The forex universe is the fixed 20-instrument
+ * allowlist in `markets/forexInstruments.ts` — a hard cap, not a hint. Any
+ * watchlist/allow-list/catalogue-derived symbol outside that set is dropped
+ * here rather than passed through.
  */
 export async function resolveScanAssetsForMarket(
   raw: string,
@@ -24,28 +39,14 @@ export async function resolveScanAssetsForMarket(
   if (market === "forex") {
     const watchlist = parseWatchlist(raw);
     if (watchlist.length > 0) {
-      return watchlist.slice(0, topLimit);
+      return restrictToTradableUniverse(watchlist).slice(0, topLimit);
     }
     if (isOpenAssetsPolicy(raw, "forex")) {
       const allowed = parseAllowedAssets(raw, "forex");
-      if (allowed.length > 0) return allowed.slice(0, topLimit);
-      try {
-        const rows = await listBrokerCatalogue({ limit: 5000 });
-        const seen = new Set<string>();
-        const fx: string[] = [];
-        for (const row of rows) {
-          const key = forexCanonicalKey(row.broker_symbol);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          fx.push(key);
-        }
-        if (fx.length > 0) return fx.slice(0, topLimit);
-      } catch {
-        /* empty */
-      }
-      return [];
+      if (allowed.length > 0) return restrictToTradableUniverse(allowed).slice(0, topLimit);
+      return restrictToTradableUniverse([...TRADABLE_SYMBOLS]).slice(0, topLimit);
     }
-    return parseAllowedAssets(raw, "forex").slice(0, topLimit);
+    return restrictToTradableUniverse(parseAllowedAssets(raw, "forex")).slice(0, topLimit);
   }
   return resolveScanAssets(raw, topLimit);
 }

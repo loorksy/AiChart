@@ -70,7 +70,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
               studies: a.studies,
               recommendation: a.recommendation,
               targets: a.targets,
-              dataSource: "metaapi",
+              dataSource: "oanda",
             },
             DRAW_TIMEOUT_MS,
           ),
@@ -162,7 +162,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
             ? res.data
             : res;
         };
-        let ohlc = await fetchCandles("metaapi").catch(
+        let ohlc = await fetchCandles("oanda").catch(
           () => null as { candles?: unknown[] } | null,
         );
         if (!ohlc) ohlc = { candles: [] };
@@ -172,9 +172,9 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           interval,
           layout_id: layout?.id ?? null,
           url: layout?.url ?? null,
-          ohlc: ohlc ? { ...ohlc, source: "metaapi" } : ohlc,
+          ohlc: ohlc ? { ...ohlc, source: "oanda" } : ohlc,
           state: layout?.state ?? null,
-          data_source: "metaapi",
+          data_source: "oanda",
           at: new Date().toISOString(),
         };
       }, { structured: true });
@@ -190,7 +190,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         interval?: string;
         market?: "forex";
         layout_id?: string;
-        data_source?: "metaapi";
+        data_source?: "oanda";
       };
       // Queued, not awaited: full model reasoning + chart vision can take up
       // to 150s — this call returns well under 500ms regardless, and the
@@ -203,7 +203,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
             interval: a.interval ?? "1h",
             market: a.market,
             layout_id: a.layout_id,
-            data_source: a.data_source ?? "metaapi",
+            data_source: a.data_source ?? "oanda",
           },
           ANALYZE_TIMEOUT_MS,
         ),

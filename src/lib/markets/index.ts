@@ -9,11 +9,11 @@ import type { ForexMarketSnapshot } from "./forexSnapshot";
 export { resolveSymbol, marketLabel };
 export type { ResolvedSymbol, UnifiedSnapshot };
 
-/** Human book label — a cost without its book is misleading (spreads differ per broker). */
-export function marketDataBookLabel(source: "metaapi"): string {
-  // The user's own linked MetaTrader account is the only book.
+/** Human book label — a cost without its book is misleading (spreads differ per venue). */
+export function marketDataBookLabel(source: "oanda"): string {
+  // The platform's OANDA feed is the only book.
   void source;
-  return "broker_cloud";
+  return "oanda";
 }
 
 export async function getUnifiedPrice(
@@ -23,7 +23,7 @@ export async function getUnifiedPrice(
 ): Promise<{
   resolved: ResolvedSymbol;
   price: number;
-  source: "metaapi";
+  source: "oanda";
   book: string;
 }> {
   const resolved = resolveSymbol(query, market);

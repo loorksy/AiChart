@@ -64,7 +64,7 @@ const postSchema = z.object({
   // min(1): TvChart accepts single-letter intervals ("D"/"W") — min(2) rejected
   // them before normalizeInterval ever saw them.
   interval: z.string().min(1).max(4).optional(),
-  dataSource: z.enum(["metaapi"]).optional(),
+  dataSource: z.enum(["oanda"]).optional(),
   mode: z.enum(["set", "add", "clear"]).default("set"),
   drawings: z.array(drawingSchema).max(24).optional(),
   studies: z.array(studySchema).max(8).optional(),
@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
     const interval = normalizeInterval(body.interval ?? layout.interval);
     const state = parseState(layout.state_json);
     // The user's own linked MetaTrader account is the only data pipe.
-    state.dataSource = "metaapi";
+    state.dataSource = "oanda";
 
     if (body.mode === "clear") {
       state.drawings = [];
@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
           interval,
           market: "forex",
           limit: 300,
-          source: "metaapi",
+          source: "oanda",
         }).catch(() => ({ candles: [] as never[] }));
         const decision = body.recommendation?.action ?? "wait";
         processed = processAgentDrawings(body.drawings as ChartDrawing[], {

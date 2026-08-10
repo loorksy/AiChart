@@ -96,13 +96,13 @@ export const en = {
   "account.type.live": "Live account",
   "account.type.unknown": "Account type unknown",
 
-  // Market data source (the one pipe: the user's own linked MetaTrader account)
+  // Market data source (the one pipe: the platform's OANDA feed)
   "data_source.title": "Market data",
-  "data_source.metaapi": "Cloud MetaTrader account",
-  "data_source.metaapi_hint": "Your broker's own candles and prices, through MetaApi.",
-  "data_source.needs_link": "Link a MetaTrader account to see live market data.",
-  "data_source.link_cta": "Link account",
-  "data_source.short.metaapi": "Cloud account",
+  "data_source.metaapi": "OANDA feed",
+  "data_source.metaapi_hint": "Live candles and prices via OANDA — no account link needed.",
+  "data_source.needs_link": "Market data is temporarily unavailable.",
+  "data_source.link_cta": "Unavailable",
+  "data_source.short.metaapi": "OANDA",
 
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",

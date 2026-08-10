@@ -98,7 +98,7 @@ export interface AgentChartContext {
   /** Recommendation currently rendered/restored on the chart, if any. */
   recommendation?: AgentRecommendation;
   /** The user's own linked MetaTrader account — the only market-data pipe. */
-  dataSource?: "metaapi";
+  dataSource?: "oanda";
 }
 
 /** Short-term, per-session preferences the agent honors within a chart session. */

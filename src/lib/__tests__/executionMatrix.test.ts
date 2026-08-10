@@ -125,7 +125,7 @@ async function stampApproval(
 
 async function run(intentId: number, explicitApproval = true) {
   const { executeIntent } = await import("@/lib/execution");
-  return executeIntent(owner, intentId, { explicitApproval });
+  return executeIntent(owner, intentId, { callerContext: "dashboard_approval", explicitApproval });
 }
 
 describe("execution matrix: stage gate", () => {

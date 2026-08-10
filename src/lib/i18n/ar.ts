@@ -95,13 +95,13 @@ export const ar: Record<TranslationKey, string> = {
   "account.type.live": "حساب حقيقي",
   "account.type.unknown": "نوع الحساب غير معروف",
 
-  // مصدر بيانات السوق (قناة واحدة: حساب MetaTrader المربوط للمستخدم)
+  // مصدر بيانات السوق (قناة واحدة: تغذية OANDA على مستوى المنصة)
   "data_source.title": "مصدر بيانات السوق",
-  "data_source.metaapi": "حساب MetaTrader السحابي",
-  "data_source.metaapi_hint": "شموع وأسعار وسيطك نفسه عبر MetaApi.",
-  "data_source.needs_link": "اربط حساب MetaTrader لعرض بيانات السوق الحية.",
-  "data_source.link_cta": "اربط الحساب",
-  "data_source.short.metaapi": "الحساب السحابي",
+  "data_source.metaapi": "تغذية OANDA",
+  "data_source.metaapi_hint": "شموع وأسعار حية عبر OANDA — لا حاجة لربط حساب.",
+  "data_source.needs_link": "بيانات السوق غير متاحة حاليًا.",
+  "data_source.link_cta": "غير متاح",
+  "data_source.short.metaapi": "OANDA",
 
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
   "composer.more": "خيارات إضافية",

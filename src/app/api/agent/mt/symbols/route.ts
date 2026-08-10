@@ -1,11 +1,18 @@
 import { withBridge } from "@/lib/bridge";
 import { getMtAccount, resolveForexBackendForUser } from "@/lib/store";
 import { getRpcConnection } from "@/lib/metaapi/client";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { TRADABLE_SYMBOLS } from "@/lib/markets/forexInstruments";
+
+const TRADABLE_SET = new Set(TRADABLE_SYMBOLS.map((s) => forexCanonicalKey(s)));
 
 /**
- * Bridge: the FULL list of symbols the broker exposes in the account's
- * MetaTrader Market Watch — not just the user's watchlist. Lets the agent
- * "see the account" and switch between any tradable pair.
+ * Bridge: the broker's Market Watch symbols for the linked account, narrowed
+ * to the platform's fixed 20-instrument universe — not the user's watchlist,
+ * but also not literally everything the broker lists. The agent only
+ * analyses and trades this fixed set (see markets/forexInstruments.ts), so
+ * an execution/account-visibility tool offering symbols outside it would
+ * let a proposal reference an instrument nothing ever analysed.
  *
  * A MetaApi account is asked over RPC; the self-hosted bridge exposes no
  * listing at all. Answering "no MetaTrader link" for a connected cloud
@@ -35,7 +42,9 @@ export const GET = withBridge(async ({ req, userId }) => {
     }
     try {
       const conn = await getRpcConnection(userId, account.metaapi_account_id);
-      const all = await conn.getSymbols();
+      const all = (await conn.getSymbols()).filter((s) =>
+        TRADABLE_SET.has(forexCanonicalKey(s)),
+      );
       const filtered = (q ? all.filter((s) => s.toUpperCase().includes(q)) : all)
         .slice()
         .sort((a, b) => a.localeCompare(b));

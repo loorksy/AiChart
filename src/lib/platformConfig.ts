@@ -201,6 +201,35 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "من app.metaapi.cloud ← API tokens",
   },
   {
+    // The platform-level market-data feed — one token serves every user;
+    // not a per-account credential.
+    key: "OANDA_API_TOKEN",
+    label: "مفتاح OANDA (بيانات المنصة)",
+    labelEn: "OANDA_API_TOKEN",
+    group: "markets",
+    secret: true,
+    plainStorage: false,
+    placeholder: "من حساب OANDA v20 API",
+  },
+  {
+    key: "OANDA_ACCOUNT_ID",
+    label: "معرّف حساب OANDA",
+    labelEn: "OANDA_ACCOUNT_ID",
+    group: "markets",
+    secret: false,
+    plainStorage: false,
+    placeholder: "001-011-1234567-001",
+  },
+  {
+    key: "OANDA_ENV",
+    label: "بيئة OANDA",
+    labelEn: "OANDA_ENV",
+    group: "markets",
+    secret: false,
+    plainStorage: false,
+    placeholder: "practice | live",
+  },
+  {
     // Optional; MetaApi picks a region itself when this is blank. Not a secret,
     // which is why the schema migration marks it plain=1.
     key: "METAAPI_REGION",

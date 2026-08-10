@@ -79,7 +79,7 @@ describe("AUTO_EXECUTION_STAGE is enforced at the choke point", () => {
     const { executeIntent } = await import("@/lib/execution");
     const intent = await forgedApprovalIntent();
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
 
     assert.equal(result.ok, false, "stage off must place nothing at all");
     assert.equal(
@@ -107,7 +107,7 @@ describe("AUTO_EXECUTION_STAGE is enforced at the choke point", () => {
       rationale: "standing auto while stage is off",
     });
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: false });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: false });
 
     assert.equal(result.ok, false);
     assert.equal(result.errorCode, "execution_stage_off");
@@ -118,7 +118,7 @@ describe("AUTO_EXECUTION_STAGE is enforced at the choke point", () => {
     const { executeIntent } = await import("@/lib/execution");
     const intent = await forgedApprovalIntent();
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
 
     assert.equal(result.ok, false, "an unknown stage must never be treated as permissive");
     assert.equal(result.errorCode, "execution_stage_off");
@@ -131,7 +131,7 @@ describe("explicit approval must be proved by the server, not asserted by the ca
     const { executeIntent } = await import("@/lib/execution");
     const intent = await forgedApprovalIntent();
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
 
     assert.equal(result.ok, false, "a self-asserted approval must not authorise an order");
     assert.equal(
@@ -164,7 +164,7 @@ describe("explicit approval must be proved by the server, not asserted by the ca
       [owner, "mt5", "Stage-Approval-Server", "1000", "enc", "acct-stage-approval", "DEPLOYED", "CONNECTED", 0, 0, "USD", "demo"],
     );
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
 
     assert.notEqual(
       result.errorCode,
@@ -192,7 +192,7 @@ describe("explicit approval must be proved by the server, not asserted by the ca
       [Date.now(), stranger, intent.id],
     );
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
 
     assert.equal(result.ok, false);
     assert.equal(
@@ -212,7 +212,7 @@ describe("explicit approval must be proved by the server, not asserted by the ca
       [Date.now(), owner, Date.now(), intent.id],
     );
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
 
     assert.equal(result.ok, false, "an approval is single-use");
     assert.equal(result.errorCode, "approval_not_verified");
@@ -229,7 +229,7 @@ describe("explicit approval must be proved by the server, not asserted by the ca
       [Date.now() - 24 * 60 * 60 * 1000, owner, intent.id],
     );
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
 
     assert.equal(result.ok, false, "a stale approval must not authorise an order");
     assert.equal(result.errorCode, "approval_not_verified");

@@ -76,7 +76,44 @@ export async function getRiskBudget(
   return { equity, riskPct, riskAmount, currency };
 }
 
+/**
+ * The exact, closed set of code paths allowed to reach the broker through
+ * `executeIntent` — mirrors `AUTHORIZED_CALLERS` in
+ * `__tests__/executionAuthorizationPaths.test.ts` (that test still enforces
+ * the same list at compile-time/CI via a source grep; this is the runtime
+ * counterpart, so an unauthorized call is refused live, not only caught in
+ * CI). Required, not optional: TypeScript itself refuses to compile a new
+ * caller that forgets to declare which of these four it is.
+ *
+ *  - "mcp_bridge"         — /api/agent/trade/open (standing_auto only) and
+ *                           /api/agent/approval/respond, both authenticated
+ *                           via resolveBridgeUserId (service token + HMAC).
+ *  - "auto_executor"      — the standing-authorization sweep, triggered by
+ *                           either the cron route (CRON_SECRET) or the
+ *                           in-process scheduler timer — no HTTP request
+ *                           exists on this path, so there is no bridge token
+ *                           to check; the caller identity IS the guarantee.
+ *  - "telegram_approval"  — the Telegram signed-URL action route, authorized
+ *                           by verifySignedAction()'s own HMAC, independent
+ *                           of the MCP bridge token.
+ *  - "dashboard_approval" — the browser/session-authenticated intent route.
+ */
+export type ExecutionCallerContext =
+  | "mcp_bridge"
+  | "auto_executor"
+  | "telegram_approval"
+  | "dashboard_approval";
+
+const AUTHORIZED_CALLER_CONTEXTS: ReadonlySet<string> = new Set([
+  "mcp_bridge",
+  "auto_executor",
+  "telegram_approval",
+  "dashboard_approval",
+] satisfies ExecutionCallerContext[]);
+
 export interface ExecuteIntentOptions {
+  /** Which authorized code path this call originates from — see {@link ExecutionCallerContext}. */
+  callerContext: ExecutionCallerContext;
   onActivity?: ActivityListener;
   /**
    * True only when the operator approved THIS trade. Consulted by the
@@ -291,8 +328,28 @@ async function evaluatePortfolioForIntent(
 export async function executeIntent(
   userId: number,
   intentId: number,
-  options?: ExecuteIntentOptions,
+  options: ExecuteIntentOptions,
 ): Promise<ExecutionResult & { activities: AgentActivity[] }> {
+  // Runtime counterpart to the compile-time caller allowlist: even a call
+  // that somehow bypasses the TypeScript type (a JS caller, an `any` cast,
+  // a dynamic dispatch the source-grep test can't see) is refused here
+  // before touching locks, the broker, or any state — never silently
+  // treated as one of the four authorized paths by default.
+  if (!AUTHORIZED_CALLER_CONTEXTS.has(options?.callerContext as string)) {
+    const { logAudit } = await import("./store");
+    await logAudit(
+      userId,
+      "execution_unauthorized_caller",
+      `intent=${intentId} callerContext=${String(options?.callerContext)}`,
+    ).catch(() => undefined);
+    return {
+      ok: false,
+      status: "failed",
+      reason: "Unauthorized execution caller — no order was sent.",
+      errorCode: "unauthorized_caller",
+      activities: [],
+    };
+  }
   // Every intent gets its own lock regardless of recommendation_id/feature flag,
   // so two concurrent calls for the SAME intent (double-tap Approve, a client
   // retry) can never both reach the broker. This is layered outside the
@@ -339,7 +396,7 @@ export async function executeIntent(
 async function executeIntentUnderRevisionLock(
   userId: number,
   intentId: number,
-  options?: ExecuteIntentOptions,
+  options: ExecuteIntentOptions,
 ): Promise<ExecutionResult & { activities: AgentActivity[] }> {
   const activities: AgentActivity[] = [];
   const push = (activity: AgentActivity) => {

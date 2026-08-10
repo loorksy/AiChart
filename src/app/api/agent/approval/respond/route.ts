@@ -54,7 +54,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const result = await respondToApproval(userId, body.intent_id, body.action);
+    const result = await respondToApproval(
+      userId,
+      body.intent_id,
+      body.action,
+      "mcp_bridge",
+    );
     await logAudit(
       userId,
       "agent_approval_respond",

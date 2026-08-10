@@ -43,7 +43,7 @@ const schema = z.object({
     "إطار زمني غير مدعوم",
   ),
   market: z.string().optional(),
-  data_source: z.enum(["metaapi"]).optional(),
+  data_source: z.enum(["oanda"]).optional(),
   layout_id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
 });
 
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 
     // The user's own linked MetaTrader account is the only data pipe; the
     // canonical chart key is resolved to the broker's spelling downstream.
-    const dataSource = "metaapi" as const;
+    const dataSource = "oanda" as const;
     symbol = forexCanonicalKey(symbol);
 
     // A closed pair is refused BEFORE the spend gate, not after: there is no

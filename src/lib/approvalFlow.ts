@@ -195,6 +195,7 @@ export async function respondToApproval(
   userId: number,
   intentId: number,
   action: "approve" | "reject",
+  channel: "mcp_bridge" | "telegram_approval" = "mcp_bridge",
 ): Promise<{
   ok: boolean;
   status: string;
@@ -274,6 +275,7 @@ export async function respondToApproval(
     [Date.now(), userId, intentId, userId],
   );
   const result = await executeIntent(userId, intentId, {
+    callerContext: channel,
     explicitApproval: true,
     practiceMode: intent.practice === 1,
   });

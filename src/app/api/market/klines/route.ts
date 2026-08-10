@@ -17,8 +17,8 @@ import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import type { MarketType } from "@/lib/markets/types";
 
 /**
- * Market UI klines — live from the user's MetaApi account, every request.
- * Guests and unlinked users get a typed `requires_link` answer.
+ * Market UI klines — live from the platform's OANDA feed, every request. No
+ * account link is required; an unconfigured platform gets a typed error.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -58,24 +58,21 @@ export async function GET(req: NextRequest) {
     const toMs =
       toRaw != null && toRaw !== "" ? Number(toRaw) : undefined;
 
-    const dataSource = await resolveMarketDataSource(user?.id ?? null, null);
-    if (!user || !dataSource.available.metaapi) {
+    const dataSource = await resolveMarketDataSource();
+    if (!dataSource.available.oanda) {
       return NextResponse.json({
         symbol: symbolRaw,
         interval,
         market,
-        source: "metaapi",
+        source: "oanda",
         candles: [],
         pending: false,
-        requires_link: true,
-        error: user
-          ? "اربط حساب MetaTrader لعرض شموع وسيطك — البيانات كلها من حسابك أنت."
-          : "سجّل الدخول واربط حساب MetaTrader لعرض الشارت.",
+        error: "بيانات السوق غير متاحة حاليًا — تعذّر الاتصال بمزوّد البيانات.",
       });
     }
 
     const broker = await fetchOhlc({
-      userId: user.id,
+      userId: user?.id ?? 0,
       symbol: symbolRaw,
       interval,
       limit,
@@ -90,7 +87,7 @@ export async function GET(req: NextRequest) {
       symbol: symbolRaw,
       interval,
       market,
-      source: "metaapi",
+      source: "oanda",
       candles,
       pending: candles.length === 0 && Boolean(broker.warning),
       fromCache: broker.fromCache,

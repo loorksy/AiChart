@@ -4,14 +4,12 @@ import type { ResultEnvelope } from "./resultEnvelope";
 import type { AgentRecommendation } from "./types";
 
 export function operatorMarketSourceLabel(
-  source: "metaapi" | undefined,
+  source: "oanda" | undefined,
   locale: AppLocale,
 ): string {
-  // The user's own linked MetaTrader account is the only market-data pipe.
+  // OANDA is the platform's only market-data pipe.
   void source;
-  return locale === "ar"
-    ? "MetaApi — حساب الوسيط السحابي"
-    : "MetaApi broker cloud feed";
+  return locale === "ar" ? "OANDA — تغذية المنصة" : "OANDA platform feed";
 }
 
 export function priceLevelsFromDrawings(drawings: ChartDrawing[]): number[] {
@@ -61,7 +59,7 @@ function formatLevelLine(levels: number[], locale: AppLocale): string {
 export function attachMandatoryPresentation(input: {
   summary: string;
   envelope: ResultEnvelope;
-  source?: "metaapi";
+  source?: "oanda";
   levels: number[];
   locale: AppLocale;
 }): { summary: string; envelope: ResultEnvelope } {
@@ -73,7 +71,7 @@ export function attachMandatoryPresentation(input: {
       : `Data source: ${sourceLabel}.`;
 
   let summary = input.summary.trim();
-  const namesSource = /MetaApi|metaapi|الوسيط السحابي/i.test(summary);
+  const namesSource = /OANDA|oanda|تغذية المنصة/i.test(summary);
   if (!namesSource) {
     summary = `${sourceLine}\n\n${summary}`;
   }

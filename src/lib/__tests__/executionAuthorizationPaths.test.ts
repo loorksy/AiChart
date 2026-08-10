@@ -115,6 +115,22 @@ describe("execution authorization paths", () => {
     );
   });
 
+  it("the choke point requires and validates a callerContext at runtime, not just at compile time", () => {
+    // Companion to the source-grep allowlist above: even if this test were
+    // deleted or a call site slipped past it, an unauthorized caller must
+    // still be refused live. See lib/__tests__/executionSourceEnforcement.test.ts
+    // for the behavioral (DB-backed) version of this check.
+    const execution = readFileSync(join(SRC, "lib/execution.ts"), "utf8");
+    assert.match(execution, /AUTHORIZED_CALLER_CONTEXTS/);
+    assert.match(execution, /options\?\.callerContext/);
+    assert.match(execution, /"unauthorized_caller"/);
+    assert.match(
+      execution,
+      /options: ExecuteIntentOptions/,
+      "options must be required, not optional — a caller cannot omit callerContext by omitting the whole object",
+    );
+  });
+
   it("the choke point itself enforces the stamped source", () => {
     // Route-level checks are advisory; the invariant lives in executeIntent.
     // It must READ the source, re-verify standing authorisation at execution

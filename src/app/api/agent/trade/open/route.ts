@@ -267,6 +267,7 @@ export async function POST(req: NextRequest) {
     });
 
     const result = await executeIntent(userId, intent.id, {
+      callerContext: "mcp_bridge",
       // Never from the body: this route cannot prove a human approved anything.
       explicitApproval: false,
       practiceMode: body.practice,

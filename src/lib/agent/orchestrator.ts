@@ -869,7 +869,7 @@ async function runUnifiedChartAgentInner(
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
               drawingPlanReason: "market sync failed",
-              dataSource: chartContext?.dataSource ?? "metaapi",
+              dataSource: chartContext?.dataSource ?? "oanda",
               marketSync: market.sync,
             }
           : undefined,
@@ -921,7 +921,7 @@ async function runUnifiedChartAgentInner(
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
               drawingPlanReason: "catastrophic open-market candle gaps",
-              dataSource: chartContext?.dataSource ?? "metaapi",
+              dataSource: chartContext?.dataSource ?? "oanda",
               marketSync: market.sync,
             }
           : undefined,
@@ -1429,7 +1429,7 @@ async function runUnifiedChartAgentInner(
               drawingPlan.selectedZones.length,
           ),
           drawingPlanReason: drawingPlan.reason,
-          dataSource: chartContext?.dataSource ?? "metaapi",
+          dataSource: chartContext?.dataSource ?? "oanda",
           chartSnapshotHash,
           marketSync: market.sync,
         }
@@ -1767,7 +1767,7 @@ async function runUnifiedChartAgentInner(
   const presented = attachMandatoryPresentation({
     summary: finalDecision.summary,
     envelope,
-    source: chartContext?.dataSource ?? "metaapi",
+    source: chartContext?.dataSource ?? "oanda",
     levels,
     locale,
   });
