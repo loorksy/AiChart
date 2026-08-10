@@ -67,6 +67,7 @@ export async function POST(
           };
           try {
             const result = await executeIntent(user.id, intentId, {
+              callerContext: "dashboard_approval",
               onActivity: (a) => send("activity", a),
               // The operator pressed approve on this specific trade.
               explicitApproval: true,
@@ -102,7 +103,10 @@ export async function POST(
       });
     }
 
-    const result = await executeIntent(user.id, intentId, { explicitApproval: true });
+    const result = await executeIntent(user.id, intentId, {
+      callerContext: "dashboard_approval",
+      explicitApproval: true,
+    });
     await notifyUser(
       user.id,
       result.ok

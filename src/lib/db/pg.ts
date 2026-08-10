@@ -566,29 +566,6 @@ const SCHEMA = `
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
-  -- Candle Warehouse: server-side broker candle store (fed by a linked MetaTrader account). time = candle open (ms).
-  CREATE TABLE IF NOT EXISTS market_candles (
-    id         BIGSERIAL PRIMARY KEY,
-    symbol     TEXT NOT NULL,
-    interval   TEXT NOT NULL,
-    time       BIGINT NOT NULL,
-    open       DOUBLE PRECISION NOT NULL,
-    high       DOUBLE PRECISION NOT NULL,
-    low        DOUBLE PRECISION NOT NULL,
-    close      DOUBLE PRECISION NOT NULL,
-    volume     DOUBLE PRECISION NOT NULL DEFAULT 0,
-    source     TEXT NOT NULL DEFAULT 'oanda',
-    -- INTEGER (not BOOLEAN) on purpose: matches the codebase convention and
-    -- lets execute() bind 1/0 uniformly across sqlite + pg. Read as != 0.
-    complete   INTEGER NOT NULL DEFAULT 1,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(symbol, interval, time, source)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_market_candles_lookup
-    ON market_candles(symbol, interval, source, time);
-
   -- Historical case memory: one row per indexed market moment.
   -- Features come from candles at or before case_time; the outcome_* columns are
   -- computed from candles strictly after it. That split is the whole point, so
@@ -1437,6 +1414,13 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS limit_price DOUBLE PRECISION
   `).catch(() => {});
 
+  // Structured payload for a `broker_action` intent (modify/cancel a pending
+  // order, close a position by symbol) — never populated on a sized order.
+  await client.query(`
+    ALTER TABLE trade_intents
+      ADD COLUMN IF NOT EXISTS action_json TEXT
+  `).catch(() => {});
+
   await client.query(`
     ALTER TABLE trades
       ADD COLUMN IF NOT EXISTS limit_price DOUBLE PRECISION
@@ -1570,6 +1554,12 @@ async function migratePg(client: PoolClient) {
     ALTER TABLE agent_audit_logs DROP COLUMN IF EXISTS risk_veto;
     ALTER TABLE agent_runs DROP COLUMN IF EXISTS risk_veto
   `).catch(() => {});
+
+  // Forward-only removal of the candle warehouse. The agent now reads every
+  // candle live from the user's own MetaTrader account, every call, with no
+  // server-side store or cache in between — this table's data is dropped,
+  // not just stopped-growing.
+  await client.query(`DROP TABLE IF EXISTS market_candles`).catch(() => {});
 
   // Forward-only removal of the configurable decision-policy era. Historical
   // recommendations/trades remain intact; obsolete preference columns do not.

@@ -110,7 +110,7 @@ describe("userSafeOutbound", () => {
         selectedLevelsCount: 0,
         rejectedLevelsCount: 0,
         drawingPlanReason: "none",
-        dataSource: "metaapi",
+        dataSource: "oanda",
       },
     } as AgentFinalResult);
     assert.equal(result.researchEvidence, undefined);

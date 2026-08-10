@@ -1,12 +1,11 @@
 /**
- * The user's own MetaTrader link — the only market-data pipe — against a
- * real database.
+ * Market data (OANDA, platform-level, no account link needed) and execution
+ * environment (the user's own MetaTrader link) against a real database.
  *
  * Two invariants are pinned here:
  *
- *  1. Market data is served ONLY when an account is actually linked. An
- *     unlinked user is reported as exactly that (metaapi_not_connected) —
- *     there is no substitute feed to fall back to.
+ *  1. Market data is served regardless of whether the user has linked any
+ *     account — OANDA is a platform-level feed, not gated by execution links.
  *  2. The broker's own account type — demo or real — is read from the
  *     account link itself. A real-money MetaApi account that resolves to
  *     "unknown" is a live-execution protection that silently does not
@@ -50,25 +49,22 @@ before(async () => {
 });
 
 describe("market data source", () => {
-  it("reports an unlinked user as not connected — never a substitute feed", async () => {
+  it("serves an unlinked user the same platform feed — no account required", async () => {
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
     const decision = await resolveMarketDataSource(unlinkedUser, null);
-    assert.equal(decision.source, "metaapi");
-    assert.equal(decision.reason, "metaapi_not_connected");
-    assert.equal(decision.available.metaapi, false);
+    assert.equal(decision.source, "oanda");
   });
 
-  it("guests are no_user, with nothing available", async () => {
+  it("serves guests the same platform feed too", async () => {
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
     const guest = await resolveMarketDataSource(null, null);
-    assert.equal(guest.source, "metaapi");
-    assert.equal(guest.reason, "no_user");
-    assert.equal(guest.available.metaapi, false);
+    assert.equal(guest.source, "oanda");
   });
 
-  it("serves the account's own pipe once it is linked", async () => {
+  it("linking an execution account changes nothing about data availability", async () => {
     const store = await import("@/lib/store");
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
+    const before = await resolveMarketDataSource(cloudUser);
     await store.saveMtAccount(cloudUser, {
       platform: "mt5",
       server: "Broker-Demo",
@@ -78,10 +74,10 @@ describe("market data source", () => {
       state: "DEPLOYED",
       connectionStatus: "CONNECTED",
     });
-    const cloudAuto = await resolveMarketDataSource(cloudUser);
-    assert.equal(cloudAuto.source, "metaapi");
-    assert.equal(cloudAuto.reason, "auto_metaapi");
-    assert.equal(cloudAuto.available.metaapi, true);
+    const after = await resolveMarketDataSource(cloudUser);
+    assert.equal(after.source, "oanda");
+    assert.equal(after.reason, before.reason);
+    assert.equal(after.available.oanda, before.available.oanda);
   });
 });
 

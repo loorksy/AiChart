@@ -18,15 +18,16 @@ async function main(): Promise<void> {
   await initDb();
   await startWorker();
 
-  // V2-B (#96): every 5 minutes, undeploy idle MetaApi accounts so nobody
-  // pays for a terminal their owner isn't watching. No-op while
-  // METAAPI_UX_ENABLED is off; fail-soft — a sweep error never kills the worker.
+  // V2-B (#96): every 5 minutes, keep every linked MetaApi account deployed
+  // and roll its billing meter — accounts are always on, never undeployed.
+  // No-op while METAAPI_UX_ENABLED is off; fail-soft — a sweep error never
+  // kills the worker.
   setInterval(() => {
     void (async () => {
       try {
         const { sweepIdleDeployments } = await import("./lib/metaapi/lifecycle");
         const count = await sweepIdleDeployments();
-        if (count > 0) log.info("metaapi.sweep", { undeployed: count });
+        if (count > 0) log.info("metaapi.sweep", { metersRolled: count });
       } catch (err) {
         log.warn("metaapi.sweep_failed", {
           error: err instanceof Error ? err.message : String(err),
@@ -34,18 +35,6 @@ async function main(): Promise<void> {
       }
     })();
   }, 5 * 60 * 1000);
-  // Resume or safely re-queue Deep Analysis polls after restart.
-  try {
-    const { reconcilePendingDeepAnalysis } = await import(
-      "./lib/agent/deepAnalysis/completion"
-    );
-    const n = await reconcilePendingDeepAnalysis();
-    if (n > 0) log.info("reconciled pending deep analysis runs", { count: n });
-  } catch (err) {
-    log.warn("deep analysis reconcile skipped", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
   log.info("worker process ready");
 
   // Graceful shutdown: stop accepting jobs and drain in-flight ones so an

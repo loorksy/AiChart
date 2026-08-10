@@ -206,7 +206,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     drawings,
     studies,
     headerActions,
-    dataSource = "metaapi",
+    dataSource = "oanda",
     locale = "ar",
     direction = "rtl",
     theme = "dark",
@@ -499,7 +499,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             const s = chart.symbol();
             const ticker = (s.includes(":") ? s.split(":").pop()! : s);
             // Every symbol is served by the user's own linked account.
-            onSymbolChangeRef.current?.(ticker, "metaapi");
+            onSymbolChangeRef.current?.(ticker, "oanda");
           });
           chart.onIntervalChanged().subscribe(null, (res: ResolutionString) => {
             if (pushSyncRef.current) return;

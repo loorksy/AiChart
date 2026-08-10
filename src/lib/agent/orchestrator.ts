@@ -62,17 +62,6 @@ import {
   scanForInternalLeakage,
   toUserSafeResearchProjection,
 } from "./userSafeOutbound";
-import {
-  classifyHardSafetyFailure,
-  decideDeepAnalysisTrigger,
-} from "./deepAnalysis/triggers";
-import { enqueueDeepAnalysis } from "./deepAnalysis/enqueue";
-import { composeDeepAnalysisUpdate } from "./deepAnalysis/composeUpdate";
-import { updateDeepAnalysisRun } from "./deepAnalysis/store";
-import {
-  researchBacktestEnabled,
-  researchServiceEnabled,
-} from "@/lib/research/client";
 import { buildInformationalConfidence } from "./confidenceSemantics";
 import { runMarketDataAgent } from "./agents/marketDataAgent";
 import { getMacroRegime } from "./macro/fredProvider";
@@ -109,7 +98,8 @@ import { serializeCostEvidence } from "./marketContext/costEvidence";
 import { barDurationMs } from "@/lib/intervals";
 import { metrics } from "@/lib/metrics";
 import { atr as computeAtr } from "@/lib/indicators";
-import { getCandles } from "@/lib/candles/candleRepository";
+import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
+import { isCandleComplete } from "@/lib/ohlc/metaApiOhlc";
 import {
   assessTradability,
   type TradabilityAssessment,
@@ -879,7 +869,7 @@ async function runUnifiedChartAgentInner(
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
               drawingPlanReason: "market sync failed",
-              dataSource: chartContext?.dataSource ?? "metaapi",
+              dataSource: chartContext?.dataSource ?? "oanda",
               marketSync: market.sync,
             }
           : undefined,
@@ -931,7 +921,7 @@ async function runUnifiedChartAgentInner(
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
               drawingPlanReason: "catastrophic open-market candle gaps",
-              dataSource: chartContext?.dataSource ?? "metaapi",
+              dataSource: chartContext?.dataSource ?? "oanda",
               marketSync: market.sync,
             }
           : undefined,
@@ -1439,7 +1429,7 @@ async function runUnifiedChartAgentInner(
               drawingPlan.selectedZones.length,
           ),
           drawingPlanReason: drawingPlan.reason,
-          dataSource: chartContext?.dataSource ?? "metaapi",
+          dataSource: chartContext?.dataSource ?? "oanda",
           chartSnapshotHash,
           marketSync: market.sync,
         }
@@ -1600,49 +1590,6 @@ async function runUnifiedChartAgentInner(
     };
   }
 
-  // User-safe projection → model keeps natural summary; no module-name append.
-  const historicalInsufficient = researchEvidence.contributions.some(
-    (c) =>
-      c.system === "backtest" &&
-      (c.reason === "justified_but_no_completed_job_in_latency_budget" ||
-        c.reason === "insufficient_historical_metrics"),
-  );
-  const conflictingEvidence =
-    researchEvidence.historicalEvidenceTendency < -0.04 ||
-    researchEvidence.contributions.some((c) =>
-      /disagree|conflict|weakness/i.test(c.reason),
-    );
-
-  const hard = classifyHardSafetyFailure({
-    syncOk: market.sync.ok,
-    stalePrice: !market.freshness.isFresh && market.marketOpen,
-    candleInsufficientUnrecoverable:
-      market.dataQuality.coverage?.status === "insufficient" &&
-      !market.dataQuality.coverage?.sufficientForTrade,
-    executionGuardRejected: false,
-  });
-
-  let deepAnalysisId: string | undefined;
-  let deeperVerification:
-    | "not_started"
-    | "started"
-    | "skipped_not_generalizable" = "not_started";
-
-  const deepTrigger = decideDeepAnalysisTrigger({
-    decision: finalDecision.decision,
-    confidence: finalDecision.confidence,
-    userMessage,
-    hardSafetyOrLiveDataFailure: hard.blocked,
-    hardFailureCode: hard.code,
-    historicalConfirmationInsufficient: historicalInsufficient,
-    conflictingEvidence,
-    novelOrWeakSetup:
-      (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
-      finalDecision.confidence < 0.55,
-    researchServiceEnabled: researchServiceEnabled(),
-    researchBacktestEnabled: researchBacktestEnabled(),
-  });
-
   let storedRecommendation: ActiveRecommendation | null = null;
   // Contract completeness + planned economics + vision latency (plan §17).
   {
@@ -1745,82 +1692,11 @@ async function runUnifiedChartAgentInner(
     });
   }
 
-  if (
-    input.purpose !== "reevaluation" &&
-    deepTrigger.run &&
-    ctx.userId &&
-    deepTrigger.allowReason
-  ) {
-    const direction =
-      finalDecision.decision === "buy" || finalDecision.decision === "sell"
-        ? finalDecision.decision
-        : storedRecommendation?.direction ?? "buy";
-    const deepId = `deep-${analysisId}`;
-    deepAnalysisId = deepId;
-    const enqueued = await enqueueDeepAnalysis({
-      userId: ctx.userId,
-      analysisId: deepId,
-      sessionId,
-      chatId: sessionId,
-      recommendationId: null,
-      recommendationRef: storedRecommendation?.id ?? null,
-      locale,
-      allowReason: deepTrigger.allowReason,
-      strategyInput: {
-        symbol: market.symbol,
-        timeframe: market.interval,
-        direction,
-        marketRegime: typeof market.marketRegime === "string" ? market.marketRegime : null,
-        structureBias:
-          finalDecision.decision === "buy"
-            ? "bullish"
-            : finalDecision.decision === "sell"
-              ? "bearish"
-              : null,
-        zoneType:
-          risk.selectedCandidate?.poi.type === "demand" ||
-          risk.selectedCandidate?.poi.type === "supply"
-            ? risk.selectedCandidate.poi.type
-            : null,
-        confirmationRule: risk.selectedCandidate?.setupType ?? null,
-        atr: market.atr,
-        entry: finalDecision.recommendation.entry ?? storedRecommendation?.entry,
-        stopLoss:
-          finalDecision.recommendation.stop_loss ??
-          storedRecommendation?.stopLoss,
-        targets:
-          finalDecision.recommendation.targets ??
-          storedRecommendation?.targets,
-        invalidationLevel: storedRecommendation?.invalidationLevel,
-      },
-    }).catch((err) => {
-      return {
-        ok: false as const,
-        reason: "enqueue_error",
-        detail: err instanceof Error ? err.message : String(err),
-      };
-    });
-
-    if (enqueued.ok) {
-      deeperVerification = "started";
-      const startCopy = composeDeepAnalysisUpdate({
-        locale,
-        phase: "start",
-      });
-      // Fold start notice into summary naturally (one start update).
-      if (!scanForInternalLeakage(finalDecision.summary).length) {
-        finalDecision.summary = `${finalDecision.summary.trim()}\n\n${startCopy.text}`;
-      }
-      await updateDeepAnalysisRun(ctx.userId, deepId, {
-        uxUpdateCount: 1,
-        recommendationId: null,
-      }).catch(() => null);
-    } else if (enqueued.reason === "setup_not_generalizable") {
-      deeperVerification = "skipped_not_generalizable";
-      // Internal only — recorded on researchEvidence path via runTrace callers.
-    }
-  }
-
+  // Deep Analysis (asynchronous bulk-backtest verification of a fresh
+  // decision) required the candle warehouse to export bars for research-service
+  // validation; it is gone along with that warehouse, so every analysis
+  // reports "not_started" here rather than enqueuing anything.
+  const deeperVerification = "not_started" as const;
   const projection = toUserSafeResearchProjection(researchEvidence, {
     deeperVerification,
     confidenceNudgeApplied,
@@ -1891,7 +1767,7 @@ async function runUnifiedChartAgentInner(
   const presented = attachMandatoryPresentation({
     summary: finalDecision.summary,
     envelope,
-    source: chartContext?.dataSource ?? "metaapi",
+    source: chartContext?.dataSource ?? "oanda",
     levels,
     locale,
   });
@@ -1932,18 +1808,6 @@ async function runUnifiedChartAgentInner(
           status: "completed",
           reason: projection.historicalAgreement,
         },
-        ...(deepAnalysisId
-          ? [
-              {
-                step: "deep_analysis",
-                status:
-                  deeperVerification === "started"
-                    ? ("used" as const)
-                    : ("skipped" as const),
-                reason: deepTrigger.allowReason ?? deepTrigger.blockReason,
-              },
-            ]
-          : []),
         ...(compositionFallbackUsed
           ? [
               {
@@ -2582,13 +2446,16 @@ async function assessPlanTradability(
   try {
     let atr: number | null = null;
     try {
-      const recent = await getCandles({
+      const recent = await fetchOhlc({
+        userId: active.userId ?? 0,
         symbol: active.symbol,
         interval: active.interval,
         limit: 30,
-        order: "desc",
+        skipCache: true,
       });
-      atr = computeAtr(recent.filter((candle) => candle.complete));
+      atr = computeAtr(
+        recent.candles.filter((candle) => isCandleComplete(candle.time, active.interval)),
+      );
     } catch {
       atr = null;
     }

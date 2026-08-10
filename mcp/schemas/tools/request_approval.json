@@ -39,6 +39,19 @@
     "practice": {
       "type": "boolean"
     },
+    "order_type": {
+      "type": "string",
+      "enum": [
+        "market",
+        "limit",
+        "stop"
+      ]
+    },
+    "limit_price": {
+      "description": "Trigger price — required (and sized off it, not the live quote) when order_type is limit or stop.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
     "dry_run": {
       "description": "Preview only: runs the real checks and returns the real consequence figures without committing anything. Use before the first live call on a symbol, or whenever the operator asks what would happen.",
       "type": "boolean"

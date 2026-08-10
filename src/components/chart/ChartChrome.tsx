@@ -31,7 +31,7 @@ export function ChartChrome({
   symbol: string;
   interval: string;
   /** Kept for mount-site compatibility; the linked account is the only pipe. */
-  dataSource?: "metaapi";
+  dataSource?: "oanda";
   actions?: TvHeaderAction[];
   onIntervalChange?: (interval: string) => void;
   onRefresh?: () => void;

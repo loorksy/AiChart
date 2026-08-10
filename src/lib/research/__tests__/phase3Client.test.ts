@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
 import {
-  buildAiChartCandleWarehouseEnvelope,
   createResearchJob,
   ResearchServiceError,
   runBacktestValidation,
@@ -145,81 +144,6 @@ test("typed strategy, dataset, and backtest wrappers emit bounded snake-case pay
     },
   });
   assert.ok(requests.every((request) => request.user_id === 42));
-});
-
-test("dataset validation sends a controlled warehouse export through the inline discriminator", async () => {
-  enableBacktest();
-  const requests = captureRequests();
-  const envelope = buildAiChartCandleWarehouseEnvelope(
-    { symbol: "EURUSD", timeframe: "1h", limit: 1 },
-    [
-      {
-        time: new Date("2025-01-06T09:00:00Z").getTime(),
-        open: 1.1,
-        high: 1.2,
-        low: 1,
-        close: 1.15,
-        volume: 100,
-        complete: true,
-      },
-    ],
-    new Date("2025-01-06T10:00:00Z"),
-  );
-  await validateResearchDataset(context, {
-    idempotencyKey: "warehouse-dataset-001",
-    dataset: { source: "aichart_candle_warehouse", payload: envelope },
-  });
-  assert.deepEqual(requests[0]?.payload, {
-    dataset: { source: "aichart_candle_warehouse", payload: envelope },
-  });
-});
-
-test("warehouse payloads may exceed 48 KiB but remain bounded by the 8 MiB job limit", async () => {
-  enableBacktest();
-  let called = false;
-  globalThis.fetch = async () => {
-    called = true;
-    return Response.json({ job: { job_id: "rj_large_dataset" }, created: true });
-  };
-  const start = new Date("2025-01-01T00:00:00Z").getTime();
-  const candles = Array.from({ length: 600 }, (_, index) => ({
-    time: start + index * 60_000,
-    open: 1.1,
-    high: 1.2,
-    low: 1,
-    close: 1.15,
-    volume: 100,
-    complete: true,
-  }));
-  const envelope = buildAiChartCandleWarehouseEnvelope(
-    { symbol: "EURUSD", timeframe: "1m", limit: candles.length },
-    candles,
-    new Date(start + candles.length * 60_000),
-  );
-  assert.ok(Buffer.byteLength(JSON.stringify(envelope), "utf8") > 48 * 1024);
-  await validateResearchDataset(context, {
-    idempotencyKey: "large-warehouse-dataset-001",
-    dataset: { source: "aichart_candle_warehouse", payload: envelope },
-  });
-  assert.equal(called, true);
-
-  const oversized = {
-    ...envelope,
-    padding: "x".repeat(8 * 1024 * 1024),
-  };
-  called = false;
-  assert.throws(
-    () =>
-      validateResearchDataset(context, {
-        idempotencyKey: "oversized-warehouse-dataset-001",
-        dataset: {
-          source: "aichart_candle_warehouse",
-          payload: oversized,
-        },
-      }),
-    /web-to-service request limit/,
-  );
-  assert.equal(called, false);
 });
 
 test("strategy specifications retain their independent 48 KiB limit", () => {

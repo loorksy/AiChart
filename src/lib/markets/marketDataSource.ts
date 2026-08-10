@@ -1,28 +1,26 @@
 /**
- * The one market-data pipe: the trader's own cloud MetaTrader account.
+ * The one market-data pipe: OANDA, at the platform level.
  *
- * The platform no longer carries a proxy feed. Linking a broker account is
- * the platform's first step — candles, quotes and instruments all come over
- * that account's own connection, the market the trader's orders will actually
- * fill against. The decision object survives so every endpoint can keep
- * reporting what it served and — more importantly now — whether the account
- * is linked at all: an unlinked user is GATED to the link flow, never handed
- * a substitute feed.
+ * A single platform-owned OANDA account/token (see markets/oanda.ts) serves
+ * quotes, candles and the instrument universe to every user — no end user
+ * links anything to see data, charts, or recommendations. Linking a broker
+ * account (MetaApi/MT5) is a separate, later step required only for actual
+ * order execution (src/lib/execution.ts); it plays no role in what market
+ * data is available. The decision object survives so every endpoint can
+ * keep reporting what it served and whether OANDA itself is configured —
+ * an unconfigured platform is GATED to that, never handed a substitute feed.
  */
-import { getMtAccount } from "@/lib/store";
+import { oandaConfigured } from "@/lib/markets/oanda";
 
-export type MarketDataSource = "metaapi";
+export type MarketDataSource = "oanda";
 
-/** Kept for stored-settings compatibility; every value resolves to metaapi. */
+/** Kept for stored-settings compatibility; every value resolves to oanda. */
 export type MarketDataSourcePreference = MarketDataSource | "auto";
 
-export type MarketDataSourceReason =
-  | "no_user"
-  | "auto_metaapi"
-  | "metaapi_not_connected";
+export type MarketDataSourceReason = "auto_oanda" | "oanda_not_configured";
 
 export interface MarketDataSourceAvailability {
-  metaapi: boolean;
+  oanda: boolean;
 }
 
 export interface MarketDataSourceDecision {
@@ -33,41 +31,30 @@ export interface MarketDataSourceDecision {
 }
 
 /**
- * Whether the user's own MetaTrader link can serve market data right now —
- * a MetaApi cloud account or the self-hosted mt5local bridge both count;
- * both are the user's own account. Connection state only — there is nothing
- * else to fall back to.
+ * Whether the platform's OANDA feed can serve market data right now.
+ * Platform-level configuration only — not user-specific, not connection
+ * state of any individual account.
  */
 export async function marketDataAvailability(
-  userId: number | null | undefined,
+  _userId?: number | null,
 ): Promise<MarketDataSourceAvailability> {
-  if (!userId) return { metaapi: false };
-  const mt = await getMtAccount(userId).catch(() => null);
-  return { metaapi: Boolean(mt?.metaapi_account_id) };
+  return { oanda: oandaConfigured() };
 }
 
 /**
- * Resolve the source for one request. `source` is always "metaapi"; the
- * signal callers act on is `available.metaapi` / `reason` — an unlinked
- * account means "link first", and every data endpoint answers with absence
- * plus that reason instead of substituting a feed.
+ * Resolve the source for one request. `source` is always "oanda"; the
+ * signal callers act on is `available.oanda` / `reason` — an unconfigured
+ * platform means "OANDA isn't set up", not "this user hasn't linked
+ * anything". No user identity or broker link affects this decision.
  */
 export async function resolveMarketDataSource(
-  userId: number | null | undefined,
+  _userId?: number | null,
   _requested?: string | null,
 ): Promise<MarketDataSourceDecision> {
-  if (!userId) {
-    return {
-      source: "metaapi",
-      reason: "no_user",
-      available: { metaapi: false },
-      preference: "auto",
-    };
-  }
-  const available = await marketDataAvailability(userId);
+  const available = await marketDataAvailability();
   return {
-    source: "metaapi",
-    reason: available.metaapi ? "auto_metaapi" : "metaapi_not_connected",
+    source: "oanda",
+    reason: available.oanda ? "auto_oanda" : "oanda_not_configured",
     available,
     preference: "auto",
   };

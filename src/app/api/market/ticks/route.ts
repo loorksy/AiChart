@@ -1,23 +1,24 @@
 import { NextRequest } from "next/server";
 import { handleError, requirePlatformAccess } from "@/lib/api";
-import { getMtAccount } from "@/lib/store";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
-import { subscribeSymbolTicks } from "@/lib/metaapi/streaming";
+import { subscribeOandaSymbolTicks } from "@/lib/markets/oandaStream";
+import { TRADABLE_SYMBOLS } from "@/lib/markets/forexInstruments";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const TRADABLE_SET = new Set(TRADABLE_SYMBOLS.map((s) => forexCanonicalKey(s)));
+
 /**
- * Server-Sent Events of live bid/ask for a linked cloud account.
- *
- * One MetaApi quote subscription per open chart symbol per user. Closing the
- * EventSource (chart unmount, tab backgrounded) tears the listener down; when
- * the last client for a symbol leaves, the market-data subscription is cancelled.
- * Platform-feed charts get 204 — the datafeed keeps its poll fallback.
+ * Server-Sent Events of live bid/ask from the platform's shared OANDA
+ * stream. No per-user account or link is required — any authenticated user
+ * can watch ticks for any of the fixed 20 instruments. Closing the
+ * EventSource (chart unmount, tab backgrounded) tears the listener down.
  */
 export async function GET(req: NextRequest) {
   try {
-    const user = await requirePlatformAccess();
+    await requirePlatformAccess();
     const symbol = (req.nextUrl.searchParams.get("symbol") ?? "")
       .trim()
       .replace(/[^A-Za-z0-9._]/g, "");
@@ -27,15 +28,12 @@ export async function GET(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
       });
     }
-
-    const decision = await resolveMarketDataSource(user.id, null);
-    if (decision.source !== "metaapi") {
+    if (!TRADABLE_SET.has(forexCanonicalKey(symbol))) {
       return new Response(null, { status: 204 });
     }
 
-    const account = await getMtAccount(user.id);
-    const accountId = account?.metaapi_account_id;
-    if (!accountId || accountId === "mt5local") {
+    const decision = await resolveMarketDataSource();
+    if (!decision.available.oanda) {
       return new Response(null, { status: 204 });
     }
 
@@ -56,29 +54,25 @@ export async function GET(req: NextRequest) {
           }
         };
 
-        send({ type: "ready", symbol, source: "metaapi" });
+        send({ type: "ready", symbol, source: "oanda" });
 
-        void subscribeSymbolTicks({
-          userId: user.id,
-          metaapiAccountId: accountId,
-          symbol,
-          onTick: (tick) => send({ type: "tick", ...tick }),
-        })
-          .then((unsub) => {
-            unsubscribe = unsub;
-            if (closed) unsub();
-          })
-          .catch((err) => {
-            send({
-              type: "error",
-              message: err instanceof Error ? err.message : "stream failed",
-            });
-            try {
-              controller.close();
-            } catch {
-              /* already closed */
-            }
+        try {
+          unsubscribe = subscribeOandaSymbolTicks({
+            symbol,
+            onTick: (tick) => send({ type: "tick", ...tick }),
           });
+          if (closed) unsubscribe();
+        } catch (err) {
+          send({
+            type: "error",
+            message: err instanceof Error ? err.message : "stream failed",
+          });
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+        }
 
         const heartbeat = setInterval(() => {
           if (closed) {

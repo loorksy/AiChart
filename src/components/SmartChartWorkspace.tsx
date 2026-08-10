@@ -214,7 +214,7 @@ function SmartChartWorkspaceInner({
   });
 
   // The user's own linked MetaTrader account is the only market-data pipe.
-  const [dataSource, setDataSource] = useState<MarketDataSource>("metaapi");
+  const [dataSource, setDataSource] = useState<MarketDataSource>("oanda");
 
   const [tradesOpen, setTradesOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
@@ -437,7 +437,7 @@ function SmartChartWorkspaceInner({
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
-  const handleSymbolChange = useCallback((s: string, source: MarketDataSource = "metaapi") => {
+  const handleSymbolChange = useCallback((s: string, source: MarketDataSource = "oanda") => {
     setSymbol(normalizeSymbolCase(s));
     setDataSource(source);
   }, []);

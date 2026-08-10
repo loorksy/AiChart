@@ -587,27 +587,6 @@ const SCHEMA = `
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- Candle Warehouse: server-side broker candle store (fed by a linked MetaTrader account). time = candle open (ms).
-  CREATE TABLE IF NOT EXISTS market_candles (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol     TEXT NOT NULL,
-    interval   TEXT NOT NULL,
-    time       INTEGER NOT NULL,
-    open       REAL NOT NULL,
-    high       REAL NOT NULL,
-    low        REAL NOT NULL,
-    close      REAL NOT NULL,
-    volume     REAL NOT NULL DEFAULT 0,
-    source     TEXT NOT NULL DEFAULT 'oanda',
-    complete   INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(symbol, interval, time, source)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_market_candles_lookup
-    ON market_candles(symbol, interval, source, time);
-
   -- Historical case memory: one row per indexed market moment.
   -- Features come from candles at or before case_time; the outcome_* columns are
   -- computed from candles strictly after it. That split is the whole point, so
@@ -1701,6 +1680,11 @@ function migrate(db: Database.Database) {
   if (!intentCols.some((c) => c.name === "limit_price")) {
     db.exec("ALTER TABLE trade_intents ADD COLUMN limit_price REAL");
   }
+  // Structured payload for a `broker_action` intent (modify/cancel a pending
+  // order, close a position by symbol) — never populated on a sized order.
+  if (!intentCols.some((c) => c.name === "action_json")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN action_json TEXT");
+  }
   if (!intentCols.some((c) => c.name === "recommendation_revision_no")) {
     db.exec("ALTER TABLE trade_intents ADD COLUMN recommendation_revision_no INTEGER");
   }
@@ -1785,6 +1769,12 @@ function migrate(db: Database.Database) {
   if (runCols.some((c) => c.name === "risk_veto")) {
     db.exec("ALTER TABLE agent_runs DROP COLUMN risk_veto");
   }
+
+  // Forward-only removal of the candle warehouse. The agent now reads every
+  // candle live from the user's own MetaTrader account, every call, with no
+  // server-side store or cache in between — this table's data is dropped,
+  // not just stopped-growing.
+  db.exec("DROP TABLE IF EXISTS market_candles");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS trade_lessons (

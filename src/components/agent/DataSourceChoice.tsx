@@ -1,23 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cloud, Link2 } from "lucide-react";
+import { Cloud, AlertTriangle } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
 interface DataSourceView {
-  active: "metaapi";
+  active: "oanda";
   reason: string;
-  available: { metaapi: boolean };
+  available: { oanda: boolean };
 }
 
 /**
- * Which market the pairs are read from — the user's own linked MetaTrader
- * account, the only pipe. There is no platform feed to fall back to and
- * nothing to pick between, so this is a status chip, not a menu: linked, it
- * names the broker cloud account serving the list; unlinked, it is the link
- * CTA that would make the list live. Sitting beside the catalogue keeps the
- * explanation next to the thing it explains.
+ * Which feed the pairs are read from — the platform's OANDA feed, the only
+ * pipe. There is no per-user account to link for data and nothing to pick
+ * between, so this is a status chip, not a menu: normally it just names the
+ * feed; if OANDA itself is unconfigured (a platform issue, not something a
+ * user's own account link would fix), it shows an outage state instead.
  */
 export function DataSourceMenuButton({
   enabled,
@@ -25,7 +24,7 @@ export function DataSourceMenuButton({
 }: {
   enabled: boolean;
   /** Kept for mount-site compatibility; with one pipe there is no switch to fire it. */
-  onChange?: (active: "metaapi") => void;
+  onChange?: (active: "oanda") => void;
 }) {
   void onChange;
   const { t } = useLocale();
@@ -57,20 +56,19 @@ export function DataSourceMenuButton({
     "text-muted-foreground hover:bg-muted hover:text-foreground",
   );
 
-  if (!view.available.metaapi) {
-    // Unlinked: no data is served in its place — the chip IS the link flow.
+  if (!view.available.oanda) {
+    // Platform-level outage — no per-user action fixes this, so no link.
     return (
-      <a
-        href="/console/mt5"
+      <span
         title={t("data_source.needs_link")}
         aria-label={t("data_source.needs_link")}
         data-testid="data-source-trigger"
-        data-active-source="unlinked"
+        data-active-source="unavailable"
         className={chipClass}
       >
-        <Link2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span className="max-w-[8rem] truncate">{t("data_source.link_cta")}</span>
-      </a>
+      </span>
     );
   }
 

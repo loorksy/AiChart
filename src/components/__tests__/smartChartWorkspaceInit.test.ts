@@ -4,17 +4,15 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
- * Reproduced live on production: a browser with `aichart_last_symbol` cached
- * from before the case-preservation fix ("XAUUSDM", uppercased) loaded that
- * value verbatim on mount. MetaApi does not recognise the uppercased spelling
- * — cloudQuote's catch silently falls back to the platform feed — and the
- * platform feed does not recognise the broker-suffixed spelling either, so
- * the badge showed no price and no spread for a linked, working account.
+ * Reproduced live on production (pre-OANDA-migration): a browser with
+ * `aichart_last_symbol` cached from before the case-preservation fix
+ * ("XAUUSDM", uppercased) loaded that value verbatim on mount, and the
+ * broker-suffixed spelling was not recognised, so the badge showed no price.
  *
  * The component has no React Testing Library harness in this repo, so this
  * pins the fix at the source level: the localStorage read must be wrapped in
- * normalizeSymbolCase, and dataSource must be reconciled against the server's
- * account pipe directly — the retired platform-feed placeholder is gone.
+ * normalizeSymbolCase, and dataSource must initialise straight on the
+ * platform's OANDA feed — there is no per-account placeholder to reconcile.
  */
 
 const SRC = readFileSync(
@@ -35,12 +33,11 @@ describe("SmartChartWorkspace initial state matches server truth", () => {
     );
   });
 
-  it("initialises straight on the account pipe — no platform placeholder to reconcile", () => {
+  it("initialises straight on the OANDA platform pipe — no account placeholder to reconcile", () => {
     assert.match(
       SRC,
-      /useState<MarketDataSource>\("metaapi"\)/,
-      "the one pipe is the user's own account; there is no paint-time platform placeholder",
+      /useState<MarketDataSource>\("oanda"\)/,
+      "the one pipe is the platform's OANDA feed; there is no paint-time account placeholder",
     );
-    assert.equal(/oanda/i.test(SRC), false, "no trace of the retired platform feed");
   });
 });

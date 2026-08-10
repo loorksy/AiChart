@@ -195,15 +195,28 @@ export function detectMarketRegime(candles: AgentCandle[]): MarketRegime {
   return net > 0 ? "uptrend" : "downtrend";
 }
 
-/** Directional bias from % change over the last 50 bars. */
-export function biasFromCandles(candles: AgentCandle[]): Bias {
-  if (!candles || candles.length < 50) return "unknown";
-  const recent = candles.slice(-50);
+/**
+ * Directional bias from % change over a lookback window. `lookbackBars` and
+ * `changeThreshold` default to the forex-major values a flat 0.3%/50-bar
+ * read was always tuned for; callers analysing a different instrument class
+ * (gold, crypto — typical % swings run well above a forex major's) should
+ * pass the symbol's own params from agent/symbolProfiles.ts instead of
+ * relying on defaults that under-react on quiet symbols and over-flip on
+ * volatile ones.
+ */
+export function biasFromCandles(
+  candles: AgentCandle[],
+  params?: { lookbackBars?: number; changeThreshold?: number },
+): Bias {
+  const lookbackBars = params?.lookbackBars ?? 50;
+  const changeThreshold = params?.changeThreshold ?? 0.003;
+  if (!candles || candles.length < lookbackBars) return "unknown";
+  const recent = candles.slice(-lookbackBars);
   const first = recent[0]!.close;
   const last = recent.at(-1)!.close;
   if (first <= 0) return "unknown";
   const change = (last - first) / first;
-  if (change > 0.003) return "bullish";
-  if (change < -0.003) return "bearish";
+  if (change > changeThreshold) return "bullish";
+  if (change < -changeThreshold) return "bearish";
   return "neutral";
 }

@@ -184,6 +184,7 @@ export async function maybeAutoExecute(
   });
 
   const result = await executeIntent(rec.userId, intent.id, {
+    callerContext: "auto_executor",
     // NOT explicit approval: this is standing authorisation, and the
     // distinction is preserved so the audit trail stays truthful.
     explicitApproval: false,

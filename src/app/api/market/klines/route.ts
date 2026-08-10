@@ -9,18 +9,16 @@ import {
   normalizeCandlesForChart,
   sanitizeCandlesForMarket,
 } from "@/lib/ohlc/chartTime";
-import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
+import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 import { normalizeInterval } from "@/lib/intervals";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import type { MarketType } from "@/lib/markets/types";
-import { FEATURES } from "@/lib/agent/featureFlags";
-import { serveWarehouseOhlc } from "@/lib/candles/warehouseOhlc";
 
 /**
- * Market UI klines — warehouse first when enabled, MetaApi as the upstream
- * writer. Guests and unlinked users get a typed `requires_link` answer.
+ * Market UI klines — live from the platform's OANDA feed, every request. No
+ * account link is required; an unconfigured platform gets a typed error.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -45,12 +43,9 @@ export async function GET(req: NextRequest) {
     const interval = normalizeInterval(intervalRaw);
     const market: MarketType = "forex";
     const limitParam = req.nextUrl.searchParams.get("limit");
-    const limit = Math.min(
-      Math.max(
-        Number(limitParam || defaultKlineLimit(interval, market)),
-        10,
-      ),
-      OHLC_MAX_LIMIT,
+    const limit = Math.max(
+      Number(limitParam || defaultKlineLimit(interval, market)),
+      10,
     );
     const fresh = req.nextUrl.searchParams.get("fresh") === "1";
     const beforeRaw = req.nextUrl.searchParams.get("before");
@@ -63,60 +58,21 @@ export async function GET(req: NextRequest) {
     const toMs =
       toRaw != null && toRaw !== "" ? Number(toRaw) : undefined;
 
-    const dataSource = await resolveMarketDataSource(user?.id ?? null, null);
-    if (!user || !dataSource.available.metaapi) {
+    const dataSource = await resolveMarketDataSource();
+    if (!dataSource.available.oanda) {
       return NextResponse.json({
         symbol: symbolRaw,
         interval,
         market,
-        source: "metaapi",
+        source: "oanda",
         candles: [],
         pending: false,
-        requires_link: true,
-        error: user
-          ? "اربط حساب MetaTrader لعرض شموع وسيطك — البيانات كلها من حسابك أنت."
-          : "سجّل الدخول واربط حساب MetaTrader لعرض الشارت.",
+        error: "بيانات السوق غير متاحة حاليًا — تعذّر الاتصال بمزوّد البيانات.",
       });
-    }
-
-    if (FEATURES.candleWarehouse()) {
-      const warehouse = await serveWarehouseOhlc({
-        symbol: symbolRaw,
-        interval,
-        limit,
-        fresh,
-        beforeMs: Number.isFinite(beforeMs) ? beforeMs : undefined,
-        fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
-        toMs: Number.isFinite(toMs) ? toMs : undefined,
-      });
-      const normalized = normalizeCandlesForChart(warehouse.candles);
-      const candles = sanitizeCandlesForMarket(normalized, market);
-      const res = NextResponse.json({
-        symbol: symbolRaw,
-        interval,
-        market,
-        source: warehouse.source.startsWith("warehouse")
-          ? "warehouse"
-          : "metaapi",
-        candles,
-        pending:
-          candles.length === 0 &&
-          warehouse.backfillStatus !== "completed" &&
-          warehouse.backfillStatus !== "not_needed",
-        fromCache: warehouse.source === "warehouse",
-        warehouseSource: warehouse.source,
-        backfillStatus: warehouse.backfillStatus,
-      });
-      const ttlSec = Math.round(ohlcCacheTtlMs(interval) / 1000);
-      res.headers.set(
-        "Cache-Control",
-        `private, max-age=${Math.min(ttlSec, 30)}, stale-while-revalidate=${ttlSec}`,
-      );
-      return res;
     }
 
     const broker = await fetchOhlc({
-      userId: user.id,
+      userId: user?.id ?? 0,
       symbol: symbolRaw,
       interval,
       limit,
@@ -131,7 +87,7 @@ export async function GET(req: NextRequest) {
       symbol: symbolRaw,
       interval,
       market,
-      source: "metaapi",
+      source: "oanda",
       candles,
       pending: candles.length === 0 && Boolean(broker.warning),
       fromCache: broker.fromCache,

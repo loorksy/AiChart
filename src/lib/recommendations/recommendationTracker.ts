@@ -1,11 +1,12 @@
 /**
  * Server-side recommendation tracker sweep. Its lifecycle pass is deterministic:
- * pulls candles from the Candle Warehouse (fed by a linked MetaTrader account), evaluates each active
- * recommendation, and persists status/outcome changes. After that pass, a
+ * pulls candles live from the user's linked MetaTrader account, evaluates each
+ * active recommendation, and persists status/outcome changes. After that pass, a
  * separate orchestration layer may consume durable re-evaluation claims through
  * the unified brain. Runs independently of any browser session.
  */
-import { getCandles } from "@/lib/candles/candleRepository";
+import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
+import { isCandleComplete } from "@/lib/ohlc/metaApiOhlc";
 import { barDurationMs } from "@/lib/intervals";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import {
@@ -80,19 +81,15 @@ export async function trackOneRecommendation(
   const interval = normalizeCanonicalInterval(rec.interval);
   const createdCandleTimeMs = toMs(rec.createdCandleTime);
 
-  const stored = await getCandles({
+  const stored = await fetchOhlc({
+    userId: rec.userId,
     symbol,
     interval,
     fromMs: createdCandleTimeMs,
-    limit: 2000,
-    // Chronological from creation: the evaluator replays the plan's life in
-    // order. The default window keeps the NEWEST 2000 bars, which on a
-    // long-lived plan silently drops the earliest candles — including,
-    // possibly, the one that hit the stop.
-    order: "asc",
+    skipCache: true,
   });
-  const candles: TrackerCandle[] = stored
-    .filter((c) => c.complete)
+  const candles: TrackerCandle[] = stored.candles
+    .filter((c) => isCandleComplete(c.time, interval))
     .map((c) => ({
       time: toMs(c.time),
       open: c.open,
@@ -112,14 +109,16 @@ export async function trackOneRecommendation(
   let activationCandles: TrackerCandle[] | undefined;
   let activationBarMs: number | undefined;
   if (rec.activationRule && ruleInterval && ruleInterval !== interval) {
-    const ruleStored = await getCandles({
+    const ruleStored = await fetchOhlc({
+      userId: rec.userId,
       symbol,
       interval: ruleInterval,
       fromMs: createdCandleTimeMs,
-      limit: 2000,
-      order: "asc",
-    }).catch(() => []);
-    const complete = ruleStored.filter((c) => c.complete);
+      skipCache: true,
+    })
+      .then((r) => r.candles)
+      .catch(() => []);
+    const complete = ruleStored.filter((c) => isCandleComplete(c.time, ruleInterval));
     if (complete.length) {
       activationCandles = complete.map((c) => ({
         time: toMs(c.time),
@@ -264,13 +263,18 @@ export async function trackOneRecommendation(
           foundingPattern.includes(candidate.patternType),
       )
     : null;
-  const higherCandles = await getCandles({
+  const higherInterval = getHigherInterval(interval);
+  const higherCandles = await fetchOhlc({
+    userId: rec.userId,
     symbol,
-    interval: getHigherInterval(interval),
+    interval: higherInterval,
     limit: 200,
-  }).catch(() => []);
+    skipCache: true,
+  })
+    .then((r) => r.candles)
+    .catch(() => []);
   const higherBias = biasFromCandles(
-    higherCandles.filter((candle) => candle.complete),
+    higherCandles.filter((candle) => isCandleComplete(candle.time, higherInterval)),
   );
   const modelContext =
     rec.evidenceSnapshot &&

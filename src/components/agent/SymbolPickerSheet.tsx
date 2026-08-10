@@ -31,8 +31,8 @@ function favouriteKey(symbol: string): string {
   return symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
-/** The one pipe a pair list can come from: the user's linked MetaTrader account. */
-type MarketSource = "metaapi";
+/** The one pipe a pair list can come from: the platform's OANDA feed. */
+type MarketSource = "oanda";
 
 interface InstrumentsResponse {
   instruments?: InstrumentRow[];
@@ -43,7 +43,7 @@ interface InstrumentsResponse {
 function normalizeSource(raw: string | undefined): MarketSource {
   // The server has exactly one pipe to answer with; tolerate any legacy value.
   void raw;
-  return "metaapi";
+  return "oanda";
 }
 
 /** Matches the server's per-request cap, so one flush is one request. */
@@ -98,7 +98,7 @@ export function SymbolPickerSheet({
   // account is the only one. The server answers with the source it really
   // used, and that is what gets displayed and passed on.
   void brokerConnected;
-  const [served, setServed] = useState<MarketSource>("metaapi");
+  const [served, setServed] = useState<MarketSource>("oanda");
 
   useEffect(() => setMounted(true), []);
 

@@ -2,13 +2,14 @@ export interface ForexInstrument {
   symbol: string;
   base: string;
   quote: string;
-  group: "major" | "minor" | "metal" | "index" | "energy";
+  group: "major" | "minor" | "metal" | "crypto";
 }
 
 /**
- * Common MetaTrader forex / CFD instruments. Brokers often add suffixes
- * (e.g. EURUSDm, XAUUSD.pro) — a linked cloud account's own symbol catalogue
- * is read live from MetaApi elsewhere, so this static list is a baseline.
+ * The platform's entire tradable universe — exactly these 20 instruments,
+ * a hard allowlist, not a baseline. Every symbol-surfacing endpoint (scan
+ * resolver, /api/instruments, the chart symbol picker) filters down to this
+ * list; nothing outside it is fetched, quoted, or offered for analysis.
  */
 export const FOREX_INSTRUMENTS: ForexInstrument[] = [
   // Majors
@@ -20,26 +21,34 @@ export const FOREX_INSTRUMENTS: ForexInstrument[] = [
   { symbol: "USDCAD", base: "USD", quote: "CAD", group: "major" },
   { symbol: "NZDUSD", base: "NZD", quote: "USD", group: "major" },
   // Minors / crosses
-  { symbol: "EURGBP", base: "EUR", quote: "GBP", group: "minor" },
   { symbol: "EURJPY", base: "EUR", quote: "JPY", group: "minor" },
   { symbol: "GBPJPY", base: "GBP", quote: "JPY", group: "minor" },
-  { symbol: "EURCHF", base: "EUR", quote: "CHF", group: "minor" },
+  { symbol: "EURGBP", base: "EUR", quote: "GBP", group: "minor" },
   { symbol: "AUDJPY", base: "AUD", quote: "JPY", group: "minor" },
-  { symbol: "CADJPY", base: "CAD", quote: "JPY", group: "minor" },
   { symbol: "EURAUD", base: "EUR", quote: "AUD", group: "minor" },
   { symbol: "GBPAUD", base: "GBP", quote: "AUD", group: "minor" },
-  // Metals
+  { symbol: "EURCHF", base: "EUR", quote: "CHF", group: "minor" },
+  { symbol: "CADJPY", base: "CAD", quote: "JPY", group: "minor" },
+  { symbol: "NZDJPY", base: "NZD", quote: "JPY", group: "minor" },
+  { symbol: "AUDCHF", base: "AUD", quote: "CHF", group: "minor" },
+  { symbol: "GBPNZD", base: "GBP", quote: "NZD", group: "minor" },
+  // Metal
   { symbol: "XAUUSD", base: "XAU", quote: "USD", group: "metal" },
-  { symbol: "XAGUSD", base: "XAG", quote: "USD", group: "metal" },
-  // Energy
-  { symbol: "USOIL", base: "USOIL", quote: "USD", group: "energy" },
-  { symbol: "UKOIL", base: "UKOIL", quote: "USD", group: "energy" },
-  // Indices (common CFD names)
-  { symbol: "US30", base: "US30", quote: "USD", group: "index" },
-  { symbol: "US500", base: "US500", quote: "USD", group: "index" },
-  { symbol: "NAS100", base: "NAS100", quote: "USD", group: "index" },
-  { symbol: "GER40", base: "GER40", quote: "EUR", group: "index" },
+  // Crypto
+  { symbol: "BTCUSD", base: "BTC", quote: "USD", group: "crypto" },
 ];
+
+/** The fixed 20-symbol universe, canonical spellings only. */
+export const TRADABLE_SYMBOLS: readonly string[] = FOREX_INSTRUMENTS.map((i) => i.symbol);
+
+/**
+ * Alias kept for traceability with the platform's env-var naming convention.
+ * There is currently no live candle-sync/warehouse job (deleted earlier —
+ * every candle is fetched live, no persistence) so this constant today backs
+ * only the scan-universe resolver and symbol-surfacing endpoints; it is
+ * defined here so a future sync job has one place to read the allowlist from.
+ */
+export const CANDLE_SYNC_SYMBOLS: readonly string[] = TRADABLE_SYMBOLS;
 
 const FOREX_SET = new Set(FOREX_INSTRUMENTS.map((i) => i.symbol));
 

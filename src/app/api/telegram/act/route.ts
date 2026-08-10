@@ -32,7 +32,12 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const result = await respondToApproval(intent.user_id, intentId, action);
+  const result = await respondToApproval(
+    intent.user_id,
+    intentId,
+    action,
+    "telegram_approval",
+  );
 
   if (action === "reject") {
     return new NextResponse(

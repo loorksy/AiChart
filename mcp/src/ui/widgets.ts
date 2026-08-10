@@ -1260,10 +1260,10 @@ const levelsReport = widgetHtml(
 );
 
 /* ─────────────────────────── jobs report ───────────────────────────
- * show_jobs_by_ids: renders a whole batch of bucket-C job results (run_backtest,
- * run_market_analysis) in ONE card instead of one display call per job. Each
- * job's own result shape differs (backtest metrics vs a full analysis
- * payload) so this deliberately does NOT try to render either bespoke —
+ * show_jobs_by_ids: renders a whole batch of bucket-C job results
+ * (run_market_analysis and similar) in ONE card instead of one display call
+ * per job. Each job's own result shape can differ, so this deliberately does
+ * NOT try to render any of them bespoke —
  * status first (queued/running never show fabricated numbers), then a
  * generic flattened key/value summary of whatever the completed result
  * actually contains, same discipline as the generic collections card. */

@@ -147,7 +147,7 @@ describe("authorization source enforcement at the choke point", () => {
       intent.id,
     ]);
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
     assert.equal(result.ok, false);
     assert.equal(result.errorCode, UNAUTHORIZED, "an unknown source is refused, never guessed at");
   });
@@ -158,7 +158,7 @@ describe("authorization source enforcement at the choke point", () => {
     // order would open a second position on top of the live one.
     const intent = await newIntent({ authorization_source: "trade_management" });
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
     assert.equal(result.ok, false);
     assert.equal(result.errorCode, UNAUTHORIZED);
   });
@@ -169,7 +169,7 @@ describe("authorization source enforcement at the choke point", () => {
     // cannot hold — exactly the state after a revoke or a dropped connection.
     const intent = await newIntent({ authorization_source: "standing_auto" });
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: false });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: false });
     assert.equal(result.ok, false);
     assert.equal(
       result.errorCode,
@@ -182,7 +182,7 @@ describe("authorization source enforcement at the choke point", () => {
     const { executeIntent } = await import("@/lib/execution");
     const intent = await newIntent({ authorization_source: "user_approved" });
 
-    const result = await executeIntent(owner, intent.id, {});
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval" });
     assert.equal(result.ok, false);
     assert.equal(result.errorCode, UNAUTHORIZED, "the stamp alone is not the approval");
   });
@@ -196,7 +196,7 @@ describe("authorization source enforcement at the choke point", () => {
     await stampServerApproval(intent.id);
     await seedConnectedAccountNoEquity();
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
     assert.notEqual(result.errorCode, UNAUTHORIZED, "the authorization gate must not refuse it");
     assert.match(
       result.reason,
@@ -209,7 +209,7 @@ describe("authorization source enforcement at the choke point", () => {
     const { executeIntent } = await import("@/lib/execution");
     const intent = await newIntent({ authorization_source: null });
 
-    const result = await executeIntent(owner, intent.id, {});
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval" });
     assert.equal(result.ok, false);
     assert.equal(result.errorCode, UNAUTHORIZED);
   });
@@ -241,7 +241,7 @@ describe("stale-revision CAS on every order that references a recommendation", (
     // The approval is real — the CAS must be what refuses, not the auth gate.
     await stampServerApproval(intent.id);
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
     assert.equal(result.ok, false);
     assert.match(result.reason, /النسخة الفعالة الآن 2/, "the stale order names the revision now in force");
   });
@@ -272,7 +272,7 @@ describe("stale-revision CAS on every order that references a recommendation", (
     await stampServerApproval(intent.id);
     await seedConnectedAccountNoEquity();
 
-    const result = await executeIntent(owner, intent.id, { explicitApproval: true });
+    const result = await executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true });
     assert.doesNotMatch(result.reason, /النسخة|نسخة فعالة/, "the revision gate must not refuse it");
     assert.match(
       result.reason,
@@ -297,13 +297,61 @@ describe("executeIntent locks every intent, even without a recommendation", () =
     await stampServerApproval(intent.id);
 
     const [first, second] = await Promise.all([
-      executeIntent(owner, intent.id, { explicitApproval: true }),
-      executeIntent(owner, intent.id, { explicitApproval: true }),
+      executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true }),
+      executeIntent(owner, intent.id, { callerContext: "dashboard_approval", explicitApproval: true }),
     ]);
 
     const busyCount = [first, second].filter((r) => r.errorCode === "intent_busy").length;
     const throughCount = [first, second].filter((r) => r.errorCode !== "intent_busy").length;
     assert.equal(busyCount, 1, "exactly one concurrent call must be rejected as intent_busy");
     assert.equal(throughCount, 1, "exactly one concurrent call must proceed through the gates");
+  });
+});
+
+describe("executeIntent refuses any caller outside the four authorized contexts", () => {
+  it("rejects a missing/forged callerContext before touching locks or gates", async () => {
+    const { executeIntent } = await import("@/lib/execution");
+    const intent = await newIntent({ authorization_source: "user_approved" });
+    await stampServerApproval(intent.id);
+
+    const result = await executeIntent(owner, intent.id, {
+      // A JS caller (or an `any`-typed cast) bypassing the TS requirement —
+      // this must never be silently treated as one of the four authorized paths.
+      callerContext: "some_new_route" as unknown as "dashboard_approval",
+      explicitApproval: true,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.errorCode, "unauthorized_caller");
+    // Refused before the intent even gets locked/consumed — a legitimate
+    // retry with a real callerContext must still be able to execute it.
+    const retry = await executeIntent(owner, intent.id, {
+      callerContext: "dashboard_approval",
+      explicitApproval: true,
+    });
+    assert.notEqual(retry.errorCode, "intent_busy");
+  });
+
+  it("accepts every one of the four documented caller contexts", async () => {
+    const { executeIntent } = await import("@/lib/execution");
+    const contexts = [
+      "mcp_bridge",
+      "auto_executor",
+      "telegram_approval",
+      "dashboard_approval",
+    ] as const;
+    for (const callerContext of contexts) {
+      const intent = await newIntent({ authorization_source: "user_approved" });
+      await stampServerApproval(intent.id);
+      const result = await executeIntent(owner, intent.id, {
+        callerContext,
+        explicitApproval: true,
+      });
+      assert.notEqual(
+        result.errorCode,
+        "unauthorized_caller",
+        `${callerContext} must be an accepted caller context`,
+      );
+    }
   });
 });

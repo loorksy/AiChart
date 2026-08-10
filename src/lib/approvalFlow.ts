@@ -106,6 +106,10 @@ export interface ApprovalRequestInput {
   practice?: boolean;
   kind?: ApprovalKind;
   photoUrl?: string | null;
+  /** 'market' (default), 'limit', or 'stop' — a pending order proposal. */
+  order_type?: "market" | "limit" | "stop";
+  /** Trigger price for a pending order (limit or stop). */
+  limit_price?: number | null;
 }
 
 export async function createApprovalRequest(
@@ -145,6 +149,8 @@ export async function createApprovalRequest(
     rationale: input.rationale ?? null,
     status: "pending",
     practice: Boolean(input.practice),
+    order_type: input.order_type ?? "market",
+    limit_price: input.limit_price ?? null,
   });
 
   const profile = await buildAccountProfile(userId, intent.symbol);
@@ -158,6 +164,8 @@ export async function createApprovalRequest(
     take_profit: intent.take_profit,
     confidence: input.confidence ?? 0,
     profile,
+    orderType: input.order_type,
+    limitPrice: input.limit_price,
   });
   const buttons = buildApprovalButtonsForIntent(intent.id, kind);
 
@@ -187,6 +195,7 @@ export async function respondToApproval(
   userId: number,
   intentId: number,
   action: "approve" | "reject",
+  channel: "mcp_bridge" | "telegram_approval" = "mcp_bridge",
 ): Promise<{
   ok: boolean;
   status: string;
@@ -213,6 +222,16 @@ export async function respondToApproval(
       "./recommendations/tradeManagement"
     );
     return respondToTradeManagementIntent(userId, intent, action);
+  }
+
+  // A raw broker action (modify/cancel a pending order, close a position by
+  // symbol) — never a sized order. Approving applies it directly at the
+  // broker; executeIntent refuses this source.
+  if (intent.authorization_source === "broker_action") {
+    const { respondToBrokerActionIntent } = await import(
+      "./brokers/brokerActionApproval"
+    );
+    return respondToBrokerActionIntent(userId, intent, action);
   }
 
   if (action === "reject") {
@@ -256,6 +275,7 @@ export async function respondToApproval(
     [Date.now(), userId, intentId, userId],
   );
   const result = await executeIntent(userId, intentId, {
+    callerContext: channel,
     explicitApproval: true,
     practiceMode: intent.practice === 1,
   });

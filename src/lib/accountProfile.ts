@@ -1,9 +1,7 @@
 import { getExecutionEnvSnapshot, type ExecutionEnv } from "./executionEnv";
-import { getMtAccount, getMtAccountMeta } from "./store";
-import { getRpcConnection } from "./metaapi/client";
+import { getMtAccountMeta } from "./store";
 import { DEFAULT_MARKET, resolveActiveMarket } from "./marketPolicy";
 import type { MarketType } from "./markets/types";
-import { spreadFromBidAsk } from "./spread";
 
 export interface AccountProfile {
   hasLeverage: boolean;
@@ -25,35 +23,17 @@ function accountTypeAr(env: ExecutionEnv | null): "حقيقي" | "ديمو" | "�
   return "—";
 }
 
-/** The account's own bid/ask for its symbol — what an order actually crosses. */
-async function cloudSpread(
-  userId: number,
-  symbol: string,
-): Promise<{ spreadPips: number; spreadPct: number } | null> {
-  const account = await getMtAccount(userId);
-  if (!account?.metaapi_account_id || account.metaapi_account_id === "mt5local") {
-    return null;
-  }
-  try {
-    const rpc = await getRpcConnection(userId, account.metaapi_account_id);
-    const price = await rpc.getSymbolPrice(symbol, true);
-    const bid = Number(price?.bid);
-    const ask = Number(price?.ask);
-    if (!Number.isFinite(bid) || !Number.isFinite(ask)) return null;
-    const spread = spreadFromBidAsk(bid, ask, symbol);
-    if (!spread) return null;
-    return {
-      spreadPips: Math.round(spread.spreadPips * 10) / 10,
-      spreadPct: Math.round(spread.spreadPct * 1000) / 1000,
-    };
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * The account's own live bid/ask retired with the MT5/MetaApi data
+ * migration — market data (including spread) now comes exclusively from
+ * the platform's OANDA feed, never from the user's broker account. A
+ * broker-specific execution spread is no longer surfaced here; the
+ * account-profile spread fields report absent rather than substituting a
+ * different venue's number under a "your account" label.
+ */
 export async function buildAccountProfile(
   userId: number,
-  symbol?: string,
+  _symbol?: string,
 ): Promise<AccountProfile> {
   const [envSnap, meta] = await Promise.all([
     getExecutionEnvSnapshot(userId),
@@ -62,18 +42,9 @@ export async function buildAccountProfile(
   const market = resolveActiveMarket(DEFAULT_MARKET);
   const connected = Boolean(meta?.online);
 
-  let spreadPips: number | null = null;
-  let spreadPct: number | null = null;
-  let hasSpread = false;
-
-  if (symbol && connected) {
-    const spread = await cloudSpread(userId, symbol);
-    if (spread) {
-      hasSpread = true;
-      spreadPips = spread.spreadPips;
-      spreadPct = spread.spreadPct;
-    }
-  }
+  const spreadPips: number | null = null;
+  const spreadPct: number | null = null;
+  const hasSpread = false;
 
   return {
     hasLeverage: false,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { ApiError, handleError } from "@/lib/api";
-import { getCandles } from "@/lib/candles/candleRepository";
+import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { detectChartGeometry } from "@/lib/chart/geometry";
 import { normalizeCanonicalInterval } from "@/lib/markets/intervals";
 import { fingerprintAt } from "@/lib/marketMemory/caseFingerprint";
@@ -25,23 +25,26 @@ const bodySchema = z
 /**
  * "When has this market looked like this before, and what happened next?"
  *
- * Fingerprints the moment from warehouse candles and returns the aggregated
- * outcomes for BOTH directions. Read-only evidence: nothing here creates,
- * changes, or gates a recommendation.
+ * Fingerprints the moment from candles pulled live off the user's linked
+ * account and returns the aggregated outcomes for BOTH directions, matched
+ * against the historical case memory. Read-only evidence: nothing here
+ * creates, changes, or gates a recommendation.
  */
 export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
-    void userId;
     const body = bodySchema.parse(await req.json().catch(() => ({})));
     const interval = normalizeCanonicalInterval(body.interval);
 
-    const candles = await getCandles({
+    const live = await fetchOhlc({
+      userId,
       symbol: body.symbol,
       interval,
       toMs: body.at_ms,
       limit: 200,
+      skipCache: true,
     });
+    const candles = live.candles;
     const fingerprint = fingerprintAt(candles);
     if (!fingerprint) {
       throw new ApiError(

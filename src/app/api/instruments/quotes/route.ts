@@ -3,7 +3,11 @@ import { getOptionalUser, checkRateLimit, clientKey, handleError } from "@/lib/a
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { changePct, downsample, type PairQuote } from "@/lib/markets/pairQuote";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
-import { resolveBrokerSymbol } from "@/lib/markets/symbolCatalogue";
+import { fetchOandaPricing } from "@/lib/markets/oanda";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { TRADABLE_SYMBOLS } from "@/lib/markets/forexInstruments";
+
+const TRADABLE_SET = new Set(TRADABLE_SYMBOLS.map((s) => forexCanonicalKey(s)));
 
 /** One card's worth of history: ~a day of hourly closes. */
 const WINDOW_INTERVAL = "1h";
@@ -19,37 +23,29 @@ const MAX_SYMBOLS = 12;
 /** Upstream is one request per instrument; a few in flight, not twelve. */
 const CONCURRENCY = 4;
 
-/** Live mid from the user's own account — headline price, not the last hourly close. */
-async function liveMid(userId: number, symbol: string): Promise<number | null> {
+/** Live mid from the platform's OANDA feed — headline price, not the last hourly close. */
+async function liveMid(symbol: string): Promise<number | null> {
   try {
-    if (userId <= 0) return null;
-    const { getMtAccount } = await import("@/lib/store");
-    const account = await getMtAccount(userId);
-    const accountId = account?.metaapi_account_id;
-    if (!accountId || accountId === "mt5local") return null;
-    const brokerSymbol = await resolveBrokerSymbol(userId, symbol);
-    const { getRpcConnection } = await import("@/lib/metaapi/client");
-    const rpc = await getRpcConnection(userId, accountId);
-    const price = await rpc.getSymbolPrice(brokerSymbol, false);
-    const bid = Number(price?.bid);
-    const ask = Number(price?.ask);
-    if (!Number.isFinite(bid) || !Number.isFinite(ask)) return null;
-    return (bid + ask) / 2;
+    const canonical = forexCanonicalKey(symbol) || symbol;
+    const [q] = await fetchOandaPricing([canonical]);
+    if (!q || q.bid == null || q.ask == null) return null;
+    if (!Number.isFinite(q.bid) || !Number.isFinite(q.ask)) return null;
+    return (q.bid + q.ask) / 2;
   } catch {
     return null;
   }
 }
 
-async function quoteFor(userId: number, symbol: string): Promise<PairQuote> {
+async function quoteFor(symbol: string): Promise<PairQuote> {
   try {
     const [{ candles }, live] = await Promise.all([
       fetchOhlc({
-        userId,
+        userId: 0,
         symbol,
         interval: WINDOW_INTERVAL,
         limit: WINDOW_BARS,
       }),
-      liveMid(userId, symbol),
+      liveMid(symbol),
     ]);
     const closes = candles.map((c) => c.close).filter((n) => Number.isFinite(n));
     const lastClose = closes.length ? closes[closes.length - 1] : null;
@@ -82,12 +78,9 @@ export async function GET(req: NextRequest) {
       new Set(
         (req.nextUrl.searchParams.get("symbols") ?? "")
           .split(",")
-          // Case preserved: a broker's catalogue is case-sensitive, and these
-          // symbols come straight from it (XAUUSDm, AAPLm). Folding them here
-          // asked MetaApi for instruments that do not exist, so every card in
-          // the cloud catalogue rendered blank.
           .map((s) => s.trim().replace(/[^A-Za-z0-9._]/g, ""))
-          .filter(Boolean),
+          .filter(Boolean)
+          .filter((s) => TRADABLE_SET.has(forexCanonicalKey(s))),
       ),
     ).slice(0, MAX_SYMBOLS);
 
@@ -95,10 +88,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ quotes: [] });
     }
 
-    // The user's own account is the only quotable book; unlinked users get
-    // empty cards plus the requires_link signal, never a substitute feed.
-    const decision = await resolveMarketDataSource(user?.id ?? null, null);
-    if (!user || !decision.available.metaapi) {
+    // OANDA is the platform-level book; no account link is required.
+    const decision = await resolveMarketDataSource();
+    if (!decision.available.oanda) {
       return NextResponse.json({
         quotes: symbols.map((symbol) => ({
           symbol,
@@ -108,8 +100,7 @@ export async function GET(req: NextRequest) {
           live: false,
         })),
         interval: WINDOW_INTERVAL,
-        source: "metaapi",
-        requires_link: true,
+        source: "oanda",
       });
     }
 
@@ -117,11 +108,11 @@ export async function GET(req: NextRequest) {
     for (let i = 0; i < symbols.length; i += CONCURRENCY) {
       const batch = symbols.slice(i, i + CONCURRENCY);
       quotes.push(
-        ...(await Promise.all(batch.map((symbol) => quoteFor(user.id, symbol)))),
+        ...(await Promise.all(batch.map((symbol) => quoteFor(symbol)))),
       );
     }
 
-    return NextResponse.json({ quotes, interval: WINDOW_INTERVAL, source: "metaapi" });
+    return NextResponse.json({ quotes, interval: WINDOW_INTERVAL, source: "oanda" });
   } catch (e) {
     return handleError(e);
   }

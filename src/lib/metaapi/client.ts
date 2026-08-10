@@ -71,6 +71,84 @@ export type MetaApiRpcConnection = {
     options?: { comment?: string },
   ): Promise<Record<string, unknown>>;
   cancelOrder(orderId: string): Promise<Record<string, unknown>>;
+
+  // ─── Read-only additions (agent full-account browsing) ───
+  getPosition(positionId: string): Promise<Record<string, unknown>>;
+  getPositions(): Promise<Record<string, unknown>[]>;
+  getOrder(orderId: string): Promise<Record<string, unknown>>;
+  getOrders(): Promise<Record<string, unknown>[]>;
+  getHistoryOrdersByTicket(ticket: string): Promise<{ historyOrders: Record<string, unknown>[] }>;
+  getHistoryOrdersByPosition(positionId: string): Promise<{ historyOrders: Record<string, unknown>[] }>;
+  getHistoryOrdersByTimeRange(
+    startTime: Date,
+    endTime: Date,
+    offset?: number,
+    limit?: number,
+  ): Promise<{ historyOrders: Record<string, unknown>[] }>;
+  getDealsByTicket(ticket: string): Promise<{ deals: Record<string, unknown>[] }>;
+  getDealsByPosition(positionId: string): Promise<{ deals: Record<string, unknown>[] }>;
+  getDealsByTimeRange(
+    startTime: Date,
+    endTime: Date,
+    offset?: number,
+    limit?: number,
+  ): Promise<{ deals: Record<string, unknown>[] }>;
+  getTick(symbol: string, keepSubscription?: boolean): Promise<Record<string, unknown>>;
+  getServerTime(): Promise<{ time: Date; brokerTime: string }>;
+  calculateMargin(order: {
+    symbol: string;
+    type: "ORDER_TYPE_BUY" | "ORDER_TYPE_SELL";
+    volume: number;
+    openPrice: number;
+  }): Promise<{ margin?: number }>;
+
+  // ─── Execution additions (approval-gated only — see Phase 5 tools) ───
+  createLimitBuyOrder(
+    symbol: string,
+    volume: number,
+    openPrice: number,
+    stopLoss?: number,
+    takeProfit?: number,
+    options?: { comment?: string },
+  ): Promise<{ orderId?: string | number; positionId?: string | number }>;
+  createLimitSellOrder(
+    symbol: string,
+    volume: number,
+    openPrice: number,
+    stopLoss?: number,
+    takeProfit?: number,
+    options?: { comment?: string },
+  ): Promise<{ orderId?: string | number; positionId?: string | number }>;
+  createStopBuyOrder(
+    symbol: string,
+    volume: number,
+    openPrice: number,
+    stopLoss?: number,
+    takeProfit?: number,
+    options?: { comment?: string },
+  ): Promise<{ orderId?: string | number; positionId?: string | number }>;
+  createStopSellOrder(
+    symbol: string,
+    volume: number,
+    openPrice: number,
+    stopLoss?: number,
+    takeProfit?: number,
+    options?: { comment?: string },
+  ): Promise<{ orderId?: string | number; positionId?: string | number }>;
+  modifyOrder(
+    orderId: string,
+    openPrice: number,
+    stopLoss?: number,
+    takeProfit?: number,
+  ): Promise<Record<string, unknown>>;
+  closePosition(
+    positionId: string,
+    options?: { comment?: string },
+  ): Promise<Record<string, unknown>>;
+  closePositionsBySymbol(
+    symbol: string,
+    options?: { comment?: string },
+  ): Promise<Record<string, unknown>>;
 };
 
 /**

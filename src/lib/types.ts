@@ -179,8 +179,16 @@ export interface TradeIntent {
    * Explicit per-trade approval, or the operator's standing auto mode.
    * `trade_management` marks an SL/TP-modification proposal for an already-open
    * trade — such an intent is NEVER an order and must not reach executeIntent.
+   * `broker_action` marks a raw account action (modify/cancel a pending order,
+   * close a position by symbol) — also never a sized order, applied directly
+   * on approval via brokerActionApproval.ts, never executeIntent.
    */
-  authorization_source?: "user_approved" | "standing_auto" | "trade_management" | null;
+  authorization_source?:
+    | "user_approved"
+    | "standing_auto"
+    | "trade_management"
+    | "broker_action"
+    | null;
   /**
    * Server-side proof of a human approval, written only by the authenticated
    * approval path — never from a field in a request body. The choke point
@@ -206,10 +214,16 @@ export interface TradeIntent {
   market_type?: "spot" | "futures";
   /** Leverage multiplier for futures (1 = no leverage). */
   leverage?: number;
-  /** 'market' (default) or 'limit' (futures entry). */
-  order_type?: "market" | "limit";
-  /** Limit entry price (futures limit orders). */
+  /** 'market' (default), 'limit', or 'stop' (a pending order). */
+  order_type?: "market" | "limit" | "stop";
+  /** Trigger price for a pending order (limit or stop) — the price it enters at. */
   limit_price?: number | null;
+  /**
+   * Structured payload for a `broker_action` intent — never present on a sized
+   * order. Holds `{action, params}` for whichever raw broker action (modify a
+   * pending order, cancel one, close a position by symbol) this intent proposes.
+   */
+  action_json?: string | null;
   created_at: string;
   updated_at: string;
 }

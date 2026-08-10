@@ -17,7 +17,7 @@ export interface LotSizingResult {
  * or price movement.  Pending orders are sized from their explicit limit.
  */
 export function resolveSizingReferencePrice(input: {
-  orderType: "market" | "limit";
+  orderType: "market" | "limit" | "stop";
   limitPrice?: number | null;
   analysedEntry?: number | null;
   sideQuote?: number | null;
@@ -32,7 +32,9 @@ export function resolveSizingReferencePrice(input: {
     return 0;
   };
 
-  if (input.orderType === "limit") {
+  // A pending order (limit or stop) is sized off its own trigger price, not
+  // the current quote — that quote is not what the order will fill at.
+  if (input.orderType === "limit" || input.orderType === "stop") {
     return positive(input.limitPrice);
   }
   return positive(

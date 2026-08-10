@@ -6,29 +6,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 */10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/event-monitor >/dev/null 2>&1
 
 # Recommendation-tracker sweep — every 5 min. Evaluates all non-terminal tracked
-# recommendations against fresh warehouse candles (no browser, no LLM, no trade
-# execution). Overlap-safe via a distributed lease lock, so an occasional long
-# run is skipped rather than double-processed.
+# recommendations against fresh candles pulled live from the linked MetaTrader
+# account (no browser, no LLM, no trade execution). Overlap-safe via a
+# distributed lease lock, so an occasional long run is skipped rather than
+# double-processed.
 */5 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep >/dev/null 2>&1
-
-# Candle-warehouse maintenance — every 10 min. Incrementally backfills ~5y of
-# linked-account broker history, repairs open-market gaps, prunes bars older than 5y, and logs a
-# completeness report (first/last candle + gap counts). GET the same path for a
-# read-only report. Overlap-safe via the route's distributed lease.
-*/10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/candle-warehouse >/dev/null 2>&1
-
-# Strategy mass-backtest pipeline — every 10 min. Advances in-flight backtests
-# through the evidence state machine and submits missing catalog combos
-# (batch-paced for the single-concurrency research container). No-ops without
-# REDIS_URL. GET the same path for state counts + gate-failure reasons.
-*/10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/strategy-pipeline >/dev/null 2>&1
-
-# Historical case-memory indexer — every 15 min. Walks the warehouse in sliding
-# windows, describes each moment from candles at or before it, and fills in what
-# the following bars did once that window has actually arrived. No LLM, no trade
-# execution. Round-robins across series so none starves; overlap-safe via a
-# distributed lease. GET the same path for per-series coverage.
-*/15 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/case-memory >/dev/null 2>&1
 
 # OPTIONAL — 24/7 opportunity monitor. Left unscheduled on purpose: it runs an
 # LLM-heavy scan per active user, and the maintenance work it shares with
@@ -49,5 +31,10 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # revision/re-evaluation activity from the tables, and process counters, then
 # sends one Telegram message per operator. GET the same path for a preview.
 0 18 * * 0 root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/weekly-report >/dev/null 2>&1
+
+# OPTIONAL — /api/cron/case-memory is GET-only now: a read-only coverage
+# report over the frozen historical case memory. Nothing indexes new cases
+# anymore (that required the deleted candle warehouse), so there is no POST
+# tick left to schedule.
 
 # than 14 days so stale history never bloats disk or future context.

@@ -1,7 +1,4 @@
 import { fetchOhlc } from "./ohlc/fetchOhlc";
-import { getForexBackend } from "./brokers/forexBackend";
-import { mt5Rates } from "./mt5local/client";
-import { getMtAccountMeta, resolveForexBackendForUser } from "./store";
 import { barDurationSec, normalizeInterval } from "./intervals";
 import type { MarketType } from "./markets/types";
 import type { ChartDrawing } from "./chartDrawings";
@@ -47,35 +44,9 @@ async function fetchCandleSeries(
   const tf = normalizeInterval(interval);
 
   if (market === "forex") {
-    const backend =
-      userId != null
-        ? await resolveForexBackendForUser(userId)
-        : getForexBackend();
-    if (backend === "mt5local") {
-      try {
-        const acct = userId != null ? await getMtAccountMeta(userId) : null;
-        if (!acct) return null; // no connected account → cannot fetch rates
-        const bars = await mt5Rates(sym, tf, limit, {
-          login: acct.login,
-          server: acct.server,
-        });
-        return bars.length >= 10
-          ? bars.map((b) => ({
-              time: b.time,
-              open: b.open,
-              high: b.high,
-              low: b.low,
-              close: b.close,
-            }))
-          : null;
-      } catch {
-        return null;
-      }
-    }
-    if (!userId) return null;
     try {
       const ohlc = await fetchOhlc({
-        userId,
+        userId: userId ?? 0,
         symbol: sym,
         interval: tf,
         market: "forex",

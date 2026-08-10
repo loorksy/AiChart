@@ -38,29 +38,29 @@ describe("balanceChipStateFromApi", () => {
 });
 
 describe("attachMandatoryPresentation", () => {
-  it("always names the broker cloud feed and adds two numeric levels", () => {
+  it("always names the OANDA platform feed and adds two numeric levels", () => {
     const { summary, envelope } = attachMandatoryPresentation({
       summary: "Short analysis.",
       envelope: descriptiveEnvelope(),
-      source: "metaapi",
+      source: "oanda",
       levels: [4090.5, 4110.25],
       locale: "en",
     });
-    assert.match(summary, /MetaApi broker cloud feed/i);
+    assert.match(summary, /OANDA platform feed/i);
     assert.match(summary, /4090\.50/);
     assert.match(summary, /4110\.25/);
-    assert.equal(envelope.market_data_source?.includes("MetaApi"), true);
+    assert.equal(envelope.market_data_source?.includes("OANDA"), true);
     assert.deepEqual(envelope.key_price_levels, [4090.5, 4110.25]);
   });
 
-  it("names MetaApi on broker path", () => {
+  it("names OANDA on the platform-feed path", () => {
     const { envelope } = attachMandatoryPresentation({
       summary: "Broker read.",
       envelope: descriptiveEnvelope(),
-      source: "metaapi",
+      source: "oanda",
       levels: [1.05, 1.06],
       locale: "en",
     });
-    assert.match(envelope.market_data_source ?? "", /MetaApi/i);
+    assert.match(envelope.market_data_source ?? "", /OANDA/i);
   });
 });

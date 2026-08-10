@@ -38,7 +38,8 @@ import { deriveExecutionState, type PlanType } from "@/lib/agent/trading/tradePl
 import { getUnifiedPrice } from "@/lib/markets";
 import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { resolveCostEvidence } from "@/lib/agent/marketContext/costEvidence";
-import { getCandles, getLatestClosedCandle } from "@/lib/candles/candleRepository";
+import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
+import { isCandleComplete } from "@/lib/ohlc/metaApiOhlc";
 import { atr as computeAtr } from "@/lib/indicators";
 import {
   assessTradability,
@@ -55,6 +56,23 @@ import {
 } from "@/lib/recommendations/visualConfirmation";
 
 const log = createLogger("api.agent.recommendation");
+
+/** Latest CLOSED candle, fetched live off the user's linked account. */
+async function getLastClosedCandleLive(
+  userId: number,
+  symbol: string,
+  interval: string,
+): Promise<{ time: number; close: number } | null> {
+  const { candles } = await fetchOhlc({
+    userId,
+    symbol,
+    interval,
+    limit: 3,
+    skipCache: true,
+  });
+  const closed = candles.filter((c) => isCandleComplete(c.time, interval));
+  return closed.at(-1) ?? null;
+}
 
 /** How much verified statistical weight sits behind a recommendation. */
 type StatisticalSupport = "strong" | "moderate" | "weak" | "unavailable";
@@ -348,10 +366,11 @@ export async function POST(req: NextRequest) {
       }
       if (currentPrice == null) {
         try {
-          const lastClosed = await getLatestClosedCandle({
-            symbol: normalizedSymbol,
-            interval: storedTimeframe,
-          });
+          const lastClosed = await getLastClosedCandleLive(
+            userId,
+            normalizedSymbol,
+            storedTimeframe,
+          );
           if (lastClosed && lastClosed.close > 0) currentPrice = lastClosed.close;
         } catch {
           currentPrice = null;
@@ -384,13 +403,16 @@ export async function POST(req: NextRequest) {
       // 5 ATR above the market" store as a normal conditional trade.
       let planAtr: number | null = null;
       try {
-        const recent = await getCandles({
+        const recent = await fetchOhlc({
+          userId,
           symbol: normalizedSymbol,
           interval: storedTimeframe,
           limit: 30,
-          order: "desc",
+          skipCache: true,
         });
-        planAtr = computeAtr(recent.filter((c) => c.complete));
+        planAtr = computeAtr(
+          recent.candles.filter((c) => isCandleComplete(c.time, storedTimeframe)),
+        );
       } catch {
         planAtr = null;
       }
@@ -515,10 +537,11 @@ export async function POST(req: NextRequest) {
     // Best-effort — parity is diagnostics and must never fail the create.
     if (body.action !== "wait") {
       try {
-        const lastClosed = await getLatestClosedCandle({
-          symbol: normalizedSymbol,
-          interval: storedTimeframe,
-        });
+        const lastClosed = await getLastClosedCandleLive(
+          userId,
+          normalizedSymbol,
+          storedTimeframe,
+        );
         if (lastClosed) {
           const parityKey = parityKeyFor({
             symbol: normalizedSymbol,

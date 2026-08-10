@@ -40,14 +40,14 @@ function emptyForexSnapshot(
 }
 
 /**
- * Unified forex snapshot: fetchOhlc (the user's linked MetaTrader account) + computeForexIndicators
+ * Unified forex snapshot: fetchOhlc (the platform's OANDA feed) + computeForexIndicators
  * + live mid price + timestamp-based 24h high/low.
  */
 export async function buildForexSnapshot(
   userId: number,
   symbol: string,
   interval = "1h",
-  source: OhlcSource = "metaapi",
+  source: OhlcSource = "oanda",
 ): Promise<ForexMarketSnapshot> {
   const sym = symbol.trim();
   const tf = normalizeInterval(interval);

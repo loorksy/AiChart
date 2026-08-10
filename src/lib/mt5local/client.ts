@@ -155,65 +155,12 @@ export async function mt5Status(account: Mt5AccountRef): Promise<{
   return call(`/status${qs ? `?${qs}` : ""}`);
 }
 
-export async function mt5Price(
-  symbol: string,
-  account?: Mt5AccountRef,
-): Promise<{ symbol: string; bid: number; ask: number }> {
-  const qs = accountParams(account);
-  return call(
-    `/price?symbol=${encodeURIComponent(symbol)}${qs ? `&${qs}` : ""}`,
-  );
-}
-
 export async function mt5Spec(
   symbol: string,
   account?: Mt5AccountRef,
 ): Promise<EaSymbolSpec> {
   const qs = accountParams(account);
   return call(`/spec?symbol=${encodeURIComponent(symbol)}${qs ? `&${qs}` : ""}`);
-}
-
-export interface Mt5Bar {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-}
-
-export async function mt5Rates(
-  symbol: string,
-  timeframe: string,
-  count = 120,
-  account?: Mt5AccountRef,
-): Promise<Mt5Bar[]> {
-  const qs = accountParams(account);
-  const res = await call<{ bars: Mt5Bar[] }>(
-    `/rates?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&count=${count}${qs ? `&${qs}` : ""}`,
-  );
-  return res.bars;
-}
-
-export interface Mt5Position {
-  ticket: number;
-  symbol: string;
-  side: "buy" | "sell";
-  lots: number;
-  open_price: number;
-  current_price: number;
-  sl: number;
-  tp: number;
-  profit: number;
-}
-
-export async function mt5Positions(
-  account: Mt5AccountRef,
-): Promise<Mt5Position[]> {
-  const qs = accountParams(account);
-  const res = await call<{ positions: Mt5Position[] }>(
-    `/positions${qs ? `?${qs}` : ""}`,
-  );
-  return res.positions;
 }
 
 export async function mt5Order(

@@ -1,23 +1,13 @@
 /**
  * Builds the multi-timeframe market context the specialist agents reason on.
- * Candles come from the warehouse (current TF, higher TF, daily) so the agent
- * sees hundreds–thousands of bars, not the ~120 the legacy analyze path used.
- *
- * When coverage is thin, this path performs a bounded synchronous refill from
- * the approved server-side source, re-reads the warehouse, then reports exact
- * available/required counts. The chart viewport is never treated as the full
- * analytical history.
+ * Every series — current TF, higher TF, daily, and the chart's visible range
+ * — is pulled live off the user's linked MetaTrader account, every call.
+ * There is no persistent warehouse behind any of it and no synchronous
+ * refill: `fetchOhlc` either returns what the broker has, or it doesn't, and
+ * the coverage report below says exactly which.
  */
-import {
-  detectCandleGaps,
-  getCandles,
-} from "@/lib/candles/candleRepository";
-import {
-  backfillCandles,
-  triggerBackfill,
-} from "@/lib/candles/candleBackfillService";
-import { recordWarmDemand } from "@/lib/candles/warmDemand";
-import { FEATURES } from "@/lib/agent/featureFlags";
+import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
+import { detectCandleGaps } from "@/lib/ohlc/candleGaps";
 import {
   getHigherInterval,
   normalizeCanonicalInterval,
@@ -46,31 +36,6 @@ import {
   evaluateMarketSync,
   type MarketSyncStatus,
 } from "./marketSyncGuard";
-import { enqueue } from "@/lib/queue";
-
-/**
- * Fire-and-forget gap repair with a per-series cooldown so a chatty session
- * cannot stampede the broker feed. The queue's idempotency key (bucketed to the same
- * window) dedupes across processes when Redis is available.
- */
-const GAP_REPAIR_COOLDOWN_MS = 10 * 60 * 1000;
-const gapRepairLastFired = new Map<string, number>();
-
-function triggerGapRepair(symbol: string, interval: string): void {
-  const key = `${symbol}:${interval}`;
-  const now = Date.now();
-  const last = gapRepairLastFired.get(key) ?? 0;
-  if (now - last < GAP_REPAIR_COOLDOWN_MS) return;
-  gapRepairLastFired.set(key, now);
-  const bucket = Math.floor(now / GAP_REPAIR_COOLDOWN_MS);
-  void enqueue(
-    "candle_gap_repair",
-    { symbol, interval },
-    { idempotencyKey: `repair:${key}:${bucket}` },
-  ).catch(() => {
-    // Repair is best-effort; the cron sweep remains the backstop.
-  });
-}
 
 export interface DataFreshness {
   lastCandleTime: number | null;
@@ -130,53 +95,6 @@ export interface AgentMarketContext {
   zones: ReturnType<typeof detectSupplyDemandZones>;
 }
 
-async function refillIfThin(input: {
-  symbol: string;
-  interval: string;
-  available: number;
-  required: number;
-  limit: number;
-  /**
-   * When false, never await MetaApi — deepen in the background. Higher TF and
-   * daily use this so an empty 1d series cannot own the market-data deadline.
-   */
-  blocking?: boolean;
-}): Promise<{ attempted: boolean; inserted: number; failed: boolean }> {
-  if (input.available >= input.required) {
-    return { attempted: false, inserted: 0, failed: false };
-  }
-  // Thin or non-blocking empty → background deepen. Only the analysis's own
-  // empty current TF still awaits one bounded page.
-  void recordWarmDemand({ symbol: input.symbol, interval: input.interval });
-  const backgroundOnly =
-    FEATURES.boundedColdStartV1() &&
-    (input.available > 0 || input.blocking === false);
-  if (backgroundOnly) {
-    void backfillCandles({
-      symbol: input.symbol,
-      interval: input.interval,
-      limit: input.limit,
-      maxPages: 1,
-    }).catch(() => {
-      // Background deepen is best-effort; coverage already reflects thinness.
-    });
-    return { attempted: true, inserted: 0, failed: false };
-  }
-  const result = await backfillCandles({
-    symbol: input.symbol,
-    interval: input.interval,
-    limit: input.limit,
-    ...(FEATURES.boundedColdStartV1() ? { maxPages: 1 } : {}),
-  });
-  return {
-    attempted: true,
-    inserted: result.inserted,
-    failed: Boolean(
-      result.reason === "provider_error" || result.reason === "no_account",
-    ),
-  };
-}
-
 export async function buildAgentMarketContext(input: {
   userId?: number;
   symbol: string;
@@ -193,7 +111,8 @@ export async function buildAgentMarketContext(input: {
   const interval = normalizeCanonicalInterval(input.interval);
   const higherInterval = getHigherInterval(interval);
   const analysisKind = input.analysisKind ?? "intraday";
-  const source = "warehouse+metaapi";
+  const source = "metaapi";
+  const userId = input.userId ?? 0;
 
   // Rung 1 of the cost ladder needs a real bid/ask, and no production entry
   // point ever supplied one — which is how the platform showed a live spread
@@ -217,88 +136,35 @@ export async function buildAgentMarketContext(input: {
         }).catch(() => null)
       : Promise.resolve(null);
 
-  let fresh = await getFreshAgentCandles({
+  const fresh = await getFreshAgentCandles({
     userId: input.userId,
     symbol,
     interval,
     dataSource: input.dataSource,
     limit: 1500,
   });
+  const currentTfCandles = fresh.currentTfCandles;
 
-  let [higherTfCandles, dailyCandles, visibleCandles] = await Promise.all([
-    getCandles({ symbol, interval: higherInterval, limit: 1000 }),
-    getCandles({ symbol, interval: "1d", limit: 500 }),
+  const [higherTfCandles, dailyCandles, visibleCandles] = await Promise.all([
+    fetchOhlc({ userId, symbol, interval: higherInterval, limit: 1000, skipCache: true })
+      .then((r) => r.candles as AgentCandle[]),
+    fetchOhlc({ userId, symbol, interval: "1d", limit: 500, skipCache: true })
+      .then((r) => r.candles as AgentCandle[]),
     input.visibleRange
-      ? getCandles({
+      ? fetchOhlc({
+          userId,
           symbol,
           interval,
           fromMs: input.visibleRange.from,
           toMs: input.visibleRange.to,
-          limit: 2000,
-        })
+          skipCache: true,
+        }).then((r) => r.candles as AgentCandle[])
       : Promise.resolve([] as AgentCandle[]),
   ]);
-  let currentTfCandles = fresh.currentTfCandles;
-
-  // Bounded synchronous refill when any series is below the TRADE gate.
-  // Chart viewport alone is never enough for trade/drawing analysis.
-  const tradeGate = DATA_QUALITY_POLICY.trade;
-  const [currentRefill, higherRefill, dailyRefill] = await Promise.all([
-    refillIfThin({
-      symbol,
-      interval,
-      available: currentTfCandles.length,
-      required: tradeGate.currentTf,
-      limit: 5000,
-      blocking: true,
-    }),
-    refillIfThin({
-      symbol,
-      interval: higherInterval,
-      available: higherTfCandles.length,
-      required: tradeGate.higherTf,
-      limit: 2000,
-      blocking: false,
-    }),
-    refillIfThin({
-      symbol,
-      interval: "1d",
-      available: dailyCandles.length,
-      required: tradeGate.daily,
-      limit: 500,
-      blocking: false,
-    }),
-  ]);
-
-  if (currentRefill.attempted || higherRefill.attempted || dailyRefill.attempted) {
-    // Re-read warehouse only — never a second blocking live pull after refill.
-    if (currentRefill.inserted > 0) {
-      currentTfCandles = (await getCandles({
-        symbol,
-        interval,
-        limit: 1500,
-      })) as AgentCandle[];
-      fresh = { ...fresh, currentTfCandles };
-    }
-    [higherTfCandles, dailyCandles] = await Promise.all([
-      getCandles({ symbol, interval: higherInterval, limit: 1000 }),
-      getCandles({ symbol, interval: "1d", limit: 500 }),
-    ]);
-  }
-
-  // Background top-up beyond the sync refill (never blocks).
-  if (currentTfCandles.length < tradeGate.currentTf) {
-    triggerBackfill({ symbol, interval, limit: 5000 });
-  }
-  if (higherTfCandles.length < tradeGate.higherTf) {
-    triggerBackfill({ symbol, interval: higherInterval, limit: 2000 });
-  }
-  if (dailyCandles.length < tradeGate.daily) {
-    triggerBackfill({ symbol, interval: "1d", limit: 500 });
-  }
 
   // Gap checks are scoped to the recent windows that can influence a trade
   // decision. detectCandleGaps already excludes the normal Forex weekend.
+  const tradeGate = DATA_QUALITY_POLICY.trade;
   const gaps = {
     current: detectCandleGaps(
       symbol,
@@ -333,20 +199,7 @@ export async function buildAgentMarketContext(input: {
     dailyNewest: dailyCandles.at(-1)?.time ?? null,
     source,
     gaps,
-    refill: {
-      current: currentRefill,
-      higher: higherRefill,
-      daily: dailyRefill,
-    },
   });
-
-  // Auto-repair: gaps at warning level or worse enqueue a bounded repair for
-  // the affected series only. Never blocks — analysis proceeds below.
-  for (const frame of coverage.timeframes) {
-    if (frame.gapSeverity === "significant" || frame.gapSeverity === "catastrophic") {
-      triggerGapRepair(symbol, frame.interval);
-    }
-  }
 
   const currentPrice = currentTfCandles.at(-1)?.close ?? null;
   const lastCandleTime = currentTfCandles.at(-1)?.time ?? null;
