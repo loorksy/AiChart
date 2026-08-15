@@ -262,12 +262,31 @@ describe("the card reaches the surface that renders it", () => {
     assert.ok(parallel > 0 && parallel < grade && grade < card);
   });
 
-  it("is rendered by the chat panel from that same field", () => {
+  it("is rendered, through the card layer that now owns the render path", () => {
+    // This arm used to read the panel directly for `result?.evidenceCard`, and
+    // it FAILED when the card layer took the render path over — correctly, and
+    // that is the point of writing it as a connection check. Following the new
+    // path rather than deleting the arm: the deriver turns the field into an
+    // `evidence_strategy` card, and the card renderer draws it with the same
+    // component the panel used to call itself.
+    const derive = readFileSync(
+      path.join(SRC, "lib", "agent", "cards", "deriveCards.ts"),
+      "utf8",
+    );
+    assert.match(derive, /result\.evidenceCard/, "the deriver must read the field");
+    assert.match(derive, /kind: "evidence_strategy"/);
+
+    const cards = readFileSync(
+      path.join(SRC, "components", "agent", "cards", "AgentCards.tsx"),
+      "utf8",
+    );
+    assert.match(cards, /case "evidence_strategy":/);
+    assert.match(cards, /<AgentEvidenceCard card=\{card\.card\} \/>/);
+
     const panel = readFileSync(
       path.join(SRC, "components", "agent", "SmartChartAgentPanel.tsx"),
       "utf8",
     );
-    assert.match(panel, /result\?\.evidenceCard/);
-    assert.match(panel, /<AgentEvidenceCard card=\{/);
+    assert.match(panel, /<AgentCards\b/, "and the panel must actually mount the card layer");
   });
 });

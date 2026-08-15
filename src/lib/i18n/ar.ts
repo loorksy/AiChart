@@ -362,6 +362,33 @@ export const ar: Record<TranslationKey, string> = {
   "agent.evidence.not_execution_grade":
     "هذا السجل لا يستوفي بوابات التنفيذ، فهو يُثري القراءة ولا يخوّل صفقة.",
 
+
+  // --- بطاقات نتيجة الوكيل ---
+  "agent.card.plan": "الخطة",
+  "agent.card.entry": "الدخول",
+  "agent.card.stop": "الوقف",
+  "agent.card.targets": "الأهداف",
+  "agent.card.net_rr": "العائد/المخاطرة (صافي)",
+  "agent.card.activation": "التفعيل",
+  "agent.card.activation_immediate": "فوري",
+  "agent.card.validity": "صالحة (شموع)",
+  "agent.card.invalidation": "ما يُبطل الخطة",
+  "agent.card.alternative": "السيناريو البديل",
+  "agent.card.gates": "الفحوصات",
+  "agent.card.reasons": "الأسباب",
+  "agent.card.reasoning": "الاستدلال",
+  "agent.card.trace": "كيف رُجّح هذا القرار",
+  "agent.card.dimensions": "أبعاد الأدلة",
+  "agent.card.risks": "تنبيهات المخاطر",
+  "agent.card.news": "مخاطر الأخبار",
+  "agent.card.cost": "تكلفة التنفيذ",
+  "agent.card.cost_estimated": "تقدير وليس قياساً مباشراً",
+  "agent.card.research": "أنظمة البحث",
+  "agent.card.timeline": "تسلسل الأدلة",
+  "agent.card.coverage": "تغطية الشموع",
+  "agent.card.tracked": "قيد المتابعة",
+  "agent.card.skills": "المهارات المُحمّلة",
+
   "decision.buy": "شراء",
   "decision.sell": "بيع",
   "decision.wait": "انتظار",

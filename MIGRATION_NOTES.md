@@ -1196,3 +1196,80 @@ silent `undefined` on the operator's screen.
 `evidenceCardWiring.test.ts` tests both halves, and the wiring half was probed:
 deleting the assignment fails it, and deleting the platform fallback fails the
 arm that covers it.
+
+## Phase 7 — built, on the second reading
+
+Phase 7 was recorded above as **assessed, not built**, and the reason given was
+sound: there was no card-rendering framework to add 22 types to, and adding 22
+schemas to a pipeline nothing rendered would have been the largest dead-code
+addition in this migration. That assessment stands. What follows is the
+framework it said would have to exist first.
+
+### What the panel was actually doing
+
+The chat panel hand-rendered four things in a chain of inline conditionals —
+the evidence card, the stage list, the reason lists, the risk warnings — and
+drew nothing else. Meanwhile the same run computed, and shipped to that same
+browser, the G1–G7 checklist, the invalidation level, what would switch to the
+alternative scenario, the execution-cost basis, which research systems
+contributed and which were skipped and why, whether the candle coverage was
+even sufficient, and which skills failed to load. All of it arrived. None of it
+was ever drawn.
+
+Telegram was worse: the bespoke `analysisCard` builder carried a side, three
+levels and three reasons, and silently dropped everything else. "Full Telegram
+parity" was a promise kept by nobody, checkable only by a reviewer.
+
+### The design, and why it is not a schema registry
+
+The obvious build is 22 zod schemas that a model emits and a switch renders.
+That is precisely what `cardComposer` / `cardPolicy` / `uiSchema` were, and they
+were deleted for having zero consumers. Repeating the shape would repeat the
+outcome, so the contract inverts both halves of it:
+
+- **Cards are DERIVED, never authored.** `deriveCards` is a pure function from
+  the result the orchestrator already produces. A card type cannot exist
+  without a field behind it, and no model has to remember to emit one. A card
+  type nothing can produce is caught by a test that walks `CARD_ORDER` and
+  fails on any kind the deriver never yields.
+- **The union is closed and every consumer is exhaustive.** Both renderers
+  switch over `AgentCard` and end in `assertNeverCard`. Adding a card type
+  without teaching BOTH surfaces about it does not compile.
+
+That second property was verified rather than asserted: deleting the
+`alternative_scenario` case from the Telegram renderer produces
+`Argument of type 'AlternativeScenarioCard' is not assignable to parameter of
+type 'never'`. Parity is no longer a promise; it is a build failure.
+
+### Judgment calls
+
+- **The `decision` card renders nothing on the platform.** The panel already
+  puts the decision and its confidence in the message header and the summary in
+  the body; a card repeating either reads as two answers to one question. On
+  Telegram there is no chrome, so the same card leads the message. Same data,
+  one rendering per surface.
+- **Diagnostic depth is dropped on the phone, not collapsed.** There is no
+  disclosure triangle there, and a wall of stage timings buries the answer.
+  `COLLAPSED_BY_DEFAULT` is one set, read by both renderers, so the two cannot
+  disagree about what counts as depth.
+- **No card is emitted without its data.** An empty risk-warnings card claims
+  "no risks"; absence claims nothing. Cost evidence with no pips figure is
+  dropped rather than rendered as a zero, which would read as a free fill.
+- **The gate checklist shows on a pass too.** A checklist that appears only
+  when it blocks teaches the operator that gates are bad news rather than that
+  they ran on every answer.
+
+### Two guards fired, and neither was weakened
+
+Moving the render path broke `evidenceCardWiring`'s "rendered by the chat
+panel" arm and `noStaticQuickActions`' "still renders `m.options`" arm. Both
+were connection checks doing their job. Both were re-pointed at the new path
+rather than deleted — and before re-pointing the suggestions one, the data path
+was verified equivalent: `m.options` was only ever `result.options ?? []` in
+`useSmartChartAgent`, and `recordToMessage` sets it from `result.options` on
+restored history, so the deriver reading `result.options` sees the same data on
+a live turn and a reloaded one.
+
+`gateVerdicts` now rides on the result as well as into the audit row — the
+operator reading a refusal has the same question a post-mortem does, and a
+refusal that names no gate teaches nothing.

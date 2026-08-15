@@ -28,7 +28,8 @@ import {
   setTelegramChatId,
 } from "@/lib/store";
 import { sendMessage, type InlineButton } from "@/lib/telegram";
-import { analysisCard } from "@/lib/telegramCards";
+import { deriveCards } from "@/lib/agent/cards/deriveCards";
+import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
 
 const log = createLogger("telegram.webhook");
 
@@ -164,26 +165,19 @@ export async function handleTelegramMessage(
       locale: "ar",
     });
 
-    const rec = result.recommendation;
-    const actionable = rec && (rec.action === "buy" || rec.action === "sell");
-    const text = actionable
-      ? analysisCard({
-          symbol: DATA_SYMBOL,
-          side: rec.action,
-          confidence: Math.round(result.confidence * 100),
-          entry: rec.entry ?? null,
-          stop_loss: rec.stop_loss ?? null,
-          take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
-          signals: result.keyReasons?.slice(0, 3),
-          profile: {
-            marketType: "forex",
-            instrument: DISPLAY_NAME_AR,
-            dataSource: "OANDA",
-          },
-        })
-      : // A WAIT is an answer, and the summary already names the gate that
-        // refused. Wrapping it in a plan card would dress a refusal as a trade.
-        result.summary;
+    // Parity, structurally. The bespoke `analysisCard` builder that used to
+    // compose this message carried a side, three levels and three reasons —
+    // and silently dropped the gate checklist, the invalidation level, what
+    // invalidates the plan, the cost basis and the alternative scenario, all of
+    // which the same run had already computed. Deriving the message from the
+    // same cards the panel renders means the phone cannot fall behind: a card
+    // type added without a Telegram rendering does not compile.
+    //
+    // A WAIT needs no special case any more. The decision card leads with the
+    // refusal and the gate checklist names which gate refused, so a refusal is
+    // never dressed in a plan card — there is no plan card to dress it in when
+    // the levels are absent.
+    const text = renderCardsForTelegram(deriveCards(result));
 
     await sendMessage(message.chatId, text, platformButtons());
     await logAudit(userId, "telegram_analysis", `decision=${result.decision}`);

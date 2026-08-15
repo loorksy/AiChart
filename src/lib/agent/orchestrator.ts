@@ -1907,6 +1907,10 @@ async function runUnifiedChartAgentInner(
     decisionTrace: finalDecision.decisionTrace,
     evidenceDimensions: finalDecision.evidenceDimensions,
     evidenceCard: evidenceCard ?? undefined,
+    // The checklist reaches the operator, not just the audit row. A refusal
+    // that names no gate teaches nothing, and a pass that shows no gates
+    // teaches that the gates are only there on bad days.
+    gateVerdicts: gateChain?.verdicts,
     evidenceSnapshot: synth.evidenceSnapshot,
     // Deferred #16: the serialized cost contract rides the result so the MCP
     // analyze response can expose it without re-resolving anything.

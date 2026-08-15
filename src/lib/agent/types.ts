@@ -321,6 +321,16 @@ export interface AgentFinalResult {
   evidenceTimeline?: import("./researchEvidence").EvidenceTimelineStep[];
   /** Candle coverage report for this run (available/required/refill). */
   candleCoverage?: import("./dataQualityPolicy").CandleCoverageReport;
+  /**
+   * The G1–G7 checklist as far as it got.
+   *
+   * Already persisted with the stored recommendation so a post-mortem can
+   * reconstruct what every gate knew; carried on the result as well because the
+   * operator reading the answer has the same question, and a refusal that names
+   * no gate teaches nothing. Present on a pass too — a checklist that only ever
+   * appears when it blocks reads as bad news rather than as due process.
+   */
+  gateVerdicts?: import("./gates/types").GateVerdict[];
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM,
    *  ticker state, candle counts, and the drawing-plan
    *  decision. Never carries secrets or raw reasoning. */
