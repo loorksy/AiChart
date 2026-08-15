@@ -13,7 +13,10 @@ import {
   parsePlatformProvider,
   resolveUserModelSelection,
 } from "@/lib/llm";
-import { listOpenRouterModels } from "@/lib/openaiCompat";
+import {
+  listOpenRouterFreeModels,
+  listOpenRouterModels,
+} from "@/lib/openaiCompat";
 
 const ENV_KEYS = [
   "AI_PROVIDER",
@@ -51,9 +54,15 @@ describe("OpenRouter provider (test gateway)", () => {
     assert.equal(parseModelRef("unknown/foo"), null);
   });
 
-  it("includes curated OpenRouter refs in the catalogue", () => {
-    assert.equal(isAllowedModelRef("openrouter/openai/gpt-4o-mini"), true);
+  it("has NO static OpenRouter catalogue — routes are offered live only", () => {
+    // The static allow-list covers only the curated OpenAI/Anthropic trios.
+    // OpenRouter refs validate through the live-gateway branch of
+    // isOfferedModelRef (key ready + well-formed id), never a hardcoded list
+    // that would go stale when OpenRouter rotates its free tier.
+    assert.equal(isAllowedModelRef("openrouter/openai/gpt-4o-mini"), false);
     assert.equal(isAllowedModelRef("openrouter/not-a-real-model"), false);
+    assert.equal(isAllowedModelRef("openai/gpt-5.6-luna-pro"), true);
+    assert.equal(isAllowedModelRef("anthropic/claude-opus-5"), true);
   });
 
   it("is enabled by default; only an explicit off kills it", () => {
@@ -155,6 +164,52 @@ describe("OpenRouter provider (test gateway)", () => {
       assert.equal(models.length, 1);
       assert.equal(models[0]?.id, "openai/gpt-4o-mini");
       assert.equal(models[0]?.display_name, "OpenAI: GPT-4o Mini");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("listOpenRouterFreeModels keeps only zero-cost routes", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: "vendor/paid-model",
+              name: "Paid",
+              created: 9,
+              pricing: { prompt: "0.000002", completion: "0.000004" },
+            },
+            {
+              id: "vendor/free-by-suffix:free",
+              name: "Free by suffix",
+              created: 5,
+              // No pricing object — the :free suffix alone qualifies it.
+            },
+            {
+              id: "vendor/free-by-pricing",
+              name: "Free by pricing",
+              created: 7,
+              pricing: { prompt: "0", completion: "0" },
+            },
+            {
+              id: "vendor/no-signals",
+              name: "Unknown cost",
+              created: 8,
+              // Neither suffix nor pricing — must be assumed paid.
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+    try {
+      const models = await listOpenRouterFreeModels("sk-or-test");
+      assert.deepEqual(
+        models.map((m) => m.id),
+        // newest-first: created 7 then 5
+        ["vendor/free-by-pricing", "vendor/free-by-suffix:free"],
+      );
     } finally {
       globalThis.fetch = original;
     }

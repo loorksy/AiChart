@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { handleError } from "@/lib/api";
 import { requireAdminWith } from "@/lib/adminRoles";
-import { listOpenRouterModels } from "@/lib/openaiCompat";
+import { listOpenRouterFreeModels } from "@/lib/openaiCompat";
 import { getActiveModel, getProviderApiKey, providerKeyField } from "@/lib/llm";
 import { getPlatformValue } from "@/lib/platformConfig";
 
@@ -25,7 +25,7 @@ export async function GET() {
     if (!key) {
       return NextResponse.json({ error: missingKeyError() }, { status: 400 });
     }
-    const models = await listOpenRouterModels(key);
+    const models = await listOpenRouterFreeModels(key);
     return NextResponse.json({
       provider: "openrouter",
       models,
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (!key) {
       return NextResponse.json({ error: missingKeyError() }, { status: 400 });
     }
-    const models = await listOpenRouterModels(key);
+    const models = await listOpenRouterFreeModels(key);
     return NextResponse.json({
       provider: "openrouter",
       models,

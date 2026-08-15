@@ -10,7 +10,7 @@ import {
   isOpenRouterEnabledAsync,
   parsePlatformProvider,
 } from "@/lib/llm";
-import { listOpenRouterModels } from "@/lib/openaiCompat";
+import { listOpenRouterFreeModels } from "@/lib/openaiCompat";
 import { getSettings } from "@/lib/store";
 import { createLogger } from "@/lib/logger";
 
@@ -88,9 +88,13 @@ export async function GET() {
       );
     }
 
+    let firstFreeOpenRouterModel: string | null = null;
     if (openrouterKey && openrouterEnabled) {
+      // FREE routes only, fetched live — the admin pastes a key and every
+      // free model appears automatically; nobody curates OpenRouter by hand.
       try {
-        const live = await listOpenRouterModels(openrouterKey);
+        const live = await listOpenRouterFreeModels(openrouterKey);
+        firstFreeOpenRouterModel = live[0]?.id ?? null;
         options.push(
           ...live.map((m) => ({
             ref: `openrouter/${m.id}`,
@@ -100,22 +104,8 @@ export async function GET() {
           })),
         );
       } catch (err) {
-        // Key present but catalogue unreachable — still surface the admin
-        // default so the picker is not empty for OpenRouter.
         log.warn("openrouter.models.list_failed", {
           error: err instanceof Error ? err.message : String(err),
-        });
-      }
-      const adminOrModel = defaultOpenRouterModel?.trim();
-      if (
-        adminOrModel &&
-        !options.some((o) => o.provider === "openrouter" && o.model === adminOrModel)
-      ) {
-        options.push({
-          ref: `openrouter/${adminOrModel}`,
-          provider: "openrouter",
-          model: adminOrModel,
-          label: adminOrModel,
         });
       }
     }
@@ -126,7 +116,9 @@ export async function GET() {
       provider === "anthropic"
         ? `anthropic/${defaultClaudeModel?.trim() || DEFAULT_ANTHROPIC_MODEL}`
         : provider === "openrouter"
-          ? `openrouter/${defaultOpenRouterModel?.trim() || "openai/gpt-4o-mini"}`
+          ? // Env override wins; otherwise the newest live free route — the
+            // same pick the engine's auto-resolution makes.
+            `openrouter/${defaultOpenRouterModel?.trim() || firstFreeOpenRouterModel || "openai/gpt-4o-mini"}`
           : `openai/${defaultOpenAiModel?.trim() || "gpt-4.1"}`;
 
     return NextResponse.json({
