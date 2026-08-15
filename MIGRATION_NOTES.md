@@ -767,3 +767,63 @@ exactly like a sweep with nothing to do.
   sample sizes — which now requires only that the two crons run, rather than
   code that does not exist.
 - `market_cases` re-indexing remains a follow-on.
+
+## Phase 4 (part 3) — "lightning backtests", found by reading the engine
+
+The plan asks for **vectorized loops**. Reading the code first turned up
+something better: the backtest's cost was never the arithmetic. It was
+quadratic, and in a place a profiler reports only as "the engine is slow".
+
+`ConditionContext.index()` in `research-service/app/backtest/conditions.py`:
+
+```python
+def index(self, timeframe):
+    bars = self.bars_by_timeframe.get(timeframe, [])
+    duration = TIMEFRAME_MINUTES[timeframe] * 60
+    close_times = [bar.timestamp.timestamp() + duration for bar in bars]  # O(n), every call
+    return bisect.bisect_right(close_times, self.decision_time.timestamp()) - 1
+```
+
+An O(n) list built in order to run an O(log n) bisect over it. The engine
+creates one `ConditionContext` per bar and every condition leaf resolves its own
+index through `bars()`, so a 50,000-bar run with four leaves rebuilt a
+50,000-element list **200,000 times** — ten billion operations to answer a
+question whose inputs never change for the life of a run.
+
+The bars for a (symbol, timeframe) are immutable during a run, so the close-time
+array is memoised in the same shared cache the indicator series already use, and
+the resolved index is memoised per context (one bar, many leaves, one answer).
+
+**Measured**, same machine, four leaves, one strategy:
+
+| bars | before | after |
+|---|---|---|
+| 4,000 | 8.98 s | 0.021 s |
+| 8,000 | 37.43 s | 0.042 s |
+| 50,000 | ~24 min (quadratic extrapolation) | 0.268 s |
+
+The scaling confirms the diagnosis rather than just the speedup: before, 2× the
+data cost 4.2× the time; after, 2× the data costs 2× the time and 6.25× costs
+6.4×. Quadratic became linear.
+
+At the 50,000-bar export ceiling that is the difference between a catalogue
+sweep of ~60 strategies × 5 timeframes taking **days of CPU** and taking about a
+minute. The nightly precompute and the result cache were built on the
+assumption that a run is expensive; this is what actually made it expensive.
+
+Vectorization was **not** adopted, and that is a decision rather than an
+omission: the indicators are already single-pass (`sma` carries a running sum;
+`ema`, `rsi` and Wilder smoothing are recursive by definition and cannot be
+vectorized without changing their semantics or adding SciPy). Replacing them
+with NumPy would add a dependency to buy a constant factor on the half of the
+run that was never the problem.
+
+Five tests in `test_condition_context_cost.py` pin the fix where it matters —
+identical answers to the naive computation, one array per (symbol, timeframe)
+per run, one index per context, and separate timeframes keeping separate
+arrays. The whole Python suite passes (56 tests).
+
+**Note on running the Python suite here:** it needs `pytest-asyncio`, without
+which 17 async tests report as failures that look like engine faults. They are
+not; with the plugin installed the suite is green. Worth knowing before anyone
+reads a red run as a regression.
