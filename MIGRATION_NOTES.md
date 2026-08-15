@@ -951,3 +951,70 @@ The crontab comment repeating the MetaTrader claim went with them.
 non-terminal plan against closed OANDA candles on a 5-minute sweep, resolves
 same-candle ambiguity SL-first, distinguishes a missed opportunity from a plain
 expiry, and now re-evaluates on genuine cost drift.
+
+## Phase 6 — Telegram: from a notification pipe to a surface
+
+The bot was **outbound-only**, and deliberately so: the setup route's whole job
+was to call `deleteWebhook()`, with a message explaining that "trading is via
+Claude MCP and the platform only sends notifications". So an operator could
+receive a recommendation on their phone and had **nowhere to ask for one**.
+
+The link flow was half-built in the same shape as everything else this
+migration has turned up: the platform minted a `t.me/bot?start=CODE` deep link,
+the operator tapped it, Telegram delivered `/start CODE` — and nothing
+listened. **`consumeLinkCode` had no caller anywhere in the repo.**
+
+### One brain, two transports
+
+`telegram/webhookAgent.ts` runs the SAME `runUnifiedChartAgent` the chat stream
+runs, through the same gate chain, labelled `surface: "platform"` because it IS
+the platform's brain. The transport changed; the decision path did not. A
+separate decision path here is exactly how two surfaces start giving different
+answers to one question, and the parity test asserts the shared entry point
+rather than trusting the comment.
+
+What Telegram does NOT get is a second set of capabilities. Cards carry a link
+back to the platform and nothing that acts — there are no execution buttons
+because there is nothing to execute, `allowed_updates` is `["message"]` alone,
+and a test asserts `callback_data` appears nowhere on this surface.
+
+### Everything else is shaped by Telegram's retry contract
+
+Telegram redelivers an update until it gets a 200, on **its** schedule. A
+40-second analysis is long enough to be retried mid-flight, and the second run
+would store a second recommendation for one question. So:
+
+- **Dedupe happens before work starts**, in memory, on a 10-minute window that
+  sweeps itself. The window that matters is minutes; a restart clears a queue
+  Telegram has also given up on; a database round-trip per update would buy
+  durability nobody needs.
+- **Every path answers 200** — a malformed body, an unsupported update type, a
+  failed analysis. A 500 surfaces the error to nobody and asks Telegram to send
+  the same broken update again.
+- **The one exception is the secret check.** A caller who fails it is not
+  Telegram, so there is no retry loop to avoid. That check is not optional
+  hardening: the webhook URL is guessable and the handler behind it runs the
+  whole decision engine, so without `TELEGRAM_WEBHOOK_SECRET` anyone who found
+  the path could spend the platform's model budget. The route refuses to serve
+  at all when it is unset, and `/api/telegram/setup` refuses to REGISTER a
+  webhook without one.
+
+An unlinked chat is never analysed — it is told how to link. The test pins the
+ordering of those two branches, because "answer first, check later" is a
+one-line mistake that would make the engine free to anyone who found the bot.
+
+### Execution-era configuration, removed while here
+
+`getMaxSpreadPips()` existed to pre-flight an order — reject `open_trade` when
+the spread was too wide. Nothing places orders, and its only importer
+re-exported it to nobody. Spread still matters to a plan, and that reasoning
+lives where it belongs: in the cost evidence the decision weighs and the drift
+trigger the tracker watches.
+
+`METAAPI_TOKEN` was still an admin-panel field, still in `.env.example` labelled
+"required for execution", and still pinned BY NAME in
+`platformConfigCoverage.test.ts` as a key the operator must be able to set. That
+test exists to stop a credential becoming unreachable; it had inverted into
+requiring a field for a credential nothing reads — an invitation to enter a
+token that would never be used. It now pins `OANDA_API_TOKEN`, which is the key
+that actually strands the platform when it is missing.

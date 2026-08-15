@@ -192,15 +192,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "مفتاح مجاني من fred.stlouisfed.org",
   },
   {
-    key: "METAAPI_TOKEN",
-    label: "مفتاح MetaApi",
-    labelEn: "METAAPI_TOKEN",
-    group: "markets",
-    secret: true,
-    plainStorage: false,
-    placeholder: "من app.metaapi.cloud ← API tokens",
-  },
-  {
     // The platform-level market-data feed — one token serves every user;
     // not a per-account credential.
     key: "OANDA_API_TOKEN",

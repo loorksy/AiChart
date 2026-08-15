@@ -45,7 +45,6 @@ export {
   freshnessMeta,
   getStaleQuoteThresholdMs,
   isQuoteFresh,
-  getMaxSpreadPips,
   type FreshnessMeta,
   type FreshnessSource,
 } from "./freshness";
