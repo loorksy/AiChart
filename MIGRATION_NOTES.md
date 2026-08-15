@@ -208,3 +208,44 @@ incident verbatim (wick through 4348.27 → M15 close below → run to 4316.80) 
 assert it now grades TP1, plus the mirrored buy, the retest-zone case, and that
 the original contradictory plan can no longer be constructed. Registered in CI
 as `test:entry-coherence`.
+
+## Phase 3 (continued) — the G1–G7 gate chain
+
+The gate machinery is built and tested as pure modules. It is **not yet wired
+into the orchestrator** — that rewiring is the remaining piece of Phase 3.
+
+`src/lib/agent/gates/`:
+
+- **`types.ts`** — gate ids, three verdict states, and `GATE_REQUIRED_TO_RUN`.
+  The three states are the point: `pass`, `veto`, and `unavailable`. A gate
+  that could not run is never a pass. Whether that blocks depends on what
+  absence *means* — not knowing whether gold is minutes from an NFP print is
+  itself the hazard (G1 required), whereas a missing liquidity map costs the
+  analysis context (G2 optional).
+- **`chain.ts`** — ordered, short-circuiting runner. Cheapest-and-most-decisive
+  first: a plan a news blackout already forbids should cost one provider call,
+  not seven. A gate that THROWS is recorded `unavailable`, never `pass` — a
+  crash silently reading as consent is the failure this module exists to make
+  impossible. `refusalSummaryAr` names the refusing gate, because "no setup
+  right now" teaches nothing and "blocked 25 minutes around CPI" tells the
+  operator what to wait for.
+- **`newsWindow.ts`** (G1) — admin-configurable blackout, 30/15 default. Only
+  `high` impact blocks; blocking on medium would silence the platform most of
+  the week, which is its own dishonesty. Overlapping windows resolve to the
+  last one to clear.
+- **`strategyEvidence.ts`** (G5) — three outcomes, not two: calibrated (cite
+  stats, confidence comes FROM them), uncalibrated (pass, labelled
+  "غير مُعاير", quote **no** numbers), none (veto → WAIT). Matches rank by
+  sample size before confidence, so a lucky 8-trade record can never outrank a
+  214-trade one. `MIN_SAMPLE_SIZE = 100`.
+- **`revalidation.ts`** (G7) — re-checks the plan against a fresh quote for the
+  two ways a plan goes stale during analysis: the entry has run away
+  (>0.3×ATR past it) or RR has degraded below the plan minimum. RR is measured
+  from the live price, because that is the ratio the operator can actually get.
+
+20 tests in `agent/__tests__/gates.test.ts`, registered as `test:gates`.
+
+**Still to do in Phase 3:** wire the chain into `runUnifiedChartAgentInner` so
+the specialists run AS gates rather than advisors, persist the verdict bundle
+with the plan, and rewrite the doctrine/system prompt for gold-only identity
+and first-class WAIT.
