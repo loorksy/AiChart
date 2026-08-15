@@ -227,8 +227,11 @@ export const REFERENCE_SCENARIO_COVERAGE: ScenarioCoverageOwner[] = [
   },
   {
     scenarioId: "extra_timeframe_round",
-    testFile: "src/lib/agent/__tests__/extraFrameRound.test.ts",
-    testName: "never grants a third round, whatever the second answer asks",
+    testFile: "src/lib/agent/__tests__/browseLoop.test.ts",
+    // The one-shot extra frame became a bounded browse loop; what the scenario
+    // was always about is that the round cannot run away, and the budget is
+    // now what stops it rather than a hardcoded "no third round".
+    testName: "stops at the call budget even when the model keeps asking",
     kinds: ["integration", "contract"],
     executableAssertion: true,
     requiresIntegration: true,

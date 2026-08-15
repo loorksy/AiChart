@@ -1289,9 +1289,9 @@ async function runUnifiedChartAgentInner(
         },
         {
           ...input.synthesizerDeps,
-          // The extra-frame round captures through the SAME collector the first
-          // round used — one image, tight budget, failure returns null and the
-          // first decision stands.
+          // A browse round captures through the SAME collector the first round
+          // used — one image, tight budget, failure returns null and the
+          // decision already in hand stands.
           captureExtraFrame:
             input.synthesizerDeps?.captureExtraFrame ??
             (async (timeframe) => {
@@ -1303,6 +1303,30 @@ async function runUnifiedChartAgentInner(
                 timeoutMs: AGENT_TIMEOUTS.visualEvidence,
               }).catch(() => null);
               return extra?.snapshots[0] ?? null;
+            }),
+          // Closed bars for read_candles and read_zone. Only CLOSED candles:
+          // letting the brain read a forming bar would have it reason about a
+          // high and low that are still moving.
+          readCandles:
+            input.synthesizerDeps?.readCandles ??
+            (async (timeframe, count) => {
+              const fetched = await fetchOhlc({
+                userId: ctx.userId ?? 0,
+                symbol: market.symbol,
+                interval: timeframe,
+                limit: Math.min(300, count + 20),
+              }).catch(() => null);
+              if (!fetched?.candles?.length) return null;
+              return fetched.candles
+                .filter((candle) => isCandleComplete(candle.time, timeframe))
+                .slice(-count)
+                .map((candle) => ({
+                  time: candle.time,
+                  open: candle.open,
+                  high: candle.high,
+                  low: candle.low,
+                  close: candle.close,
+                }));
             }),
         },
       ).catch((err) => {

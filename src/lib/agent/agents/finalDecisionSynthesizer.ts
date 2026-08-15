@@ -59,26 +59,22 @@ import { metrics } from "@/lib/metrics";
 import type { HistoricalCaseEvidence } from "@/lib/marketMemory/caseQuery";
 import type { MacroRegimeBlock } from "../macro/fredProvider";
 import type { CotPositioning } from "../macro/cotProvider";
+import {
+  BROWSE_DEADLINE_MS,
+  MAX_BROWSE_CALLS,
+  MAX_CANDLES_PER_READ,
+  browseActivityAr,
+  browseRequestKey,
+  describeCandles,
+  describeZoneReading,
+  normalizeBrowseRequest,
+  readZone,
+  type BrowseCandle,
+  type BrowseRequest,
+} from "../browse/browseRequest";
 
 const log = createLogger("final-decision");
 
-/** Frames the model may request in the second round. */
-const EXTRA_FRAME_WHITELIST = new Set(["5m", "15m", "30m", "1h", "4h", "1d"]);
-
-/**
- * Validate an extra-frame request: whitelisted, and not already attached.
- * Anything else returns null and the request is refused rather than obeyed.
- */
-function normalizeExtraFrameRequest(
-  requested: string | null | undefined,
-  attached: readonly VisualSnapshot[],
-): string | null {
-  if (!requested) return null;
-  const frame = requested.trim().toLowerCase();
-  if (!EXTRA_FRAME_WHITELIST.has(frame)) return null;
-  if (attached.some((s) => s.timeframe.toLowerCase() === frame)) return null;
-  return frame;
-}
 
 /** The default second-round model call, with the extra frame attached. */
 async function callModelWithBlocks(
@@ -163,12 +159,23 @@ const FinalDecisionModelSchema = z.object({
   }),
   selectedCandidateIds: z.array(z.string()).max(8).optional(),
   /**
-   * One specific additional timeframe the model wants to SEE before finalising —
-   * the plan's "extra frame on demand" (§10 E). Null when the attached views
-   * suffice, which is the normal answer. Honoured at most once, from a
-   * whitelist, on a separate budget; a failed capture keeps this first decision.
+   * One question the model wants answered from the chart before finalising.
+   *
+   * Null when what it has suffices, which is the normal answer. Served on a
+   * bounded budget (browse/browseRequest.ts) — a refused or failed round keeps
+   * the decision already in hand, so browsing is an offer to refine and never
+   * a dependency.
    */
-  requestExtraTimeframe: z.string().max(8).nullable().optional(),
+  browse: z
+    .object({
+      verb: z.string().max(24),
+      timeframe: z.string().max(8).optional(),
+      count: z.number().optional(),
+      low: z.number().optional(),
+      high: z.number().optional(),
+    })
+    .nullable()
+    .optional(),
 }).superRefine((value, ctx) => {
   // Cross-field coherence, enforced where the retry loop can feed the exact
   // violation back to the model. The persist-time plan contract enforces the
@@ -346,10 +353,67 @@ export interface SynthesizerDeps {
   callModel?: (system: string, user: string) => Promise<string>;
   configured?: boolean;
   /**
-   * Capture ONE extra timeframe for the second round. Injectable for tests;
-   * defaults to the same visual-evidence collector the first round used.
+   * Capture one timeframe as an image for a `view_timeframe` round. Injectable
+   * for tests; defaults to the same visual-evidence collector the first round
+   * used.
    */
   captureExtraFrame?: (timeframe: string) => Promise<VisualSnapshot | null>;
+  /**
+   * Closed bars for a timeframe, newest last. Serves `read_candles` directly
+   * and `read_zone` by computation — one primitive, two verbs, so a zone
+   * reading can never disagree with the candles it was derived from.
+   */
+  readCandles?: (
+    timeframe: string,
+    count: number,
+  ) => Promise<BrowseCandle[] | null>;
+}
+
+interface BrowseAnswer {
+  /** What the model reads back. */
+  text: string;
+  /** Present only for `view_timeframe` — a new image to attach. */
+  snapshot?: VisualSnapshot;
+}
+
+/**
+ * Answer one browse request.
+ *
+ * Returns null when the request cannot be served — a missing dep, an empty
+ * provider result, a thrown capture. The caller treats null as "the round did
+ * not happen" and keeps the decision it already had, so an unanswerable
+ * question never costs the operator their analysis.
+ */
+async function serveBrowseRequest(
+  request: BrowseRequest,
+  deps: SynthesizerDeps,
+  ctx: AgentRunContext,
+): Promise<BrowseAnswer | null> {
+  void ctx;
+  if (request.verb === "view_timeframe") {
+    if (!deps.captureExtraFrame) return null;
+    const snapshot = await deps.captureExtraFrame(request.timeframe);
+    if (!snapshot?.imageBase64) return null;
+    return {
+      text: `The ${request.timeframe} chart is now attached with its numbers.`,
+      snapshot,
+    };
+  }
+
+  if (!deps.readCandles) return null;
+  if (request.verb === "read_candles") {
+    const candles = await deps.readCandles(request.timeframe, request.count);
+    if (!candles?.length) return null;
+    return { text: describeCandles(request, candles) };
+  }
+
+  // read_zone: computed from the same candles `read_candles` would return, so
+  // the two verbs can never tell the model different stories about one market.
+  const candles = await deps.readCandles(request.timeframe, MAX_CANDLES_PER_READ);
+  if (!candles?.length) return null;
+  return {
+    text: describeZoneReading(request, readZone(candles, request.low, request.high)),
+  };
 }
 
 function deepFreeze<T>(value: T): T {
@@ -456,7 +520,11 @@ Ask, in order:
 - Do not reveal chain-of-thought, scratchpad, POI scores, ATR ratios, or machine ranking labels.
 - drawingAdvice.shouldDraw=false only when drawing would genuinely mislead (no usable levels, thin data).
 - selectedCandidateIds: at most 8 candidate ids worth drawing; omit or empty if none.
-- requestExtraTimeframe: null almost always. Set it (one of: 5m, 15m, 30m, 1h, 4h, 1d) ONLY when a specific missing view would genuinely change your read — you get at most one extra frame, once, and your current answer stands if the capture fails. Never request a frame you were already shown.
+- browse: null almost always. Set it ONLY when one specific fact from the chart would genuinely change your read — you always answer with a complete decision anyway, and that answer stands if the round fails.
+  - {"verb":"view_timeframe","timeframe":"1h"} — show me that chart. Frames: 5m, 15m, 1h, 4h, 1d. Never one already attached.
+  - {"verb":"read_candles","timeframe":"15m","count":60} — the last N bars as numbers, when the shape matters less than the exact prices.
+  - {"verb":"read_zone","timeframe":"15m","low":4340,"high":4348} — what price DID at that band: how often it traded in, closed inside, closed through, or rejected. Ask this before claiming a level held or broke.
+  You may browse several times; each answer comes back and you re-issue the FULL decision. Never repeat a question you already asked — the answer will not change and the budget is finite.
 - summary must be specific to THIS context (symbol, structure, the exact trigger or zone) — never a generic sentence.
 - scalpingContext is fixed; higher timeframes are context evidence only.
 - Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
@@ -704,60 +772,99 @@ ${correction}`
     };
   }
 
-  // ── The extra-frame round (plan §10 E) ──────────────────────────────────
-  // At most ONE, from a whitelist, never a frame already shown, on its own
-  // budget. A failed capture or a failed second call keeps THIS decision — the
-  // extra view is an offer to refine, never a dependency.
-  const extraRequest = normalizeExtraFrameRequest(
-    parsed.requestExtraTimeframe,
-    input.visualSnapshots ?? [],
-  );
-  if (extraRequest && deps.captureExtraFrame) {
-    metrics.extraFrameRounds.inc({ outcome: "requested" });
-    const snapshot = await deps
-      .captureExtraFrame(extraRequest)
-      .catch(() => null);
-    if (snapshot?.imageBase64) {
-      try {
-        const extraBlocks = buildVisualBlocks([
-          ...(input.visualSnapshots ?? []),
-          snapshot,
-        ]);
-        const secondUser =
-          `${user}
+  // ── The browse loop ─────────────────────────────────────────────────────
+  //
+  // The brain reads the chart with its own hands: it asks one question, gets
+  // the answer, and re-issues its whole decision. Bounded on four axes — a call
+  // budget, a wall clock, a per-verb whitelist, and a repeat guard — because a
+  // loop the model steers is a loop the model can run forever.
+  //
+  // The invariant that makes this safe to ship: a decision is already in hand
+  // before the first round, and ANY failure (refused request, failed capture,
+  // unparseable answer, exhausted budget, expired clock) keeps the last good
+  // one. Browsing refines an answer; it never becomes a dependency of having
+  // one.
+  const browseDeadline = Date.now() + BROWSE_DEADLINE_MS;
+  const attachedSnapshots: VisualSnapshot[] = [...(input.visualSnapshots ?? [])];
+  const attachedFrames = attachedSnapshots.map((snapshot) => snapshot.timeframe);
+  const servedKeys = new Set<string>();
+  let browseTranscript = "";
+  let spent = 0;
 
-## Second round
-You asked for the ${extraRequest} view; it is now attached with its numbers. ` +
-          `Re-issue your FULL decision JSON. requestExtraTimeframe must be null — there is no third round.`;
-        const raw = await (deps.callModel
-          ? deps.callModel(system, secondUser)
-          : callModelWithBlocks(system, secondUser, extraBlocks, ctx));
-        const second = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
-        // No third round, whatever the model says.
-        second.requestExtraTimeframe = null;
-        metrics.extraFrameRounds.inc({ outcome: "completed" });
-        ctx.emitActivity({
-          type: "analysis",
-          status: "completed",
-          message: `طلب النموذج فريم ${extraRequest} الإضافي وأُرفق — القرار النهائي بعده.`,
-          metadata: { extraTimeframe: extraRequest },
-        });
-        parsed = second;
-        evidenceSnapshot = frozenEvidenceSnapshot({
-          ...input,
-          visualSnapshots: [...(input.visualSnapshots ?? []), snapshot],
-        });
-      } catch {
-        // The first decision stands. That is the whole contract of the round.
-        metrics.extraFrameRounds.inc({ outcome: "second_call_failed" });
+  while (spent < MAX_BROWSE_CALLS && Date.now() < browseDeadline) {
+    const decision = normalizeBrowseRequest({
+      raw: parsed.browse ?? null,
+      attachedTimeframes: attachedFrames,
+      servedKeys,
+      spent,
+    });
+    if (!decision.request) {
+      // A named refusal is recorded; "the model asked for nothing" is not an
+      // event worth counting.
+      if (decision.refusal) {
+        metrics.browseRounds.inc({ outcome: decision.refusal, verb: "unknown" });
       }
-    } else {
-      metrics.extraFrameRounds.inc({ outcome: "capture_failed" });
+      break;
     }
-  } else if (parsed.requestExtraTimeframe != null && !extraRequest) {
-    // Asked for a frame off the whitelist or one already shown: refused, and
-    // the first decision stands.
-    metrics.extraFrameRounds.inc({ outcome: "refused" });
+
+    const request = decision.request;
+    spent += 1;
+    servedKeys.add(browseRequestKey(request));
+    metrics.browseRounds.inc({ outcome: "requested", verb: request.verb });
+
+    const answer = await serveBrowseRequest(request, deps, ctx).catch(() => null);
+    if (!answer) {
+      metrics.browseRounds.inc({ outcome: "unanswered", verb: request.verb });
+      break;
+    }
+    if (answer.snapshot) {
+      attachedSnapshots.push(answer.snapshot);
+      attachedFrames.push(answer.snapshot.timeframe);
+    }
+    browseTranscript += `\n\n### You asked: ${JSON.stringify(request)}\n${answer.text}`;
+    ctx.emitActivity({
+      type: "analysis",
+      status: "completed",
+      message: browseActivityAr(request),
+      metadata: { verb: request.verb, round: spent },
+    });
+
+    const remaining = MAX_BROWSE_CALLS - spent;
+    const nextUser =
+      `${user}\n\n## Chart reading${browseTranscript}\n\n` +
+      `Re-issue your FULL decision JSON with everything above taken into account. ` +
+      (remaining > 0
+        ? `You may browse ${remaining} more time(s); set browse to null when you have what you need.`
+        : `Your browse budget is spent — browse MUST be null.`);
+
+    let next: z.infer<typeof FinalDecisionModelSchema>;
+    try {
+      const raw = deps.callModel
+        ? await deps.callModel(system, nextUser)
+        : await callModelWithBlocks(
+            system,
+            nextUser,
+            buildVisualBlocks(attachedSnapshots),
+            ctx,
+          );
+      next = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
+    } catch {
+      // The decision already in hand stands. That is the whole contract.
+      metrics.browseRounds.inc({ outcome: "reread_failed", verb: request.verb });
+      break;
+    }
+    if (remaining <= 0) next.browse = null;
+    parsed = next;
+    metrics.browseRounds.inc({ outcome: "completed", verb: request.verb });
+    evidenceSnapshot = frozenEvidenceSnapshot({
+      ...input,
+      visualSnapshots: [...attachedSnapshots],
+      // The transcript is part of what the brain decided on, so a replay that
+      // dropped it would be reconstructing a different run.
+      visualCoverageNote: input.visualCoverageNote
+        ? `${input.visualCoverageNote}${browseTranscript}`
+        : browseTranscript.trim() || null,
+    });
   }
 
   return {

@@ -550,3 +550,60 @@ budget of 12 instead of 1. That is an architectural change to the decision
 call, and doing it in the same phase that just rewired the gate chain through
 that same call would have made both unreviewable. It is the first item of the
 next phase of work rather than a line item quietly skipped here.
+
+## Phase 3 (complete) — the browse loop: the agent reads the chart itself
+
+The previous note said the tool belt was assessed and not built, because the
+`src/lib/agent/tools/` framework has no callers and adding four definitions to
+an unused registry would be dead code. That reasoning still holds — and it
+pointed at where the capability actually belongs.
+
+The synthesizer already had the shape: `requestExtraTimeframe`, one extra frame,
+once. That is a good safety property and a poor way to read a market. The
+question "what did price do when it came back to 4348?" has an answer in the
+candles, and a brain that cannot ask it has to guess or stay vague.
+
+So the one-shot round became a bounded loop with three verbs — the three
+questions a chart reader actually asks:
+
+- `view_timeframe` — show me that frame (image + its numbers).
+- `read_candles` — the last N bars as numbers, when exact prices matter more
+  than shape.
+- `read_zone` — what price DID at a band: traded in, closed inside, closed
+  through, rejected from.
+
+`read_zone` is computed from the same candles `read_candles` returns, through
+one dependency. Two providers could tell the model two different stories about
+one market; one primitive cannot.
+
+**Four bounds, because a loop the model steers is a loop the model can run
+forever:** a 12-call budget, a 25s wall clock across the whole phase, a
+per-verb whitelist (frames narrowed to 5m/15m/1h/4h/1d), and a repeat guard —
+asking the same question twice spends budget to learn nothing, so it is refused
+rather than served.
+
+**The invariant that makes it safe to ship:** a complete decision exists before
+the first round, and every failure path — refused request, failed capture,
+unparseable re-read, exhausted budget, expired clock, missing dependency —
+keeps the last good one. Browsing refines an answer; it never becomes a
+dependency of having one. Eleven tests in `browseLoop.test.ts` hold exactly
+that, one per failure path.
+
+Refusals are NAMED (`unbrowsable_timeframe`, `already_attached`,
+`repeat_request`, `budget_exhausted`, …) rather than silently coerced, and each
+is counted with its verb. A loop that quietly rewrites what was asked teaches
+the model nothing about its own limits.
+
+The browse transcript rides the frozen evidence snapshot, so a replay sees the
+same conversation the brain had rather than only its conclusion. The metric is
+renamed `aichart_browse_rounds_total` with a `verb` label — it stopped being
+about extra frames.
+
+`extraFrameRound.test.ts` → `browseLoop.test.ts`, and the §16 coverage row for
+`extra_timeframe_round` now names the budget test: what that scenario was always
+about is that the round cannot run away, and the budget is what stops it rather
+than a hardcoded "no third round".
+
+**Phase 3 is complete.** Gates wired and enforcing, entry semantics surviving
+persistence, doctrine rewritten with a first-class WAIT, SELF-VISION honest
+about what it could not see, and the agent reading the chart with its own hands.
