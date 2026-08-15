@@ -74,7 +74,7 @@ test("credentials are stored encrypted, plain values are not", () => {
     assert.equal(encrypted(key), true, `${key} must be encrypted at rest`);
   }
   // Non-secrets stay readable so the migration that marks them plain=1 agrees.
-  for (const key of ["METAAPI_REGION"]) {
+  for (const key of ["OANDA_ENV"]) {
     assert.equal(encrypted(key), false, `${key} is not a secret`);
   }
 });

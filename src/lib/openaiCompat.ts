@@ -628,30 +628,6 @@ export async function listOpenAIChatModels(
     .sort((a, b) => b.id.localeCompare(a.id));
 }
 
-export async function listOpenAIRealtimeModels(
-  apiKey: string,
-): Promise<CompatModelInfo[]> {
-  const res = await fetchWithTimeout(
-    "https://api.openai.com/v1/models",
-    {
-      headers: { authorization: `Bearer ${apiKey}` },
-      cache: "no-store",
-    },
-    { timeoutMs: httpTimeoutMs(), label: "OpenAI models" },
-  );
-  if (!res.ok) throw new Error(await readError(res, "OpenAI"));
-  const data = (await res.json()) as { data?: { id: string; created?: number }[] };
-  // Keep only models that can host a speech-to-speech session. The
-  // transcribe / whisper / translate variants are realtime-named but do a
-  // different job, and offering them would silently break the voice agent.
-  const include = /realtime/i;
-  const exclude = /transcribe|whisper|translate/i;
-  return (data.data ?? [])
-    .filter((m) => include.test(m.id) && !exclude.test(m.id))
-    .map((m) => ({ id: m.id, display_name: m.id, created: m.created }))
-    .sort((a, b) => (b.created ?? 0) - (a.created ?? 0) || b.id.localeCompare(a.id));
-}
-
 type OpenRouterModelRow = {
   id?: string;
   name?: string;
