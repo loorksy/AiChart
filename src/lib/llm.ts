@@ -168,7 +168,11 @@ async function resolveOpenRouterAutoModel(): Promise<string> {
   if (!key) return DEFAULT_OPENROUTER_MODEL;
   try {
     const free = await listOpenRouterFreeModels(key);
-    const picked = free[0]?.id;
+    // OpenRouter's own free auto-router beats any local heuristic — the
+    // gateway routes each request to the best free model it currently has.
+    // Only when that route is absent fall back to the newest free model.
+    const gatewayRouter = free.find((m) => /^openrouter\/(free|auto)/i.test(m.id));
+    const picked = gatewayRouter?.id ?? free[0]?.id;
     if (picked) {
       openRouterAutoModel = { id: picked, at: Date.now() };
       return picked;

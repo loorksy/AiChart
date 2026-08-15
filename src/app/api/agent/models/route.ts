@@ -94,7 +94,12 @@ export async function GET() {
       // free model appears automatically; nobody curates OpenRouter by hand.
       try {
         const live = await listOpenRouterFreeModels(openrouterKey);
-        firstFreeOpenRouterModel = live[0]?.id ?? null;
+        // Same pick the engine's auto-resolution makes: the gateway's own
+        // free auto-router when present, else the newest free route.
+        firstFreeOpenRouterModel =
+          live.find((m) => /^openrouter\/(free|auto)/i.test(m.id))?.id ??
+          live[0]?.id ??
+          null;
         options.push(
           ...live.map((m) => ({
             ref: `openrouter/${m.id}`,
