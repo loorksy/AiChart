@@ -1105,3 +1105,45 @@ spelling stays at the provider boundary, and that the exporter refuses a
 non-gold symbol rather than coercing it.
 
 Both suites plus `uiTargetsExist` run as `test:guards` in `test:ci`.
+
+## The case memory started growing again
+
+`caseIndexer.ts` said, in a header that was true when it was written, that
+there was no indexer in this repo: a case needs tens of thousands of candles
+walked in sliding windows, and the bulk candle source that served it had been
+deleted. So `market_cases` stopped growing, and `find_similar_cases` had been
+answering out of whatever it happened to already hold — a memory that quietly
+stopped learning while continuing to sound authoritative.
+
+The gold candle store rebuilt in Phase 3 is that missing source.
+`goldCaseIndexer.ts` is the walker: it strides four bars at a time across each
+stored timeframe, fingerprints the moment, resolves what followed, and writes
+BOTH directions at every moment. Indexing one side would build a memory that
+can only ever confirm.
+
+It resumes from `MAX(case_time)` rather than re-indexing, is capped so a first
+pass over years of history finishes, and runs nightly from
+`/api/cron/case-memory` (`20 3 * * *`), which now indexes before it reports
+coverage.
+
+### The invariant, and a test that failed to check it
+
+A case claims what the market looked like at a moment AND what happened next.
+Those halves come from disjoint candle ranges — features from candles at or
+before `caseTime`, outcome from candles strictly after — and mixing them by one
+bar turns the memory into a record of the future. Nothing about that failure is
+visible in production: the rows look right, the win rates look good, and the
+platform quotes a memory that cheated.
+
+The first version of the test asserted only that longs opened late into a
+rise-then-collapse series lost money. **A deliberate 30-bar lookahead leak
+passed it** — the collapse punished late longs whether or not the features had
+peeked. A test weaker than its own description is worse than none, so it was
+replaced with a direct one: the stored `trend`, `range_zone` and `regime` are
+compared against `fingerprintAt` recomputed over the pre-case window ALONE,
+across at least ten cases. The same leak was re-injected against the new
+version and it failed, which is the only reason the arm was kept.
+
+Excursions are stored ATR-normalised, matching what `caseQuery` reads back out
+of `max_favourable`; a price-unit number there would be ~100x larger on gold
+and silently incomparable with every row already indexed.

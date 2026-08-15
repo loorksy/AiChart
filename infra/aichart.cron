@@ -54,9 +54,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # sends one Telegram message per operator. GET the same path for a preview.
 0 18 * * 0 root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/weekly-report >/dev/null 2>&1
 
-# OPTIONAL — /api/cron/case-memory is GET-only now: a read-only coverage
-# report over the frozen historical case memory. Nothing indexes new cases
-# anymore (that required the deleted candle warehouse), so there is no POST
-# tick left to schedule.
+# Historical case memory — nightly at 03:20 UTC, after the backtest sweep.
+# Walks the gold candle store and records what the market looked like at each
+# moment AND what happened next, both directions. Resumes after the newest case
+# already stored, so a nightly pass indexes what the store gained rather than
+# re-walking years. Bounded per run with ?max=N; ?index=0 reports coverage
+# without indexing.
+20 3 * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/case-memory >/dev/null 2>&1
 
 # than 14 days so stale history never bloats disk or future context.
