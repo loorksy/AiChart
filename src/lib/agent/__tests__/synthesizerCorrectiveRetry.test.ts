@@ -23,7 +23,13 @@ const ctx: AgentRunContext = { requestId: "retry-test", emitActivity: () => {} }
 
 function market(): AgentMarketContext {
   return {
-    symbol: "XAUUSD", interval: "15m", currentPrice: 4014, marketRegime: "range", atr: 6,
+    // Price sits just under 4000 on purpose. The plan here is "return to the
+    // demand zone, then confirm with a close above 4000" — and a validator
+    // added after these pins were written refuses a condition that is ALREADY
+    // true, which at the fixture's old 4014 it was. The fixture was describing
+    // a plan that would activate on the next candle with no real condition,
+    // and every assertion below drowned in that one rejection.
+    symbol: "XAUUSD", interval: "15m", currentPrice: 3998, marketRegime: "range", atr: 6,
     dataQuality: { currentTfCount: 600, higherTfCount: 250, dailyCount: 120, sufficient: true, policyVersion: "1.1.0" },
     currentTfCandles: [], higherTfCandles: [], dailyCandles: [],
     majorLevels: { support: [{ price: 3980, time: 1 }], resistance: [{ price: 4040, time: 2 }] },

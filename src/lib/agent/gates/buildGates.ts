@@ -215,11 +215,15 @@ export function buildGates(input: GateInputs): GateBuildResult {
 
     {
       id: "G5",
-      // An empty deployments table is the same class of gap as an unconfigured
-      // news feed: the evidence pipeline that fills it is not deployed yet, and
-      // refusing every plan until it is would silence the platform rather than
-      // make it honest. It still costs confidence and is stated in the plan.
-      required: input.statisticalSupport != null,
+      // `unavailable` here can mean two very different things, and only one of
+      // them is a hazard. If the lookup itself FAILED we do not know what the
+      // record says, and a plan issued blind to its own strategy's track record
+      // must not go out — that blocks. If the lookup SUCCEEDED and simply found
+      // nothing, the backtest pipeline that fills the table is not deployed yet
+      // (Phase 4): the same class of standing gap as an unconfigured news feed,
+      // which costs confidence and is stated in the plan rather than silencing
+      // the platform until the pipeline lands.
+      required: input.statisticalSupport == null,
       run: async () => {
         if (!input.statisticalSupport) {
           return {

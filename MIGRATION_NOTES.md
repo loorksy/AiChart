@@ -249,3 +249,144 @@ into the orchestrator** — that rewiring is the remaining piece of Phase 3.
 the specialists run AS gates rather than advisors, persist the verdict bundle
 with the plan, and rewrite the doctrine/system prompt for gold-only identity
 and first-class WAIT.
+
+## Phase 3 (continued) — the chain is wired, and entry semantics survive storage
+
+### The gates now decide
+
+`runGateChain` runs in `runUnifiedChartAgentInner` immediately after the
+synthesizer's decision and **before** the drawing plan and before storage. That
+position is deliberate: a refused plan must leave nothing behind — no entry
+lines on the chart, no tracker row, no card in the chat. Putting the chain
+after drawings would have drawn a plan the platform then refused to stand
+behind.
+
+A refusal does not degrade the plan. `finalDecision` is rewritten to a WAIT
+whose summary IS the refusal (`refusalSummaryAr`), whose `publicReasoningSummary`
+is the checklist as far as it got, and whose recommendation is `{ action:
+"wait" }`. Leaving the model's prose in place would keep telling the operator
+to sell at a level that no longer has backing. `gateChain.verdicts` is
+persisted with the plan under revision 1's `evidence.gateVerdicts`, so a
+post-mortem can see what each gate knew — not merely that they all passed.
+
+The specialists are **not** re-run. `gates/buildGates.ts` re-reads the results
+the fleet already produced as gate ANSWERS instead of as evidence the
+synthesizer weighs. Nothing here gives a second opinion on direction; a gate
+only decides whether a plan may be issued at all.
+
+### Two departures from the plan's letter, both about what absence MEANS
+
+`GateDefinition.required` was added so a gate can narrow, for one run, whether
+its `unavailable` verdict blocks. The verdict itself is always reported
+honestly; only its consequence moves. The distinction it encodes:
+
+- **A configured provider that stopped answering mid-analysis** is a live
+  hazard. Something changed, the plan would walk into it blind, and it blocks.
+- **A provider that was never deployed on this install** is a standing,
+  admin-visible gap. Treating it as a live hazard would make the platform
+  permanently silent while telling the operator something false about what just
+  happened.
+
+Applied to two gates:
+
+- **G1** — `required: newsProviderConfigured()`. With no calendar provider the
+  verdict is `unavailable` with the reason stated, costs confidence, and does
+  not block. With a provider that timed out, it blocks.
+- **G5** — `required: statisticalSupport == null`. A lookup that FAILED means
+  we do not know the strategy's record, and that blocks. A lookup that
+  succeeded and found nothing means the backtest pipeline that fills
+  `strategy_deployments` is not deployed yet — that arrives in Phase 4. Until
+  it does, a plan with no calibrated match is issued **without any percentage**
+  and with the gap stated (−15 confidence), rather than the platform refusing
+  every recommendation for lack of a table nothing writes to yet.
+
+**The condition for flipping both to hard vetoes** is stated so it is not
+forgotten: G5 blocks on `grade === "none"` once the Phase-4 nightly precompute
+writes deployments carrying real win rates and sample sizes; G1 blocks on an
+absent provider once the calendar is a deployment requirement rather than an
+option.
+
+No RR floor was introduced. `systemPrompt.ts` states that reward:risk is
+descriptive evidence and not an acceptance threshold; adding a `minRr` to the
+gate plan would have silently changed what the platform refuses, which is a
+product decision and not a wiring one.
+
+### The other half of the fatal entry bug
+
+`entrySemantics.ts` was only half a fix. The fill rule was being collapsed to
+`market | limit | pending` at **three** separate persistence points, so a plan
+armed by a candle CLOSE was stored as a touch-filled limit and the tracker
+never saw `confirmation_close` at all — the incident was still reachable
+through the write path.
+
+- `resolveEntryType()` derives the canonical type from the plan's STRUCTURE.
+  Structure outranks the model's declaration on purpose: the incident's plan
+  declared a pending limit while carrying a close-based rule, and believing the
+  declaration is exactly how the contradiction got stored.
+- `normalizeStoredEntryType()` coerces persisted strings on read, mapping the
+  legacy `limit`/`pending` spellings (both meant "fills on a touch") onto
+  `limit_touch` so every reader downstream shares one vocabulary.
+- The type is now stored verbatim and read back canonically by the canonical
+  store, the tracker, the chat card (`fromAgentResult`) and the session replay
+  alike. `retestZone` and `effectiveEntry` ride the risk blob, which is the
+  only place a fill band and a realised fill price can live.
+- **G6** runs `validateEntryCoherence` at construction, so an incoherent plan is
+  refused before it can be stored and then graded against a level its own
+  condition made unreachable.
+
+### `npm run test:ci` is green
+
+It had not been green since Phase 1b, and the `&&` chaining meant each failure
+hid every suite behind it. All of these predate this phase; each was fixed by
+deleting or correcting what described deleted functionality, never by weakening
+a live assertion:
+
+- `integrationBoundaries` asserted `runExecutionGuardAgent` still lives in the
+  orchestrator. It does not. The assertion is **inverted** to guard that no
+  execution path grows back.
+- `phase5Contracts` asserted seven phrases appear in `docs/TRADING_DNA_
+  ARCHITECTURE.md`, deleted with the rest of `docs/`. Prime Directive 1 says
+  docs are not the source of truth; a test that a markdown file contains seven
+  phrases guarded nothing. The half constraining code survives.
+- The trading-DNA fixture wrote ten historical plans as a TRIAL user and hit
+  the three-recommendation cap at the creation choke point. The cap is correct;
+  the fixture was pretending to be a trial. It now buys a subscription.
+- Four suites resolved `../agent`, `../mcp` and `../docs` — paths from when the
+  app lived in a `web/` subdirectory. They read **outside** the repository and
+  died on ENOENT rather than asserting anything. Both shapes are now tried, the
+  same ladder the runtime code already walks.
+- Two synthesizer fixtures (`synthesizerCorrectiveRetry`, `doctrineScenarios`)
+  described plans whose activation rule was **already satisfied** at the
+  fixture's own current price — `close above 4000` with price at 4014. A
+  validator added after those pins were written correctly refuses that, and its
+  one rejection drowned every other assertion in both files. The levels were
+  moved to genuine future triggers; the scenarios are unchanged.
+
+### The reference scenario registry, narrowed to the product
+
+Six §16 scenarios described the deleted execution layer — `advisory_mode`,
+`auto_conditional`, `account_disconnected`, `disconnect_during_auto`,
+`stale_revision_execution`, and `deep_research_revises` (deep analysis reports
+`not_started` since the warehouse went). They are deleted from the registry,
+from `CRITICAL_INTEGRATION_SCENARIOS`, and from the coverage map.
+
+Nine more pointed at integration files deleted in Phase 1b. A coverage map
+whose rows name files that do not exist is worse than no map, because it reads
+as proof. `criticalReferenceScenarios.integration.test.ts` is rewritten against
+the modules that own those behaviours now — the canonical store, the revision
+mechanism, the lifecycle dedupe, and the gate chain — with eight tests against
+a real SQLite file. Two rows were renamed with their concepts:
+`condition_during_revision` no longer talks about stale *intents* (there are
+none) but about the newer revision winning; `expired_or_invalidated` no longer
+emits `execution_skipped` but asserts a terminal plan is never re-activated.
+
+**Known remaining debt:** most scenario fixtures still name EURUSD. The
+registry describes market situations rather than served instruments, so this
+does not affect behaviour, but it should be narrowed to gold in Phase 8
+alongside the gold-only guard test.
+
+**Still to do in Phase 3:** SELF-VISION hardening (`visualEvidence.ts`,
+`multiTimeframeCapture.ts`, `platformChartCapture.ts`) and the candle-reading
+tool belt (`read_candles`, `switch_timeframe`, `capture_chart`, `read_zone`,
+12-call budget), plus the doctrine/system-prompt rewrite for gold-only identity
+and first-class WAIT.

@@ -238,8 +238,14 @@ describe("doctrine scenarios", () => {
       },
       answer({
         planType: "conditional",
-        activationCondition: "بعد انتهاء الحركة الأولى للخبر واستعادة 3996.",
-        activationRule: { kind: "candle_close_above", level: 3996, timeframe: "5m" },
+        // The trigger has to sit ABOVE the fixture's 4000: a validator added
+        // after this scenario was written refuses a condition that is already
+        // true, and "close above 3996" was true the moment it was written. The
+        // scenario is unchanged — wait out the first move, then act on
+        // confirmation — only its level is now a condition rather than a
+        // formality.
+        activationCondition: "بعد انتهاء الحركة الأولى للخبر وإغلاق شمعة فوق 4006.",
+        activationRule: { kind: "candle_close_above", level: 4006, timeframe: "5m" },
         validityCandles: 3,
       }),
     );
