@@ -162,3 +162,49 @@ than silently taken:
 Not yet done from Phase 2: the settings drawer is not merged into chat.
 Settings still live on their own pages, reachable from the profile popover
 (off-nav), which is where they already lived.
+
+## Phase 3 (partial) — the entry/activation coherence fix
+
+The plan marks this mandatory, and it is the one change in the whole migration
+that fixes a bug users actually lost money's worth of signal to. Done in full;
+the rest of Phase 3 (the G1–G7 gate chain) is **not** started.
+
+**The incident.** A SELL was stored with entry 4348.27, SL 4360.78, TP1
+4316.80, TP2 4297.97, and the rule "wick pierces 4348.27, then the M15 CLOSES
+BELOW it". The rule fired, price ran through both targets, and the plan died
+EXPIRED.
+
+**The cause was not the tracker.** `recommendationStatus.ts` filled a sell on
+`candle.high >= entry`. The instant the confirming candle closes below 4348.27,
+price is below 4348.27 — and stays there all the way down. The nominal entry
+became unreachable at the exact moment its own condition came true. Nothing
+refused to store a plan whose words and whose numbers graded different things.
+
+**The fix** is `src/lib/recommendations/entrySemantics.ts` — fill semantics as
+part of the plan rather than an assumption:
+
+| entry type | fills |
+|---|---|
+| `market` | at the creation quote |
+| `limit_touch` | on a touch of `entry` — illegal with a close-based rule |
+| `confirmation_close` | **at the confirming candle's close**; the nominal level is only a trigger |
+| `retest_zone` | on a touch inside an explicit band |
+
+`validateEntryCoherence` returns every problem (not the first) so one
+corrective retry can repair a plan in a single pass. It refuses the incident's
+exact combination, plus stop/target-on-wrong-side, a retest band reaching past
+the stop, and RR measured from the real fill collapsing below the plan minimum.
+
+`TrackedRecommendation` gains `effectiveEntry` — the price the plan is graded
+on. Legacy `"limit"`/`"pending"` rows normalise to `limit_touch` at the fill
+boundary, so stored history keeps grading exactly as before.
+
+Prose is generated from structure (`describeEntry`), because the incident's
+sentence promised a fill the stored semantics never intended, and prose written
+independently of structure will always eventually drift from it.
+
+13 regression tests in `__tests__/entryCoherence.test.ts` reproduce the
+incident verbatim (wick through 4348.27 → M15 close below → run to 4316.80) and
+assert it now grades TP1, plus the mirrored buy, the retest-zone case, and that
+the original contradictory plan can no longer be constructed. Registered in CI
+as `test:entry-coherence`.
