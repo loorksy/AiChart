@@ -325,6 +325,8 @@ export const ar: Record<TranslationKey, string> = {
   "agent.account_live": "حساب LIVE",
   "agent.account_demo": "محاكاة/ديمو",
   "agent.processing": "جاري المعالجة",
+  "agent.thinking": "يفكّر",
+  "agent.trace_done": "المهام المنجزة",
   "agent.run_stages": "كيف أُنتج هذا الرد",
   "agent.stage.market_data": "بيانات السوق",
   "agent.stage.structure": "البنية السعرية",

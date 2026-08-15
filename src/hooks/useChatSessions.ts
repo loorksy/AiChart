@@ -123,6 +123,9 @@ export function useChatSessions(opts: {
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+    // A deep-linked conversation is about to hydrate — flag it immediately so
+    // the panel shows the conversation skeleton, never the hero landing.
+    if (urlChatId) setLoadingMessages(true);
     void (async () => {
       const res = await fetch("/api/agent/chats");
       const json = res.ok
@@ -150,6 +153,7 @@ export function useChatSessions(opts: {
           setActiveChatId(null);
           setActiveMessages([]);
         }
+        setLoadingMessages(false);
         setReady(true);
         return;
       }
@@ -160,6 +164,7 @@ export function useChatSessions(opts: {
           setActiveChatId(null);
           setActiveMessages([]);
         }
+        setLoadingMessages(false);
         setReady(true);
         return;
       }
@@ -169,6 +174,7 @@ export function useChatSessions(opts: {
       setActiveMessages(msgs);
       setActiveChatId(active.id);
       setPanelKey(active.id);
+      setLoadingMessages(false);
       setReady(true);
     })();
     return () => {

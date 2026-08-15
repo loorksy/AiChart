@@ -466,6 +466,34 @@ label {
   }
 }
 
+/* Claude-style run trace — shimmer header + staggered row reveal */
+@keyframes trace-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes trace-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes trace-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .animate-pulse-soft {
   animation: pulse-soft 1.6s ease-in-out infinite;
 }

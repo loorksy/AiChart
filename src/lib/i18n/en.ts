@@ -326,6 +326,8 @@ export const en = {
   "agent.account_live": "LIVE account",
   "agent.account_demo": "demo / simulation",
   "agent.processing": "Processing",
+  "agent.thinking": "Thinking",
+  "agent.trace_done": "Tasks completed",
   "agent.run_stages": "How this was produced",
   "agent.stage.market_data": "Market data",
   "agent.stage.structure": "Price structure",
