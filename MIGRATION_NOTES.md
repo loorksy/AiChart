@@ -390,3 +390,92 @@ alongside the gold-only guard test.
 tool belt (`read_candles`, `switch_timeframe`, `capture_chart`, `read_zone`,
 12-call budget), plus the doctrine/system-prompt rewrite for gold-only identity
 and first-class WAIT.
+
+## Phase 3 (continued) — the doctrine, rewritten for the product that exists
+
+### WAIT, narrowed rather than loosened
+
+The constitution still described a Forex scalping assistant whose data came
+from the operator's own MetaTrader account and which executed through MT5 after
+explicit confirmation. A stale constitution is not merely out of date: it is
+the text the model actually reads, so it keeps teaching behaviour the platform
+can no longer perform.
+
+The substantive change is WAIT. The old rule banned it outright, but what it
+was really banning was EVASION — an absent opinion dressed as analysis, and an
+operational fault dressed as a market decision. Both are still forbidden. The
+gate chain introduces a third thing that is neither: the platform declining to
+ISSUE a plan the model already decided, naming the check that refused and what
+the operator is waiting for. So the line is drawn where it belongs:
+
+> **The model may not wait. The gates may refuse.**
+
+Concretely, and all three are tested:
+
+- The synthesizer's Zod contract still offers only `buy | sell`.
+- `POST /api/agent/recommendation` still rejects `action: "wait"` from an
+  externally hosted model.
+- `doctrineGuard` gains a test that the ONLY place a visible WAIT can be born
+  is the orchestrator's `if (!gateChain.allowed)` branch. A wait produced
+  anywhere else is the old failure wearing a new name — an unattributed refusal
+  the operator cannot act on.
+
+Two rules were promoted into the constitution because they are things the model
+gets wrong when nobody tells it: the fill rule is part of the plan (a candle
+CLOSE condition can never pair with a TOUCH entry at that level), and a
+percentage may be quoted only from a calibrated record with an adequate sample.
+
+`SYSTEM.md`, its `instructions-core` block, the `mcp-core` session block, the
+onboarding bootstrap, and `systemPrompt.ts` are rewritten from one source. The
+builtin fallback in `canonicalIdentity.ts` is regenerated from the file rather
+than hand-copied, so the byte-parity test cannot drift.
+
+### The MCP execution surface, deleted
+
+Phase 1b removed the web execution layer and left the MCP catalogue advertising
+it: **28 of 60 entries** were account, execution, and approval tools. None was
+registered, so none could be called — and all of them were still described to
+any model that connected.
+
+That is not harmless. The catalogue is how a connected model learns what it can
+do: a definition advertises a capability, the model plans around it, and the
+call fails as "unknown tool" — or the model reports having done something.
+`create_recommendation`'s own description instructed the model that "open_trade
+or request_approval is the separate, explicit step that acts on it".
+
+Deleted with the definitions: the approval and account CARDS (an approval card
+renders Approve/Reject buttons wired to `respond_approval` through
+`AIC.callTool` — a control that fails in the operator's hands), the
+`assistantResponseFor` formatter map for the seven consequential tools, the
+post-call recipes that re-read broker state to prove an order opened, and the
+Arabic rules fallback telling the model to call `get_trade_readiness` before
+executing.
+
+Three guard tests were rewritten because a STRONGER invariant replaced each:
+the ≥50-tool and ≥13-widget floors were targets meetable only by keeping dead
+definitions; `cardButtons` collapses its approval-vs-execution line into "a
+card shows, it never acts"; `contractParity` inverts to "nothing on the mcp
+surface may be execution-classed".
+
+`GET /api/agent/portfolio` and `GET /api/agent/live/account` are deleted too —
+externally reachable bridge endpoints serving broker-account data from tables
+this platform no longer writes, with no caller anywhere in the repo.
+
+### Remaining Phase-1b debt, named so it is not lost
+
+The acceptance grep (`metaapi|kill.?switch|executeIntent`) is at ~155 hits,
+down from the MCP purge but not zero. What remains is web-side and falls in
+three groups:
+
+1. **Stale comments and admin/i18n strings** naming a provider that is gone.
+   Text only; no code path.
+2. **Defensive field readers** (`open_trades`, `positions`) in MCP widget
+   runtime and text fallback — shape tolerance, not instructions.
+3. **The trades/intents store surface** — `listTrades`, `listIntents`,
+   `listOpenTrades`, `getMtAccountMeta`, `todayRealizedPnlUsd` still have live
+   consumers on the Performance page, `tradeWatch.ts`, `dailySummary.ts` and
+   `agent-status`. This is the real one: the Performance surface still renders
+   broker trades and execution intents from tables nothing writes. It belongs
+   to **Phase 5** (outcome tracking & Performance), where the surface is
+   rebuilt around recommendation outcomes graded against OANDA candles, and
+   pulling that thread here would have meant rewriting Phase 5 inside Phase 3.
