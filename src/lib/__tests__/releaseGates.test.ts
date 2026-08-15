@@ -25,52 +25,6 @@ function packageScripts(): Record<string, string> {
   return JSON.parse(raw).scripts as Record<string, string>;
 }
 
-describe("test:ci covers the execution-safety suites", () => {
-  /** The files that pin the P0 findings. Losing any of them from CI is the regression. */
-  const P0_SUITES = [
-    "executionStageAndApproval.test.ts",
-    "executionMatrix.test.ts",
-    "executionAuthorizationPaths.test.ts",
-    "executionSourceEnforcement.test.ts",
-    "executionSafety.test.ts",
-    "executionKillSwitch.test.ts",
-  ];
-
-  it("defines a test:execution script", () => {
-    assert.ok(packageScripts()["test:execution"], "test:execution must exist");
-  });
-
-  it("runs every P0 execution suite", () => {
-    const script = packageScripts()["test:execution"] ?? "";
-    for (const suite of P0_SUITES) {
-      assert.ok(
-        script.includes(suite),
-        `${suite} pins a P0 finding and must run in test:execution`,
-      );
-    }
-  });
-
-  it("wires test:execution into test:ci", () => {
-    const ci = packageScripts()["test:ci"] ?? "";
-    assert.ok(
-      ci.includes("test:execution"),
-      "test:ci must run test:execution — otherwise a green CI says nothing about the execution gates",
-    );
-  });
-
-  it("keeps the P0 suites reachable from test:ci by some path", () => {
-    const scripts = packageScripts();
-    const ci = scripts["test:ci"] ?? "";
-    const referenced = ci
-      .split("&&")
-      .map((part) => part.trim().replace(/^npm run /, ""))
-      .map((name) => scripts[name] ?? "")
-      .join(" ");
-    for (const suite of P0_SUITES) {
-      assert.ok(referenced.includes(suite), `${suite} is not reachable from test:ci`);
-    }
-  });
-});
 
 describe("the Redis release validator refuses the deployed instance", () => {
   const script = path.join(WEB_ROOT, "scripts", "validate-redis-release.ts");

@@ -60,12 +60,10 @@ interface Props {
   ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
   ensureChatId?: () => Promise<string | null>;
-  voiceControl?: ReactNode;
   /** Broker link state + market setters for the composer's pair/interval row. */
   brokerConnected?: boolean;
   onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
-  voicePanel?: ReactNode;
 }
 
 /** Docked, chart-connected Smart Chart Agent chat — one visible agent. */
@@ -89,11 +87,9 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       applyDrawingMutations,
       onPersistMessage,
       ensureChatId,
-      voiceControl,
       brokerConnected,
       onSymbolChange,
       onIntervalChange,
-      voicePanel,
     },
     ref,
   ) {
@@ -178,7 +174,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         running={running}
         onSend={sendMessage}
         onCancel={cancel}
-        voiceControl={voiceControl}
         symbol={symbol}
         interval={interval}
         brokerConnected={brokerConnected}
@@ -458,7 +453,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
           )}
         </div>
 
-        {voicePanel}
         {!isHero && (
           <div className="chat-composer-fade" aria-hidden data-testid="composer-fade" />
         )}

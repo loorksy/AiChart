@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Cable, Moon, Save, Sparkles, Sun, User } from "lucide-react";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
-import { Mt5LinkCard } from "@/components/settings/Mt5LinkCard";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
 import { AgentMemoryPanel } from "@/components/settings/AgentMemoryPanel";
 
@@ -222,7 +221,6 @@ export default function SettingsClient({
 
       {tab === "integrations" && (
         <div className="space-y-4">
-          {mt5LinkEnabled && <Mt5LinkCard account={mt5Account} />}
           <McpConnectCard />
         </div>
       )}

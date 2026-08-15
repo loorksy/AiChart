@@ -1,6 +1,5 @@
 import { LandingNav } from "@/components/landing/LandingNav";
 import { LandingHero } from "@/components/landing/LandingHero";
-import { LandingPartners } from "@/components/landing/LandingPartners";
 import { LandingBenefits } from "@/components/landing/LandingBenefits";
 import { LandingHowItWorks } from "@/components/landing/LandingHowItWorks";
 import { LandingStats } from "@/components/landing/LandingStats";
@@ -29,7 +28,6 @@ export default function LandingPage() {
           → FAQ → final CTA. The remaining sections keep their relative slots. */}
       <main id="main" tabIndex={-1}>
         <LandingHero />
-        <LandingPartners />
         <LandingBenefits />
         <LandingHowItWorks />
         <LandingWorkspace />

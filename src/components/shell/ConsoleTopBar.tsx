@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NotificationCenter } from "@/components/agent/NotificationCenter";
 import { BalanceChip } from "@/components/shell/BalanceChip";
-import { TopBarAccountStatus } from "@/components/shell/TopBarAccountStatus";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
@@ -136,7 +135,6 @@ export function ConsoleTopBar({
             "justify-end",
           )}
         >
-          {showAccountStatus && <TopBarAccountStatus />}
           {showBalance && <BalanceChip />}
           {showChartToggle && (
             <button

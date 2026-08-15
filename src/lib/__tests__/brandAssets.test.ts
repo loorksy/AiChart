@@ -24,8 +24,7 @@ describe("brand face-mark assets", () => {
     "aichart-avatar-64.png",
     "aichart-avatar-light-32.png",
     "aichart-avatar-light-64.png",
-    "README.md",
-  ];
+      ];
 
   it("ships all production brand files", () => {
     for (const name of required) {

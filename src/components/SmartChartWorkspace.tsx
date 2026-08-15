@@ -43,10 +43,7 @@ import {
   SmartChartAgentPanel,
   type SmartChartAgentHandle,
 } from "@/components/agent/SmartChartAgentPanel";
-import { AgentVoiceButton } from "@/components/agent/AgentVoiceButton";
-import { AgentVoicePanel } from "@/components/agent/AgentVoicePanel";
 import { useChatSessions } from "@/hooks/useChatSessions";
-import { useAgentVoiceSession } from "@/hooks/useAgentVoiceSession";
 import { useMe } from "@/hooks/useMe";
 import { useLocale } from "@/hooks/useLocale";
 import { useTheme } from "@/components/ThemeProvider";
@@ -62,7 +59,6 @@ import {
   type DesktopLayout,
 } from "@/lib/layout/chatLayout";
 import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
-import { useAccountCapital } from "@/hooks/useAccountCapital";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 import { normalizeInterval } from "@/lib/intervals";
 import { clearAgentDrawings } from "@/lib/agent/drawings/drawingOwnership";
@@ -220,7 +216,6 @@ function SmartChartWorkspaceInner({
   const [forexOnline, setForexOnline] = useState(false);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
 
-  const capital = useAccountCapital(market);
 
   const hydrateSnapshot = useMemo<ChartHydrateSnapshot | null>(
     () => (initialState ? initialState : null),
@@ -627,26 +622,6 @@ function SmartChartWorkspaceInner({
     return () => window.removeEventListener("aichart:new-chat", create);
   }, [chat.newChat]);
 
-  // Live voice conversation. The realtime model is only the speech interface —
-  // every final transcript is routed through the SAME agent flow as typed text
-  // (agentRef.sendMessage with inputMode "voice"), and the agent's public final
-  // answer is spoken back. Voice never bypasses the agent's authority.
-  const me = useMe();
-  const voice = useAgentVoiceSession({
-    chatId: chat.activeChatId ?? undefined,
-    locale,
-    symbol,
-    interval,
-    userId: me.data?.user.id ?? 0,
-    enabled: chatEnabled,
-    sendAgentMessage: (text) =>
-      agentRef.current?.sendMessage(text, { inputMode: "voice" }),
-  });
-  // Stop any live voice session when switching chats (rebind safely).
-  useEffect(() => {
-    if (voice.active) void voice.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.activeChatId]);
 
   // Dev/test-only read-only debug bridge for Playwright UI-sync assertions.
   // Refreshes each render so the getter closes over the latest values; never
@@ -677,7 +652,6 @@ function SmartChartWorkspaceInner({
         locale,
         chartSheetOpen,
         desktopLayout,
-        voiceStatus: voice.status,
         lastFinalResult: publicFinalResult(lastFinalResultRef.current),
       };
     });
@@ -938,11 +912,8 @@ function SmartChartWorkspaceInner({
               onSymbolChange={handleSymbolChange}
               onIntervalChange={handleIntervalChange}
               onResult={handleAgentResult}
-              onVoiceFinal={voice.handleAgentFinal}
               onPersistMessage={chat.persistMessage}
               ensureChatId={chat.ensureChat}
-              voiceControl={<AgentVoiceButton voice={voice} disabled={false} />}
-              voicePanel={<AgentVoicePanel voice={voice} />}
             />
           </div>
         )}

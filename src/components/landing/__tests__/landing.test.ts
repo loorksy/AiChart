@@ -27,7 +27,6 @@ describe("landing redesign", () => {
   test("canonical structure mounts redesigned sections without candlestick backdrop", () => {
     const page = read("components/landing/LandingPage.tsx");
     assert.match(page, /LandingHero/);
-    assert.match(page, /LandingPartners/);
     assert.match(page, /LandingBenefits/);
     assert.match(page, /LandingHowItWorks/);
     assert.match(page, /LandingStats/);
