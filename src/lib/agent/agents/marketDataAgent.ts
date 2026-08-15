@@ -1,4 +1,5 @@
 import type { AgentRunContext, AgentChartContext } from "../types";
+import { DATA_SYMBOL } from "@/lib/gold";
 import type { CoverageAnalysisKind } from "../dataQualityPolicy";
 import {
   buildAgentMarketContext,
@@ -13,7 +14,7 @@ export async function runMarketDataAgent(
     analysisKind?: CoverageAnalysisKind;
   },
 ): Promise<AgentMarketContext> {
-  const symbol = input.symbol ?? "EURUSD";
+  const symbol = DATA_SYMBOL;
   const interval = input.interval ?? "15m";
 
   ctx.emitActivity({

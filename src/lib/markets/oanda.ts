@@ -1,15 +1,17 @@
 /**
- * OANDA v20 market-data adapter — the platform's sole market-data source.
- * One platform-owned OANDA account/token serves quotes, candles, and the
- * instrument universe to every user; no end user needs their own OANDA
- * account or credentials to receive data, charts, or recommendations.
- * Trade execution remains exclusively on the user's own linked MetaApi/MT5
- * account (see src/lib/execution.ts) — OANDA here is a data source only.
+ * OANDA v20 market-data adapter — the platform's sole market-data source,
+ * for its sole instrument (gold, see lib/gold.ts).
+ *
+ * One platform-owned OANDA account/token serves quotes and candles to every
+ * user; no end user links an account for anything. This platform issues
+ * recommendations and never places orders, so OANDA is read-only here: no
+ * order endpoints are called and no account of the user's is ever touched.
  */
 import { httpTimeoutMs } from "@/lib/externalFetch";
 import { resilientFetch } from "@/lib/providerResilience";
 import { barDurationMs } from "@/lib/intervals";
 import { getPlatformValue } from "@/lib/platformConfig";
+import { OANDA_INSTRUMENT, isGold } from "@/lib/gold";
 
 /** How far back the chart may paginate (10 years). */
 const HISTORY_LOOKBACK_MS = 10 * 365.25 * 24 * 60 * 60 * 1000;
@@ -46,14 +48,13 @@ export function oandaConfigured(): boolean {
   return Boolean(token());
 }
 
-/** AiChart symbol → OANDA instrument: EURUSD→EUR_USD, XAUUSD→XAU_USD, BTCUSD→BTC_USD, EUR_USD→EUR_USD. */
+/**
+ * The one symbol translation this platform performs: canonical XAUUSD → the
+ * OANDA v20 spelling. Any other input returns null — a non-gold instrument
+ * has no OANDA identity here because the platform does not cover one.
+ */
 export function toOandaInstrument(symbol: string): string | null {
-  const s = symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (symbol.includes("_") && /^[A-Z]{3}_[A-Z]{3}$/.test(symbol.toUpperCase())) {
-    return symbol.toUpperCase();
-  }
-  if (/^[A-Z]{6}$/.test(s)) return `${s.slice(0, 3)}_${s.slice(3)}`;
-  return null;
+  return isGold(symbol) ? OANDA_INSTRUMENT : null;
 }
 
 /** OANDA instrument → AiChart symbol: EUR_USD → EURUSD. */

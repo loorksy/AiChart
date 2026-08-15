@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DATA_SYMBOL } from "@/lib/gold";
 import {
   getOptionalUser,
   checkRateLimit,
@@ -29,14 +30,8 @@ export async function GET(req: NextRequest) {
         { status: 429 },
       );
     }
-    /*
-     * Case preserved end to end: a broker answers to its OWN spelling, and
-     * Exness spells its symbols with a lowercase suffix — XAUUSDm, EURUSDm.
-     * Uppercasing turned XAUUSDm into XAUUSDM, and MetaApi replied "Symbol
-     * XAUUSDM does not exist" after ~75s of retries. The character filter
-     * still runs; it keeps `_` because broker suffixes use it.
-     */
-    const symbolRaw = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
+    // Any spelling a stale client sends resolves to gold downstream.
+    const symbolRaw = (req.nextUrl.searchParams.get("symbol") || DATA_SYMBOL)
       .trim()
       .replace(/[^A-Za-z0-9._]/g, "");
     const intervalRaw = req.nextUrl.searchParams.get("interval") || "1h";

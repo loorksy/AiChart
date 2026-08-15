@@ -25,7 +25,7 @@
  */
 import { forexCanonicalKey } from "./forexCanonical";
 
-export type TradingClass = "fx" | "metal" | "crypto" | "unknown";
+export type TradingClass = "metal";
 
 export interface TradingSessionStatus {
   isOpen: boolean;
@@ -85,54 +85,31 @@ function nyWallHour(ms: number): NyWallHour {
   return wall;
 }
 
-/** Classify an instrument for session rules. Unknown behaves like fx (conservative). */
-export function resolveTradingClass(symbol: string): TradingClass {
-  const canonical = forexCanonicalKey(symbol);
-  if (!canonical) return "unknown";
-  if (canonical.startsWith("XAU") || canonical.startsWith("XAG")) return "metal";
-  if (/^(BTC|ETH|SOL|XRP|DOGE|ADA|LTC|BNB)/.test(canonical)) return "crypto";
-  if (/^[A-Z]{6}$/.test(canonical)) return "fx";
-  return "unknown";
-}
-
-/** Optional FX daily-break minutes after 17:00 NY (some brokers halt fx too). */
-function fxBreakMinutes(): number {
-  const raw = Number(process.env.TRADING_CALENDAR_FX_BREAK_MINUTES);
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
-  return Math.min(Math.floor(raw), 60);
+/**
+ * Classify an instrument for session rules. The platform trades gold alone,
+ * so this is always "metal" — kept as a function because the session rules
+ * below branch on the class, and naming the class keeps those rules readable.
+ */
+export function resolveTradingClass(_symbol: string): TradingClass {
+  return "metal";
 }
 
 /**
- * Is the instrument's market open at this instant?
+ * Is gold's market open at this instant?
  *
- * fx:    Sun 17:00 NY → Fri 17:00 NY, optional env-configured break.
- * metal: Sun 18:00 NY → Fri 17:00 NY, halted [17:00, 18:00) NY Mon–Thu.
- * crypto: always open.
+ * Metals session: Sun 18:00 NY → Fri 17:00 NY, halted [17:00, 18:00) NY
+ * Mon–Thu for the daily maintenance break.
  */
-export function isMarketOpenAt(symbol: string, ms: number): boolean {
-  const tradingClass = resolveTradingClass(symbol);
-  if (tradingClass === "crypto") return true;
-
+export function isMarketOpenAt(_symbol: string, ms: number): boolean {
   const { weekday, hour } = nyWallHour(ms);
 
-  // Weekend shared by fx and metals.
+  // Weekend.
   if (weekday === 6) return false;
   if (weekday === 5 && hour >= WEEK_CLOSE_HOUR_NY) return false;
 
-  if (tradingClass === "metal") {
-    if (weekday === 0 && hour < METAL_SUNDAY_OPEN_HOUR_NY) return false;
-    // Daily maintenance break Mon–Thu (Fri ≥17 already closed above).
-    if (hour === METAL_BREAK_START_HOUR_NY) return false;
-    return true;
-  }
-
-  // fx / unknown
-  if (weekday === 0 && hour < WEEK_OPEN_HOUR_NY) return false;
-  const breakMinutes = fxBreakMinutes();
-  if (breakMinutes > 0 && hour === WEEK_CLOSE_HOUR_NY && weekday >= 1) {
-    const minute = new Date(ms).getUTCMinutes(); // NY offsets are whole hours
-    if (minute < breakMinutes) return false;
-  }
+  if (weekday === 0 && hour < METAL_SUNDAY_OPEN_HOUR_NY) return false;
+  // Daily maintenance break Mon–Thu (Fri ≥17 already closed above).
+  if (hour === METAL_BREAK_START_HOUR_NY) return false;
   return true;
 }
 
@@ -145,8 +122,7 @@ export function isMarketOpenAt(symbol: string, ms: number): boolean {
  * express that — the 24h step drifts an hour across each DST transition and
  * the old fixed-UTC check then declared a weekly phantom gap.
  */
-export function isExpectedDailyBarOpen(symbol: string, openMs: number): boolean {
-  if (resolveTradingClass(symbol) === "crypto") return true;
+export function isExpectedDailyBarOpen(_symbol: string, openMs: number): boolean {
   const { weekday, hour } = nyWallHour(openMs);
   return hour === WEEK_OPEN_HOUR_NY && weekday >= 0 && weekday <= 4;
 }

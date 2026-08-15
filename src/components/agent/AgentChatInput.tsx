@@ -7,10 +7,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { useTradeMode } from "@/hooks/useTradeMode";
 import { ComposerMoreMenu } from "@/components/agent/ComposerMoreMenu";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
-import {
-  ComposerIntervalPicker,
-  ComposerSymbolPicker,
-} from "@/components/agent/ComposerMarketPickers";
+import { ComposerIntervalPicker } from "@/components/agent/ComposerMarketPickers";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
 const MAX_COMPOSER_HEIGHT = 148;
@@ -103,18 +100,10 @@ export function AgentChatInput({
 
         <div className="flex items-center gap-1">
           {/*
-            One row for what governs the next turn: which chart is up, how much
-            of the account is at stake, and which model answers. All three used
-            to live somewhere else — a floating switcher, a settings section, and
-            a differently-shaped dropdown.
+            One row for what governs the next turn: which timeframe is up and
+            which model answers. There is no instrument picker — the platform
+            analyses gold and only gold.
           */}
-          {symbol && onSymbolChange && (
-            <ComposerSymbolPicker
-              symbol={symbol}
-              brokerConnected={brokerConnected}
-              onSelect={onSymbolChange}
-            />
-          )}
           {interval && onIntervalChange && (
             <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
           )}

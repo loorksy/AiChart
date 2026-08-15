@@ -1,44 +1,36 @@
 import { DEFAULT_MARKET } from "../marketPolicy";
 import type { MarketType, ResolvedSymbol } from "./types";
-import { getForexBackend } from "../brokers/forexBackend";
+import { DATA_SYMBOL, DISPLAY_NAME_AR, coerceToGold } from "@/lib/gold";
 
 /**
- * Normalizes a forex symbol (e.g. "EUR/USD" → "EURUSD", "xauusd" → "XAUUSD").
- * Broker-specific suffixes (EURUSDm, EURUSD.pro) are preserved as-is after the
- * separators are stripped, since the broker matches against its own symbols.
+ * Symbol resolution on a single-instrument platform.
+ *
+ * Every query resolves to gold. This is the permissive (UI-facing) resolver:
+ * a stale bookmark, a cached client symbol, or free text the user typed all
+ * land on the one instrument that exists rather than erroring. Server-side
+ * data paths use `requireGold` from lib/gold.ts instead, which throws.
  */
-function resolveForex(query: string): ResolvedSymbol {
-  const trimmed = query.trim();
-  if (!trimmed) {
-    return { raw: query, symbol: "EURUSD", market: "forex", displayName: "EUR/USD" };
-  }
-  const sym = trimmed.replace(/[\s/_-]+/g, "");
-  const symUpper = sym.toUpperCase();
-  // Pretty display for the canonical 6-letter pairs (e.g. EURUSD → EUR/USD).
-  const display =
-    /^[A-Za-z]{6}$/.test(sym) ? `${symUpper.slice(0, 3)}/${symUpper.slice(3)}` : sym;
-  return { raw: query, symbol: sym, market: "forex", displayName: display };
-}
-
-/** Normalizes user input to a broker symbol for forex. */
 export function resolveSymbol(
   query: string,
   market: MarketType = DEFAULT_MARKET,
 ): ResolvedSymbol {
   void market;
-  return resolveForex(query);
+  return {
+    raw: query,
+    symbol: coerceToGold(query),
+    market: "forex",
+    displayName: DISPLAY_NAME_AR,
+  };
 }
 
-/** Intent/recommendation symbol: preserve broker suffix case for forex. */
+/** Recommendation/intent symbol — always the canonical gold key. */
 export function normalizeIntentSymbol(
-  symbol: string,
+  _symbol: string,
   _market: MarketType = DEFAULT_MARKET,
 ): string {
-  return symbol.trim().replace(/[\s/_-]+/g, "");
+  return DATA_SYMBOL;
 }
 
 export function marketLabel(_market: MarketType = DEFAULT_MARKET): string {
-  return getForexBackend() === "metaapi"
-    ? "فوركس (MetaTrader · MetaApi)"
-    : "فوركس (MetaTrader)";
+  return "الذهب · OANDA";
 }

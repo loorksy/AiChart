@@ -1,19 +1,15 @@
 /**
- * OANDA streaming pricing — one shared platform-level connection covering
- * the entire fixed 20-instrument universe (markets/forexInstruments.ts),
- * fanned out to however many SSE listeners are open per symbol.
+ * OANDA streaming pricing — one shared, platform-level connection for gold,
+ * fanned out to however many SSE listeners are open.
  *
- * Unlike the retired MetaApi per-user stream, OANDA's v20 streaming endpoint
- * takes its instrument list once at connect time — it has no
- * subscribe/unsubscribe-to-a-symbol call. Because the universe here is fixed
- * and small, one long-lived connection for all 20 symbols is simpler and
- * more robust than reopening a connection per symbol change, and it costs
- * the same one OANDA streaming connection regardless of how many users (or
- * how many symbols) are being watched at once.
+ * OANDA's v20 streaming endpoint takes its instrument list once at connect
+ * time (no per-symbol subscribe/unsubscribe). With a single instrument that
+ * is a perfect fit: one long-lived connection serves every user and every
+ * open chart at once.
  */
 import { oandaAccountId, oandaBaseUrl, toOandaInstrument, fromOandaInstrument } from "./oanda";
 import { getPlatformValue } from "@/lib/platformConfig";
-import { TRADABLE_SYMBOLS } from "./forexInstruments";
+import { DATA_SYMBOL } from "@/lib/gold";
 
 export type StreamTick = {
   symbol: string;
@@ -67,9 +63,9 @@ async function runStream(): Promise<void> {
   const apiToken = token();
   if (!accountId || !apiToken) return;
 
-  const instruments = TRADABLE_SYMBOLS
-    .map((s) => toOandaInstrument(s))
-    .filter((i): i is string => i != null);
+  const instruments = [toOandaInstrument(DATA_SYMBOL)].filter(
+    (i): i is string => i != null,
+  );
   const url = `${streamBaseUrl()}/v3/accounts/${accountId}/pricing/stream?instruments=${instruments.join("%2C")}`;
 
   while (!stopRequested && symbolListeners.size > 0) {
@@ -133,9 +129,8 @@ function ensureStreamRunning(): void {
 }
 
 /**
- * Subscribe to live ticks for a symbol (must be one of the fixed 20). Starts
- * the shared platform stream on first subscriber, tears it down when the
- * last subscriber across all symbols disconnects.
+ * Subscribe to live gold ticks. Starts the shared platform stream on the
+ * first subscriber and tears it down when the last one disconnects.
  */
 export function subscribeOandaSymbolTicks(input: {
   symbol: string;

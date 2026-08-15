@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { describe, it } from "node:test";
 import {
   getSessionStatus,
   isExpectedDailyBarOpen,
@@ -10,15 +10,12 @@ import {
 
 // 2026 US DST: begins Sunday March 8, ends Sunday November 1.
 const ms = (iso: string) => Date.parse(iso);
+const GOLD = "XAUUSD";
 
 describe("resolveTradingClass", () => {
-  it("classifies metals, fx, and crypto; suffixes are stripped first", () => {
+  it("is always metal — gold is the platform's only instrument", () => {
     assert.equal(resolveTradingClass("XAUUSD"), "metal");
     assert.equal(resolveTradingClass("XAUUSDm"), "metal");
-    assert.equal(resolveTradingClass("XAGUSD.pro"), "metal");
-    assert.equal(resolveTradingClass("EURUSD"), "fx");
-    assert.equal(resolveTradingClass("GBPJPY"), "fx");
-    assert.equal(resolveTradingClass("BTCUSD"), "crypto");
   });
 });
 
@@ -37,43 +34,32 @@ describe("NY wall time (DST-exact)", () => {
   });
 });
 
-describe("fx week boundaries", () => {
+describe("gold week boundaries", () => {
   it("closes Friday 17:00 NY in summer (21:00 UTC)", () => {
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-07-24T20:59:00Z")), true);
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-07-24T21:00:00Z")), false);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-24T20:59:00Z")), true);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-24T21:00:00Z")), false);
   });
 
   it("closes Friday 17:00 NY in winter (22:00 UTC)", () => {
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-01-23T21:30:00Z")), true);
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-01-23T22:00:00Z")), false);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-01-23T21:30:00Z")), true);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-01-23T22:00:00Z")), false);
   });
 
-  it("opens Sunday 17:00 NY in both regimes", () => {
-    // Summer Sunday: 20:59 UTC closed, 21:00 UTC open.
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-07-26T20:59:00Z")), false);
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-07-26T21:00:00Z")), true);
-    // Winter Sunday: 21:59 UTC closed, 22:00 UTC open.
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-01-25T21:59:00Z")), false);
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-01-25T22:00:00Z")), true);
-  });
-
-  it("Saturday is closed all day; fx has no weekday break by default", () => {
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-07-25T12:00:00Z")), false);
-    // Tuesday 17:30 NY — fx stays open through the metals break hour.
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-07-21T21:30:00Z")), true);
+  it("Saturday is closed all day", () => {
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-25T12:00:00Z")), false);
   });
 });
 
 describe("metals daily maintenance break", () => {
   it("gold halts [17:00, 18:00) NY on weekdays — the phantom-gap fix", () => {
     // Tuesday in summer: 21:00–22:00 UTC is the break.
-    assert.equal(isMarketOpenAt("XAUUSD", ms("2026-07-21T20:59:00Z")), true);
-    assert.equal(isMarketOpenAt("XAUUSD", ms("2026-07-21T21:00:00Z")), false);
-    assert.equal(isMarketOpenAt("XAUUSD", ms("2026-07-21T21:45:00Z")), false);
-    assert.equal(isMarketOpenAt("XAUUSD", ms("2026-07-21T22:00:00Z")), true);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-21T20:59:00Z")), true);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-21T21:00:00Z")), false);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-21T21:45:00Z")), false);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-21T22:00:00Z")), true);
     // Same break in winter lands 22:00–23:00 UTC.
-    assert.equal(isMarketOpenAt("XAUUSD", ms("2026-01-20T22:30:00Z")), false);
-    assert.equal(isMarketOpenAt("XAUUSD", ms("2026-01-20T23:00:00Z")), true);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-01-20T22:30:00Z")), false);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-01-20T23:00:00Z")), true);
   });
 
   it("every 15m bar of the gold break hour is expected-closed (4 bars/day)", () => {
@@ -81,18 +67,14 @@ describe("metals daily maintenance break", () => {
       ms(`2026-07-21T${t}:00Z`),
     );
     for (const bar of breakBars) {
-      assert.equal(isMarketOpenAt("XAUUSD", bar), false);
+      assert.equal(isMarketOpenAt(GOLD, bar), false);
     }
   });
 
-  it("gold opens Sunday 18:00 NY, one hour after fx", () => {
-    assert.equal(isMarketOpenAt("XAUUSD", ms("2026-07-26T21:30:00Z")), false);
-    assert.equal(isMarketOpenAt("XAUUSD", ms("2026-07-26T22:00:00Z")), true);
-  });
-
-  it("crypto never closes", () => {
-    assert.equal(isMarketOpenAt("BTCUSD", ms("2026-07-25T12:00:00Z")), true);
-    assert.equal(isMarketOpenAt("BTCUSD", ms("2026-07-21T21:30:00Z")), true);
+  it("gold opens Sunday 18:00 NY — an hour later than the fx week open", () => {
+    // 21:30 UTC is 17:30 NY: fx would be open, gold is not yet.
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-26T21:30:00Z")), false);
+    assert.equal(isMarketOpenAt(GOLD, ms("2026-07-26T22:00:00Z")), true);
   });
 });
 
@@ -134,32 +116,21 @@ describe("expected daily bars (17:00 NY alignment)", () => {
 
 describe("session status reasons", () => {
   it("keeps the operator-facing Arabic reasons", () => {
-    const saturday = getSessionStatus("EURUSD", new Date(ms("2026-07-25T12:00:00Z")));
+    const saturday = getSessionStatus(GOLD, new Date(ms("2026-07-25T12:00:00Z")));
     assert.equal(saturday.isOpen, false);
     assert.match(saturday.reason, /السبت/);
 
-    const fridayClose = getSessionStatus("EURUSD", new Date(ms("2026-07-24T22:00:00Z")));
+    const fridayClose = getSessionStatus(GOLD, new Date(ms("2026-07-24T22:00:00Z")));
     assert.equal(fridayClose.isOpen, false);
     assert.match(fridayClose.reason, /الجمعة/);
 
-    const goldBreak = getSessionStatus("XAUUSD", new Date(ms("2026-07-21T21:30:00Z")));
+    const goldBreak = getSessionStatus(GOLD, new Date(ms("2026-07-21T21:30:00Z")));
     assert.equal(goldBreak.isOpen, false);
     assert.match(goldBreak.reason, /الصيانة/);
 
-    const open = getSessionStatus("EURUSD", new Date(ms("2026-07-21T21:30:00Z")));
+    const open = getSessionStatus(GOLD, new Date(ms("2026-07-21T22:30:00Z")));
     assert.equal(open.isOpen, true);
   });
 });
 
-describe("optional fx break via env", () => {
-  afterEach(() => {
-    delete process.env.TRADING_CALENDAR_FX_BREAK_MINUTES;
-  });
 
-  it("closes fx for the configured minutes after 17:00 NY", () => {
-    process.env.TRADING_CALENDAR_FX_BREAK_MINUTES = "5";
-    // Tuesday 17:02 NY (summer) → closed; 17:06 NY → open.
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-07-21T21:02:00Z")), false);
-    assert.equal(isMarketOpenAt("EURUSD", ms("2026-07-21T21:06:00Z")), true);
-  });
-});
