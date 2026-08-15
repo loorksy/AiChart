@@ -72,15 +72,27 @@ class AdminRepository {
       });
 
   /// Manual plan activation — Stripe is not wired up, so the admin grants the
-  /// subscription directly (tier is always "full" on this platform).
+  /// plan directly. Access is governed by the ENTITLEMENT layer
+  /// (`user_entitlements.plan_status`), not the `subscriptions` table, so the
+  /// entitlement activation must come first; the billing grant afterwards is
+  /// the revenue/credits bookkeeping (gift months are $0 revenue).
   Future<void> activatePlan(
-          {required int userId, required int months, required bool gift}) =>
-      api.sendJson('POST', '/api/admin/billing/subscription', {
-        'user_id': userId,
-        'tier': 'full',
-        'months': months,
-        'gift': gift,
-      });
+      {required int userId, required int months, required bool gift}) async {
+    final expiresAt = DateTime.now()
+        .toUtc()
+        .add(Duration(days: months * 30))
+        .toIso8601String();
+    await api.sendJson('POST', '/api/admin/subscriptions/$userId', {
+      'action': 'activate',
+      'expiresAt': expiresAt,
+    });
+    await api.sendJson('POST', '/api/admin/billing/subscription', {
+      'user_id': userId,
+      'tier': 'full',
+      'months': months,
+      'gift': gift,
+    });
+  }
 
   Future<void> setSubscriptionAction(int userId, String action,
           {String? note}) =>
