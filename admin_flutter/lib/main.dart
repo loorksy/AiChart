@@ -49,20 +49,6 @@ class _LonoraAdminAppState extends State<LonoraAdminApp> {
 
   void _onLoggedIn(SessionUser user) {
     setState(() => _user = user);
-    // The login response has no admin_permissions — refresh from /api/me so
-    // permission-gated navigation (e.g. the Admins tab) appears immediately.
-    void refresh() async {
-      try {
-        final full = await repo.currentUser();
-        if (mounted && full != null && full.role == 'admin') {
-          setState(() => _user = full);
-        }
-      } catch (_) {
-        // Navigation stays permission-trimmed; APIs re-check anyway.
-      }
-    }
-
-    refresh();
   }
 
   Future<void> _onLogout() async {

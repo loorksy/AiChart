@@ -35,6 +35,17 @@ void main() {
     expect(field.value, null);
   });
 
+  test('session user keeps admin_permissions from /api/me or login', () {
+    final user = SessionUser.fromJson({
+      'id': 1,
+      'email': 'boss@t.local',
+      'role': 'admin',
+      'status': 'active',
+    }, permissions: ['users_read', 'roles_write']);
+    expect(user.adminPermissions, contains('roles_write'));
+    expect(user.role, 'admin');
+  });
+
   test('overview handles null kpis (no profit_read permission)', () {
     final o = OverviewResponse.fromJson({
       'ok': true,
@@ -52,7 +63,17 @@ void main() {
     const l = L(Locale('ar'));
     const en = L(Locale('en'));
     for (final key in [
-      'appTitle', 'login', 'overview', 'users', 'billing', 'config', 'support'
+      'appTitle',
+      'login',
+      'overview',
+      'users',
+      'billing',
+      'config',
+      'support',
+      'admins',
+      'addAdmin',
+      'demoteAdmin',
+      'role_owner',
     ]) {
       expect(l.t(key), isNot(key), reason: 'ar missing $key');
       expect(en.t(key), isNot(key), reason: 'en missing $key');

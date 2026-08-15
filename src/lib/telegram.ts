@@ -12,14 +12,26 @@ import {
 
 const API = "https://api.telegram.org";
 
+/**
+ * Telegram deep links are `t.me/<username>` — a pasted leading @ becomes
+ * `t.me/@bot` and every consumer (login widget, link card, start payload)
+ * breaks. Always strip before returning a username to a caller.
+ */
+export function normalizeBotUsername(
+  raw: string | null | undefined,
+): string | null {
+  const cleaned = raw?.trim().replace(/^@+/, "") ?? "";
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 export function isTelegramConfigured(): boolean {
-  return Boolean(getPlatformValue("TELEGRAM_BOT_TOKEN"));
+  return Boolean(getPlatformValue("TELEGRAM_BOT_TOKEN")?.trim());
 }
 
 /** Loads DB-backed platform config then checks for a bot token. */
 export async function isTelegramConfiguredAsync(): Promise<boolean> {
   await refreshPlatformConfigCache();
-  return Boolean(await getPlatformValueAsync("TELEGRAM_BOT_TOKEN"));
+  return Boolean((await getPlatformValueAsync("TELEGRAM_BOT_TOKEN"))?.trim());
 }
 
 /** Resolves Telegram Login Widget props from DB / env (admin panel values). */
@@ -33,18 +45,17 @@ export async function getTelegramLoginConfig(): Promise<{
     return { telegramConfigured: false, botUsername: null };
   }
 
-  const configuredUsername = (
-    await getPlatformValueAsync("TELEGRAM_BOT_USERNAME")
-  )
-    // Admins paste the handle as "@bot" more often than "bot"; a leading @
-    // breaks every consumer that builds t.me/<username> deep links.
-    ?.trim()
-    .replace(/^@+/, "");
+  const configuredUsername = normalizeBotUsername(
+    await getPlatformValueAsync("TELEGRAM_BOT_USERNAME"),
+  );
   if (configuredUsername) {
     return { telegramConfigured: true, botUsername: configuredUsername };
   }
   if (cachedUsername) {
-    return { telegramConfigured: true, botUsername: cachedUsername };
+    return {
+      telegramConfigured: true,
+      botUsername: normalizeBotUsername(cachedUsername),
+    };
   }
 
   try {

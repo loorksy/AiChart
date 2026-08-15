@@ -11,7 +11,22 @@ class AdminRepository {
   Future<SessionUser> login(String email, String password) async {
     final j = await api
         .sendJson('POST', '/api/auth/login', {'email': email, 'password': password});
-    return SessionUser.fromJson(j['user'] as Map<String, dynamic>);
+    final token = j['token']?.toString();
+    if (token != null && token.isNotEmpty) {
+      api.bearerToken = token;
+    }
+    final permissions = ((j['admin_permissions'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
+    var user = SessionUser.fromJson(j['user'] as Map<String, dynamic>,
+        permissions: permissions);
+    // Older servers omit admin_permissions on login — fill from /api/me
+    // before the shell renders so the Admins tab is not raced away.
+    if (user.role == 'admin' && user.adminPermissions.isEmpty) {
+      final full = await currentUser();
+      if (full != null) user = full;
+    }
+    return user;
   }
 
   /// Returns null when there is no session (401) instead of throwing.
@@ -29,7 +44,13 @@ class AdminRepository {
     }
   }
 
-  Future<void> logout() => api.sendJson('POST', '/api/auth/logout', const {});
+  Future<void> logout() async {
+    try {
+      await api.sendJson('POST', '/api/auth/logout', const {});
+    } finally {
+      api.bearerToken = null;
+    }
+  }
 
   // ── Overview / health ───────────────────────────────────────────
   Future<OverviewResponse> overview({int days = 30}) async {

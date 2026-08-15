@@ -100,18 +100,31 @@ class _AdminShellState extends State<AdminShell> {
         appBar: appBar,
         body: Row(
           children: [
-            NavigationRail(
-              selectedIndex: _index,
-              onDestinationSelected: (i) => setState(() => _index = i),
-              labelType: NavigationRailLabelType.all,
-              destinations: [
-                for (final d in destinations)
-                  NavigationRailDestination(
-                    icon: Icon(d.$1),
-                    selectedIcon: Icon(d.$2),
-                    label: Text(d.$3),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints:
+                        BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: NavigationRail(
+                        selectedIndex: _index,
+                        onDestinationSelected: (i) =>
+                            setState(() => _index = i),
+                        labelType: NavigationRailLabelType.all,
+                        destinations: [
+                          for (final d in destinations)
+                            NavigationRailDestination(
+                              icon: Icon(d.$1),
+                              selectedIcon: Icon(d.$2),
+                              label: Text(d.$3),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-              ],
+                );
+              },
             ),
             const VerticalDivider(width: 1),
             Expanded(child: body),
