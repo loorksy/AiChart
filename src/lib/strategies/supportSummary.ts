@@ -17,6 +17,8 @@
  * strategy is labelled "unavailable" and goes out exactly the same.
  */
 import { query, queryOne } from "@/lib/db";
+import { buildEvidenceCard, type EvidenceCard } from "@/lib/agent/evidenceCard";
+import type { StrategyDeploymentState } from "./evidence";
 import { canonicalStrategySymbol, canonicalStrategyTimeframe } from "./matchingKeys";
 
 export type SupportLevel = "strong" | "moderate" | "weak" | "unavailable";
@@ -186,6 +188,123 @@ export async function getStatisticalSupport(input: {
         row.backtest_win_rate == null ? null : Number(row.backtest_win_rate),
     })),
   };
+}
+
+/**
+ * The evidence card behind the answer.
+ *
+ * `AgentResult.evidenceCard` has been declared in the types and RENDERED by
+ * `SmartChartAgentPanel` for as long as both have existed, and `buildEvidenceCard`
+ * had no caller anywhere outside its own test — so the field was never assigned
+ * and the card could never appear. The operator saw a confidence number and the
+ * factory's validated history stayed invisible, which is the exact failure
+ * `evidenceCard.ts` was written to fix.
+ *
+ * This is the missing lookup. It reads the same deployments `getStatisticalSupport`
+ * grades, plus the two backtest columns the card needs that the grade does not:
+ * the profit factor and the validation blob holding the walk-forward verdict.
+ *
+ * Returns null rather than an empty card when nothing matches — a card that
+ * renders zeros looks like a strategy that lost, not like one that was never
+ * found.
+ */
+export async function getEvidenceCard(input: {
+  userId?: number;
+  symbol: string;
+  timeframe: string;
+}): Promise<EvidenceCard | null> {
+  const symbol = canonicalStrategySymbol(input.symbol);
+  const timeframe = canonicalStrategyTimeframe(input.timeframe) ?? input.timeframe;
+
+  // An INNER join, unlike the grade's LEFT join: a card with no backtest behind
+  // it has no trade count, no walk-forward verdict and no profit factor — that
+  // is not evidence, it is a heading.
+  const columns = `d.strategy_id, d.state, d.calibrated_confidence, d.confidence_low,
+                   d.confidence_high, d.live_sample_size, d.live_win_rate, d.updated_at,
+                   b.trade_count, b.win_rate, b.profit_factor, b.validation_json`;
+  const where = `d.symbol = ? AND d.timeframe = ? AND d.state != 'suspended'`;
+
+  interface CardRow {
+    strategy_id: string;
+    state: string;
+    calibrated_confidence: number;
+    confidence_low: number;
+    confidence_high: number;
+    live_sample_size: number;
+    live_win_rate: number | null;
+    trade_count: number | null;
+    win_rate: number | null;
+    profit_factor: number | null;
+    validation_json: string | null;
+  }
+
+  // Same two-step as the grade, and for the same reason: the pipeline writes
+  // per-user rows under one configured user, so scoping to the asker alone
+  // showed every other operator nothing.
+  let rows: CardRow[] =
+    input.userId == null
+      ? []
+      : await query<CardRow>(
+          `SELECT ${columns} FROM strategy_deployments d
+             JOIN strategy_backtests b ON b.id = d.backtest_id
+            WHERE d.user_id = ? AND ${where}
+            ORDER BY d.updated_at DESC`,
+          [input.userId, symbol, timeframe],
+        ).catch(() => []);
+  if (!rows.length) {
+    rows = await query<CardRow>(
+      `SELECT ${columns} FROM strategy_deployments d
+         JOIN strategy_backtests b ON b.id = d.backtest_id
+        WHERE ${where}
+        ORDER BY d.updated_at DESC`,
+      [symbol, timeframe],
+    ).catch(() => []);
+  }
+  if (!rows.length) return null;
+
+  // "Best" by the same ordering the grade uses — active over shadow, then the
+  // tightest interval — so the card and the grade can never describe two
+  // different strategies in one answer.
+  const best = rows.sort((a, b) => {
+    const rank = (state: string) => (state === "active" ? 2 : state === "shadow" ? 1 : 0);
+    const byState = rank(b.state) - rank(a.state);
+    if (byState !== 0) return byState;
+    return (a.confidence_high - a.confidence_low) - (b.confidence_high - b.confidence_low);
+  })[0]!;
+
+  let validation: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(best.validation_json ?? "{}") as unknown;
+    if (parsed && typeof parsed === "object") validation = parsed as Record<string, unknown>;
+  } catch {
+    // Unparseable validation is "not evaluated", never "passed": the walk-forward
+    // verdict is one of the gates the card exists to SHOW, and defaulting it
+    // open would let a corrupt blob read as execution-grade.
+    validation = {};
+  }
+
+  return buildEvidenceCard({
+    backtest: {
+      strategyId: best.strategy_id,
+      symbol,
+      timeframe,
+      tradeCount: Number(best.trade_count ?? 0),
+      winRate: best.win_rate == null ? null : Number(best.win_rate),
+      profitFactor: best.profit_factor == null ? null : Number(best.profit_factor),
+      calibratedConfidence: best.calibrated_confidence,
+      confidenceLow: best.confidence_low,
+      confidenceHigh: best.confidence_high,
+      validation,
+    },
+    deployment: {
+      state: best.state as StrategyDeploymentState,
+      calibratedConfidence: best.calibrated_confidence,
+      confidenceLow: best.confidence_low,
+      confidenceHigh: best.confidence_high,
+      liveSampleSize: Number(best.live_sample_size ?? 0),
+      liveWinRate: best.live_win_rate == null ? null : Number(best.live_win_rate),
+    },
+  });
 }
 
 /** How many validated deployments this operator has, for diagnostics. */

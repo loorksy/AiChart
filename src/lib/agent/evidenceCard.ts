@@ -66,13 +66,47 @@ export function walkForwardStateFrom(validation: Record<string, unknown>): WalkF
 }
 
 /**
+ * The parts of a backtest and a deployment this card actually reads.
+ *
+ * Narrowed to a `Pick` rather than the whole record on purpose: the full rows
+ * are still accepted (a superset satisfies a subset), and a caller that has
+ * assembled the evidence from a JOIN can pass exactly the columns it selected
+ * without inventing the twelve it did not — which is how a row-derived card
+ * would otherwise need a cast, and a cast is where a missing column becomes a
+ * silent `undefined` on the operator's screen.
+ */
+type CardBacktest = Pick<
+  StrategyBacktestEvidence,
+  | "strategyId"
+  | "symbol"
+  | "timeframe"
+  | "tradeCount"
+  | "winRate"
+  | "profitFactor"
+  | "calibratedConfidence"
+  | "confidenceLow"
+  | "confidenceHigh"
+  | "validation"
+>;
+
+type CardDeployment = Pick<
+  StrategyDeployment,
+  | "state"
+  | "calibratedConfidence"
+  | "confidenceLow"
+  | "confidenceHigh"
+  | "liveSampleSize"
+  | "liveWinRate"
+>;
+
+/**
  * Build the operator-facing evidence card. `deployment` may be absent: a
  * backtest without an approved deployment is still worth SHOWING, but it is
  * explicitly marked as not execution-grade.
  */
 export function buildEvidenceCard(input: {
-  backtest: StrategyBacktestEvidence;
-  deployment?: StrategyDeployment | null;
+  backtest: CardBacktest;
+  deployment?: CardDeployment | null;
 }): EvidenceCard {
   const { backtest, deployment } = input;
   const walkForward = walkForwardStateFrom(backtest.validation ?? {});

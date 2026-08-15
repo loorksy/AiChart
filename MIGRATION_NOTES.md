@@ -1147,3 +1147,52 @@ version and it failed, which is the only reason the arm was kept.
 Excursions are stored ATR-normalised, matching what `caseQuery` reads back out
 of `max_favourable`; a price-unit number there would be ~100x larger on gold
 and silently incomparable with every row already indexed.
+
+## The evidence card was rendered but never built
+
+The ninth instance of this migration's recurring shape, and the clearest.
+
+`evidenceCard.ts` exists to close a named gap: the strategy factory validated
+backtests for years and none of it reached the operator, who saw a bare
+confidence number and never the WHY. The module was written. It was unit
+tested. `AgentResult.evidenceCard` was declared in the types. `SmartChartAgentPanel`
+renders `<AgentEvidenceCard>` from that field, and `AgentEnvelopeStatus`
+implements it.
+
+`buildEvidenceCard` had no caller anywhere outside its own test. The field was
+never assigned, so the card could never appear on any surface, and the comment
+directly above the result literal claimed the opposite — that the trace "and the
+evidence card" had been rescued from being dropped, when only the trace had.
+
+Nothing catches this. The type checker is satisfied by an optional field being
+absent. The unit test is satisfied by a builder that works perfectly on inputs
+nobody supplies. Only a check of the CONNECTION finds it.
+
+`getEvidenceCard` is the missing lookup: the same deployments `getStatisticalSupport`
+grades, joined to the two backtest columns the grade does not carry — the profit
+factor, and the validation blob holding the walk-forward verdict. It sorts by the
+same rule as the grade, so the card and the grade can never name two different
+strategies in one answer, and it runs in the same `Promise.all` as the grade
+rather than after it, because this module's whole premise is that evidence
+arriving after the decision is the same as none.
+
+Three deliberate choices worth recording:
+
+- **An INNER join, where the grade uses LEFT.** A card with no backtest behind
+  it has no trade count, no verdict and no profit factor — that is a heading,
+  not evidence.
+- **null, not an empty card.** A card of zeros reads as a strategy that lost
+  rather than one that was never found.
+- **An unparseable validation blob is `not_evaluated`, never `passed`.** The
+  walk-forward verdict is one of the gates the card exists to SHOW; defaulting
+  a corrupt blob open would render it as execution-grade.
+
+`buildEvidenceCard`'s parameters were narrowed from the whole backtest and
+deployment records to a `Pick` of the ten fields it actually reads. The full
+rows still satisfy it, and the row-derived caller now passes exactly the columns
+it selected instead of casting — a cast being where a forgotten column becomes a
+silent `undefined` on the operator's screen.
+
+`evidenceCardWiring.test.ts` tests both halves, and the wiring half was probed:
+deleting the assignment fails it, and deleting the platform fallback fails the
+arm that covers it.

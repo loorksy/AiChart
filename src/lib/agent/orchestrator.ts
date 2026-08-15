@@ -112,7 +112,7 @@ import {
 } from "@/lib/recommendations/tradability";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
-import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
+import { getEvidenceCard, getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import { handleIndicatorCommand } from "./indicators/handleIndicatorCommand";
 import {
@@ -1174,11 +1174,22 @@ async function runUnifiedChartAgentInner(
   // Verified statistical support, looked up rather than assembled: the factory's
   // evidence never used to reach an answer because building it mid-request could
   // not finish in time, and evidence that arrives after the decision is none.
-  const statisticalSupport = await getStatisticalSupport({
-    userId: ctx.userId,
-    symbol: market.symbol,
-    timeframe: market.interval,
-  }).catch(() => null);
+  // The grade and the card behind it, together. Run as one await rather than
+  // two: the module's whole premise is that evidence arriving after the
+  // decision is the same as none, and serialising a second lookup here would
+  // spend that budget twice for one table.
+  const [statisticalSupport, evidenceCard] = await Promise.all([
+    getStatisticalSupport({
+      userId: ctx.userId,
+      symbol: market.symbol,
+      timeframe: market.interval,
+    }).catch(() => null),
+    getEvidenceCard({
+      userId: ctx.userId,
+      symbol: market.symbol,
+      timeframe: market.interval,
+    }).catch(() => null),
+  ]);
 
   // What followed structurally similar moments. Read before the decision like
   // every other piece of evidence, and for both directions — the memory must not
@@ -1886,11 +1897,16 @@ async function runUnifiedChartAgentInner(
         }
       : undefined,
     publicReasoningSummary: finalDecision.publicReasoningSummary,
-    // Explainability is a validity condition, not a nicety: both of these are
-    // built by the decision engine and were being dropped here, so the trace
-    // and the evidence card never reached the operator at all.
+    // Explainability is a validity condition, not a nicety. The trace and the
+    // dimensions come from the decision engine; the evidence card comes from
+    // the deployment lookup above, and until it was assigned here the field was
+    // declared in the types and rendered by the panel while never once being
+    // set — the operator saw a confidence number and none of the history behind
+    // it. `undefined` when nothing matched: a card of zeros reads as a strategy
+    // that lost rather than one that was never found.
     decisionTrace: finalDecision.decisionTrace,
     evidenceDimensions: finalDecision.evidenceDimensions,
+    evidenceCard: evidenceCard ?? undefined,
     evidenceSnapshot: synth.evidenceSnapshot,
     // Deferred #16: the serialized cost contract rides the result so the MCP
     // analyze response can expose it without re-resolving anything.
