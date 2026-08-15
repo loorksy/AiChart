@@ -32,7 +32,6 @@ import {
 } from "@/components/admin/chrome/adminNavTree";
 import { useLocale } from "@/hooks/useLocale";
 import { useMe } from "@/hooks/useMe";
-import { Mt5PresencePing } from "@/components/Mt5PresencePing";
 import { cn } from "@/lib/utils";
 
 const PLATFORM_PATH = "/console/platform";
@@ -418,7 +417,6 @@ function ConsoleShellBody({
     <ShellMenuProvider value={menuApi}>
       <ConsoleOverlaysProvider value={overlaysApi}>
       {/* V2-B: presence beat drives the MetaApi deploy/undeploy cost saver. */}
-      <Mt5PresencePing />
       <div
         dir={dir}
         data-testid="app-console-shell"

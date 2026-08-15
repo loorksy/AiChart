@@ -211,8 +211,6 @@ function SmartChartWorkspaceInner({
   // The user's own linked MetaTrader account is the only market-data pipe.
   const [dataSource, setDataSource] = useState<MarketDataSource>("oanda");
 
-  const [tradesOpen, setTradesOpen] = useState(false);
-  const [openTradesCount, setOpenTradesCount] = useState(0);
   const [forexOnline, setForexOnline] = useState(false);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
 
@@ -278,19 +276,10 @@ function SmartChartWorkspaceInner({
       .catch(() => {});
   }, [guest]);
 
-  useEffect(() => {
-    if (guest) return;
-    const load = () =>
-      void fetch("/api/console/trades-active", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d: { rows?: unknown[] } | null) => {
-          setOpenTradesCount(Array.isArray(d?.rows) ? d!.rows!.length : 0);
-        })
-        .catch(() => {});
-    load();
-    const t = setInterval(load, 30_000);
-    return () => clearInterval(t);
-  }, [guest]);
+  // The open-trades badge polled /api/console/trades-active every 30 seconds.
+  // The route is gone with the execution layer and the platform holds no
+  // positions, so the poll asked a deleted endpoint how many trades were open
+  // and rendered the answer as zero forever.
 
   useEffect(() => {
     localStorage.setItem(LS_SYMBOL, symbol);
@@ -532,20 +521,10 @@ function SmartChartWorkspaceInner({
             },
           ]
         : [];
-    const tradesAction: TvHeaderAction[] = !guest
-      ? [
-          {
-            id: "trades",
-            text:
-              openTradesCount > 0
-                ? t("layout.trades_count", { count: String(openTradesCount) })
-                : t("layout.trades"),
-            title: t("layout.open_trades"),
-            onClick: () => setTradesOpen(true),
-          },
-        ]
-      : [];
-    return [analyzeAction, ...clearAction, ...tradesAction];
+    // The "open trades" header button is gone with the execution layer. It
+    // opened a drawer that no longer exists — `tradesOpen` was set and never
+    // read — and its badge counted positions this platform does not hold.
+    return [analyzeAction, ...clearAction];
   }, [
     chatEnabled,
     t,
@@ -553,7 +532,6 @@ function SmartChartWorkspaceInner({
     isAnalyzing,
     creditsRemaining,
     hasLayers,
-    openTradesCount,
     handleAnalyzeClick,
     handleClearLayers,
   ]);

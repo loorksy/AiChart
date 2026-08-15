@@ -44,7 +44,7 @@ export function CookieConsent() {
         نستخدم ملفات تعريف ارتباط أساسية لتشغيل المنصة (الجلسة والتفضيلات) ولا
         نستخدم أي متتبعات طرف ثالث. التفاصيل في{" "}
         <a
-          href="/p/privacy-policy"
+          href="/privacy"
           className="rounded-sm text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           سياسة الخصوصية

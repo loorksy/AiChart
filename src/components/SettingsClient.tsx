@@ -176,7 +176,7 @@ export default function SettingsClient({
             </div>
           </dl>
           <Link
-            href="/console/account"
+            href="/console/settings"
             className={cn(buttonVariants({ variant: "outline", size: "xl" }))}
           >
             {t("settings.manage_account")}

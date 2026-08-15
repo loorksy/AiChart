@@ -1,14 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { BarChart3, BookOpen, FlaskConical, ListChecks, TrendingUp } from "lucide-react";
+import { BarChart3, FlaskConical, ListChecks } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
   { id: "recommendations", labelKey: "rec.page.title", icon: ListChecks },
-  { id: "trades", labelKey: "trades.title", icon: TrendingUp },
   { id: "statistics", labelKey: "stats.title", icon: BarChart3 },
   { id: "backtests", labelKey: "bt.title", icon: FlaskConical },
 ] as const;
@@ -47,15 +45,9 @@ export function PerformanceSectionNav() {
           {t(labelKey)}
         </button>
       ))}
-      {/* The journal lives on its own route — appended here so the trading
-          record is one tap away from the performance view. */}
-      <Link
-        href="/journal"
-        className="ms-auto inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring sm:min-h-9"
-      >
-        <BookOpen className="h-3.5 w-3.5" aria-hidden />
-        {t("journal.title")}
-      </Link>
+      {/* The journal pill pointed at /journal, a route that does not exist —
+          it 404'd for every operator who tapped it. The trading record lives
+          in the recommendations section above. */}
     </nav>
   );
 }

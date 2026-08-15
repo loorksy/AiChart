@@ -827,3 +827,73 @@ arrays. The whole Python suite passes (56 tests).
 which 17 async tests report as failures that look like engine faults. They are
 not; with the plugin installed the suite is green. Worth knowing before anyone
 reads a red run as a regression.
+
+## Phase 5 (part 1) — the surfaces that 404'd in the operator's hands
+
+The Performance page shipped a whole section — "open trades" and "pending
+approvals" — whose four controls posted to `/api/trades`,
+`/api/trades/:id/close` and `/api/trades/intents`. **All four routes had been
+deleted with the execution layer.** The section rendered, the buttons looked
+live, and every click answered 404. Beside it, a nav pill linked to `/journal`,
+a page that does not exist either.
+
+Nothing caught any of it, and nothing could have: TypeScript does not
+type-check a URL string, the build does not resolve one, and no test asserted
+that a component's target was reachable. A deletion in one place silently broke
+a surface in another — the failure mode a migration produces most.
+
+### The guard first
+
+`uiTargetsExist.test.ts` reads the component tree, collects every literal
+internal `href` and every `/api/...` passed to `fetch`, and requires a matching
+route file. It found **three more dead API calls and eighteen dead links**
+beyond the ones already known:
+
+- `Mt5PresencePing` pinged `/api/mt5/heartbeat` on a timer from the console
+  shell — a deleted route, called on every page, forever.
+- `SmartChartWorkspace` polled `/api/console/trades-active` every 30 seconds to
+  badge an open-trades count, and rendered the failure as zero. Its button set
+  `tradesOpen`, which nothing read: the drawer it opened is gone.
+- `PendingIntentQuickActions` approved and rejected intents against
+  `/api/trades/intents/:id`.
+- Links to `/console/trades`, `/console/connect`, `/console/account`, `/plan`,
+  `/reports`, `/chart`, `/complete-profile`, `/p/privacy-policy` — none of
+  which exist.
+
+Two parser details are load-bearing, both learned from false positives the
+first version produced. Template literals are scanned by hand rather than by
+regex, because a `${...}` hole can contain quotes — `/api/auth/${isLogin ?
+"login" : "register"}` ends a character-class match mid-URL and reports a route
+nobody wrote. And a hole matches ANY segment rather than only a dynamic one,
+because that same expression interpolates a choice between two literal routes.
+Nothing real is lost: a call to a prefix that does not exist still fails, which
+is every case this guard was written for.
+
+### Then the deletions
+
+Seven components deleted, four of which had **zero importers** already
+(`DashboardClient`, `UserAccountClient`, `McpUrlGuide`,
+`RecommendationsHistoryClient`, `BridgeOverviewClient`) — dead trees whose
+broken links were invisible precisely because nothing rendered them.
+`TradesClient`, `WaitingRoom`, `PendingIntentQuickActions` and
+`Mt5PresencePing` were reachable and are gone with the flows they served.
+
+The notification panel's "N صفقة بانتظار الموافقة" block went with them, and
+`pendingIntents` was pulled out of `/api/me` and `useMe` — a number computed on
+every session load to render a row that could not exist.
+
+Surviving links were repointed rather than deleted where a real destination
+exists: `/p/privacy-policy` → `/privacy`, `/console/account` →
+`/console/settings`, `/console/connect` → `/console/settings/alerts`.
+
+### What the Performance surface is now
+
+Recommendations → Statistics → Backtests. Three sections, three routes that
+exist, no controls that fail. The plans, how they turned out, and the validated
+strategies behind them — which is the whole performance story a
+recommendations platform has.
+
+**Still to do in Phase 5:** the outcome tracker itself — grading every
+recommendation to a terminal state against OANDA candles, with the spread-drift
+check wired to a live quote, and the stale tracker header comment corrected.
+This commit removed what was lying; the next one makes what remains complete.
