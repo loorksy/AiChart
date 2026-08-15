@@ -78,6 +78,22 @@ class L {
     'reason': {'ar': 'السبب', 'en': 'Reason'},
     'apply': {'ar': 'تطبيق', 'en': 'Apply'},
     'theme': {'ar': 'المظهر', 'en': 'Theme'},
+    'activatePlan': {'ar': 'تفعيل الباقة', 'en': 'Activate plan'},
+    'months': {'ar': 'عدد الأشهر', 'en': 'Months'},
+    'gift': {'ar': 'هدية (بدون إيراد)', 'en': 'Gift (no revenue)'},
+    'suspendPlan': {'ar': 'إيقاف الباقة', 'en': 'Suspend plan'},
+    'restoreTrial': {'ar': 'استرجاع التجربة', 'en': 'Restore trial'},
+    'planActivated': {'ar': 'فُعّلت الباقة.', 'en': 'Plan activated.'},
+    'aiKeysOnlyNote': {
+      'ar':
+          'المفاتيح فقط تُضبط هنا — المستخدم يختار نموذجه من المحادثة: '
+              '3 نماذج OpenAI و3 نماذج Claude متعددة الوسائط، '
+              'وكل نماذج OpenRouter المجانية تلقائياً بمجرد وضع المفتاح.',
+      'en':
+          'Keys only — each user picks their own model in chat: '
+              '3 multimodal OpenAI models, 3 multimodal Claude models, '
+              'and every free OpenRouter model automatically once a key is set.'
+    },
     'language': {'ar': 'English', 'en': 'العربية'},
     'sessionExpired': {
       'ar': 'انتهت الجلسة — سجّل الدخول مجدداً.',

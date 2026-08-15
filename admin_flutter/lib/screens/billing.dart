@@ -46,6 +46,85 @@ class _BillingScreenState extends State<BillingScreen> {
     }
   }
 
+  Future<void> _activatePlanDialog(int userId, String email) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    int months = 1;
+    bool gift = false;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('${l.t('activatePlan')} — $email'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text(l.t('months'))),
+                  DropdownButton<int>(
+                    value: months,
+                    items: [
+                      for (var m = 1; m <= 12; m++)
+                        DropdownMenuItem(
+                            value: m,
+                            child: Text('$m', textDirection: TextDirection.ltr)),
+                    ],
+                    onChanged: (v) => setDialogState(() => months = v ?? 1),
+                  ),
+                ],
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l.t('gift'), style: const TextStyle(fontSize: 14)),
+                value: gift,
+                onChanged: (v) => setDialogState(() => gift = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(l.t('close')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(l.t('activatePlan')),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+    try {
+      await widget.repo
+          .activatePlan(userId: userId, months: months, gift: gift);
+      messenger.showSnackBar(SnackBar(content: Text(l.t('planActivated'))));
+      _load();
+      await _search(email);
+    } catch (e) {
+      messenger
+          .showSnackBar(SnackBar(content: Text('${l.t('saveFailed')} $e')));
+    }
+  }
+
+  Future<void> _subscriptionAction(
+      int userId, String email, String action) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.repo.setSubscriptionAction(userId, action);
+      messenger.showSnackBar(SnackBar(content: Text(l.t('saved'))));
+      await _search(email);
+    } catch (e) {
+      messenger
+          .showSnackBar(SnackBar(content: Text('${l.t('saveFailed')} $e')));
+    }
+  }
+
   Future<void> _adjustDialog(int userId, String email) async {
     final l = L.of(context);
     final amount = TextEditingController();
@@ -135,16 +214,52 @@ class _BillingScreenState extends State<BillingScreen> {
           for (final u in _searchResults)
             Card(
               margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                title: Text(u.email, textDirection: TextDirection.ltr),
-                subtitle: Text(
-                  '${l.t('plan')}: ${u.planStatus}'
-                  '${u.subscriptionExpiresAt == null ? '' : ' · ${u.subscriptionExpiresAt}'}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                trailing: OutlinedButton(
-                  onPressed: () => _adjustDialog(u.userId, u.email),
-                  child: Text(l.t('adjustCredits')),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(u.email,
+                        textDirection: TextDirection.ltr,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${l.t('plan')}: ${u.planStatus}'
+                      '${u.subscriptionExpiresAt == null ? '' : ' · ${u.subscriptionExpiresAt}'}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        // Stripe is not wired up — activation is a manual
+                        // admin grant.
+                        FilledButton(
+                          onPressed: () =>
+                              _activatePlanDialog(u.userId, u.email),
+                          child: Text(l.t('activatePlan')),
+                        ),
+                        if (u.planStatus == 'active')
+                          OutlinedButton(
+                            onPressed: () => _subscriptionAction(
+                                u.userId, u.email, 'suspend'),
+                            child: Text(l.t('suspendPlan')),
+                          )
+                        else if (u.planStatus == 'suspended' ||
+                            u.planStatus == 'expired')
+                          OutlinedButton(
+                            onPressed: () => _subscriptionAction(
+                                u.userId, u.email, 'restore_trial'),
+                            child: Text(l.t('restoreTrial')),
+                          ),
+                        OutlinedButton(
+                          onPressed: () => _adjustDialog(u.userId, u.email),
+                          child: Text(l.t('adjustCredits')),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),

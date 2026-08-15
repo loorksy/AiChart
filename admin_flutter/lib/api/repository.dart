@@ -71,6 +71,24 @@ class AdminRepository {
         'reason': reason,
       });
 
+  /// Manual plan activation — Stripe is not wired up, so the admin grants the
+  /// subscription directly (tier is always "full" on this platform).
+  Future<void> activatePlan(
+          {required int userId, required int months, required bool gift}) =>
+      api.sendJson('POST', '/api/admin/billing/subscription', {
+        'user_id': userId,
+        'tier': 'full',
+        'months': months,
+        'gift': gift,
+      });
+
+  Future<void> setSubscriptionAction(int userId, String action,
+          {String? note}) =>
+      api.sendJson('POST', '/api/admin/subscriptions/$userId', {
+        'action': action,
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+
   // ── Platform config ─────────────────────────────────────────────
   Future<List<ConfigField>> configFields() async {
     final j = await api.getJson('/api/admin/config');

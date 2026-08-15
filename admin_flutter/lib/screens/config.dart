@@ -31,6 +31,19 @@ class _ConfigScreenState extends State<ConfigScreen> {
     'core': {'ar': 'النواة', 'en': 'Core'},
   };
 
+  /// Model fields are not admin decisions on this platform: the END USER
+  /// picks from the curated multimodal trios (OpenAI/Claude), and OpenRouter
+  /// serves its live FREE catalogue automatically once a key exists. The keys
+  /// stay; the model dropdowns/text fields go.
+  static const _hiddenModelKeys = {
+    'AI_MODEL',
+    'ANTHROPIC_MODEL',
+    'OPENROUTER_MODEL',
+    'AI_QUICK_MODEL',
+    'ANTHROPIC_QUICK_MODEL',
+    'OPENROUTER_QUICK_MODEL',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -73,7 +86,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
     return AsyncBody<List<ConfigField>>(
       future: _future,
       onRetry: _load,
-      builder: (context, fields) {
+      builder: (context, allFields) {
+        final fields = allFields
+            .where((f) => !_hiddenModelKeys.contains(f.key))
+            .toList();
         final configured = fields.where((f) => f.configured).length;
         final pending = _draft.values.where((v) => v.trim().isNotEmpty).length +
             _toggleDraft.length;
@@ -120,6 +136,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                     if (fields.any((f) => f.group == group))
                       _GroupCard(
                         title: _groupTitles[group]![l.ar ? 'ar' : 'en']!,
+                        note: group == 'ai' ? l.t('aiKeysOnlyNote') : null,
                         fields:
                             fields.where((f) => f.group == group).toList(),
                         draft: _draft,
@@ -138,6 +155,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
 
 class _GroupCard extends StatelessWidget {
   final String title;
+  final String? note;
   final List<ConfigField> fields;
   final Map<String, String> draft;
   final Map<String, bool> toggleDraft;
@@ -145,6 +163,7 @@ class _GroupCard extends StatelessWidget {
 
   const _GroupCard({
     required this.title,
+    this.note,
     required this.fields,
     required this.draft,
     required this.toggleDraft,
@@ -174,6 +193,22 @@ class _GroupCard extends StatelessWidget {
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
+          if (note != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                note!,
+                style:
+                    TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            ),
           for (final f in fields) ...[
             if (f.type == 'toggle')
               SwitchListTile(

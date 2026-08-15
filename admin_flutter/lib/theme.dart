@@ -66,9 +66,19 @@ ThemeData lonoraTheme(Brightness brightness) {
     outlineVariant: border,
   );
 
-  final textTheme = GoogleFonts.cairoTextTheme(
-    ThemeData(brightness: brightness).textTheme,
-  ).apply(bodyColor: foreground, displayColor: foreground);
+  // Material defaults read oversized in a dense admin console — scale the
+  // whole ramp down instead of overriding styles one by one, so relative
+  // hierarchy (title vs body vs label) is preserved. The base must come from
+  // Typography's geometry theme: ThemeData.textTheme leaves fontSize null on
+  // some styles and TextTheme.apply(fontSizeFactor:) asserts on that.
+  final typography = Typography.material2021(platform: TargetPlatform.android);
+  final sizedBase = (dark ? typography.white : typography.black)
+      .merge(typography.englishLike);
+  final textTheme = GoogleFonts.cairoTextTheme(sizedBase).apply(
+    bodyColor: foreground,
+    displayColor: foreground,
+    fontSizeFactor: 0.85,
+  );
 
   OutlineInputBorder inputBorder(Color color) => OutlineInputBorder(
         borderRadius: BorderRadius.circular(LonoraTokens.radius),
@@ -81,6 +91,7 @@ ThemeData lonoraTheme(Brightness brightness) {
     colorScheme: scheme,
     scaffoldBackgroundColor: background,
     textTheme: textTheme,
+    visualDensity: VisualDensity.compact,
     dividerColor: border,
     appBarTheme: AppBarTheme(
       backgroundColor: background,
