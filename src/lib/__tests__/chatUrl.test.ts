@@ -10,7 +10,11 @@ import {
 
 test("chatConsoleHref encodes chat query param", () => {
   const id = "a1b2c3d4-e5f6-4789-a012-3456789abcde";
-  assert.equal(chatConsoleHref(id), `/workspace?${CHAT_QUERY_KEY}=${id}`);
+  // /chat is the canonical surface; /workspace only redirects (preserving
+  // ?chat=). Pointing the href back at /workspace would round-trip through a
+  // redirect on every chat switch — and dropping the query there was the bug
+  // that reset a fresh session to the empty landing state.
+  assert.equal(chatConsoleHref(id), `/chat?${CHAT_QUERY_KEY}=${id}`);
 });
 
 test("chatShareHref builds pretty share path", () => {

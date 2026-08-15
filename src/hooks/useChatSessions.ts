@@ -66,7 +66,7 @@ export function useChatSessions(opts: {
   interval?: string;
   /** Current UI locale — new chats inherit it (stored on the session). */
   locale?: "ar" | "en";
-  /** Active chat from `/workspace?chat=` — wins over localStorage on first load. */
+  /** Active chat from `/chat?chat=` — wins over localStorage on first load. */
   urlChatId?: string | null;
   /** Keep the browser URL aligned with the active chat. `null` clears it. */
   syncChatUrl?: (chatId: string | null, mode: ChatUrlSyncMode) => void;
