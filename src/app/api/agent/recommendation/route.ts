@@ -39,7 +39,7 @@ import { getUnifiedPrice } from "@/lib/markets";
 import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { resolveCostEvidence } from "@/lib/agent/marketContext/costEvidence";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
-import { isCandleComplete } from "@/lib/ohlc/metaApiOhlc";
+import { isCandleComplete } from "@/lib/ohlc/candleTime";
 import { atr as computeAtr } from "@/lib/indicators";
 import {
   assessTradability,

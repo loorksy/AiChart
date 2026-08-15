@@ -12,7 +12,7 @@
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import type { ResultEnvelope } from "@/lib/agent/resultEnvelope";
 import { useLocale } from "@/hooks/useLocale";
-import { envelopeBadge, type BadgeTone } from "@/lib/agent/executionModeBadge";
+import { envelopeBadge, type BadgeTone } from "@/lib/agent/envelopeBadge";
 import { userMessageForFailure } from "@/lib/agent/errorTaxonomy";
 import {
   summarizeEvidenceCard,
@@ -22,10 +22,6 @@ import {
 const TONE_CLASSES: Record<BadgeTone, string> = {
   descriptive:
     "border-warning/40 bg-warning/10 text-warning",
-  shadow:
-    "border-border bg-muted/40 text-muted-foreground",
-  demo: "border-info/40 bg-info/10 text-info",
-  live: "border-buy/45 bg-buy/10 text-buy",
   blocker:
     "border-destructive/45 bg-destructive/10 text-destructive",
 };

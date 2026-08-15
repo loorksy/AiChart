@@ -18,7 +18,6 @@ import { newId } from "./agent/activity";
 import { dispatchAlert, type DeliveryResult } from "./alerts";
 import { normalizeInterval } from "./intervals";
 import type { Recommendation, TradingSettings, AdminLimits } from "./types";
-import type { ProcessedIntent } from "./tradeFlow";
 import type { MarketType } from "./markets/types";
 
 export interface ScanResultItem {
@@ -38,7 +37,6 @@ export interface OpportunityScanResult {
   deepAnalysis?: {
     symbol: string;
     recommendation: Recommendation | null;
-    intents: ProcessedIntent[];
     reply: string;
   };
   telegram?: { technical?: DeliveryResult; final?: DeliveryResult };
@@ -170,7 +168,6 @@ export async function runOpportunityScan(
   result.deepAnalysis = {
     symbol: best?.symbol ?? top[0].symbol,
     recommendation: best,
-    intents: [],
     reply,
   };
   return result;

@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import type { TradeIntent, TradingSettings } from "@/lib/types";
 import type { AdminPlatformStats } from "@/lib/store";
 import { FadeIn } from "@/components/ui/fade-in";
-import { ActiveTradesTable } from "@/components/bridge/ActiveTradesTable";
 import { StatusChip, type StatusChipTone } from "@/components/bridge/StatusChip";
 import { AgentStatusBar } from "@/components/dashboard/AgentStatusBar";
 import { AdminOverview } from "@/components/admin/AdminOverview";
@@ -193,7 +192,6 @@ export function BridgeOverviewClient({
         {/* ─── Active trades table ─── */}
         <div>
           <p className="console-section-label mb-3">الصفقات المفتوحة</p>
-          <ActiveTradesTable />
         </div>
 
         {/* ─── Admin stats (admin only) ─── */}

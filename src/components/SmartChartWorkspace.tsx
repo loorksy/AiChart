@@ -39,7 +39,6 @@ const TvChart = dynamic(() => import("@/components/chart/TvChart"), {
 
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
-import { OpenTradesDrawer } from "@/components/chart/OpenTradesDrawer";
 import {
   SmartChartAgentPanel,
   type SmartChartAgentHandle,
@@ -949,7 +948,6 @@ function SmartChartWorkspaceInner({
         )}
       </div>
 
-      <OpenTradesDrawer open={tradesOpen} onClose={() => setTradesOpen(false)} />
 
     </div>
   );

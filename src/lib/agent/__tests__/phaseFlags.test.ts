@@ -64,10 +64,10 @@ afterEach(() => {
 });
 
 describe("phase flags exist for every phase in the plan", () => {
-  it("covers every surviving phase A–J (Phase I, deep research, was removed with the candle warehouse it required)", () => {
+  it("covers every surviving phase (I went with the candle warehouse; D went with the execution layer)", () => {
     assert.deepEqual(
       Object.keys(PHASE_FLAGS).sort(),
-      ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
+      ["A", "B", "C", "E", "F", "G", "H", "J"],
       "a phase with no flag cannot be rolled back",
     );
   });
@@ -98,7 +98,6 @@ describe("phase flags exist for every phase in the plan", () => {
       "agentDoctrineV3",
       "recRevisionsV1",
       "recLifecycleAlertsV1",
-      "agentTradeModeV1",
       "visionDecisionV1",
       "patternAtlasV1",
       "caseMemoryV1",
@@ -120,11 +119,10 @@ describe("each flag actually gates its phase", () => {
   const EXPECTED_GATES: Record<string, { minReaders: number; where: string[] }> = {
     agentDoctrineV3: { minReaders: 1, where: ["app/api/agent/recommendation/route.ts"] },
     recRevisionsV1: {
-      minReaders: 2,
-      where: ["lib/recommendations/canonical/repository.ts", "lib/execution.ts"],
+      minReaders: 1,
+      where: ["lib/recommendations/canonical/repository.ts"],
     },
     recLifecycleAlertsV1: { minReaders: 1, where: ["lib/recommendations/lifecycleNotifier.ts"] },
-    agentTradeModeV1: { minReaders: 1, where: ["lib/agent/tradeMode.ts"] },
     visionDecisionV1: { minReaders: 1, where: ["lib/agent/orchestrator.ts"] },
     patternAtlasV1: { minReaders: 1, where: ["lib/agent/skills/skillSelector.ts"] },
     caseMemoryV1: { minReaders: 1, where: ["lib/agent/orchestrator.ts"] },
@@ -192,15 +190,6 @@ describe("rollback never makes stored data unreadable", () => {
     assert.equal(journal.summary.followed.count, 0);
   });
 
-  it("forces advisory when the trade-mode phase is off", async () => {
-    setFlag("AGENT_TRADE_MODE_V1", "0");
-    const { getTradeMode, isAutoExecutionAuthorized } = await import("@/lib/agent/tradeMode");
-    const view = await getTradeMode(1);
-    assert.equal(view.mode, "advisory");
-    assert.equal(view.downgradedReason, "phase_disabled");
-    // And no standing grant can survive the phase being rolled back.
-    assert.equal(await isAutoExecutionAuthorized(1), false);
-  });
 });
 
 describe("documentation matches the flags", () => {

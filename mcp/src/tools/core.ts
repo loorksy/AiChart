@@ -31,65 +31,7 @@ import {
 const MULTI_TIMEFRAME_TIMEOUT_MS = 25_000;
 
 export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
-  server.registerTool(
-    "get_account_overview",
-    mcpToolConfig("get_account_overview"),
-    async (args) => {
-      const { include_live = true } = (args ?? {}) as {
-        include_live?: boolean;
-      };
-      return bridgeCall("get_account_overview", args as Record<string, unknown>, async () => {
-        // A slow/failing live account never sinks the technical overview.
-        const settled = await Promise.allSettled([
-          bridge.get("/api/agent/status"),
-          bridge.get("/api/agent/portfolio"),
-          include_live
-            ? bridge.get("/api/agent/live/account", undefined, 10000)
-            : Promise.resolve({ skipped: true }),
-          // Shared server-side state (plan §9): the overview carries the
-          // operator's trade mode so the session starts knowing it — mcp-core
-          // says ask ONCE when it is unset, never re-ask a stored choice.
-          bridge.get("/api/agent/trade-mode"),
-        ]);
-        const val = (r: PromiseSettledResult<unknown>) => {
-          if (r.status !== "fulfilled") {
-            return {
-              error:
-                r.reason instanceof Error
-                  ? r.reason.message
-                  : String(r.reason),
-            };
-          }
-          return unwrapBridgePayload(r.value);
-        };
-        return {
-          connection: val(settled[0]),
-          portfolio: val(settled[1]),
-          live: include_live ? val(settled[2]) : { skipped: true },
-          trade_mode: val(settled[3]),
-        };
-      }, { structured: true });
-    },
-  );
 
-  server.registerTool(
-    "get_trade_readiness",
-    mcpToolConfig("get_trade_readiness"),
-    async (args) => {
-      const { symbol, market, practice } = args as {
-        symbol?: string;
-        market?: "forex";
-        practice?: boolean;
-      };
-      return bridgeCall("get_trade_readiness", args as Record<string, unknown>, () =>
-        bridge.get("/api/agent/trade/readiness", {
-          symbol,
-          market,
-          practice: practice ? "true" : undefined,
-        }),
-      );
-    },
-  );
 
   server.registerTool(
     "get_agent_capabilities",
@@ -306,23 +248,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     },
   );
 
-  server.registerTool(
-    "get_portfolio",
-    mcpToolConfig("get_portfolio"),
-    async () =>
-      bridgeCall("get_portfolio", {}, () => bridge.get("/api/agent/portfolio"), {
-        structured: true,
-      }),
-  );
 
-  server.registerTool(
-    "get_open_trades",
-    mcpToolConfig("get_open_trades"),
-    async () =>
-      bridgeCall("get_open_trades", {}, () => bridge.get("/api/agent/trades/open"), {
-        structured: true,
-      }),
-  );
 
   server.registerTool(
     "get_trade_lessons",
@@ -472,67 +398,12 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     },
   );
 
-  server.registerTool(
-    "open_trade",
-    mcpToolConfig("open_trade"),
-    async (body) =>
-      bridgeCall("open_trade", body as Record<string, unknown>, () =>
-        bridge.post("/api/agent/trade/open", body),
-      ),
-  );
 
-  server.registerTool(
-    "close_trade",
-    mcpToolConfig("close_trade"),
-    async (body) =>
-      bridgeCall("close_trade", body as Record<string, unknown>, () =>
-        bridge.post("/api/agent/trade/close", body),
-      ),
-  );
 
-  server.registerTool(
-    "evaluate_trade",
-    mcpToolConfig("evaluate_trade"),
-    async (args) => {
-      const { trade_id } = args as { trade_id: number };
-      return bridgeCall("evaluate_trade", args as Record<string, unknown>, () =>
-        bridge.get("/api/agent/trade/evaluate", { trade_id }),
-      );
-    },
-  );
 
-  server.registerTool(
-    "record_exit_decision",
-    mcpToolConfig("record_exit_decision"),
-    async (body) =>
-      bridgeCall("record_exit_decision", body as Record<string, unknown>, () =>
-        bridge.post("/api/agent/trade/exit-decision", body),
-      ),
-  );
 
-  server.registerTool(
-    "request_approval",
-    mcpToolConfig("request_approval"),
-    async (body) =>
-      bridgeCall("request_approval", body as Record<string, unknown>, () =>
-        bridge.post("/api/agent/approval/request", body),
-      ),
-  );
 
-  server.registerTool(
-    "respond_approval",
-    mcpToolConfig("respond_approval"),
-    async (body) =>
-      bridgeCall("respond_approval", body as Record<string, unknown>, () =>
-        bridge.post("/api/agent/approval/respond", body),
-      ),
-  );
 
-  server.registerTool(
-    "get_pending_approvals",
-    mcpToolConfig("get_pending_approvals"),
-    bridgeWrap("get_pending_approvals", bridge, () => bridge.get("/api/agent/approval/pending")),
-  );
 
   server.registerTool(
     "get_agent_settings",
@@ -540,33 +411,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     bridgeWrap("get_agent_settings", bridge, () => bridge.get("/api/agent/settings")),
   );
 
-  server.registerTool(
-    "get_agent_trade_mode",
-    mcpToolConfig("get_agent_trade_mode"),
-    bridgeWrap("get_agent_trade_mode", bridge, () => bridge.get("/api/agent/trade-mode")),
-  );
 
-  server.registerTool(
-    "set_agent_trade_mode",
-    mcpToolConfig("set_agent_trade_mode"),
-    async (body) => {
-      const parsed = setAgentTradeModeInput.safeParse(body);
-      if (!parsed.success) {
-        return formatBridgeError(
-          new Error(
-            parsed.error.issues
-              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
-              .join("; ") || "Invalid set_agent_trade_mode payload",
-          ),
-        );
-      }
-      // The server re-checks confirmed_by_user for auto; sending actor lets the
-      // audit trail say which surface the operator used.
-      return bridgeCall("set_agent_trade_mode", parsed.data as Record<string, unknown>, () =>
-        bridge.patch("/api/agent/trade-mode", { ...parsed.data, actor: "mcp" }),
-      );
-    },
-  );
 
   server.registerTool(
     "find_similar_cases",

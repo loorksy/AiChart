@@ -1,5 +1,5 @@
 import type { ChartDrawing } from "./chartDrawings";
-import type { MarketType, BrokerKind, MtPlatform } from "./markets/types";
+import type { MarketType, MtPlatform } from "./markets/types";
 
 export type Role = "user" | "admin";
 export type UserStatus = "pending" | "active" | "suspended";
@@ -201,7 +201,8 @@ export interface TradeIntent {
   side: "buy" | "sell";
   notional: number;
   market: MarketType;
-  broker: BrokerKind;
+  /** Legacy column on a deprecated table — no broker exists any more. */
+  broker: string;
   entry: number | null;
   stop_loss: number | null;
   take_profit: number | null;
@@ -293,7 +294,8 @@ export interface Trade {
   order_id: string | null;
   env: string;
   market: MarketType;
-  broker: BrokerKind;
+  /** Legacy column on a deprecated table — no broker exists any more. */
+  broker: string;
   status: string;
   pnl: number;
   oco_order_list_id: string | null;

@@ -14,7 +14,7 @@ import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentRunStages } from "./AgentRunStages";
 import { AgentChatInput } from "./AgentChatInput";
 import { AgentModeBadge, AgentFaultCard, AgentEvidenceCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
-import { isOperationalBlocker } from "@/lib/agent/executionModeBadge";
+import { isOperationalBlocker } from "@/lib/agent/envelopeBadge";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import {

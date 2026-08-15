@@ -42,7 +42,6 @@ import {
 import { getCanonicalRecommendation } from "./canonical/repository";
 import { evidenceSnapshotFingerprint } from "./canonical/evidenceSnapshots";
 import { isTerminalRecommendationStatus } from "./canonical/stateMachine";
-import { manageOpenTradeAfterRevision } from "./tradeManagement";
 import { notifyLifecycleEvents } from "./lifecycleNotifier";
 import type { LifecycleEvent } from "./lifecycleEvents";
 import {
@@ -434,16 +433,6 @@ export async function runReevaluationCycle(
             decisionTrace: effective.decisionTrace,
           });
           metrics.reevaluationVerdicts.inc({ verdict });
-          await manageOpenTradeAfterRevision({
-            userId: trigger.userId,
-            recommendationId: canonicalId,
-            revision: effective,
-          }).catch((error: unknown) => {
-            log.warn("post-open trade management failed (resumed cycle)", {
-              recommendationId: trigger.recommendationId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
           const resumed: CycleResult = {
             recommendationId: trigger.recommendationId,
             canonicalId,
@@ -585,17 +574,6 @@ export async function runReevaluationCycle(
       // proposes an approval in advisory mode and uses the existing modify path
       // under the standing grant in auto mode. Best-effort: a failed sync never
       // undoes the revision, and the layer decides nothing itself.
-      await manageOpenTradeAfterRevision({
-        userId: trigger.userId,
-        recommendationId: canonicalId,
-        revision,
-      }).catch((error: unknown) => {
-        log.warn("post-open trade management failed", {
-          recommendationId: trigger.recommendationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-
       const completed: CycleResult = {
         recommendationId: trigger.recommendationId,
         canonicalId,

@@ -7,7 +7,6 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartStudy } from "@/lib/chart/studies";
 import { computeRewardRisk } from "@/lib/rewardRisk";
 import type { Recommendation } from "@/lib/types";
-import type { ProcessedIntent } from "@/lib/tradeFlow";
 import type { LiveReasoningEntry } from "@/lib/analysis/types";
 import type { MarketType } from "@/lib/markets/types";
 
@@ -110,7 +109,6 @@ export function useChartAnalysis({
     studies,
     recommendation,
     targets,
-    intents: [] as ProcessedIntent[],
     liveAnalysis: false,
     riskReward,
     liveReasoningLog,

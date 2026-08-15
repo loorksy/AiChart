@@ -32,43 +32,12 @@ import {
   computeAccessExpiresAt,
   DEFAULT_ACCESS_DAYS,
 } from "./platformAccess";
-import type { BrokerKind, MarketType, MtPlatform } from "./markets/types";
-import {
-  forexModeToBrokerKind,
-  resolveForexBackendFromPref,
-} from "./brokers/forexBackend";
+import type { MarketType, MtPlatform } from "./markets/types";
 import {
   appendRecommendationHistory,
   createCanonicalRecommendation,
 } from "./recommendations/canonical";
 import { announceOpportunityCreated } from "./recommendations/lifecycleNotifier";
-
-/**
- * Broker kind for a user honoring their per-user forex backend choice (MetaApi
- * vs self-hosted MT5), falling back to the global default. Used at the points
- * that route execution (intent/trade creation) so each user's trades go to the
- * backend they picked.
- */
-export async function resolveBrokerForMarket(
-  userId: number,
-  market: MarketType,
-): Promise<BrokerKind> {
-  if (market !== "forex") {
-    throw new Error("Forex-only platform — non-forex markets are not supported.");
-  }
-  const settings = await getSettings(userId);
-  return forexModeToBrokerKind(
-    resolveForexBackendFromPref(settings.forex_backend),
-  );
-}
-
-/** Effective forex backend mode for a user (per-user choice → global default). */
-export async function resolveForexBackendForUser(
-  userId: number,
-): Promise<"metaapi" | "mt5local"> {
-  const settings = await getSettings(userId);
-  return resolveForexBackendFromPref(settings.forex_backend);
-}
 
 /** Free-tier starting quota for new self-serve accounts: 3 analyses (cost 4 each). */
 export const FREE_TIER_QUOTA = 12;
@@ -907,78 +876,6 @@ export function isDailyQuotaEnforced(): boolean {
   return true;
 }
 
-export async function createIntent(
-  userId: number,
-  intent: {
-    recommendation_id?: number | null;
-    /** Revision of that recommendation these levels came from (CAS at execute). */
-    recommendation_revision_no?: number | null;
-    /** How this order was authorised: explicit approval or a standing mode.
-     *  `trade_management` marks an SL/TP-modify proposal, never an order.
-     *  `broker_action` marks a raw account action, also never an order. */
-    authorization_source?:
-      | "user_approved"
-      | "standing_auto"
-      | "trade_management"
-      | "broker_action"
-      | null;
-    symbol: string;
-    side: "buy" | "sell";
-    notional: number;
-    market?: MarketType;
-    broker?: BrokerKind;
-    entry?: number | null;
-    stop_loss?: number | null;
-    take_profit?: number | null;
-    confidence?: number;
-    rationale?: string | null;
-    status?: string;
-    reason?: string | null;
-    practice?: boolean;
-    market_type?: "spot" | "futures";
-    leverage?: number;
-    order_type?: "market" | "limit" | "stop";
-    limit_price?: number | null;
-    action_json?: string | null;
-  },
-): Promise<TradeIntent> {
-  const market: MarketType = resolveActiveMarket(intent.market ?? DEFAULT_MARKET);
-  const broker: BrokerKind =
-    intent.broker ?? (await resolveBrokerForMarket(userId, market));
-  const id = await insertReturningId(
-    `INSERT INTO trade_intents
-      (user_id, recommendation_id, recommendation_revision_no, authorization_source, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price, action_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      userId,
-      intent.recommendation_id ?? null,
-      intent.recommendation_revision_no ?? null,
-      intent.authorization_source ?? null,
-      // Broker spellings are case-sensitive (XAUUSDm). Folding here made every
-      // cloud order ask MetaApi for an instrument that does not exist.
-      intent.symbol.trim(),
-      intent.side,
-      intent.notional,
-      market,
-      broker,
-      intent.entry ?? null,
-      intent.stop_loss ?? null,
-      intent.take_profit ?? null,
-      Math.round(intent.confidence ?? 0),
-      intent.rationale ?? null,
-      intent.status ?? "pending",
-      intent.reason ?? null,
-      intent.practice ? 1 : 0,
-      intent.market_type ?? "spot",
-      intent.leverage ?? 1,
-      intent.order_type ?? "market",
-      intent.limit_price ?? null,
-      intent.action_json ?? null,
-    ],
-  );
-  return (await getIntent(id))!;
-}
-
 export async function getIntent(
   id: number,
   userId?: number,
@@ -1081,54 +978,6 @@ export async function getRecommendation(
   );
 }
 
-export async function recordTrade(
-  userId: number,
-  trade: {
-    intent_id?: number | null;
-    symbol: string;
-    side: string;
-    qty: number;
-    quote_qty: number;
-    avg_price: number;
-    order_id?: string | null;
-    env: string;
-    market?: MarketType;
-    broker?: BrokerKind;
-    status?: string;
-    market_type?: "spot" | "futures";
-    leverage?: number;
-    order_type?: "market" | "limit";
-    limit_price?: number | null;
-  },
-): Promise<Trade> {
-  const market: MarketType = resolveActiveMarket(trade.market ?? DEFAULT_MARKET);
-  const broker: BrokerKind =
-    trade.broker ?? (await resolveBrokerForMarket(userId, market));
-  const id = await insertReturningId(
-    `INSERT INTO trades
-      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, market, broker, status, market_type, leverage, order_type, limit_price)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      userId,
-      trade.intent_id ?? null,
-      trade.symbol.trim(),
-      trade.side,
-      trade.qty,
-      trade.quote_qty,
-      trade.avg_price,
-      trade.order_id ?? null,
-      trade.env,
-      market,
-      broker,
-      trade.status ?? "open",
-      trade.market_type ?? "spot",
-      trade.leverage ?? 1,
-      trade.order_type ?? "market",
-      trade.limit_price ?? null,
-    ],
-  );
-  return (await queryOne<Trade>("SELECT * FROM trades WHERE id = ?", [id]))!;
-}
 
 export async function listTrades(userId: number, limit = 50): Promise<Trade[]> {
   return query<Trade>(

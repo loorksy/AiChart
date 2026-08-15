@@ -88,7 +88,6 @@ import {
   buildDrawingCandidates,
 } from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
-import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
 import { spanStyleForInterval } from "./trading/scalpGeometry";
 import { collectVisualEvidence } from "./visualEvidence";
@@ -99,7 +98,7 @@ import { barDurationMs } from "@/lib/intervals";
 import { metrics } from "@/lib/metrics";
 import { atr as computeAtr } from "@/lib/indicators";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
-import { isCandleComplete } from "@/lib/ohlc/metaApiOhlc";
+import { isCandleComplete } from "@/lib/ohlc/candleTime";
 import {
   assessTradability,
   type TradabilityAssessment,
@@ -1434,103 +1433,6 @@ async function runUnifiedChartAgentInner(
           marketSync: market.sync,
         }
       : undefined;
-
-  // Execution intent → Execution Guard (never auto-executes).
-  let requiresConfirmation: boolean | undefined;
-  let confirmationPayload: AgentFinalResult["confirmationPayload"];
-  if (
-    intents.includes("trade_execution") || intents.includes("trade_management")
-  ) {
-    const guard = await withTimeout(
-      captureStage(
-        "execution_guard",
-        runExecutionGuardAgent(trackedCtx, {
-          market,
-          finalDecision,
-          news,
-          canExecute: Boolean(input.canExecute),
-        }),
-      ),
-      AGENT_TIMEOUTS.risk,
-      null,
-    );
-    if (!guard) {
-      // Guard failure → block execution (safe default). The ANALYSIS itself
-      // succeeded, so this stays a descriptive answer with the guard stage
-      // marked degraded — execution authority is simply not granted.
-      return {
-        decision: "action_required",
-        envelope: descriptiveEnvelope({
-          recommendationIssued:
-            finalDecision.recommendation.action === "buy" ||
-            finalDecision.recommendation.action === "sell",
-          traceId: ctx.requestId,
-          degradedStages: degradedStagesFrom([
-            ...stageFailures,
-            { stage: "execution_guard", code: "timeout", retryable: true, operatorDetail: "guard unavailable" },
-          ]),
-        }),
-        confidence: finalDecision.confidence,
-        summary: bilingual(
-          locale,
-          "تعذّر التحقق من شروط التنفيذ — لن يُنفّذ شيء دون تأكيد.",
-          "Could not verify execution conditions — nothing will be executed without confirmation.",
-        ),
-        keyReasons: ["Execution guard failed."],
-        riskWarnings: finalDecision.riskWarnings,
-        activityEvents: collected,
-        drawings,
-        recommendation: finalDecision.recommendation,
-        analysisId,
-      };
-    }
-    if (guard.requiresConfirmation) {
-      requiresConfirmation = true;
-      confirmationPayload = guard.confirmationPayload;
-      return {
-        decision: "action_required",
-        envelope: descriptiveEnvelope({
-          recommendationIssued:
-            finalDecision.recommendation.action === "buy" ||
-            finalDecision.recommendation.action === "sell",
-          traceId: ctx.requestId,
-          degradedStages: degradedStagesFrom(stageFailures),
-        }),
-        confidence: finalDecision.confidence,
-        summary: guard.message,
-        keyReasons: guard.reasons,
-        riskWarnings: [...finalDecision.riskWarnings, ...guard.warnings],
-        activityEvents: collected,
-        recommendation: finalDecision.recommendation,
-        drawings,
-        newsRisk: news
-          ? { level: news.newsRisk, reason: news.reason }
-          : undefined,
-        analysisId,
-        requiresConfirmation,
-        confirmationPayload,
-      };
-    }
-    // Guard blocked (not confirmable) → action_required with the block reason.
-    return {
-      decision: "action_required",
-      envelope: descriptiveEnvelope({
-        recommendationIssued:
-          finalDecision.recommendation.action === "buy" ||
-          finalDecision.recommendation.action === "sell",
-        traceId: ctx.requestId,
-        degradedStages: degradedStagesFrom(stageFailures),
-      }),
-      confidence: finalDecision.confidence,
-      summary: guard.message,
-      keyReasons: guard.reasons,
-      riskWarnings: [...finalDecision.riskWarnings, ...guard.warnings],
-      activityEvents: collected,
-      recommendation: finalDecision.recommendation,
-      drawings,
-      analysisId,
-    };
-  }
 
   // Intelligent research: reliability-weighted influence only; never fabricate usage.
   const researchEvidence = await collectBoundedResearchEvidence({

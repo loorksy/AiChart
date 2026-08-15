@@ -123,7 +123,6 @@ export const FEATURES = {
    * denies any standing_auto intent. The stored mode is preserved so turning the
    * flag back on does not lose the operator's choice.
    */
-  agentTradeModeV1: () => flag("AGENT_TRADE_MODE_V1", true),
 
   /**
    * Phase F — Pattern Atlas and the extended detectors. ON by default.
@@ -177,7 +176,6 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     cotEvidenceV1: FEATURES.cotEvidenceV1(),
     recRevisionsV1: FEATURES.recRevisionsV1(),
     recLifecycleAlertsV1: FEATURES.recLifecycleAlertsV1(),
-    agentTradeModeV1: FEATURES.agentTradeModeV1(),
     patternAtlasV1: FEATURES.patternAtlasV1(),
     evidencePipelineV2: FEATURES.evidencePipelineV2(),
     performanceJournalV1: FEATURES.performanceJournalV1(),
@@ -196,7 +194,6 @@ export const PHASE_FLAGS: Record<string, { env: string; read: () => boolean; def
   A: { env: "AGENT_DOCTRINE_V3", read: FEATURES.agentDoctrineV3, defaultOn: true },
   B: { env: "REC_REVISIONS_V1", read: FEATURES.recRevisionsV1, defaultOn: true },
   C: { env: "REC_LIFECYCLE_ALERTS_V1", read: FEATURES.recLifecycleAlertsV1, defaultOn: true },
-  D: { env: "AGENT_TRADE_MODE_V1", read: FEATURES.agentTradeModeV1, defaultOn: true },
   E: { env: "VISION_DECISION_V1", read: FEATURES.visionDecisionV1, defaultOn: true },
   F: { env: "PATTERN_ATLAS_V1", read: FEATURES.patternAtlasV1, defaultOn: true },
   G: { env: "CASE_MEMORY_V1", read: FEATURES.caseMemoryV1, defaultOn: true },

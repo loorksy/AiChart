@@ -1,4 +1,5 @@
 import { buildAccountProfile, accountFooterLines, type AccountProfile } from "./accountProfile";
+import { DISPLAY_NAME_AR } from "./gold";
 import { formatSpreadAr } from "./spread";
 import type { LifecycleEvent, LifecycleEventType } from "./recommendations/lifecycleEvents";
 
@@ -18,22 +19,7 @@ function highlightNumbers(escaped: string): string {
 }
 
 function envLine(profile: AccountProfile): string {
-  const env = profile.accountType === "—" ? "—" : profile.accountType;
-  const parts = [`البيئة: ${env}`];
-  if (profile.hasLeverage && profile.leverage) {
-    parts.push(`الرافعة: ${profile.leverage}x`);
-  }
-  if (profile.hasSpread && profile.spreadPips != null) {
-    parts.push(`السبريد: ${formatSpreadAr({
-      bid: 0,
-      ask: 0,
-      mid: 0,
-      spreadRaw: 0,
-      spreadPips: profile.spreadPips,
-      spreadPct: profile.spreadPct ?? 0,
-    })}`);
-  }
-  return parts.join(" · ");
+  return `الأداة: ${profile.instrument} · المصدر: ${profile.dataSource}`;
 }
 
 export function formatCard(title: string, fields: string[], footer?: AccountProfile): string {
@@ -207,12 +193,7 @@ export function approvalCard(input: {
   const sideAr = input.side === "buy" ? "شراء 🟢" : "بيع 🔴";
   const fields = [
     `🔹 الاتجاه: ${sideAr} · الثقة: ${input.confidence}%`,
-    `🔹 مبلغ المخاطرة المحسوب: ${formatAmount(
-      input.riskAmount,
-      input.profile.accountCurrency === "USD"
-        ? "دولار"
-        : input.profile.accountCurrency,
-    )}`,
+    `🔹 مبلغ المخاطرة (مثال تعليمي): ${formatAmount(input.riskAmount, "دولار")}`,
   ];
   if (input.orderType === "limit" || input.orderType === "stop") {
     const kind = input.orderType === "limit" ? "معلّق (Limit)" : "معلّق (Stop)";
@@ -298,18 +279,10 @@ export function recommendationCard(rec: {
   signals?: string[];
   notional?: number;
 }): string {
-  const profile = rec.profile ?? {
-    hasLeverage: false,
-    leverage: null,
-    marginMode: null,
-    hasSpread: false,
-    spreadPips: null,
-    spreadPct: null,
+  const profile: AccountProfile = rec.profile ?? {
     marketType: "forex",
-    platform: "—",
-    accountLogin: null,
-    accountCurrency: "USD",
-    accountType: "—",
+    instrument: DISPLAY_NAME_AR,
+    dataSource: "OANDA",
   };
   return analysisCard({
     symbol: rec.symbol,
