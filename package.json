@@ -20,7 +20,7 @@
     "test:tools": "tsx --test --test-force-exit src/lib/agent/tools/__tests__/*.test.ts",
     "test:trace": "tsx --test --test-force-exit src/lib/agent/__tests__/runTraceSchema.test.ts && tsx --test --test-force-exit src/lib/agent/__tests__/runTraceDb.test.ts",
     "test:research": "tsx --test --test-force-exit src/lib/research/__tests__/*.test.ts",
-    "test:gates": "tsx --test --test-force-exit src/lib/agent/__tests__/gates.test.ts src/lib/gold/__tests__/candleStore.test.ts",
+    "test:gates": "tsx --test --test-force-exit src/lib/agent/__tests__/gates.test.ts src/lib/gold/__tests__/candleStore.test.ts src/lib/strategies/__tests__/backtestRunner.test.ts",
     "test:vision": "tsx --test --test-force-exit src/lib/agent/__tests__/visualCoverage.test.ts src/lib/agent/__tests__/browseLoop.test.ts",
     "test:entry-coherence": "tsx --test --test-force-exit src/lib/recommendations/__tests__/entryCoherence.test.ts",
     "test:recommendations": "tsx --test --test-force-exit src/lib/recommendations/canonical/__tests__/*.test.ts src/lib/recommendations/__tests__/tradability.test.ts src/lib/recommendations/__tests__/platformTradabilityGate.test.ts src/lib/recommendations/__tests__/tradabilityCalibration.test.ts src/lib/recommendations/__tests__/lifecycleEvents.test.ts src/lib/recommendations/__tests__/lifecycleNotifier.test.ts src/lib/recommendations/__tests__/performanceJournal.test.ts",

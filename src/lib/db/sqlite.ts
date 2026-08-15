@@ -1027,6 +1027,37 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_gold_candles_time
     ON gold_candles (timeframe, time DESC);
 
+  -- ── The backtest result cache ────────────────────────────────────────────
+  --
+  -- What makes a backtest "lightning" is not running it faster — it is not
+  -- running it again. A strategy's result over a fixed window of closed bars
+  -- cannot change, so it is computed once and read thereafter.
+  --
+  -- The key is the whole claim: which strategy, at which spec revision, on
+  -- which timeframe, over exactly which bars. A revision bump or a deeper store
+  -- produces a different key and therefore a real re-run, which is the point —
+  -- a cache that survived a spec change would serve results for a strategy that
+  -- no longer exists.
+  CREATE TABLE IF NOT EXISTS backtest_results (
+    cache_key      TEXT PRIMARY KEY,
+    strategy_id    TEXT NOT NULL,
+    spec_revision  TEXT NOT NULL,
+    timeframe      TEXT NOT NULL,
+    bars_from      INTEGER NOT NULL,
+    bars_to        INTEGER NOT NULL,
+    bar_count      INTEGER NOT NULL,
+    backtest_id    INTEGER,
+    job_id         TEXT,
+    status         TEXT NOT NULL,
+    trade_count    INTEGER,
+    win_rate       REAL,
+    metrics_json   TEXT NOT NULL DEFAULT '{}',
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy
+    ON backtest_results (strategy_id, timeframe, updated_at DESC);
+
   CREATE TABLE IF NOT EXISTS strategy_backtests (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id               INTEGER NOT NULL,

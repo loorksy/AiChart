@@ -29,6 +29,17 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # ?pages=N to dig harder on a manual run.
 17 * * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/gold-candles >/dev/null 2>&1
 
+# Strategy backtest sweep — nightly at 02:40 UTC. Walks the catalogue against
+# the gold candle store and submits the claims the result cache does not
+# already hold. Submission-bounded per run (?max=N), because ~60 strategies
+# across five timeframes is 300 research jobs and firing them in one night
+# would spend a month of budget on the first run. The cache makes it resumable:
+# each night picks up where the last one stopped.
+#
+# Requires STRATEGY_PIPELINE_USER_ID. Without it the route reports the missing
+# configuration rather than no-opping silently.
+40 2 * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/strategy-backtests >/dev/null 2>&1
+
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 

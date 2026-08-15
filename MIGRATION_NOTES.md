@@ -688,3 +688,82 @@ refuse.
 - `market_cases` is frozen for the same reason the backtests were (the indexer
   needed bulk candles). The store unfreezes it; re-enabling the indexer is a
   follow-on, not part of this commit.
+
+## Phase 4 (part 2) — submission, the result cache, and what "lightning" means
+
+### The missing caller
+
+`recordPendingStrategyBacktest` had **no caller anywhere**. `runForexBacktest`
+was reachable only from its own tests. The job handler
+`strategy_backtest_advance` could ADVANCE a backtest but nothing ever STARTED
+one. Together with the deleted exporter, that is the full explanation for an
+empty `strategy_deployments` on every install: three separate halves of one
+pipeline, each waiting on a piece that was gone.
+
+`strategies/backtestRunner.ts` is the connecting piece — catalogue entry →
+strategy spec → gold bars from the store → research job → a pending
+`strategy_backtests` row the existing `refreshStrategyBacktest` drives to
+completion.
+
+Two choices inside it are worth naming:
+
+- **`intrabarPolicy: "worst_case"`.** When a bar touched both the stop and the
+  target, assume the stop came first. A backtest that guessed the friendlier
+  order reports an edge the tape never offered.
+- **Costs from the observed session profile**, falling back to the static model
+  the rest of the platform already uses — labelled, never invented. A backtest
+  priced at a spread the market never charged is the most flattering lie a
+  strategy factory can tell itself.
+- **`MIN_BARS_FOR_BACKTEST = 5000`.** The evidence bar is 100 completed trades
+  and a strategy does not trade every bar; submitting over a few hundred bars
+  burns a research slot to produce a sample the gate would refuse anyway.
+
+### `backtest_results` — the cache IS the lightning
+
+What makes a backtest fast is not running it faster. It is not running it
+again: a strategy's result over a fixed window of CLOSED bars cannot change.
+
+The key is the whole claim — strategy, spec revision, timeframe, and exactly
+which bars. Two parts of that are load-bearing and each has a test:
+
+- **Spec revision.** A bump means entry, exit or risk geometry changed. Serving
+  the old result would attribute one strategy's record to a different strategy.
+- **Bar COUNT, not just the range.** A backfill that fills a hole INSIDE a
+  window already covered leaves the range identical and the data different. A
+  range-only key would hand back an answer from a run that never saw those bars.
+
+Both failures are silent — the platform keeps quoting a win rate, just the
+wrong one — which is why they are pinned rather than commented.
+
+A **pending** row counts as a cache hit: the job is already in flight, and a
+second submission for the same claim doubles the research spend to produce the
+same answer. `refreshStrategyBacktest` settles the cache row when a run reaches
+a terminal state, best-effort — the evidence row is the record, the cache is an
+index over it, and a stale index costs one repeated submission rather than a
+wrong number.
+
+### The sweep
+
+`/api/cron/strategy-backtests`, nightly at 02:40 UTC, **submission-bounded**
+rather than catalogue-bounded: ~60 strategies across five timeframes is 300
+research jobs, and firing them in one night would spend a month of budget on
+the first run. The cache makes it resumable — each night picks up the claims the
+last one did not reach and re-reads the ones it did.
+
+It runs under ONE owner (`STRATEGY_PIPELINE_USER_ID`), because validated
+strategy statistics are platform evidence rather than personal data — the
+support lookup already falls back to the newest rows regardless of owner, so a
+per-user sweep would pay the same bill once per operator for the same numbers.
+A missing or non-existent owner is reported by name; a silent no-op would look
+exactly like a sweep with nothing to do.
+
+### Still open in Phase 4
+
+- **Vectorized loops** live in the Python research service, not here. The
+  TypeScript side submits and caches; whether the service's inner loop is a
+  NumPy pass or a Python for-loop is a change inside `research-service/` and is
+  measurable only once real jobs run against a filled store.
+- **Flipping G5 to a hard veto** still waits on deployments carrying real
+  sample sizes — which now requires only that the two crons run, rather than
+  code that does not exist.
+- `market_cases` re-indexing remains a follow-on.
