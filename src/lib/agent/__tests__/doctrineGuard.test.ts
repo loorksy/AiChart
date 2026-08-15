@@ -5,6 +5,18 @@
  * lines, user-facing strings, and comments that quietly taught the next reader
  * that "no opinion" was a legitimate answer. Wording is the interface here, so
  * these phrases are checked the same way any other contract is.
+ *
+ * The doctrine narrowed rather than loosened when the G1–G7 gate chain landed.
+ * What it always forbade was EVASION: an absent opinion dressed as analysis,
+ * and an operational fault dressed as a market decision. Both are still
+ * forbidden. What is now permitted is one specific, attributable thing — the
+ * platform refusing to ISSUE a plan the model already decided, and saying which
+ * check refused and what the operator is waiting for.
+ *
+ * So the line these tests hold is: **the model may not wait; the gates may
+ * refuse.** The decision contract still offers only buy or sell, the external
+ * write path still rejects `action: "wait"`, and the single place a visible
+ * WAIT may be produced is the orchestrator's gate-refusal block.
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -129,10 +141,51 @@ describe("doctrine guard", () => {
 
   it("the constitution still states the three layers", () => {
     const system = readFileSync(join(AGENT_WORKSPACE, "workspace", "SYSTEM.md"), "utf8");
-    assert.match(system, /WAIT is not an analytical outcome/);
+    // The model's own outcome is still a side, never a wait.
+    assert.match(system, /it is BUY or SELL; you may not answer WAIT/);
     assert.match(system, /immediate, anticipatory, or conditional/);
     assert.match(system, /operational blocker/);
     // Direction is mandatory, an entry at the current price is not.
     assert.match(system, /A direction is always required; an immediate entry is not/);
+    // The refusal that IS permitted must be attributable and actionable.
+    assert.match(system, /which check refused/);
+    assert.match(system, /never the model's/);
+  });
+
+  it("the constitution names the platform as recommendations-only", () => {
+    const system = readFileSync(join(AGENT_WORKSPACE, "workspace", "SYSTEM.md"), "utf8");
+    assert.match(system, /never places, modifies, or closes a trade/);
+    assert.match(system, /gold \(XAUUSD\) only/i);
+    assert.match(system, /OANDA/);
+  });
+
+  /**
+   * The one place a visible WAIT may be born.
+   *
+   * A wait produced anywhere else is the old failure wearing a new name: an
+   * unattributed refusal the operator cannot act on. Tying it to the gate block
+   * means every wait the platform emits carries a gate id and a reason.
+   */
+  it("only the gate chain can turn a decision into a WAIT", () => {
+    const files = walk(WEB_SRC).filter((file) => !/__tests__/.test(file));
+    const offenders = files.filter(
+      (file) =>
+        /\bdecision\s*=\s*"wait"/.test(readFileSync(file, "utf8")) &&
+        !file.endsWith("orchestrator.ts"),
+    );
+    assert.deepEqual(
+      offenders.map((file) => file.replace(process.cwd(), ".")),
+      [],
+      "a WAIT produced outside the gate chain is a refusal with no gate to name",
+    );
+
+    const orchestrator = readFileSync(join(WEB_SRC, "lib/agent/orchestrator.ts"), "utf8");
+    const guard = orchestrator.indexOf("if (!gateChain.allowed)");
+    const assignment = orchestrator.indexOf('finalDecision.decision = "wait"');
+    assert.ok(guard > 0, "the gate refusal branch must exist");
+    assert.ok(
+      assignment > guard,
+      "the WAIT assignment must sit inside the gate-refusal branch, not before it",
+    );
   });
 });
