@@ -11,13 +11,8 @@ import type { AgentFinalResult } from "@/lib/agent/types";
 import { computeRecommendationExpiry } from "@/lib/agent/recommendationExpiry";
 import { resolveValidity } from "@/lib/agent/trading/tradePlan";
 import { spanStyleForInterval } from "@/lib/agent/trading/scalpGeometry";
-import type { TrackedEntryType, TrackedRecommendation } from "./types";
-
-function mapEntryType(entryType?: string): TrackedEntryType {
-  if (!entryType || entryType === "market") return "market";
-  if (entryType.includes("limit")) return "limit";
-  return "pending";
-}
+import type { TrackedRecommendation } from "./types";
+import { resolveEntryType } from "./entrySemantics";
 
 /**
  * Best-effort market context out of the result's frozen evidence snapshot —
@@ -71,7 +66,13 @@ export function trackedRecommendationFromResult(
     : rec.take_profit != null
       ? [rec.take_profit]
       : [];
-  const entryType = mapEntryType(rec.entryType);
+  // Same derivation the server uses, so the card the chat draws immediately and
+  // the row the tracker grades describe one plan — not two.
+  const entryType = resolveEntryType({
+    declared: rec.entryType,
+    planType: rec.planType,
+    activationRule: rec.activationRule,
+  });
   const activationClass =
     rec.activationClass ??
     (entryType === "market" ? "immediate" : "conditional");

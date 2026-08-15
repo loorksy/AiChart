@@ -61,19 +61,11 @@ describe("Phase 5 architecture and security contracts", () => {
     }
   });
 
-  it("documents the Vibe classification and keeps Phase 6 deferred", () => {
-    const architecture = text("../docs/TRADING_DNA_ARCHITECTURE.md");
-    for (const phrase of [
-      "Idea only",
-      "Reimplemented",
-      "Adapted",
-      "Rejected",
-      "Deferred",
-      "No Vibe source code",
-      "Phase 6",
-    ]) {
-      assert.ok(architecture.includes(phrase));
-    }
+  // The prose half of this test asserted on docs/TRADING_DNA_ARCHITECTURE.md,
+  // which no longer exists — and a test that a markdown file contains seven
+  // phrases never guarded anything a reader of the code could rely on. The
+  // half that DOES constrain the code survives.
+  it("keeps swarm sources out of the trading-DNA module", () => {
     assert.equal(sourceFiles().some((path) => /swarm/i.test(path)), false);
   });
 });

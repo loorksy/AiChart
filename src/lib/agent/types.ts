@@ -171,7 +171,19 @@ export interface AgentRecommendation {
   entry?: number;
   /** The area the plan is willing to enter from, not just the ideal price. */
   entryZone?: { low: number; high: number };
-  entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
+  /**
+   * Either what the model declared (`buy_limit`, `sell_stop`, …) or the
+   * canonical fill semantics once resolved. Both spellings ride this one field
+   * because it is a wire type read by the chat card and the restore path alike;
+   * anything that needs the FILL rule must run it through `resolveEntryType`
+   * rather than trusting the declaration. See recommendations/entrySemantics.ts.
+   */
+  entryType?:
+    | import("@/lib/recommendations/entrySemantics").EntryType
+    | "buy_limit"
+    | "buy_stop"
+    | "sell_limit"
+    | "sell_stop";
   stop_loss?: number;
   take_profit?: number;
   targets?: number[];

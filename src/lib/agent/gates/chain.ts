@@ -25,6 +25,20 @@ export type GateFn = () => Promise<GateOutcome>;
 export interface GateDefinition {
   id: GateId;
   run: GateFn;
+  /**
+   * Whether THIS run's `unavailable` verdict blocks, overriding the static
+   * table.
+   *
+   * The distinction it exists for is between a provider that is DOWN and one
+   * that was never deployed. "The news feed we rely on stopped answering
+   * mid-analysis" is a live hazard: something changed and the plan would walk
+   * into it blind. "No news feed has ever been configured on this install" is a
+   * standing, admin-visible gap — treating it as a live hazard would make the
+   * platform permanently silent while telling the operator a falsehood about
+   * what just happened. The verdict is still reported honestly as
+   * `unavailable`; only whether it blocks is narrowed.
+   */
+  required?: boolean;
 }
 
 /**
@@ -72,7 +86,10 @@ export async function runGateChain(
     if (outcome.status === "veto") {
       return { verdicts, allowed: false, vetoedBy: verdict, confidenceDelta };
     }
-    if (outcome.status === "unavailable" && GATE_REQUIRED_TO_RUN[gate.id]) {
+    if (
+      outcome.status === "unavailable" &&
+      (gate.required ?? GATE_REQUIRED_TO_RUN[gate.id])
+    ) {
       // Absence where absence is itself the hazard. Reported as the blocking
       // verdict so the operator is told which question went unanswered.
       return { verdicts, allowed: false, vetoedBy: verdict, confidenceDelta };

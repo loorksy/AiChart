@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 import {
@@ -12,7 +12,15 @@ import {
   SMART_CHART_AGENT_SYSTEM_PROMPT,
 } from "@/lib/agent/systemPrompt";
 
-const SYSTEM_MD = resolve(process.cwd(), "..", "agent", "workspace", "SYSTEM.md");
+// The same candidate ladder canonicalIdentity.ts itself walks. The app used to
+// live in a `web/` subdirectory with `agent/` as its sibling; it no longer
+// does, and hard-coding only the old shape made this test read a path outside
+// the repository and fail with ENOENT rather than compare anything.
+const SYSTEM_MD =
+  [
+    resolve(process.cwd(), "agent", "workspace", "SYSTEM.md"),
+    resolve(process.cwd(), "..", "agent", "workspace", "SYSTEM.md"),
+  ].find(existsSync) ?? resolve(process.cwd(), "agent", "workspace", "SYSTEM.md");
 
 /** Normalize EOL so Windows checkouts (CRLF) stay comparable to LF sources. */
 function normalizeEol(text: string): string {

@@ -13,7 +13,7 @@
  *   at the highest TP reached (win_tp{n}); SL/expiry before any TP is a loss/expiry.
  * - Terminal records (outcome !== "pending") are never re-evaluated.
  */
-import { resolveFill } from "./entrySemantics";
+import { normalizeStoredEntryType, resolveFill } from "./entrySemantics";
 import type {
   TrackedDirection,
   TrackedRecommendation,
@@ -230,10 +230,7 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
           direction: dir,
           // Legacy rows spell a pending limit "limit"/"pending"; both fill on a
           // touch, which is what those plans were always graded as.
-          entryType:
-            r.entryType === "limit" || r.entryType === "pending"
-              ? "limit_touch"
-              : r.entryType,
+          entryType: normalizeStoredEntryType(r.entryType),
           entry: r.entry,
           retestZone: r.retestZone ?? null,
         },

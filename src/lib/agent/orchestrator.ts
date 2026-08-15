@@ -52,6 +52,13 @@ import {
   priceLevelsFromDrawings,
 } from "./envelopePresentation";
 import { evaluateDependencies } from "./dependencyMatrix";
+import { buildGates } from "./gates/buildGates";
+import { gateLineAr, refusalSummaryAr, runGateChain } from "./gates/chain";
+import type { GateChainResult, GateVerdict } from "./gates/types";
+import { newsProviderConfigured } from "./news/newsProvider";
+import { resolveEntryType } from "@/lib/recommendations/entrySemantics";
+import type { EntryType } from "@/lib/recommendations/entrySemantics";
+import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
 import {
@@ -1377,6 +1384,104 @@ async function runUnifiedChartAgentInner(
   // chartSnapshotHash was computed before the fleet (it also keys the stage
   // checkpoint) — the market window cannot change mid-run, so it is reused.
 
+  // ── The mandatory gate chain (G1–G7) ────────────────────────────────────
+  //
+  // Runs here, BEFORE drawings and before storage, because a refused plan must
+  // leave nothing behind: no entry lines on the chart, no row in the tracker,
+  // no card in the chat. The specialists are not re-run — their results are
+  // re-read as gate ANSWERS instead of as evidence the synthesizer weighs,
+  // since a veto that can be argued down by a prompt is not a veto.
+  //
+  // A refusal does NOT degrade into a weaker recommendation. It produces a WAIT
+  // that names the gate and its reason, which is the only honest answer when
+  // the platform's own checks say a plan should not exist.
+  let gateChain: GateChainResult | null = null;
+  let gateEntryType: EntryType | undefined;
+  const gateRec = finalDecision.recommendation;
+  const gatePlanReady =
+    (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
+    gateRec != null &&
+    gateRec.entry != null &&
+    gateRec.stop_loss != null &&
+    (gateRec.targets?.length ?? 0) > 0;
+  if (gatePlanReady) {
+    // Structure decides the fill semantics, not the model's declared order
+    // type — the incident's plan declared a pending limit while carrying a
+    // close-based rule, and believing the declaration is how that got stored.
+    gateEntryType = resolveEntryType({
+      declared: gateRec.entryType,
+      planType: gateRec.planType ?? finalDecision.planType,
+      activationRule: gateRec.activationRule,
+    });
+    const { gates } = buildGates({
+      now: Date.now(),
+      news,
+      newsProviderConfigured: newsProviderConfigured(),
+      structure,
+      liquidity,
+      supplyDemand,
+      mtf,
+      statisticalSupport,
+      atr: market.atr ?? 0,
+      plan: {
+        direction: finalDecision.decision === "buy" ? "buy" : "sell",
+        entryType: gateEntryType,
+        entry: gateRec.entry!,
+        stopLoss: gateRec.stop_loss!,
+        targets: gateRec.targets!,
+        activationRule: gateRec.activationRule ?? null,
+        // No RR floor: the doctrine states reward:risk is descriptive evidence,
+        // not an acceptance threshold (systemPrompt.ts). Introducing one here
+        // would silently change what the platform refuses.
+      },
+      // A FRESH quote on purpose. The analysis takes tens of seconds and gold
+      // does not stand still; a plan revalidated against the price the run
+      // STARTED with has been validated against the past.
+      fetchLivePrice: () =>
+        getForexLiveQuote(ctx.userId ?? 0, market.symbol, { timeoutMs: 3_000 })
+          .then((quote) => (quote ? (quote.bid + quote.ask) / 2 : null))
+          .catch(() => null),
+    });
+    gateChain = await runGateChain(gates);
+
+    for (const verdict of gateChain.verdicts) {
+      trackedCtx.emitActivity({
+        type: "analysis",
+        status:
+          verdict.status === "pass"
+            ? "completed"
+            : verdict.status === "veto"
+              ? "failed"
+              : "warning",
+        message: gateLineAr(verdict),
+        metadata: { gate: verdict.id, name: verdict.name, status: verdict.status },
+        visible: verdict.status !== "pass",
+      });
+    }
+
+    if (!gateChain.allowed) {
+      const refusal = refusalSummaryAr(gateChain) ?? "لا توجد توصية الآن.";
+      log.info("agent.gate_chain.refused", {
+        requestId: ctx.requestId,
+        gate: gateChain.vetoedBy?.id,
+        status: gateChain.vetoedBy?.status,
+      });
+      // The plan is retracted, not softened. Leaving the model's own prose in
+      // place would keep telling the operator to sell at a level the platform
+      // has just refused to stand behind.
+      finalDecision.decision = "wait";
+      finalDecision.planType = undefined;
+      finalDecision.executionState = "blocked";
+      finalDecision.confidence = 0;
+      finalDecision.recommendation = { action: "wait" };
+      finalDecision.summary = refusal;
+      finalDecision.riskWarnings = [refusal, ...finalDecision.riskWarnings];
+      // The checklist as far as it got — the operator learns what to wait for
+      // rather than being told "no setup right now".
+      finalDecision.publicReasoningSummary = gateChain.verdicts.map(gateLineAr);
+    }
+  }
+
   // Build the drawing plan: the single source of truth for what may be drawn.
   // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
   const drawingPlan = buildDrawingPlan({
@@ -1591,6 +1696,10 @@ async function runUnifiedChartAgentInner(
       statisticalSupport: statisticalSupport?.level,
       statisticalStrategyId: statisticalSupport?.strategyId,
       evidenceSnapshot: synth.evidenceSnapshot,
+      entryType: gateEntryType,
+      // The verdict bundle rides with the plan so a post-mortem can reconstruct
+      // what every gate knew at decision time, not just that they all passed.
+      gateVerdicts: gateChain?.verdicts,
     });
   }
 
@@ -1853,7 +1962,11 @@ function activeRecommendationFromChartContext(
     createdCandleTime: chartContext?.latestCandle?.time,
     direction: rec.action,
     entry: rec.entry,
-    entryType: rec.entryType,
+    entryType: resolveEntryType({
+      declared: rec.entryType,
+      planType: rec.planType,
+      activationRule: rec.activationRule,
+    }),
     stopLoss: rec.stop_loss,
     targets,
     takeProfit: rec.take_profit ?? targets[0],
@@ -2182,6 +2295,10 @@ async function storeFinalRecommendation(input: {
    * log fingerprints, so revision 1 and parity describe one thing.
    */
   evidenceSnapshot?: Record<string, unknown>;
+  /** Canonical fill semantics, derived from the plan's structure by the caller. */
+  entryType?: EntryType;
+  /** Every gate that ran, in order, with its verdict and evidence. */
+  gateVerdicts?: GateVerdict[];
 }): Promise<ActiveRecommendation | null> {
   const rec = input.finalDecision.recommendation;
   if (
@@ -2225,7 +2342,16 @@ async function storeFinalRecommendation(input: {
     statisticalSupport: input.statisticalSupport ?? undefined,
     entry: rec.entry,
     entryZone: rec.entryZone,
-    entryType: rec.entryType,
+    // Canonical semantics from the gate chain, falling back to a structural
+    // derivation so a path that skipped the chain still stores a real fill rule
+    // rather than the model's declared order type.
+    entryType:
+      input.entryType ??
+      resolveEntryType({
+        declared: rec.entryType,
+        planType: rec.planType ?? input.finalDecision.planType,
+        activationRule: rec.activationRule,
+      }),
     stopLoss: rec.stop_loss,
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],
@@ -2289,6 +2415,7 @@ async function storeFinalRecommendation(input: {
       // log fingerprints, so revision 1 and parity finally describe one thing.
       evidenceSnapshot: input.evidenceSnapshot,
       strategyId: input.statisticalStrategyId,
+      gateVerdicts: input.gateVerdicts,
     },
     // The run's own cost evidence, PRICE units — the tradability grade's
     // within-spread-noise check finally sees the spread the LLM was shown
@@ -2407,17 +2534,12 @@ async function persistTrackedRecommendation(
     evidenceSnapshot?: Record<string, unknown>;
     /** Prefer statisticalSupport.strategyId over setupType when binding. */
     strategyId?: string;
+    /** The G1–G7 verdicts that permitted this plan to exist. */
+    gateVerdicts?: GateVerdict[];
   },
   /** The run's resolved cost-evidence spread in PRICE units, for tradability. */
   spreadPrice: number | null = null,
 ): Promise<void> {
-  const entryType: "market" | "limit" | "pending" =
-    active.entryType === "market"
-      ? "market"
-      : active.entryType?.includes("limit")
-        ? "limit"
-        : "pending";
-
   // Is this entry realistically reachable from the current price?
   //
   // The gate shipped wired into the MCP bridge route only, so every plan the
@@ -2441,8 +2563,13 @@ async function persistTrackedRecommendation(
     symbol: active.symbol,
     interval: active.interval,
     direction: active.direction,
-    entryType,
+    // The canonical fill semantics, stored as-is. Collapsing this to
+    // market/limit/pending is what made `confirmation_close` invisible to the
+    // tracker — the plan promised a fill at the confirming close and was then
+    // graded as if it filled on a touch of a level price had already left.
+    entryType: active.entryType ?? "market",
     entry: active.entry,
+    retestZone: active.retestZone ?? null,
     stopLoss: active.stopLoss,
     targets: active.targets,
     invalidationLevel: active.invalidationLevel,
@@ -2489,9 +2616,19 @@ async function persistTrackedRecommendation(
     // operator-facing descriptor; the SNAPSHOT is the raw bundle the brain
     // decided on. Storing only the card while claiming to fingerprint the
     // bundle is the finding.
-    evidence: explanation?.evidenceDimensions
-      ? { evidenceDimensions: explanation.evidenceDimensions }
-      : undefined,
+    evidence:
+      explanation?.evidenceDimensions || explanation?.gateVerdicts
+        ? {
+            ...(explanation.evidenceDimensions
+              ? { evidenceDimensions: explanation.evidenceDimensions }
+              : {}),
+            // What every gate knew when it let this plan through. Without it a
+            // post-mortem can see that the chain passed but not on what.
+            ...(explanation.gateVerdicts
+              ? { gateVerdicts: explanation.gateVerdicts }
+              : {}),
+          }
+        : undefined,
     evidenceSnapshot: explanation?.evidenceSnapshot,
     evidenceSourceSurface: "platform",
   });

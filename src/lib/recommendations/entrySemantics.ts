@@ -95,6 +95,65 @@ function fmt(n: number): string {
   return Number.isFinite(n) ? String(Number(n.toFixed(5))) : "—";
 }
 
+/**
+ * The canonical entry type for a plan, derived from its STRUCTURE.
+ *
+ * Structure outranks declaration on purpose. The incident's plan declared a
+ * pending limit entry while carrying a close-based activation rule; believing
+ * the declaration is exactly how the contradiction got stored. So a close-based
+ * rule decides the fill semantics no matter what the model called the entry,
+ * and the declared type is consulted only where the structure says nothing.
+ */
+export function resolveEntryType(input: {
+  /** Whatever the model called it — `market`, `buy_limit`, `sell_stop`, … */
+  declared?: string | null;
+  planType?: "immediate" | "anticipatory" | "conditional" | null;
+  activationRule?: ActivationRule | null;
+  retestZone?: RetestZone | null;
+}): EntryType {
+  if (closeBasedLeaves(input.activationRule).length > 0) {
+    return input.retestZone ? "retest_zone" : "confirmation_close";
+  }
+  if (input.retestZone) return "retest_zone";
+
+  const declared = (input.declared ?? "").toLowerCase();
+  if (isEntryType(declared)) {
+    // A "market" fill and a rule that must first come true are incompatible:
+    // the plan waits, so it fills on a touch, not at the creation quote.
+    return declared === "market" && input.activationRule ? "limit_touch" : declared;
+  }
+  // `buy_limit`, `sell_limit`, `buy_stop`, `sell_stop` — all touch-filled.
+  if (declared.includes("limit") || declared.includes("stop")) return "limit_touch";
+  if (declared === "market" || declared === "") {
+    return input.activationRule || input.planType === "conditional" || input.planType === "anticipatory"
+      ? "limit_touch"
+      : "market";
+  }
+  return "limit_touch";
+}
+
+/**
+ * Coerce a persisted entry-type string to canonical semantics.
+ *
+ * Rows written before this module existed carry `limit` / `pending`, both of
+ * which meant "fills on a touch". They map to `limit_touch` rather than being
+ * kept as separate spellings, so every reader downstream has one vocabulary.
+ */
+export function normalizeStoredEntryType(raw?: string | null): EntryType {
+  const value = (raw ?? "").toLowerCase();
+  if (isEntryType(value)) return value;
+  if (value === "" ) return "market";
+  if (
+    value === "limit" ||
+    value === "pending" ||
+    value.includes("limit") ||
+    value.includes("stop")
+  ) {
+    return "limit_touch";
+  }
+  return "market";
+}
+
 export interface CoherenceProblem {
   code:
     | "close_rule_with_touch_entry"
@@ -168,7 +227,10 @@ export function validateEntryCoherence(plan: EntryPlan): CoherenceProblem[] {
 
   // Geometry that holds regardless of entry type: the stop is behind the
   // entry and the targets are in front of it.
-  const fill = plan.entryType === "confirmation_close" ? entry : entry;
+  // At construction the only price in hand is the nominal one; for
+  // `confirmation_close` the true fill is not known until the confirming candle
+  // closes, which is why revalidation re-runs this against `effectiveEntry`.
+  const fill = entry;
   if (direction === "buy" ? stopLoss >= fill : stopLoss <= fill) {
     problems.push({
       code: "stop_on_wrong_side",

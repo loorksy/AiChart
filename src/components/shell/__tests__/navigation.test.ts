@@ -211,7 +211,15 @@ test("auth form prevents mobile horizontal overflow", () => {
 });
 
 test("MCP login uses neutral tokens and preserves oauth routes", () => {
-  const login = readFileSync(resolve(process.cwd(), "../mcp/src/auth/login.ts"), "utf8");
+  // `mcp/` is a subproject of this repository, not a sibling of it — the
+  // `../` dates from when the app lived in a `web/` subdirectory. Both shapes
+  // are tried so the assertion runs instead of dying on ENOENT.
+  const loginPath =
+    [
+      resolve(process.cwd(), "mcp/src/auth/login.ts"),
+      resolve(process.cwd(), "../mcp/src/auth/login.ts"),
+    ].find(existsSync) ?? resolve(process.cwd(), "mcp/src/auth/login.ts");
+  const login = readFileSync(loginPath, "utf8");
   assert.match(login, /prefers-color-scheme: dark/);
   assert.match(login, /viewBox="100 250 900 670"/);
   assert.match(login, /action="\/oauth\/login"/);

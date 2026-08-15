@@ -7,12 +7,19 @@
  * these phrases are checked the same way any other contract is.
  */
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 
 const WEB_SRC = resolve(process.cwd(), "src");
-const AGENT_WORKSPACE = resolve(process.cwd(), "..", "agent");
+// `agent/` was a sibling of the app back when the app lived in `web/`. It is
+// now a sibling of `src/` inside the repository, so both shapes are tried —
+// resolving only the old one made this guard scan a directory that is not
+// there and fail on ENOENT instead of on a doctrine violation.
+const AGENT_WORKSPACE =
+  [resolve(process.cwd(), "agent"), resolve(process.cwd(), "..", "agent")].find(
+    existsSync,
+  ) ?? resolve(process.cwd(), "agent");
 
 /** Phrases that reintroduce WAIT as an analytical outcome or a fallback. */
 const FORBIDDEN: Array<{ pattern: RegExp; why: string }> = [

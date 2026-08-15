@@ -48,6 +48,16 @@ before(async () => {
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     ["phase5-attacker@example.com", "x", "user", "active"],
   );
+  // The owner needs a subscription, not a trial: this fixture writes ten
+  // historical plans to have a track record to derive a persona from, and the
+  // three-recommendation trial cap is claimed at the same creation choke point.
+  // The cap is correct — the fixture was the thing pretending to be a trial.
+  await db.execute(
+    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight)
+     VALUES (?, 'active', 0, 0)
+     ON CONFLICT (user_id) DO UPDATE SET plan_status = 'active'`,
+    [owner],
+  );
   const lifecycle = await import("@/lib/recommendations/canonical");
   for (let index = 0; index < 10; index += 1) {
     const won = index < 7;
