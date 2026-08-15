@@ -30,7 +30,7 @@ export function ProductPreview({ className }: { className?: string }) {
         <div className="relative border-b border-border bg-background p-4 md:border-b-0 md:border-e">
           <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{c.chartPane}</span>
-            <span>EURUSD · 15</span>
+            <span>XAUUSD · 15</span>
           </div>
           <div
             className="flex h-40 items-end gap-1.5 px-1"

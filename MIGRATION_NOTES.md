@@ -1018,3 +1018,90 @@ test exists to stop a credential becoming unreachable; it had inverted into
 requiring a field for a credential nothing reads — an invitation to enter a
 token that would never be used. It now pins `OANDA_API_TOKEN`, which is the key
 that actually strands the platform when it is missing.
+
+## Phase 7 — assessed, and a dead layer deleted instead
+
+The plan asks for 22 Agent Artifact card types, each with a zod schema, a
+renderer, a Telegram fallback and a snapshot test. Reading the code first
+changed what that means.
+
+**There is no card-rendering framework to add 22 types to.** What exists is:
+
+- `cardComposer.ts` (263 lines) — a shape-driven composer producing a
+  `ui_schema` layout;
+- `cardPolicy.ts` (215 lines) — contextual selection and dedupe over that
+  layout;
+- `uiSchema.ts` (30 lines) — an extractor pulling such a block out of a model
+  reply.
+
+A complete card pipeline, **with zero consumers**. Nothing imports
+`composeCardSchema`, nothing imports the policy, nothing renders a `ui_schema`,
+and the components it emits — `positions_table`, `account_overview`,
+`pair_browser` — belong to the execution layer and the multi-instrument product
+that no longer exist.
+
+The card that actually renders is `RecommendationTrackerCard`, one bespoke
+component, plus the ~12 Telegram card builders in `telegramCards.ts`.
+
+Adding 22 schemas to a pipeline nothing renders would have been the single
+largest dead-code addition in this migration — precisely the pattern every
+earlier phase has been REMOVING (structure present, wiring absent), and a direct
+violation of "prefer deleting code over keeping dead code". So the dead layer is
+deleted (596 lines + its test), and Phase 7 is recorded as **assessed, not
+built**, with the honest sequencing: a renderer would have to exist first, and
+whether this product wants 22 card types at all is a question for a UI with
+three surfaces by design.
+
+## Phase 8 — the guards
+
+The plan's acceptance criterion for Phase 1b was a grep for
+`metaapi|kill.?switch|executeIntent` returning zero. It returns ~135, and the
+distribution is the point:
+
+- **~130 are comments** recording why something works the way it does.
+- **`executeIntent`** appears only inside comments and inside the guard tests
+  that ban it.
+- **`kill.?switch`** hits are an LLM-gateway admin toggle and a dropped Postgres
+  column — different features that share a word.
+- **Two were live code**, now fixed.
+
+A word-grep is the wrong acceptance test: it cannot tell a comment about
+history from a code path that can move money, and a check that flags the former
+gets silenced within a week. So Phase 8 replaces it with guards that assert the
+property itself.
+
+### `noExecutionGuard.test.ts`
+
+Asserts the four things that would have to be true for an order to reach a
+broker: no HTTP client posts to a broker order path (matched on the URL the
+BROKER owns, not a function name a refactor renames); no execution tool is
+registered **or catalogued** in MCP, and no surviving tool's description names
+one (that is how `create_recommendation` came to instruct models to call
+`open_trade`); no API route exists to accept an execution request; and the
+decision contract cannot express a size, because a lot size is the last thing
+between a plan and an order.
+
+**Each arm was verified to fail on a real violation** — a probe route, a broker
+URL, a catalogue entry, a `calculateLots` helper — before being kept. A guard
+that passes because it checks nothing is worse than no guard.
+
+### `goldOnlyGuard.test.ts`
+
+Pins the SHAPE, where `goldOnly.test.ts` pins the contract, because gold-only
+erodes by ADDITION and no existing test notices a new symbol. It found five
+real leaks:
+
+- the **landing page advertised "حلّل EURUSD" / "Analyze EURUSD"** — marketing
+  a market the platform does not cover;
+- `OpportunityScanCard` offered a `"EURUSD أو XAUUSD"` placeholder;
+- `chart-background` and `v0-ai-chat` defaulted to EURUSD;
+- `store.ts` re-typed `"XAUUSD"` as a chart-layout default instead of importing
+  the one definition.
+
+Three of those components had zero importers and are deleted; the landing copy
+and the store default are fixed. The guard also holds that `gold_candles` has no
+symbol column, that the analysed and stored frames agree, that the OANDA
+spelling stays at the provider boundary, and that the exporter refuses a
+non-gold symbol rather than coercing it.
+
+Both suites plus `uiTargetsExist` run as `test:guards` in `test:ci`.

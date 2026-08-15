@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { DEFAULT_MARKET, resolveActiveMarket } from "@/lib/marketPolicy";
+import { DATA_SYMBOL } from "@/lib/gold";
 import {
   execute,
   insertReturningId,
@@ -93,7 +94,7 @@ export async function getOrCreateChartLayout(
   );
   if (existing) return existing;
   const id = newLayoutId();
-  const sym = (symbol ?? "XAUUSD").toUpperCase();
+  const sym = (symbol ?? DATA_SYMBOL).toUpperCase();
   await execute(
     "INSERT INTO chart_layouts (id, user_id, symbol) VALUES (?, ?, ?)",
     [id, userId, sym],
