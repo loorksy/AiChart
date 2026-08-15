@@ -92,3 +92,73 @@ Page: `/awaiting-approval`
   journal/stats, research-service backtester.
 
 ---
+
+## Phase 1 — gold hard-wiring
+
+`src/lib/gold.ts` is the single source of truth: `DATA_SYMBOL` (XAUUSD),
+`OANDA_INSTRUMENT` (XAU_USD, used only in `markets/oanda.ts`), pip/point
+geometry, the four timeframes, and two guards — `requireGold` (server-side,
+throws `GoldOnlyError`) and `coerceToGold` (UI-side, silent). The asymmetry is
+deliberate: a non-gold symbol on a data path is a caller bug; a stale bookmark
+is not.
+
+Deleted with the multi-pair universe: `pairQuote`, `currencyFlags`, the
+instruments/quotes/favourites routes, `SymbolPickerSheet`, `CurrencyFlag`, the
+composer's symbol picker, and the crypto/fx branches of `tradingCalendar`
+(gold is always `metal`).
+
+## Phase 1b — execution deleted
+
+Full delete-list is in the commit message. Four decisions worth keeping:
+
+1. `ohlc/metaApiOhlc.ts` and `agent/executionModeBadge.ts` were **misnamed, not
+   dead** — each held a pure helper used by surviving code. Renamed to
+   `ohlc/candleTime.ts` and `agent/envelopeBadge.ts` rather than deleted.
+2. `bridge/` survives (18 importers); only `tradeReadiness.ts` was execution-only.
+3. `store.ts` lost `createIntent`/`recordTrade`/`resolveBrokerForMarket`. The
+   `trade_intents` and `trades` tables keep their data and readers; nothing
+   writes them.
+4. Phase flag **D** (`AGENT_TRADE_MODE_V1`) is gone — it gated `tradeMode.ts`.
+
+## Phase 1c — docs, voice, orphaned UI
+
+68 of 70 `.md` files deleted. The seven `.md` files under `agent/` are **runtime
+assets, not documentation** (canonical identity + 5 skill packs + onboarding
+bootstrap), so the "two md files" rule is applied to docs only — see Phase 0
+finding #2.
+
+Voice is gone entirely, including `vendor/realtime-voice-component`.
+
+Orphans found by following the deletions outward: `useTradeMode` (still polling
+the deleted trade-mode route on a 7s timer), `TopBarAccountStatus`,
+`useAccountCapital`, `Mt5LinkCard`, `TradeModePanel`, `LandingPartners` (which
+advertised MetaTrader 5 as a partner).
+
+## Phase 2 — three surfaces
+
+`/workspace` and `/chat` swapped roles: `/chat` is now the real chat surface
+(it previously redirected to `/workspace`), and `/workspace` redirects to it.
+Nav is exactly `["/chat", "/recommendations", "/performance"]`.
+
+Deleted: dashboard, market, chart, command, signals, journal, statistics,
+reports, plan, blog, docs, trades, agent, onboarding, complete-profile, the
+`/p/[slug]` CMS pages, and the trader console pages (`/console`,
+`/console/{account,mcp,pages,support,risk,connect,recommendations,chats}`).
+
+**Two deliberate departures from the plan's wording**, both recorded rather
+than silently taken:
+
+1. **The admin panel stays** (`/console/platform`). The plan's Phase 2 says to
+   delete "console", but its own FAQ requires admin-only configuration ("News
+   block window? Platform config, admin-only"). The FAQ's surviving-page list
+   is about trader surfaces; deleting the admin panel would remove the only
+   place that config can live.
+2. **Billing is flag-gated, not deleted** — exactly the fallback the FAQ
+   allows ("delete if clean, else hide behind `FEATURES.billing=false`"). It is
+   not clean: `getEntitlementForUser` gates chat access itself. `FEATURES.billing`
+   defaults **off** and `/pricing`, `/subscribe`, `/console/billing` redirect
+   when it is.
+
+Not yet done from Phase 2: the settings drawer is not merged into chat.
+Settings still live on their own pages, reachable from the profile popover
+(off-nav), which is where they already lived.

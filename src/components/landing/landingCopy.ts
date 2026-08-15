@@ -6,15 +6,18 @@ export const LANDING_ROUTES = {
   home: "/",
   signup: "/signup",
   login: "/login",
-  chart: "/chart",
-  console: "/workspace",
-  pricing: "/pricing",
-  privacy: "/p/privacy-policy",
-  terms: "/p/terms-of-service",
-  agreement: "/p/user-agreement",
-  risk: "/p/risk-disclosure",
-  about: "/p/about-us",
-  contact: "/p/contact-us",
+  // The product is the chat surface; there is no standalone chart page and no
+  // CMS-backed legal pages any more, so every marketing CTA lands on a route
+  // that actually exists.
+  chart: "/chat",
+  console: "/chat",
+  pricing: "/signup",
+  privacy: "/privacy",
+  terms: "/privacy",
+  agreement: "/privacy",
+  risk: "/privacy",
+  about: "/",
+  contact: "/",
 } as const;
 
 export type LandingCopy = {

@@ -15,6 +15,15 @@ function flag(name: string, defaultOn: boolean): boolean {
 }
 
 export const FEATURES = {
+  /**
+   * Paid plans, checkout, and the credit ledger. OFF by default: the platform
+   * is a recommendations product with no billing story of its own yet, so the
+   * pricing/subscribe/billing routes stay unreachable rather than deleted —
+   * the entitlement machinery still gates chat access and would have to be
+   * untangled first (see MIGRATION_NOTES.md).
+   */
+  billing: () => flag("FEATURE_BILLING", false),
+
   /** The docked Smart Chart Agent chat + unified orchestrator. ON by default. */
   /** News & Macro Risk agent participation. */
   /** Execution Guard — ON by default; only an explicit "false" disables it. */

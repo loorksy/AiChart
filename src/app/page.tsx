@@ -40,7 +40,7 @@ export default async function Home() {
     if (user.role !== "admin" && !hasPlatformAccess(user)) {
       redirect("/awaiting-approval");
     }
-    redirect("/workspace");
+    redirect("/chat");
   }
 
   return <LandingPage />;

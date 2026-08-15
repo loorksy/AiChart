@@ -30,16 +30,9 @@ export interface NavItem {
  * Account / Integrations / Settings live only in the profile popover.
  */
 export const APP_NAV: NavItem[] = [
-  { href: "/workspace", labelKey: "nav.workspace", icon: Bot, exact: true },
-  // Recommendations + trades + statistics merged into one page: the plans,
-  // their executions, and the numbers are one performance story, not three
-  // routes. Old URLs redirect here with section anchors.
+  { href: "/chat", labelKey: "nav.workspace", icon: Bot, exact: true },
+  { href: "/recommendations", labelKey: "nav.recommendations", icon: NotebookPen },
   { href: "/performance", labelKey: "nav.performance", icon: BarChart3 },
-  { href: "/journal", labelKey: "nav.journal", icon: NotebookPen },
-  // V2-A5: balance, statement, top-ups and subscription management.
-  { href: "/console/billing", labelKey: "nav.billing", icon: Wallet },
-  // V2-C: tickets — instant AI answer, human escalation on request.
-  { href: "/console/support", labelKey: "nav.support", icon: LifeBuoy },
 ];
 
 /**
@@ -76,7 +69,7 @@ export type AccessTier = "admin" | "full" | "trial" | "blocked";
 
 /** Trial / blocked users only see the limited trial chat destination. */
 export const TRIAL_NAV: NavItem[] = [
-  { href: "/workspace", labelKey: "nav.workspace", icon: Bot, exact: true },
+  { href: "/chat", labelKey: "nav.workspace", icon: Bot, exact: true },
 ];
 
 /**
@@ -119,7 +112,7 @@ export function navForRole(
 }
 
 export function activeNav(pathname: string, item: NavItem, currentTab?: string | null): boolean {
-  if (item.exact) return pathname === item.href || (item.href === "/workspace" && pathname === "/workspace/");
+  if (item.exact) return pathname === item.href || (item.href === "/chat" && pathname === "/chat/");
   const baseHref = item.href.split("?")[0]!;
   const basePathname = pathname.split("?")[0]!;
   if (item.href.includes("?tab=")) {
