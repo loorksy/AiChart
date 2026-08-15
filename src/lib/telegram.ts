@@ -33,9 +33,13 @@ export async function getTelegramLoginConfig(): Promise<{
     return { telegramConfigured: false, botUsername: null };
   }
 
-  const configuredUsername = await getPlatformValueAsync(
-    "TELEGRAM_BOT_USERNAME",
-  );
+  const configuredUsername = (
+    await getPlatformValueAsync("TELEGRAM_BOT_USERNAME")
+  )
+    // Admins paste the handle as "@bot" more often than "bot"; a leading @
+    // breaks every consumer that builds t.me/<username> deep links.
+    ?.trim()
+    .replace(/^@+/, "");
   if (configuredUsername) {
     return { telegramConfigured: true, botUsername: configuredUsername };
   }
