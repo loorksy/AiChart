@@ -78,6 +78,18 @@ class L {
     'reason': {'ar': 'السبب', 'en': 'Reason'},
     'apply': {'ar': 'تطبيق', 'en': 'Apply'},
     'theme': {'ar': 'المظهر', 'en': 'Theme'},
+    'admins': {'ar': 'المشرفون', 'en': 'Admins'},
+    'addAdmin': {'ar': 'إضافة مشرف', 'en': 'Add admin'},
+    'demoteAdmin': {'ar': 'إزالة الإشراف', 'en': 'Remove admin'},
+    'you': {'ar': 'أنت', 'en': 'You'},
+    'role_owner': {'ar': 'مالك — كل الصلاحيات', 'en': 'Owner — all permissions'},
+    'role_support': {'ar': 'دعم — قراءة المستخدمين والتذاكر', 'en': 'Support — users read + tickets'},
+    'role_user_manager': {
+      'ar': 'إدارة مستخدمين — مستخدمون وفوترة وتذاكر',
+      'en': 'User manager — users, billing read, tickets'
+    },
+    'role_content_manager': {'ar': 'محتوى — تحرير الصفحات', 'en': 'Content — pages'},
+    'role_finance': {'ar': 'مالية — فوترة وأرباح', 'en': 'Finance — billing + profit'},
     'activatePlan': {'ar': 'تفعيل الباقة', 'en': 'Activate plan'},
     'months': {'ar': 'عدد الأشهر', 'en': 'Months'},
     'gift': {'ar': 'هدية (بدون إيراد)', 'en': 'Gift (no revenue)'},

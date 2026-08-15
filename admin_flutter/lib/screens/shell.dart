@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../api/repository.dart';
 import '../i18n.dart';
+import 'admins.dart';
 import 'billing.dart';
 import 'config.dart';
 import 'overview.dart';
@@ -39,12 +40,23 @@ class _AdminShellState extends State<AdminShell> {
     final l = L.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
+    // The roles surface is owner territory — hidden without roles_write
+    // (the API re-checks regardless; this only trims the navigation).
+    final canManageRoles =
+        widget.user.adminPermissions.contains('roles_write');
+
     final destinations = [
       (Icons.dashboard_outlined, Icons.dashboard, l.t('overview')),
       (Icons.group_outlined, Icons.group, l.t('users')),
       (Icons.payments_outlined, Icons.payments, l.t('billing')),
       (Icons.key_outlined, Icons.key, l.t('config')),
       (Icons.support_agent_outlined, Icons.support_agent, l.t('support')),
+      if (canManageRoles)
+        (
+          Icons.admin_panel_settings_outlined,
+          Icons.admin_panel_settings,
+          l.t('admins')
+        ),
     ];
 
     final pages = [
@@ -53,6 +65,8 @@ class _AdminShellState extends State<AdminShell> {
       BillingScreen(repo: widget.repo),
       ConfigScreen(repo: widget.repo),
       SupportScreen(repo: widget.repo),
+      if (canManageRoles)
+        AdminsScreen(repo: widget.repo, selfId: widget.user.id),
     ];
 
     final appBar = AppBar(

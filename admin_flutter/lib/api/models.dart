@@ -33,20 +33,44 @@ class SessionUser {
   final String status;
   final String? username;
 
+  /// Fine-grained admin permissions from /api/me (cosmetic gating only —
+  /// every admin API re-checks server-side).
+  final List<String> adminPermissions;
+
   SessionUser({
     required this.id,
     required this.email,
     required this.role,
     required this.status,
     this.username,
+    this.adminPermissions = const [],
   });
 
-  factory SessionUser.fromJson(Map<String, dynamic> j) => SessionUser(
+  factory SessionUser.fromJson(Map<String, dynamic> j,
+          {List<String> permissions = const []}) =>
+      SessionUser(
         id: asInt(j['id']),
         email: j['email']?.toString() ?? '',
         role: j['role']?.toString() ?? 'user',
         status: j['status']?.toString() ?? '',
         username: asStringOrNull(j['username']),
+        adminPermissions: permissions,
+      );
+}
+
+class AdminRoleRow {
+  final int userId;
+  final String email;
+
+  /// null means the implicit "owner" (no explicit admin_roles row).
+  final String? adminRole;
+
+  AdminRoleRow({required this.userId, required this.email, this.adminRole});
+
+  factory AdminRoleRow.fromJson(Map<String, dynamic> j) => AdminRoleRow(
+        userId: asInt(j['user_id']),
+        email: j['email']?.toString() ?? '',
+        adminRole: asStringOrNull(j['admin_role']),
       );
 }
 

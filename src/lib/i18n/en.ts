@@ -325,6 +325,18 @@ export const en = {
   "agent.needs_confirmation": "This trade needs your confirmation before execution",
   "agent.account_live": "LIVE account",
   "agent.account_demo": "demo / simulation",
+  "telegram.link.title": "Link the agent to Telegram",
+  "telegram.link.description":
+    "Connect your account to the platform bot so the agent can reach you with alerts and recommendations — and answer you directly on Telegram.",
+  "telegram.link.linked": "Linked",
+  "telegram.link.connect": "Link Telegram",
+  "telegram.link.unlink": "Unlink",
+  "telegram.link.open_bot": "Open the bot in Telegram",
+  "telegram.link.copy": "Copy code",
+  "telegram.link.pending_hint":
+    "Open the bot and send the command below — the link completes automatically within seconds.",
+  "telegram.link.unconfigured":
+    "The Telegram bot is not enabled on this platform yet — an admin must add the bot token from the admin console first.",
   "agent.processing": "Processing",
   "agent.thinking": "Thinking",
   "agent.trace_done": "Tasks completed",

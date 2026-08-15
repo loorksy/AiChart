@@ -18,7 +18,11 @@ class AdminRepository {
   Future<SessionUser?> currentUser() async {
     try {
       final j = await api.getJson('/api/me');
-      return SessionUser.fromJson(j['user'] as Map<String, dynamic>);
+      final permissions = ((j['admin_permissions'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList();
+      return SessionUser.fromJson(j['user'] as Map<String, dynamic>,
+          permissions: permissions);
     } on ApiException catch (e) {
       if (e.unauthorized) return null;
       rethrow;
@@ -117,6 +121,19 @@ class AdminRepository {
         .map(ConfigField.fromJson)
         .toList();
   }
+
+  // ── Admin roles ─────────────────────────────────────────────────
+  Future<List<AdminRoleRow>> adminRoles() async {
+    final j = await api.getJson('/api/admin/roles');
+    return ((j['admins'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(AdminRoleRow.fromJson)
+        .toList();
+  }
+
+  /// role = null demotes the account back to a regular user.
+  Future<void> setAdminRole(int userId, String? role) =>
+      api.sendJson('POST', '/api/admin/roles', {'user_id': userId, 'role': role});
 
   // ── Support ─────────────────────────────────────────────────────
   Future<List<TicketRow>> tickets({String? status}) async {
