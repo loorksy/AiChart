@@ -897,3 +897,57 @@ recommendations platform has.
 recommendation to a terminal state against OANDA candles, with the spread-drift
 check wired to a live quote, and the stale tracker header comment corrected.
 This commit removed what was lying; the next one makes what remains complete.
+
+## Phase 5 (part 2) — the tracker: a dead trigger and three lying comments
+
+### Spread drift could not fire
+
+`recommendationTracker.ts` held this:
+
+```ts
+// No live-quote source for spread drift since the EA bridge was removed —
+// metaapi/mt5local never fed one either, so this was already always null.
+const currentSpread: number | null = null;
+```
+
+The rule was written, the threshold was set (2× the costed spread), the
+detector was tested at its own boundary — and it was fed a hardcoded `null`.
+A plan costed at 20 pips and now trading at 60 re-evaluated for every reason
+**except the one that had actually invalidated it**.
+
+A quote source exists now: the same platform-level OANDA book G7 revalidates
+against. `liveSpreadPips()` reads it, converts to **pips**, and hands the rule
+a real number.
+
+That conversion is the load-bearing half. `plannedFor` is pips; a raw `ask −
+bid` is price; on gold those differ by 100. Feeding the rule the raw difference
+would have reported every plan's spread as having NARROWED 33×, and the trigger
+would have stayed silent for a different reason. The file's own comment records
+this exact units bug being caught once before on the planned side — so the test
+pins the conversion, not just the threshold.
+
+Absence stays absence: no quote means the check did not run this pass, never
+that the spread is fine. The lookup is best-effort because the sweep walks
+every active plan and must not drop one because the book went quiet.
+
+### Three comments that described a platform that no longer exists
+
+Prime Directive 1 says file headers can be stale. These three were:
+
+- `recommendationTracker.ts`: "pulls candles live from the user's linked
+  MetaTrader account". It pulls from OANDA at platform level, and there is no
+  linked account on this path.
+- `/api/cron/recommendation-sweep`: "against fresh warehouse candles". The
+  warehouse was deleted.
+- `recommendationStatus.ts`: "A market entry starts triggered; a limit/pending
+  entry triggers on touch" — written before fill semantics existed, and now
+  describing exactly the assumption that caused the incident. Replaced with the
+  four real fill rules and the note that everything downstream reads
+  `effectiveEntry`, never the nominal level.
+
+The crontab comment repeating the MetaTrader claim went with them.
+
+**Still to do in Phase 5:** nothing structural. The tracker grades every
+non-terminal plan against closed OANDA candles on a 5-minute sweep, resolves
+same-candle ambiguity SL-first, distinguishes a missed opportunity from a plain
+expiry, and now re-evaluates on genuine cost drift.

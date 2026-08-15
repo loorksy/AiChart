@@ -6,10 +6,10 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 */10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/event-monitor >/dev/null 2>&1
 
 # Recommendation-tracker sweep — every 5 min. Evaluates all non-terminal tracked
-# recommendations against fresh candles pulled live from the linked MetaTrader
-# account (no browser, no LLM, no trade execution). Overlap-safe via a
-# distributed lease lock, so an occasional long run is skipped rather than
-# double-processed.
+# recommendations against fresh closed candles from OANDA at platform level (no
+# browser, no LLM, and nothing to execute — this platform places no orders).
+# Overlap-safe via a distributed lease lock, so an occasional long run is
+# skipped rather than double-processed.
 */5 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep >/dev/null 2>&1
 
 # OPTIONAL — 24/7 opportunity monitor. Left unscheduled on purpose: it runs an

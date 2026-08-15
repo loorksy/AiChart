@@ -5,7 +5,13 @@
  *
  * Policies (documented on purpose — we never fake precision):
  * - The creation candle never triggers/SLs the recommendation.
- * - A market entry starts triggered; a limit/pending entry triggers on touch.
+ * - The FILL RULE is part of the plan, not an assumption here: a market entry
+ *   starts triggered, a touch entry fills when price reaches its level, a
+ *   confirmation_close entry fills at the confirming candle's CLOSE, and a
+ *   retest_zone entry fills on a return into its band. Grading a close-armed
+ *   plan as if it filled on a touch is the incident entrySemantics.ts records.
+ * - Everything downstream reads `effectiveEntry` — the price the plan is
+ *   actually graded on — never the nominal level.
  * - Same-candle SL + TP after entry is AMBIGUOUS from OHLC alone: we resolve
  *   SL-first (risk honesty) when no TP had been reached before that candle. If a
  *   TP had already been reached earlier, the trade closes at that banked TP.

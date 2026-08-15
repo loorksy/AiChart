@@ -1,11 +1,18 @@
 /**
- * Server-side recommendation tracker sweep. Its lifecycle pass is deterministic:
- * pulls candles live from the user's linked MetaTrader account, evaluates each
- * active recommendation, and persists status/outcome changes. After that pass, a
- * separate orchestration layer may consume durable re-evaluation claims through
- * the unified brain. Runs independently of any browser session.
+ * Server-side recommendation tracker sweep.
+ *
+ * Its lifecycle pass is deterministic: pulls closed candles from OANDA at
+ * platform level — there is no linked broker account and never was one on this
+ * path — evaluates each active recommendation, and persists status/outcome
+ * changes. After that pass, a separate orchestration layer may consume durable
+ * re-evaluation claims through the unified brain.
+ *
+ * Runs independently of any browser session, and places nothing: the sweep
+ * grades plans, it does not act on them.
  */
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
+import { getForexLiveQuote } from "@/lib/markets/forexPrice";
+import { pipSizeForSymbol } from "@/lib/spread";
 import { isCandleComplete } from "@/lib/ohlc/candleTime";
 import { barDurationMs } from "@/lib/intervals";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
@@ -58,6 +65,25 @@ export interface TrackSweepResult {
   terminal: number;
   /** Everything worth announcing from this sweep (see lifecycleEvents). */
   events: LifecycleEvent[];
+}
+
+/**
+ * The current spread in pips, or null when no quote is available.
+ *
+ * Best-effort by contract: a sweep runs over every active plan and must not
+ * fail one because the book went quiet for a second. Absent means the drift
+ * check does not run for this plan on this pass, never that the spread is fine.
+ */
+async function liveSpreadPips(symbol: string): Promise<number | null> {
+  const quote = await getForexLiveQuote(0, symbol, { timeoutMs: 2_000 }).catch(
+    () => null,
+  );
+  if (!quote) return null;
+  const spread = quote.ask - quote.bid;
+  if (!Number.isFinite(spread) || spread < 0) return null;
+  const pip = pipSizeForSymbol(symbol, (quote.ask + quote.bid) / 2);
+  if (!(pip > 0)) return null;
+  return spread / pip;
 }
 
 /** Evaluate one recommendation against fresh candles and persist any change. */
@@ -290,9 +316,18 @@ export async function trackOneRecommendation(
   // with the V2 pipeline on, neither old key existed, so this was NaN and the
   // spread-drift trigger never fired at all.
   const plannedSpread = costEvidencePips(cost);
-  // No live-quote source for spread drift since the EA bridge was removed —
-  // metaapi/mt5local never fed one either, so this was already always null.
-  const currentSpread: number | null = null;
+  // The live half of the comparison.
+  //
+  // This was hardcoded `null` — "no live-quote source since the EA bridge was
+  // removed" — which disabled spread drift entirely: a plan costed at 20 pips
+  // and now trading at 60 re-evaluated for every reason EXCEPT the one that
+  // had actually invalidated it. There IS a source now, the same platform-level
+  // OANDA book G7 revalidates against.
+  //
+  // Converted to PIPS, because `plannedSpread` is pips and comparing a price
+  // difference against it is a ~10^4 error — the same units bug this block's
+  // own comment above records having already been caught once.
+  const currentSpread = await liveSpreadPips(rec.symbol);
   const contextChanged =
     brokeSinceLastSweep ||
     (rec.direction === "buy" && higherBias === "bearish") ||
