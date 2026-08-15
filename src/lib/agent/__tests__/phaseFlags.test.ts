@@ -130,7 +130,7 @@ describe("each flag actually gates its phase", () => {
       minReaders: 1,
       where: ["lib/agent/agents/finalDecisionSynthesizer.ts"],
     },
-    performanceJournalV1: { minReaders: 1, where: ["lib/recommendations/performanceJournal.ts"] },
+    performanceJournalV1: { minReaders: 1, where: ["lib/recommendations/personalNotes.ts"] },
   };
 
   for (const [accessor, expectation] of Object.entries(EXPECTED_GATES)) {
@@ -177,18 +177,6 @@ describe("rollback never makes stored data unreadable", () => {
     }
   });
 
-  it("keeps the journal read gated but non-throwing when off", async () => {
-    // Off returns an empty journal rather than an error: the page still renders
-    // and says there is nothing, instead of breaking.
-    setFlag("PERFORMANCE_JOURNAL_V1", "0");
-    assert.equal(FEATURES.performanceJournalV1(), false);
-    const { buildPerformanceJournal } = await import(
-      "@/lib/recommendations/performanceJournal"
-    );
-    const journal = await buildPerformanceJournal({ userId: 1 });
-    assert.deepEqual(journal.entries, []);
-    assert.equal(journal.summary.followed.count, 0);
-  });
 
 });
 

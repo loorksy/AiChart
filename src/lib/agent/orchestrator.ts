@@ -111,7 +111,7 @@ import {
   type TradabilityAssessment,
 } from "@/lib/recommendations/tradability";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
-import { sessionOf } from "@/lib/recommendations/performanceJournal";
+import { sessionOf } from "@/lib/markets/tradingSession";
 import { getEvidenceCard, getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import { handleIndicatorCommand } from "./indicators/handleIndicatorCommand";

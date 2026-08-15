@@ -40,9 +40,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # configuration rather than no-opping silently.
 40 2 * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/strategy-backtests >/dev/null 2>&1
 
-# Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
-0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
-
 # Nightly tradability calibration report — declared reachability verdicts vs
 # realized activation, per verdict. Read-only; feeds TRADABILITY_LIMITS tuning
 # (docs/PLATFORM_AGENT_UPGRADE_PLAN.md §1.5).

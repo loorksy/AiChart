@@ -39,58 +39,29 @@ test("store helpers enforce the optional userId guard", async () => {
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     ["attacker@test.com", "x", "user", "active"],
   );
-  const intentId = await db.insertReturningId(
-    "INSERT INTO trade_intents (user_id, symbol, side, notional, status) VALUES (?,?,?,?,?)",
-    [owner, "EURUSD", "buy", 100, "pending"],
+  // The vehicle used to be `trade_intents`, which the execution layer owned and
+  // which no longer exists. The PROPERTY it was protecting is unchanged and now
+  // matters more, not less: `recommendations` is this platform's core table,
+  // and `getRecommendation` carries exactly the same optional-guard shape.
+  const recId = await db.insertReturningId(
+    `INSERT INTO recommendations (user_id, symbol, action, confidence, status, expires_at)
+     VALUES (?,?,?,?,?,?)`,
+    [owner, "XAUUSD", "buy", 60, "active", Date.now() + 3_600_000],
   );
 
   const store = await import("@/lib/store");
 
-  // getIntent scoping
-  assert.ok(await store.getIntent(intentId, owner), "owner reads their own intent");
+  assert.ok(
+    await store.getRecommendation(recId, owner),
+    "owner reads their own recommendation",
+  );
   assert.equal(
-    await store.getIntent(intentId, attacker),
+    await store.getRecommendation(recId, attacker),
     null,
-    "another tenant must NOT read the intent",
+    "another tenant must NOT read the recommendation",
   );
   assert.ok(
-    await store.getIntent(intentId),
+    await store.getRecommendation(recId),
     "internal callers without a guard still resolve",
   );
-
-  // updateIntentStatus scoping
-  await store.updateIntentStatus(intentId, "rejected", "attacker", attacker);
-  const afterAttack = await db.queryOne<{ status: string }>(
-    "SELECT status FROM trade_intents WHERE id = ?",
-    [intentId],
-  );
-  assert.equal(afterAttack?.status, "pending", "attacker write must be a no-op");
-
-  await store.updateIntentStatus(intentId, "approved", "owner", owner);
-  const afterOwner = await db.queryOne<{ status: string }>(
-    "SELECT status FROM trade_intents WHERE id = ?",
-    [intentId],
-  );
-  assert.equal(afterOwner?.status, "approved", "owner write must apply");
-
-  // updateIntentDenied persists the structured execution denial, scoped by user.
-  const denyId = await db.insertReturningId(
-    "INSERT INTO trade_intents (user_id, symbol, side, notional, status) VALUES (?,?,?,?,?)",
-    [owner, "GBPUSD", "sell", 80, "approved"],
-  );
-  await store.updateIntentDenied(denyId, "daily loss limit", "RISK_LIMIT", attacker);
-  const notDenied = await db.queryOne<{ status: string; deny_code: string | null }>(
-    "SELECT status, deny_code FROM trade_intents WHERE id = ?",
-    [denyId],
-  );
-  assert.equal(notDenied?.status, "approved", "wrong tenant cannot deny");
-  assert.equal(notDenied?.deny_code, null);
-
-  await store.updateIntentDenied(denyId, "daily loss limit", "RISK_LIMIT", owner);
-  const denied = await db.queryOne<{ status: string; deny_code: string | null }>(
-    "SELECT status, deny_code FROM trade_intents WHERE id = ?",
-    [denyId],
-  );
-  assert.equal(denied?.status, "failed");
-  assert.equal(denied?.deny_code, "RISK_LIMIT", "deny code is persisted");
 });

@@ -14,7 +14,6 @@ import { emptyEvidence } from "./types";
 const MAX_RECOMMENDATIONS = 2_000;
 const MAX_OUTCOMES = 5_000;
 const MAX_EVENTS = 5_000;
-const MAX_TRADES = 2_000;
 const MAX_REFERENCES_PER_KIND = 2_000;
 const MAX_BACKTESTS = 20;
 
@@ -54,15 +53,6 @@ interface LearningRow {
   occurred_at: number;
 }
 
-interface TradeRow {
-  trade_id: number;
-  recommendation_id: number | null;
-  symbol: string;
-  status: string;
-  pnl: number;
-  created_at: unknown;
-  closed_at: unknown | null;
-}
 
 export interface CollectTradingDnaEvidenceOptions {
   fromMs?: number;
@@ -185,7 +175,7 @@ export async function collectTradingDnaEvidence(
 ): Promise<TradingDnaEvidenceBundle> {
   if (!Number.isInteger(userId) || userId <= 0) throw new Error("Invalid Trading DNA tenant");
   validateWindow(options.fromMs, options.toMs);
-  const [recommendationRows, outcomeRows, learningRows, tradeRows, lessons] = await Promise.all([
+  const [recommendationRows, outcomeRows, learningRows, lessons] = await Promise.all([
     query<RecommendationRow>(
       `SELECT id, symbol, COALESCE(market, 'forex') AS market, timeframe,
               strategy_id, direction, action, confidence, status, created_at
@@ -204,14 +194,6 @@ export async function collectTradingDnaEvidence(
          FROM recommendation_learning_events WHERE user_id = ?
         ORDER BY occurred_at DESC, event_id DESC LIMIT ?`,
       [userId, MAX_EVENTS],
-    ),
-    query<TradeRow>(
-      `SELECT t.id AS trade_id, i.recommendation_id, t.symbol, t.status, t.pnl,
-              t.created_at, t.closed_at
-         FROM trades t
-         LEFT JOIN trade_intents i ON i.id = t.intent_id AND i.user_id = t.user_id
-        WHERE t.user_id = ? ORDER BY t.id DESC LIMIT ?`,
-      [userId, MAX_TRADES],
     ),
     listValidatedTradeLessons(userId, { limit: 100 }),
   ]);
@@ -269,18 +251,15 @@ export async function collectTradingDnaEvidence(
     )
     .sort((a, b) => a.occurredAt - b.occurredAt || a.eventId.localeCompare(b.eventId));
 
-  const trades: TradingDnaTradeEvidence[] = tradeRows
-    .map((row) => ({
-      tradeId: Number(row.trade_id),
-      recommendationId: row.recommendation_id == null ? undefined : Number(row.recommendation_id),
-      symbol: row.symbol,
-      status: row.status,
-      pnl: Number(row.pnl),
-      createdAt: timestamp(row.created_at),
-      closedAt: row.closed_at == null ? undefined : timestamp(row.closed_at),
-    }))
-    .filter((row) => inWindow(row.createdAt, options.fromMs, options.toMs))
-    .sort((a, b) => a.createdAt - b.createdAt || a.tradeId - b.tradeId);
+  // Always empty, and stated rather than queried.
+  //
+  // This read `trades` joined to `trade_intents` — tables only the execution
+  // layer ever wrote to, and it was deleted. The query returned nothing on
+  // every call, so the bundle's shape is unchanged; what changed is that the
+  // emptiness is now a fact of the product rather than an accident of an empty
+  // table. The field itself stays because the DNA metrics, reports and shadow
+  // trader all thread it, and they already handle an empty list.
+  const trades: TradingDnaTradeEvidence[] = [];
 
   return {
     userId,

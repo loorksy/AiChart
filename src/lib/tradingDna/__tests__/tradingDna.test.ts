@@ -110,47 +110,6 @@ before(async () => {
         dedupeKey: `phase5-management-${index}`,
       });
     }
-    const intentId = await db.insertReturningId(
-      `INSERT INTO trade_intents
-        (user_id, recommendation_id, symbol, side, notional, market, broker,
-         confidence, status, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        owner,
-        recommendation.recommendationId,
-        recommendation.symbol,
-        recommendation.direction,
-        1000,
-        "forex",
-        "metaapi",
-        recommendation.confidence,
-        "executed",
-        new Date(recommendation.createdAt).toISOString(),
-        new Date(recommendation.createdAt).toISOString(),
-      ],
-    );
-    await db.insertReturningId(
-      `INSERT INTO trades
-        (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, env,
-         market, broker, status, pnl, created_at, closed_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        owner,
-        intentId,
-        recommendation.symbol,
-        recommendation.direction,
-        1,
-        1000,
-        recommendation.entry,
-        "testnet",
-        "forex",
-        "metaapi",
-        "closed",
-        won ? 200 + index * 10 : -100,
-        new Date(recommendation.createdAt).toISOString(),
-        new Date(recommendation.createdAt + (index + 1) * 3_600_000).toISOString(),
-      ],
-    );
   }
   const candidates = await db.query<{ id: number }>(
     "SELECT id FROM trade_lesson_candidates WHERE user_id = ? ORDER BY id ASC",
@@ -265,7 +224,10 @@ describe("Shadow Trader, replay, reports and analytics", () => {
     assert.equal(shadow.executionProhibited, true);
     assert.ok(["buy", "sell", "wait"].includes(shadow.direction));
     assert.ok(shadow.evidence.recommendationIds.length > 0);
-    assert.ok(shadow.evidence.tradeIds.length > 0);
+    // No trade ids, and this is the assertion rather than a dropped one: the
+    // execution layer that produced them is gone, so a shadow recommendation
+    // linking to a trade would mean something wrote one.
+    assert.deepEqual(shadow.evidence.tradeIds, []);
     assert.ok(shadow.evidence.learningEventIds.length > 0);
     assert.ok(shadow.evidence.backtestIds.length > 0);
     assert.equal("entry" in shadow, false);

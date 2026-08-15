@@ -153,9 +153,13 @@ export const FEATURES = {
   /**
    * Phase J — performance journal. ON by default; read-only and descriptive.
    *
-   * OFF stops building the journal and stops feeding personal notes into the
-   * lessons block. It never gated a recommendation, so there is nothing else to
-   * withdraw.
+   * OFF stops feeding personal notes into the lessons block.
+   *
+   * It used to gate the performance journal too. That journal compared plans
+   * the operator FOLLOWED against ones they skipped, which needed a record of
+   * what they actually traded — so it could not survive the execution layer's
+   * deletion, and it is gone. The personal-notes read it also gates is real:
+   * those come from the platform's own recommendation outcomes.
    */
   performanceJournalV1: () => flag("PERFORMANCE_JOURNAL_V1", true),
 

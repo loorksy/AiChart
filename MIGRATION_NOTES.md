@@ -1273,3 +1273,95 @@ a live turn and a reloaded one.
 `gateVerdicts` now rides on the result as well as into the audit row — the
 operator reading a refusal has the same question a post-mortem does, and a
 refusal that names no gate teaches nothing.
+
+## Phase 1b, finished — the execution layer's data plane
+
+Every phase above found the same defect by accident: structure present, wiring
+absent. Nine times. So this pass went looking for it deliberately, with an
+import-graph scan for modules nothing reaches, run to a fixpoint because
+deleting an orphan creates orphans.
+
+It found that **Phase 1b deleted the execution layer's transports and left its
+data plane standing.**
+
+### What survived, and why every guard passed
+
+`noExecutionGuard` checked four things: no broker URL, no MCP execution tool,
+no execution route, no lot sizing. All four passed — while the repo still held:
+
+- `trade_intents` and `trades` tables in BOTH backends, with ~25 migration
+  blocks maintaining columns like `approved_at`, `approval_consumed_at` and
+  `deny_code`;
+- nineteen store helpers reading and writing them;
+- `orderPlan.ts`, which decided market-versus-limit and computed the limit
+  price — everything an order needs except the send;
+- `intentRevalidate.ts`, which re-checked an approval before execution;
+- `agentBridge.ts`, whose error string is "AICHART_SERVICE_TOKEN is not set —
+  the agent cannot execute".
+
+None had a caller. But "unreachable" is a fact about today's call graph, and
+the guard is supposed to be a statement about the product. Transports were
+checked; the place an order would be RECORDED was not.
+
+### The part that was not merely dead
+
+Three live surfaces reported on that empty data:
+
+- `/api/agent-status` returned `openTrades` and `todayPnlUsd` — always zero,
+  and an MCP widget renders `todayPnl` from it. Zero P&L implies positions that
+  made none.
+- A live cron called `collectTradeWatchAlerts` every ten minutes, scanning open
+  positions in a table nothing could write.
+- **The performance journal reported every recommendation as "ignored".** Its
+  `followState` is `trade_id == null ? "ignored" : …`, and `trade_id` is now
+  permanently null. Its own header explains the feature — "does this operator
+  do better on the plans they take or the ones they skip?" — and its own
+  comment records fixing this exact bug once before, when a table mismatch made
+  "every entry classified as ignored and the whole comparison silently empty".
+  Deleting the writer reintroduced it permanently.
+
+That question cannot be answered by a platform with no execution and no broker
+link. It is not a bug to fix, it is a feature whose premise is gone, so the
+journal, its route, its orphaned client and the ~340 lines of adherence
+machinery only it used are deleted. What remains is what this platform can
+honestly measure: a recommendation's plan against its tracked outcome.
+
+### Also removed
+
+The orphan sweep took 47 further modules and components — the pages Phase 2
+deleted left their clients behind, and those clients' charts, and those charts'
+helpers. `sessionOf` had two identical private definitions (the journal's and
+the case fingerprint's); they agreed, which is exactly why nobody noticed and
+exactly how they would have stopped agreeing. One definition now, in
+`markets/tradingSession.ts`.
+
+Trading DNA's `trades` query is replaced by a stated empty list rather than a
+query against a table that no longer exists — the bundle's shape is unchanged
+because it always returned nothing; what changed is that the emptiness is now a
+property of the product instead of an accident.
+
+**8,185 lines deleted, 135 added.**
+
+### The guard now covers the data plane
+
+Three new arms: no schema in either backend may define a table that records an
+order or an approval to place one; the store may not name those tables in SQL;
+and nothing may decide an order type or a limit price. The last one excludes
+`strategies/catalog.ts` BY NAME rather than by loosening the pattern — its
+`order_type` describes how a simulated fill is priced against historical bars
+(`price_reference: "next_bar_open"`), which is arithmetic on candles, carrying
+no live price and no account.
+
+The schema arm was probed: restoring a two-column `trade_intents` fails it.
+
+One thing is deliberately NOT done. Dropping the `CREATE TABLE` statements
+stops new installs from creating these tables; an existing deployment keeps its
+rows as an orphan table. No `DROP TABLE` is issued, because destroying an
+operator's historical records is not a migration's decision to make.
+
+### The tenancy test kept its property
+
+`dbUserScope` proved that id-only store helpers honour an optional owner guard,
+using `trade_intents` as the vehicle. The vehicle is gone; the property matters
+more now, not less. It is re-pointed at `getRecommendation` — same shape, and
+`recommendations` is this platform's core table.

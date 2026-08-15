@@ -296,50 +296,7 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_oauth_identities_user ON oauth_identities(user_id);
 
-  CREATE TABLE IF NOT EXISTS trade_intents (
-    id                SERIAL PRIMARY KEY,
-    user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    recommendation_id INTEGER,
-    -- Which revision of that recommendation this order was built from, and who
-    -- authorised it. Both are checked again at execution time.
-    recommendation_revision_no INTEGER,
-    authorization_source TEXT,
-    symbol            TEXT NOT NULL,
-    side              TEXT NOT NULL,
-    notional          DOUBLE PRECISION NOT NULL,
-    market            TEXT NOT NULL DEFAULT 'forex',
-    broker            TEXT NOT NULL DEFAULT 'metaapi',
-    entry             DOUBLE PRECISION,
-    stop_loss         DOUBLE PRECISION,
-    take_profit       DOUBLE PRECISION,
-    confidence        INTEGER NOT NULL DEFAULT 0,
-    rationale         TEXT,
-    status            TEXT NOT NULL DEFAULT 'pending',
-    reason            TEXT,
-    deny_code         TEXT,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
 
-  CREATE TABLE IF NOT EXISTS trades (
-    id          SERIAL PRIMARY KEY,
-    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    intent_id   INTEGER,
-    symbol      TEXT NOT NULL,
-    side        TEXT NOT NULL,
-    qty         DOUBLE PRECISION NOT NULL DEFAULT 0,
-    quote_qty   DOUBLE PRECISION NOT NULL DEFAULT 0,
-    avg_price   DOUBLE PRECISION NOT NULL DEFAULT 0,
-    order_id    TEXT,
-    env         TEXT NOT NULL DEFAULT 'testnet',
-    market      TEXT NOT NULL DEFAULT 'forex',
-    broker      TEXT NOT NULL DEFAULT 'metaapi',
-    status      TEXT NOT NULL DEFAULT 'open',
-    pnl         DOUBLE PRECISION NOT NULL DEFAULT 0,
-    oco_order_list_id TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    closed_at   TIMESTAMPTZ
-  );
 
   CREATE TABLE IF NOT EXISTS mt_accounts (
     id                  SERIAL PRIMARY KEY,
@@ -1433,55 +1390,13 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS preferred_model_ref TEXT
   `).catch(() => {});
 
-  await client.query(`
-    ALTER TABLE trades ADD COLUMN IF NOT EXISTS oco_order_list_id TEXT
-  `).catch(() => {});
 
-  await client.query(`
-    ALTER TABLE trades
-      ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'forex',
-      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'metaapi'
-  `).catch(() => {});
 
-  await client.query(`
-    ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'forex',
-      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'metaapi'
-  `).catch(() => {});
 
-  await client.query(`
-    ALTER TABLE trades
-      ADD COLUMN IF NOT EXISTS market_type TEXT NOT NULL DEFAULT 'spot',
-      ADD COLUMN IF NOT EXISTS leverage DOUBLE PRECISION NOT NULL DEFAULT 1,
-      ADD COLUMN IF NOT EXISTS order_type TEXT NOT NULL DEFAULT 'market'
-  `).catch(() => {});
 
-  await client.query(`
-    ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS deny_code TEXT,
-      ADD COLUMN IF NOT EXISTS recommendation_revision_no INTEGER,
-      ADD COLUMN IF NOT EXISTS authorization_source TEXT
-  `).catch(() => {});
 
-  await client.query(`
-    ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS market_type TEXT NOT NULL DEFAULT 'spot',
-      ADD COLUMN IF NOT EXISTS leverage DOUBLE PRECISION NOT NULL DEFAULT 1,
-      ADD COLUMN IF NOT EXISTS order_type TEXT NOT NULL DEFAULT 'market',
-      ADD COLUMN IF NOT EXISTS limit_price DOUBLE PRECISION
-  `).catch(() => {});
 
-  // Structured payload for a `broker_action` intent (modify/cancel a pending
-  // order, close a position by symbol) — never populated on a sized order.
-  await client.query(`
-    ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS action_json TEXT
-  `).catch(() => {});
 
-  await client.query(`
-    ALTER TABLE trades
-      ADD COLUMN IF NOT EXISTS limit_price DOUBLE PRECISION
-  `).catch(() => {});
 
   await client.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMPTZ
@@ -1682,21 +1597,7 @@ async function migratePg(client: PoolClient) {
       )
   `);
 
-  await client.query(`
-    ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS practice BOOLEAN NOT NULL DEFAULT FALSE
-  `).catch(() => {});
 
-  // Server-side proof that a human approved THIS order. Written only by the
-  // authenticated approval path; a caller-supplied "approved" flag can no longer
-  // stand in for it at the choke point. Nullable so legacy rows stay readable —
-  // and, having no proof, stay unexecutable under user_approved.
-  await client.query(`
-    ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS approved_at BIGINT,
-      ADD COLUMN IF NOT EXISTS approved_by_user_id INTEGER,
-      ADD COLUMN IF NOT EXISTS approval_consumed_at BIGINT
-  `).catch(() => {});
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS trade_lessons (
@@ -1929,19 +1830,7 @@ async function migratePg(client: PoolClient) {
 
 
   await client.query(`
-    UPDATE trades SET market = 'forex' WHERE market = 'crypto'
-  `).catch(() => {});
-  await client.query(`
-    UPDATE trade_intents SET market = 'forex' WHERE market = 'crypto'
-  `).catch(() => {});
-  await client.query(`
     UPDATE recommendations SET market = 'forex' WHERE market = 'crypto'
-  `).catch(() => {});
-  await client.query(`
-    UPDATE trades SET broker = 'metaapi' WHERE broker = 'binance'
-  `).catch(() => {});
-  await client.query(`
-    UPDATE trade_intents SET broker = 'metaapi' WHERE broker = 'binance'
   `).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS binance_accounts CASCADE`).catch(() => {});
 

@@ -2,7 +2,6 @@ import { getDbBackend, insertReturningId, query, queryOne } from "./db";
 import { createEmbedding } from "./embeddings";
 import type { MarketType } from "./markets/types";
 import type {
-  Trade,
   TradeLesson,
   TradeLessonMatch,
   TradeLessonOutcome,
@@ -206,53 +205,5 @@ export function formatLessonsForPrompt(lessons: TradeLessonMatch[]): string {
       (l) =>
         `- [${l.outcome}] ${l.lesson_ar} (تشابه ${Math.round(l.score * 100)}%)`,
     ),
-  ].join("\n");
-}
-
-export async function buildTradeHistorySummary(userId: number): Promise<string> {
-  const allTrades = await query<Trade>(
-    `SELECT * FROM trades WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
-    [userId],
-  );
-
-  if (!allTrades || allTrades.length === 0) {
-    return "لا يوجد تاريخ تداولات مسجل لهذا المستخدم بعد.";
-  }
-
-  const closedTrades = allTrades.filter((t) => t.status === "closed");
-  const openTrades = allTrades.filter((t) => t.status === "open");
-
-  const totalClosed = closedTrades.length;
-  const wins = closedTrades.filter((t) => t.pnl > 0).length;
-  const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
-  const totalPnL = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
-
-  const symbolCounts: Record<string, number> = {};
-  for (const t of allTrades) {
-    symbolCounts[t.symbol] = (symbolCounts[t.symbol] || 0) + 1;
-  }
-  const topSymbols = Object.entries(symbolCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([sym, count]) => `${sym} (${count} صفقات)`)
-    .join("، ");
-
-  const recentLines = allTrades.slice(0, 5).map((t) => {
-    const pnlLabel =
-      t.status === "closed"
-        ? `[ربح/خسارة: ${t.pnl.toFixed(2)} USD]`
-        : "[مفتوحة حالياً]";
-    return `- صفقة ${t.side === "buy" ? "شراء" : "بيع"} على ${t.symbol} بتاريخ ${t.created_at} ${pnlLabel}`;
-  });
-
-  return [
-    "# الطبقة 4: ملخص الأداء التاريخي وسجل التداول (المصدر: جدول trades)",
-    `- إجمالي الصفقات المغلقة المحللة مؤخراً: ${totalClosed}`,
-    `- عدد الصفقات المفتوحة حالياً: ${openTrades.length}`,
-    `- نسبة النجاح (Win Rate): ${winRate.toFixed(1)}%`,
-    `- إجمالي الربح/الخسارة المحقق (Realized PnL): ${totalPnL.toFixed(2)} USD`,
-    `- الأصول الأكثر تداولاً: ${topSymbols || "لا توجد بعد"}`,
-    `- آخر 5 صفقات منفذة:`,
-    ...recentLines,
   ].join("\n");
 }

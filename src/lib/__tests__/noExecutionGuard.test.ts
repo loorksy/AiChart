@@ -142,6 +142,71 @@ test("the decision contract cannot express an order", () => {
 });
 
 /**
+ * The persistence layer.
+ *
+ * This arm exists because the four above ALL PASSED while `trade_intents` and
+ * `trades` were still in the schema, nineteen store helpers still read and
+ * wrote them, `orderPlan.ts` still planned market-vs-limit fills, and
+ * `intentRevalidate.ts` still re-checked approvals before execution. None of it
+ * had a caller, and none of it was reachable — but "unreachable" is a fact
+ * about today's call graph, and the guard is supposed to be about the product.
+ *
+ * Transports and routes were checked; the DATA PLANE was not. An order needs
+ * somewhere to be recorded, so a schema that can record one is a schema this
+ * product has no use for.
+ */
+test("no table exists to record an order or an approval to place one", () => {
+  for (const backend of ["sqlite.ts", "pg.ts"]) {
+    const schema = readFileSync(path.join(SRC, "lib", "db", backend), "utf8");
+    for (const table of ["trade_intents", "trades"]) {
+      assert.doesNotMatch(
+        schema,
+        new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\b`),
+        `${backend} still defines ${table} — a place to record an order`,
+      );
+    }
+  }
+});
+
+test("the store cannot read or write an order", () => {
+  // Named on the SQL rather than the function name, because the helper names
+  // (`getIntent`, `listOpenTrades`) are the part a refactor renames and the
+  // table is the part the product decides.
+  const store = readFileSync(path.join(SRC, "lib", "store.ts"), "utf8");
+  assert.doesNotMatch(store, /\bFROM trade_intents\b|\bINTO trade_intents\b|UPDATE trade_intents\b/);
+  assert.doesNotMatch(store, /\bFROM trades\b|\bINTO trades\b|UPDATE trades\b/);
+});
+
+/**
+ * Order PLANNING.
+ *
+ * A module that decides market-versus-limit and computes a limit price has
+ * produced everything an order needs except the send. `orderPlan.ts` did
+ * exactly that, with no caller, for the whole migration — the last step before
+ * an order, sitting ready.
+ */
+test("nothing decides an order type or a limit price", () => {
+  const offenders = sourceFiles
+    // The strategy catalogue is the BACKTESTER's spec: its `order_type` says
+    // how a simulated fill is priced against historical bars
+    // (`price_reference: "next_bar_open"`), which is a statement about
+    // arithmetic on candles, not an instruction to a broker. It carries no live
+    // price and no account. Excluded by name rather than by loosening the
+    // pattern, so a real order planner reappearing anywhere else still fails.
+    .filter((file) => !/strategies[\\/]catalog\.ts$/.test(file))
+    .filter((file) => {
+      const text = readFileSync(file, "utf8");
+      // `order_type` as a FIELD being assigned or typed — not the words in prose.
+      return /\border_type\s*:\s*["']?(?:market|limit)|limit_price\s*:/.test(text);
+    });
+  assert.deepEqual(
+    offenders.map(rel),
+    [],
+    "planning the order is the last step before placing it",
+  );
+});
+
+/**
  * Position sizing.
  *
  * The platform holds no equity and computes no lots, so a sizing helper here

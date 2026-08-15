@@ -1,15 +1,12 @@
 import { runCronPostScan } from "./cronPostScan";
-import { collectTradeWatchAlerts } from "./tradeWatch";
 import { checkEconomicEventProximity } from "./recommendations/economicEventMonitor";
 import { listUsersForMonitor } from "./store";
 import { notifyUser } from "./telegram";
-import { selectUnannouncedAlerts } from "./recommendations/lifecycleNotifier";
 import { refreshAllStrategyDecay } from "./strategies/evidence";
 
 export interface MonitorCycleEvent {
   userId: number;
   type:
-    | "trade_alert"
     | "strategy_promoted"
     | "strategy_suspended"
     | "economic_event";
@@ -71,24 +68,11 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
           delivered: economic.notify.delivered > 0,
         });
       }
-      // Proximity alerts go through the SAME claim-before-send path as every
-      // lifecycle event. They used to call notifyUser directly with no dedupe
-      // key and no alert record, so an operator holding a position near its
-      // stop was messaged again on every monitor cycle, indefinitely.
-      const alerts = await selectUnannouncedAlerts(
-        userId,
-        await collectTradeWatchAlerts(userId),
-      );
-      if (alerts.length) {
-        const detail = alerts.map((alert) => alert.detail).join("\n");
-        let delivered = true;
-        try {
-          await notifyUser(userId, detail);
-        } catch {
-          delivered = false;
-        }
-        result.events.push({ userId, type: "trade_alert", detail, delivered });
-      }
+      // The stop/target proximity alerts that used to run here watched OPEN
+      // POSITIONS, read from a `trades` table only the deleted execution layer
+      // could ever have written to. Every cycle queried an empty table and
+      // announced nothing. Recommendation lifecycle alerts — the ones this
+      // platform can actually observe — are raised by the lifecycle notifier.
     } catch (error) {
       result.errors.push(`user ${userId}: ${error instanceof Error ? error.message : "error"}`);
     }

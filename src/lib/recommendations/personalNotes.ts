@@ -29,7 +29,7 @@ import {
   DEFAULT_LESSON_MIN_CONFIDENCE,
   DEFAULT_LESSON_MIN_SAMPLE_SIZE,
 } from "./canonical/tradeLessons";
-import { sessionOf } from "./performanceJournal";
+import { sessionOf } from "@/lib/markets/tradingSession";
 
 const log = createLogger("recommendations:personal-notes");
 
