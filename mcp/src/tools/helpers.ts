@@ -6,12 +6,7 @@ import {
   formatBridgeError,
   formatBridgeResult,
 } from "../bridge/client.js";
-import {
-  assistantResponseFor,
-  nextStepFor,
-  recoveryFor,
-  symbolAdjustments,
-} from "./steering.js";
+import { nextStepFor, recoveryFor, symbolAdjustments } from "./steering.js";
 
 export function readWorkspaceFile(relativePath: string, defaultText = ""): string {
   const candidates = [
@@ -34,7 +29,7 @@ export function readWorkspaceFile(relativePath: string, defaultText = ""): strin
 export function tradingRulesText(): string {
   return readWorkspaceFile(
     "AGENTS.md",
-    "قواعد Lonora: الذكاء الاصطناعي يختار الاتجاه — شراء أو بيع — ونوع الخطة (فورية أو استباقية أو مشروطة). استخدم get_trade_readiness قبل التنفيذ، والحجم يُحسب من Risk per Trade."
+    "قواعد Lonora: الذهب (XAUUSD) فقط. الذكاء الاصطناعي يختار الاتجاه — شراء أو بيع — ونوع الخطة (فورية أو استباقية أو مشروطة) وطريقة تنفيذ الدخول. المنصة تُصدر توصيات فقط ولا تفتح أو تغلق أي صفقة."
   );
 }
 
@@ -86,8 +81,6 @@ export async function bridgeCall<T>(
     if (adjustments.length) extra.adjustments = adjustments;
     const next = nextStepFor(toolName, a, true, data);
     if (next) extra.next_step = next;
-    const assistantResponse = assistantResponseFor(toolName, data);
-    if (assistantResponse) extra.assistant_response = assistantResponse;
     return formatBridgeResult(withSteering(data, extra), opts);
   } catch (e) {
     if (e instanceof BridgeError && isBridgeFailureBody(e.body)) {

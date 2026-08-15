@@ -59,14 +59,9 @@ const RECOVERY_BY_CODE: Record<string, RecoveryInfo> = {
       "The quote behind this check was stale. get_market_price forces a fresh read — call it immediately, then retry the call that failed.",
   },
   CONNECTION_OFFLINE: {
-    recovery_tool: "get_mt5_status",
+    recovery_tool: null,
     recovery_reason:
-      "The broker connection is down. get_mt5_status reports whether connect_mt5 is needed — call it immediately before retrying.",
-  },
-  EXECUTION_UNAUTHORIZED: {
-    recovery_tool: "get_agent_trade_mode",
-    recovery_reason:
-      "Unrecoverable by any tool call: execution needs the operator's own standing authorisation, which only they can grant. get_agent_trade_mode reports the current mode — call it immediately to see exactly what's missing, then ask the operator rather than retrying.",
+      "The market-data feed is unreachable. Nothing else recovers it — report the outage by name rather than analyzing without prices.",
   },
   RATE_LIMITED: {
     recovery_tool: null,
@@ -81,17 +76,17 @@ const RECOVERY_BY_CODE: Record<string, RecoveryInfo> = {
   UPSTREAM_TIMEOUT: {
     recovery_tool: null,
     recovery_reason:
-      "Unrecoverable by a different tool call: a transient upstream failure. Safe to retry the SAME call (open_trade's idempotencyKey dedupes for 24h, so a retry there can never double-place).",
+      "Unrecoverable by a different tool call: a transient upstream failure. Safe to retry the SAME call.",
   },
   SPREAD_TOO_WIDE: {
-    recovery_tool: "get_trade_readiness",
+    recovery_tool: "get_market_price",
     recovery_reason:
-      "The spread was too wide for safe execution right now. get_trade_readiness reports the current spread — call it immediately to see if it has narrowed before retrying.",
+      "The spread was too wide to price the plan honestly. get_market_price reports the current book — call it to see whether it has narrowed before retrying.",
   },
   MARKET_CLOSED: {
-    recovery_tool: "get_trade_readiness",
+    recovery_tool: "get_market_snapshot",
     recovery_reason:
-      "Unrecoverable right now: the trading session is closed. get_trade_readiness reports session state — call it immediately to confirm, then wait for the session to reopen.",
+      "Unrecoverable right now: the trading session is closed. get_market_snapshot reports session state — call it to confirm, then wait for the session to reopen.",
   },
 };
 
@@ -144,16 +139,12 @@ export function symbolAdjustments(toolName: string, requestedSymbol: unknown): A
 type NextStepFn = (args: Record<string, unknown>, data: unknown) => NextStep | null;
 
 const NEXT_STEP_BY_TOOL: Record<string, NextStepFn> = {
-  // Fixed session-start sequence (this server's own MCP instructions):
-  // get_agent_capabilities -> get_account_overview -> get_agent_trade_mode.
+  // Fixed session-start sequence (this server's own MCP instructions). It used
+  // to continue into the account picture and the operator's standing trade
+  // mode; there is no account and no mode, so it ends at the skill catalogue.
   get_agent_capabilities: () => ({
-    tool: "get_account_overview",
-    reason: "Fixed session-start sequence — load the account picture next.",
-    params: null,
-  }),
-  get_account_overview: () => ({
-    tool: "get_agent_trade_mode",
-    reason: "Fixed session-start sequence — confirm the operator's standing trade mode before awaiting their request.",
+    tool: "list_agent_skills",
+    reason: "Fixed session-start sequence — discover the skill catalogue next.",
     params: null,
   }),
 
@@ -182,100 +173,11 @@ const NEXT_STEP_BY_TOOL: Record<string, NextStepFn> = {
     };
   },
 
-  // request_approval only queues an intent and messages Telegram — confirm
-  // it actually queued with the id the operator will see, before reporting success.
-  request_approval: (_args, data) => {
-    const d = obj(data);
-    if (d.ok !== true) return null;
-    return {
-      tool: "get_pending_approvals",
-      reason: "Confirms the intent was actually queued (and its id) before telling the operator it was sent.",
-      params: null,
-    };
-  },
-
-  // Approving executes immediately — confirm the trade actually opened
-  // rather than trusting the approval response alone.
-  respond_approval: (args, data) => {
-    const d = obj(data);
-    if (args.action !== "approve" || d.ok !== true || d.dry_run === true) return null;
-    return {
-      tool: "get_open_trades",
-      reason: "Approval executes the trade immediately — confirm it actually opened before reporting success to the operator.",
-      params: null,
-    };
-  },
-
-  // open_trade: verify a real (non-preview) success before claiming it opened.
-  open_trade: (_args, data) => {
-    const d = obj(data);
-    if (d.dry_run === true || d.ok !== true) return null;
-    return {
-      tool: "get_open_trades",
-      reason: "Confirm the order actually opened and get its live details before reporting success to the operator.",
-      params: null,
-    };
-  },
-
-  // close_trade: verify the position is actually gone.
-  close_trade: (_args, data) => {
-    const d = obj(data);
-    if (d.dry_run === true) return null;
-    return {
-      tool: "get_open_trades",
-      reason: "Confirm the trade is actually gone (or, for a partial failure, which ones remain).",
-      params: null,
-    };
-  },
-
-  // These 3 have NO before/after lookup by ticket (documented gap — see their
-  // dry_run preview_available:false reason). That absence makes an AFTER
-  // check the only way to know the change really landed, so it is genuinely
-  // load-bearing here, not a nice-to-have.
-  modify_sl_tp: (_args, data) => {
-    const d = obj(data);
-    if (d.dry_run === true || d.ok !== true) return null;
-    return {
-      tool: "get_live_account",
-      reason: "This tool has no before/after lookup by ticket — confirm the new levels actually took effect by checking live positions.",
-      params: null,
-    };
-  },
-  cancel_mt5_order: (_args, data) => {
-    const d = obj(data);
-    if (d.dry_run === true || d.ok !== true) return null;
-    return {
-      tool: "get_live_account",
-      reason: "This tool has no before/after lookup by ticket — confirm the order is actually gone by checking live positions/orders.",
-      params: null,
-    };
-  },
-  close_partial: (_args, data) => {
-    const d = obj(data);
-    if (d.dry_run === true || d.ok !== true) return null;
-    return {
-      tool: "get_live_account",
-      reason: "This tool has no before/after lookup by ticket — confirm the remaining size actually changed by checking live positions.",
-      params: null,
-    };
-  },
-
-  // Verify a mode/connection change actually stuck.
-  set_agent_trade_mode: () => ({
-    tool: "get_agent_trade_mode",
-    reason: "Confirm the mode change was actually recorded before telling the operator it took effect.",
-    params: null,
-  }),
-  connect_mt5: () => ({
-    tool: "get_mt5_status",
-    reason: "Confirm the connection actually succeeded before telling the operator the account is linked.",
-    params: null,
-  }),
-  disconnect_mt5: () => ({
-    tool: "get_mt5_status",
-    reason: "Confirm the account is actually unlinked before telling the operator.",
-    params: null,
-  }),
+  // The execution follow-ups that used to live here — verifying that
+  // open_trade actually opened, that respond_approval's approval reached the
+  // broker, that modify_sl_tp's levels landed — are gone with the tools they
+  // verified. This platform places no orders, so there is no broker-side state
+  // to re-read and no claim of success to check.
 
   // A drawing/clear write's own success doesn't prove the chart state
   // reflects it — the live chart poll is the actual source of truth.
@@ -304,106 +206,9 @@ export function nextStepFor(
 }
 
 // ---------------------------------------------------------------------------
-// assistant_response — for the 7 bucket-A (consequential) tools only. Built
-// exclusively from fields already present on the real response; never
-// invents a figure the response didn't compute.
+// `assistant_response` used to phrase the outcome of the seven consequential
+// tools — what open_trade opened, what respond_approval approved, what
+// close_partial left behind. All seven are gone, so the map could only ever
+// return null and the phrasing had nothing left to phrase. Its call site in
+// helpers.ts went with it.
 // ---------------------------------------------------------------------------
-
-function fmtOpenTrade(d: Record<string, unknown>): string | null {
-  if (d.dry_run === true) {
-    const wo = obj(d.would_open);
-    const c = obj(d.computed);
-    if (!wo.symbol) return null;
-    return `Preview only — nothing was placed. Would open ${wo.side} ${wo.symbol} (${wo.order_type}), risking ${c.risk_amount ?? "?"} ${c.currency ?? ""} (${c.risk_pct ?? "?"}% of ${c.equity ?? "?"} equity on ${c.broker ?? "the connected broker"}).`;
-  }
-  if (d.ok === true) {
-    const tradeId = d.tradeId ? `, trade #${d.tradeId}` : "";
-    return `Trade opened — status: ${d.status ?? "unknown"}${tradeId}.`;
-  }
-  return `Trade NOT opened: ${d.reason ?? d.status ?? "denied"}.`;
-}
-
-function fmtCloseTrade(d: Record<string, unknown>): string | null {
-  if (d.dry_run === true) {
-    if (Array.isArray(d.trades)) {
-      const n = d.trades.length;
-      return `Preview only — nothing was closed. ${n} open trade(s) checked.`;
-    }
-    if (d.would_close === false) return `Would NOT close: ${d.reason ?? "unsupported broker for this platform"}.`;
-    if (d.would_close === true) return `Preview only — nothing was closed. Estimated PnL at current price: ${d.estimated_pnl ?? "unavailable"}.`;
-    return null;
-  }
-  if (typeof d.closed === "number") {
-    return `Closed ${d.closed} trade(s), ${d.failed ?? 0} failed, total PnL ${d.totalPnl ?? "unknown"}.`;
-  }
-  if (d.ok === true) return `Trade closed — PnL ${d.pnl ?? "unknown"}.`;
-  if (d.ok === false) return `Trade NOT closed: ${d.reason ?? "unknown reason"}.`;
-  return null;
-}
-
-function fmtRequestApproval(d: Record<string, unknown>): string | null {
-  if (d.dry_run === true) {
-    const ws = obj(d.would_send);
-    if (!ws.symbol) return null;
-    return `Preview only — no approval request sent. Card would show ${ws.side} ${ws.symbol}, entry ${ws.entry ?? "market"}, stop ${ws.stop_loss}, target ${ws.take_profit ?? "none"}.`;
-  }
-  if (d.ok === true) {
-    return `Approval request #${d.intentId} sent to Telegram: ${d.telegramDelivered ? "delivered" : `NOT delivered — ${d.telegramReasonAr ?? "reason unknown"}`}.`;
-  }
-  return null;
-}
-
-function fmtRespondApproval(d: Record<string, unknown>): string | null {
-  if (d.dry_run === true) {
-    if (d.ok === false) return `Preview: ${d.reason ?? "request not actionable"}.`;
-    const pi = obj(d.intent);
-    return `Preview only — nothing resolved. Would ${d.would}: ${pi.symbol ?? "?"} ${pi.side ?? "?"}. ${d.note ?? ""}`.trim();
-  }
-  if (d.status) return `Approval resolved — status: ${d.status}.`;
-  return null;
-}
-
-function fmtNoLookupPreview(kind: string, would: unknown): string | null {
-  const w = obj(would);
-  if (!w.ticket) return null;
-  return `Preview only — nothing was sent to the broker. ${kind} for ticket #${w.ticket} not verified against a live lookup (this platform cannot read a position/order by ticket yet).`;
-}
-
-function fmtModifySlTp(d: Record<string, unknown>): string | null {
-  if (d.dry_run === true) return fmtNoLookupPreview("Requested SL/TP change", d.would_modify);
-  if (d.ok === true) return "SL/TP modified on the broker.";
-  if (d.ok === false) return `SL/TP modify failed: ${d.reason ?? d.error ?? "unknown reason"}.`;
-  return null;
-}
-
-function fmtCancelOrder(d: Record<string, unknown>): string | null {
-  if (d.dry_run === true) return fmtNoLookupPreview("Requested cancel", d.would_cancel);
-  if (d.ok === true) return "Order cancelled on the broker.";
-  if (d.ok === false) return `Order cancel failed: ${d.reason ?? d.error ?? "unknown reason"}.`;
-  return null;
-}
-
-function fmtClosePartial(d: Record<string, unknown>): string | null {
-  if (d.dry_run === true) return fmtNoLookupPreview("Requested partial close", d.would_close_partial);
-  if (d.ok === true) return "Position partially closed on the broker.";
-  if (d.ok === false) return `Partial close failed: ${d.reason ?? d.error ?? "unknown reason"}.`;
-  return null;
-}
-
-const ASSISTANT_RESPONSE_BY_TOOL: Record<string, (d: Record<string, unknown>) => string | null> = {
-  open_trade: fmtOpenTrade,
-  close_trade: fmtCloseTrade,
-  request_approval: fmtRequestApproval,
-  respond_approval: fmtRespondApproval,
-  modify_sl_tp: fmtModifySlTp,
-  cancel_mt5_order: fmtCancelOrder,
-  close_partial: fmtClosePartial,
-};
-
-/** Bucket-A tools only. Returns null for every other tool, or when the
- *  response doesn't match a known shape (never guesses). */
-export function assistantResponseFor(toolName: string, data: unknown): string | null {
-  const fn = ASSISTANT_RESPONSE_BY_TOOL[toolName];
-  if (!fn) return null;
-  return fn(obj(data));
-}

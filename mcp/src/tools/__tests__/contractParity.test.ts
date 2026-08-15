@@ -41,16 +41,20 @@ describe("MCP catalogue ↔ canonical tool contract parity", () => {
     }
   });
 
-  it("high-risk tools are explicitly execution-classed and server controlled", () => {
-    for (const name of [
-      "open_trade", "close_trade", "close_partial",
-      "cancel_mt5_order", "modify_sl_tp", "respond_approval",
-    ]) {
-      const entry = byName.get(name);
-      assert.ok(entry, `${name} missing from contract`);
-      assert.equal(entry.riskClass, "execution", name);
-      assert.equal(entry.serverControlled, true, name);
-    }
+  /**
+   * This test used to require that open_trade, close_trade, close_partial,
+   * cancel_mt5_order, modify_sl_tp and respond_approval each carried
+   * riskClass "execution" and serverControlled — the right guard while those
+   * tools existed. None of them does. The platform issues recommendations,
+   * holds no broker connection and places no orders, so the guard that
+   * replaces it is the stronger one: nothing on the mcp surface may be
+   * execution-classed, because nothing on it can execute.
+   */
+  it("no tool on the mcp surface is execution-classed", () => {
+    const offenders = contract.tools
+      .filter((entry) => entry.surfaces.includes("mcp") && entry.riskClass === "execution")
+      .map((entry) => entry.name);
+    assert.deepEqual(offenders, [], "a recommendations-only surface has nothing to execute");
   });
 
   it("contract has no phantom mcp tools that are not actually registered", () => {

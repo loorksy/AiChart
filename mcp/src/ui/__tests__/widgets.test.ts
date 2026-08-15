@@ -39,15 +39,17 @@ describe("MCP UI resources", () => {
   });
 
   it("resolves public HTTP paths for native and skybridge templates", () => {
-    const native = widgetHtmlByPublicPath("portfolio/v1");
+    // `portfolio` was deleted with the account tools. This test is about path
+    // and mime resolution, so it runs on a card that still exists.
+    const native = widgetHtmlByPublicPath("recommendation-card/v1");
     assert.ok(native);
-    assert.equal(native.uri, "ui://aichart/portfolio/v3");
+    assert.equal(native.uri, "ui://aichart/recommendation-card/v5");
     assert.ok(native.html.length > 200);
     assert.equal(native.mimeType, "text/html;profile=mcp-app");
 
-    const gpt = widgetHtmlByPublicPath("portfolio/v1-gpt");
+    const gpt = widgetHtmlByPublicPath("recommendation-card/v1-gpt");
     assert.ok(gpt);
-    assert.equal(gpt.uri, "ui://aichart/portfolio/v3-gpt");
+    assert.equal(gpt.uri, "ui://aichart/recommendation-card/v5-gpt");
     assert.equal(gpt.mimeType, "text/html+skybridge");
   });
 
@@ -147,12 +149,9 @@ describe("widget HTML safety", () => {
     }
   });
 
-  it("account overview widget uses shared parseAccountOverview helper", () => {
-    const html = WIDGETS["account-overview"];
-    assert.ok(html.includes("parseAccountOverview"));
-    assert.ok(html.includes("equity-val"));
-    assert.ok(html.includes("balance-val"));
-  });
+  // The account-overview card was deleted with the account tools — the
+  // platform holds no broker account, so there is no equity or balance to
+  // render and no shared parser for it to share.
 
   it("runtime account parser keeps connected account numbers visible", () => {
     const window = {
@@ -200,15 +199,19 @@ describe("widget HTML safety", () => {
     assert.ok(html.includes("rec.score"));
   });
 
-  it("registers at least 13 interactive card widgets", () => {
-    assert.ok(Object.keys(WIDGETS).length >= 13);
+  it("registers a card for every surface that has one", () => {
+    // The floor was 13 when account, open-trades, approval and readiness cards
+    // existed. They do not; a floor that can only be met by keeping dead HTML
+    // is not a guard. What matters is that nothing points at a missing widget,
+    // which "links card tools to registered widgets" below checks directly.
+    assert.ok(Object.keys(WIDGETS).length >= 8, `got ${Object.keys(WIDGETS).length}`);
   });
 });
 
 describe("catalog card-linked tools", () => {
   it("links card tools to registered widgets", () => {
     const linked = TOOL_CATALOG.filter((t: ToolDefinition) => t.ui?.widget);
-    assert.ok(linked.length >= 13);
+    assert.ok(linked.length >= 8, `got ${linked.length}`);
     for (const tool of linked) {
       assert.ok(WIDGETS[tool.ui!.widget], `${tool.name} → missing widget ${tool.ui!.widget}`);
     }

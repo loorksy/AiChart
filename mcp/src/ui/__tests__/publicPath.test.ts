@@ -18,7 +18,9 @@ describe("normalizeWidgetPublicPath", () => {
 
 describe("self-contained widget shells", () => {
   it("resolves comma path to registered widget HTML", () => {
-    const hit = widgetHtmlByPublicPath("account-overview,v4");
+    // `account-overview` was deleted with the account tools; any registered
+    // widget proves the path resolution this test is actually about.
+    const hit = widgetHtmlByPublicPath("recommendation-card,v4");
     assert.ok(hit);
     // Host sandboxes block external assets — runtime must ship inline.
     assert.ok(hit.html.includes("window.AIC"));
