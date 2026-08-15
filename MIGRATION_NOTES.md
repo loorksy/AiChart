@@ -479,3 +479,74 @@ three groups:
    to **Phase 5** (outcome tracking & Performance), where the surface is
    rebuilt around recommendation outcomes graded against OANDA candles, and
    pulling that thread here would have meant rewriting Phase 5 inside Phase 3.
+
+## Phase 3 (continued) — SELF-VISION: the agent is told what it could not see
+
+`visualEvidence.ts` claimed in its own header that "the model is told which
+view it did not get". No code path did that. `collectVisualEvidence` computed
+`missing` and the orchestrator threw it away; the model received two chart
+images and nothing else.
+
+That is not a cosmetic gap, because **absence is not self-describing**. A
+payload carrying a 15m and a 1h chart cannot reveal whether a 4h was never
+requested or was requested and failed — and only one of those permits the model
+to say anything about the 4h. Nothing else in the prompt names the frames that
+were asked for, so the model had no way to infer the difference, and a blind
+run looked identical from the inside to a fully-covered one.
+
+What changed:
+
+- `VisualEvidenceResult` now carries `requested` — the denominator. Without it
+  there was no way to compute coverage after the fact either.
+- A **thrown** capture used to return `missing: []`, which reported total
+  blindness as "nothing was asked for". It now marks every requested frame
+  `capture_failed`. The one case that legitimately reports nothing is an
+  unscoped run (`userId == null`): no layout to render means the eyes were
+  never opened, and calling that a failure is a lie in the other direction.
+- `visualCoverageNote()` states coverage in words the model can act on, and
+  distinguishes partial sight ("do not describe price action on a view you were
+  not shown") from blindness ("you are reading numbers alone").
+- The note lives INSIDE `modelContext`, not beside it. That is load-bearing:
+  `evidenceBundleImmutability` requires the persisted snapshot to be exactly
+  what was serialized for the brain, and a first attempt that spliced the note
+  into the user message alone broke it. Inside `modelContext`, what was read is
+  what is persisted.
+- The prompt rule changed from "if a timeframe is missing from the
+  attachments…" (an inference the model cannot make) to "trust the stated
+  coverage over the attachments".
+- The operator hears it too. A run that asked for charts and got none used to
+  say nothing at all; degraded and blind runs now emit an activity warning
+  naming the frames.
+- **G4 records what the brain could see.** A numbers-only plan is not refused —
+  the platform has always degraded rather than going silent — but it costs 10
+  confidence and the frames actually seen land in the persisted verdict bundle,
+  which is the only place a post-mortem can learn whether the brain had eyes.
+
+`visualTimeframesFor` also lost its 1m/30m/1w ladders, left over from the
+multi-instrument product. Gold is analysed on 5m/15m/1h/4h with 1d as context
+above the top frame, and an unknown interval now gets the intraday default
+rather than a silently different ladder.
+
+New suite `test:vision` (7 tests), registered in `test:ci`.
+
+### The candle-reading tool belt — assessed, not built
+
+The plan calls for `read_candles` / `switch_timeframe` / `capture_chart` /
+`read_zone` behind a 12-call budget. Reading the code rather than the plan:
+
+- `src/lib/agent/tools/` already contains a full framework — registry, policy,
+  executor, telemetry, MCP adapter, and two read-only adapters — and **nothing
+  in the repo constructs or calls it.** Adding four more definitions to an
+  unused registry would produce exactly the dead code Prime Directive 6
+  forbids.
+- The capability itself already exists in a bounded form: the synthesizer's
+  `requestExtraTimeframe` lets the brain ask for ONE frame it was not shown,
+  captured through the same collector, with the first decision standing if the
+  capture fails.
+
+So the real work is not four tool definitions — it is turning the one-shot
+synthesizer into a bounded browse loop and giving the extra-frame mechanism a
+budget of 12 instead of 1. That is an architectural change to the decision
+call, and doing it in the same phase that just rewired the gate chain through
+that same call would have made both unreviewable. It is the first item of the
+next phase of work rather than a line item quietly skipped here.

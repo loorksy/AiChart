@@ -42,6 +42,15 @@ export interface GateInputs {
   plan: EntryPlan;
   /** ATR on the entry timeframe, price units — G7's reachability yardstick. */
   atr: number;
+  /**
+   * The chart frames the decision was actually made on.
+   *
+   * A plan read from numbers alone is not refused — the platform has always
+   * degraded to that rather than going silent — but it is a materially weaker
+   * plan, and the verdict bundle is the only place a post-mortem can learn
+   * whether the brain had eyes.
+   */
+  visualTimeframes?: string[];
   /** A quote fetched at gate time, not the one the run started with. */
   fetchLivePrice: () => Promise<number | null>;
 }
@@ -196,18 +205,26 @@ export function buildGates(input: GateInputs): GateBuildResult {
         // An HTF conflict does not flip the plan; the direction stays the
         // model's. It costs confidence, which is what disagreement is worth.
         const conflict = input.mtf?.conflict === true;
+        const seen = input.visualTimeframes ?? [];
+        const blind = seen.length === 0;
+        const reasons = [
+          conflict
+            ? "تعارض بين الفريم الحالي والفريم الأعلى — الخطة قائمة بثقة أقل."
+            : null,
+          blind ? "لم تتوفر أي لقطة شارت — القراءة من الأرقام وحدها." : null,
+        ].filter(Boolean);
         return {
           status: "pass",
-          confidenceDelta: conflict ? -10 : 0,
-          reasonAr: conflict
-            ? "تعارض بين الفريم الحالي والفريم الأعلى — الخطة قائمة بثقة أقل."
-            : undefined,
+          confidenceDelta: (conflict ? -10 : 0) + (blind ? -10 : 0),
+          reasonAr: reasons.length ? reasons.join(" ") : undefined,
           evidence: {
             trend: input.structure.trend,
             latestStructureEvent: input.structure.latestStructureEvent?.type ?? null,
             currentBias: input.mtf?.currentBias ?? null,
             higherBias: input.mtf?.higherBias ?? null,
             conflict,
+            // What the brain could actually see when it decided.
+            visualTimeframes: seen,
           },
         };
       },

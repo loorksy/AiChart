@@ -97,7 +97,7 @@ import {
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { resolveValidity } from "./trading/tradePlan";
 import { spanStyleForInterval } from "./trading/scalpGeometry";
-import { collectVisualEvidence } from "./visualEvidence";
+import { collectVisualEvidence, visualCoverageNote } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { recordDecisionForParity } from "./parityLog";
 import { serializeCostEvidence } from "./marketContext/costEvidence";
@@ -1222,13 +1222,30 @@ async function runUnifiedChartAgentInner(
         interval: market.interval,
         timeoutMs: AGENT_TIMEOUTS.visualEvidence,
       })
-    : { snapshots: [], missing: [], elapsedMs: 0 };
+    : { snapshots: [], requested: [], missing: [], elapsedMs: 0 };
   if (visual.snapshots.length) {
     trackedCtx.emitActivity({
       type: "analysis",
       status: "completed",
       message: `تمت مراجعة ${visual.snapshots.length} لقطات شارت بصرياً.`,
       metadata: { timeframes: visual.snapshots.map((s) => s.timeframe) },
+    });
+  }
+  // A run that asked for charts and got none used to say nothing at all — the
+  // operator could not tell a visual read from a numbers-only one, and neither
+  // could a post-mortem. Partial coverage is reported for the same reason.
+  if (visual.missing.length) {
+    trackedCtx.emitActivity({
+      type: "analysis",
+      status: "warning",
+      message: visual.snapshots.length
+        ? `تعذّر التقاط ${visual.missing.map((m) => m.timeframe).join("، ")} — التحليل يقرأ ما تبقّى فقط.`
+        : "تعذّر التقاط أي شارت — التحليل يقرأ الأرقام وحدها.",
+      metadata: {
+        requested: visual.requested,
+        captured: visual.snapshots.map((s) => s.timeframe),
+        missing: visual.missing,
+      },
     });
   }
 
@@ -1255,6 +1272,7 @@ async function runUnifiedChartAgentInner(
           // ("مقارنة بالخطة السابقة…") instead of reading like a first message.
           conversationBlock: conversationBlockForSynth(input.conversationContext),
           visualSnapshots: visual.snapshots,
+          visualCoverageNote: visualCoverageNote(visual),
           statisticalSupport,
           historicalCases,
           // The designed extension point: fresh keys reach the model prompt
@@ -1423,6 +1441,7 @@ async function runUnifiedChartAgentInner(
       mtf,
       statisticalSupport,
       atr: market.atr ?? 0,
+      visualTimeframes: visual.snapshots.map((snapshot) => snapshot.timeframe),
       plan: {
         direction: finalDecision.decision === "buy" ? "buy" : "sell",
         entryType: gateEntryType,

@@ -421,7 +421,7 @@ Ask, in order:
 - When chart images are attached, each one arrives immediately after a label naming its timeframe and carrying that timeframe's numbers. Read the picture and the numbers together, and bind each chart to the timeframe it belongs to.
 - Images confirm SHAPE — a rejection, a gap, a formation, where a structure sits. Every precise level you quote must come from the numeric evidence, never estimated off the pixels.
 - Say which timeframe LEADS this decision, which provides CONTEXT, and which times the ENTRY, in timeframeRoles. When the timeframes disagree, that assignment IS the resolution — never let disagreement remove the direction.
-- If a timeframe is missing from the attachments, say you did not have that view rather than implying full coverage.
+- Your coverage is stated explicitly in the evidence, naming every frame requested and every frame that did not arrive. Trust that line over the attachments: never describe price action on a view it says you were not shown, and when it reports no chart at all, say you read numbers alone.
 
 ## Levels
 - Prefer a same-direction tradeCandidate: set selectedTradeCandidateId and leave proposedLevels null. Its geometry is already validated.
@@ -496,6 +496,13 @@ export async function runFinalDecisionSynthesizer(
      * blocking the decision.
      */
     visualSnapshots?: VisualSnapshot[] | null;
+    /**
+     * What the model is told about its own eyes: which frames were requested,
+     * which arrived, which did not and why. Absence is not self-describing — a
+     * prompt carrying two images cannot reveal whether a third was never asked
+     * for or was asked for and failed, and the difference changes the read.
+     */
+    visualCoverageNote?: string | null;
     /**
      * Verified statistical backing for this symbol and timeframe. Grades the
      * plan; never decides whether one exists.
@@ -774,6 +781,7 @@ function buildModelContext(
     statisticalSupport?: StatisticalSupport | null;
     historicalCases?: HistoricalCaseEvidence | null;
     additionalEvidence?: Record<string, unknown> | null;
+    visualCoverageNote?: string | null;
   },
 ): Record<string, unknown> {
   const playbook = input.risk?.playbook ?? null;
@@ -781,6 +789,13 @@ function buildModelContext(
   return {
     // Fixed scalping context. Higher-timeframe facts remain evidence only.
     scalpingContext: SCALPING_CONTEXT,
+    // What the brain can and cannot SEE, in words. It lives here rather than
+    // beside the images because absence is not self-describing: a payload
+    // carrying two charts cannot reveal whether a third was never requested or
+    // was requested and failed, and only one of those permits describing that
+    // frame. Inside modelContext it is also covered by the immutability
+    // contract — what was read is what is persisted.
+    visualCoverage: input.visualCoverageNote ?? null,
     // The extension point, named on purpose. A new evidence provider adds a
     // key here and it reaches the model without the brain, the contract or the
     // prompt changing. It used to piggy-back on the live-cost field, which is

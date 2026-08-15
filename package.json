@@ -21,6 +21,7 @@
     "test:trace": "tsx --test --test-force-exit src/lib/agent/__tests__/runTraceSchema.test.ts && tsx --test --test-force-exit src/lib/agent/__tests__/runTraceDb.test.ts",
     "test:research": "tsx --test --test-force-exit src/lib/research/__tests__/*.test.ts",
     "test:gates": "tsx --test --test-force-exit src/lib/agent/__tests__/gates.test.ts",
+    "test:vision": "tsx --test --test-force-exit src/lib/agent/__tests__/visualCoverage.test.ts",
     "test:entry-coherence": "tsx --test --test-force-exit src/lib/recommendations/__tests__/entryCoherence.test.ts",
     "test:recommendations": "tsx --test --test-force-exit src/lib/recommendations/canonical/__tests__/*.test.ts src/lib/recommendations/__tests__/tradability.test.ts src/lib/recommendations/__tests__/platformTradabilityGate.test.ts src/lib/recommendations/__tests__/tradabilityCalibration.test.ts src/lib/recommendations/__tests__/lifecycleEvents.test.ts src/lib/recommendations/__tests__/lifecycleNotifier.test.ts src/lib/recommendations/__tests__/performanceJournal.test.ts",
     "test:trading-dna": "tsx --test --test-force-exit src/lib/tradingDna/__tests__/*.test.ts",
@@ -31,7 +32,7 @@
     "test:provider-release": "tsx scripts/validate-provider-release.ts",
     "test:redis-release": "tsx scripts/validate-redis-release.ts",
     "test:live": "echo \"No live external-provider tests are enabled by default. Set the relevant provider env (e.g. OPENAI_API_KEY, MT5_BRIDGE_URL) and run the targeted suite.\" && exit 0",
-    "test:ci": "npm run test:context && npm run test:memory && npm run test:skills && npm run test:tools && npm run test:trace && npm run test:research && npm run test:recommendations && npm run test:entry-coherence && npm run test:gates && npm run test:trading-dna && npm run test:unit && npm run test:decision-authority && npm run test:integration"
+    "test:ci": "npm run test:context && npm run test:memory && npm run test:skills && npm run test:tools && npm run test:trace && npm run test:research && npm run test:recommendations && npm run test:entry-coherence && npm run test:gates && npm run test:vision && npm run test:trading-dna && npm run test:unit && npm run test:decision-authority && npm run test:integration"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
