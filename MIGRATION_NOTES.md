@@ -607,3 +607,84 @@ than a hardcoded "no third round".
 **Phase 3 is complete.** Gates wired and enforcing, entry semantics surviving
 persistence, doctrine rewritten with a first-class WAIT, SELF-VISION honest
 about what it could not see, and the agent reading the chart with its own hands.
+
+## Phase 4 (part 1) — the gold candle store, and why G5 was blind
+
+### The finding: the backtest pipeline had no data source
+
+Reading the code rather than the plan turned up something the plan did not
+anticipate. The evidence factory is **intact**: `strategy_backtests` and
+`strategy_deployments` exist with calibration, confidence intervals, and
+selection-bias correction; `refreshStrategyDecay` / `refreshAllStrategyDecay`
+already implement the decay monitoring Phase 4 asks for; the research service
+and its `aichart-candle-warehouse-v1` dataset dialect, its validator and its
+types all survived.
+
+What did not survive was **the exporter**. `src/lib/research/warehouse.ts` was
+deleted with the multi-symbol candle warehouse, and nothing else built that
+envelope. So the pipeline could accept bars and never be given any: no backtest
+could run, none could complete, `strategy_deployments` stayed empty forever —
+and G5 could never grade a strategy because there was never a strategy record
+to grade. The gate was not weakly configured; it was starved.
+
+### `gold_candles` — one instrument, closed bars, idempotent writes
+
+`src/lib/gold/candleStore.ts` + a table in both SQLite and Postgres schemas.
+
+- **No symbol column.** This platform trades one instrument, and a symbol
+  column is an invitation to store a second — the exact drift gold-only exists
+  to prevent. The timeframe is the partition.
+- **Closed bars only**, enforced at the write path. A forming candle's high and
+  low are still moving; a backtest that read one would be trading a bar the
+  market had not finished printing, and its win rate would be a measurement of
+  the future.
+- **Idempotent writes.** Backfill pages overlap by construction (the boundary
+  bar appears in both), so a repeat write must be a no-op. `storeGoldCandles`
+  returns how many rows were genuinely NEW, which is how the backfill loop
+  knows it is still making progress rather than spinning on a range it has.
+- **Sanity gate**: a high below its own low, a close outside the bar's range, a
+  non-positive price. None of these fails a backtest — each produces a win
+  rate, which is why they are refused at the door.
+
+This is **not** a live-data path. Nothing in the request path reads it; the
+market pipeline still goes straight to OANDA. Re-introducing a request-path
+cache is what the earlier migration deliberately removed, and this is not that.
+
+`syncGoldCandleStore` runs forward first (catch up to now — bounded and fast),
+then backward (dig history — open-ended, capped per run). The other order would
+leave the newest bars stale whenever the backfill ran long. Scheduled hourly in
+`infra/aichart.cron`, which an existing guard test insisted on: a route that
+exists in code and nowhere in the crontab is caught, and that guard earned its
+keep here.
+
+### The second blindness: live sample size is not the sample
+
+Even with backtests running, `getStatisticalSupport` read `live_sample_size` —
+the count of LIVE outcomes observed since deployment. That is the decay signal,
+and it is **zero for every newly minted deployment**. A strategy validated on
+400 backtested trades therefore reached G5 as a strategy with no record at all,
+and `gradeStrategyEvidence` (which needs ≥100 trades and a win rate) could only
+ever answer "uncalibrated".
+
+The deployments row already points at the backtest that holds both numbers, so
+the lookup now joins `strategy_backtests` and carries `backtestTrades` /
+`backtestWinRate`. G5 reads those. Live outcomes stay what they are — the decay
+signal, not the sample.
+
+The win rate is never derived. Computing one from the calibrated-confidence
+midpoint would manufacture exactly the unvalidated number the gate exists to
+refuse.
+
+### Still to do in Phase 4
+
+- Wire `exportGoldWarehouseEnvelope` into the job submission path so
+  `runForexBacktest` is actually called with a dataset (today only tests call
+  it), and add the nightly precompute that walks the catalogue.
+- The `backtest_results` cache and the vectorized loop — the "lightning" half.
+  The store is the prerequisite for both and did not exist until now.
+- Flip G5's `grade === "none"` to a hard veto once deployments carry real
+  sample sizes. The condition is unchanged from the Phase-3 note; what changed
+  is that reaching it is now possible.
+- `market_cases` is frozen for the same reason the backtests were (the indexer
+  needed bulk candles). The store unfreezes it; re-enabling the indexer is a
+  follow-on, not part of this commit.

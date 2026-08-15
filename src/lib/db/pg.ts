@@ -971,6 +971,32 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_recommendation_learning_events_user
     ON recommendation_learning_events (user_id, event_type, occurred_at);
 
+  -- ── The gold candle store ────────────────────────────────────────────────
+  --
+  -- Backtests need bars, and OANDA is a rate-limited API rather than a
+  -- database: re-fetching five years of 15m candles for every strategy run is
+  -- how "lightning backtests" become an overnight job. So closed bars are kept.
+  --
+  -- No symbol column, on purpose. This platform trades one instrument, and a
+  -- symbol column is an invitation to store a second one — the exact drift
+  -- gold-only exists to prevent. The timeframe IS the partition.
+  --
+  -- Only CLOSED bars are ever written. A forming bar's high and low are still
+  -- moving, and a backtest that read one would be trading on a candle the
+  -- market had not finished printing.
+  CREATE TABLE IF NOT EXISTS gold_candles (
+    timeframe  TEXT NOT NULL,
+    time       BIGINT NOT NULL,
+    open       DOUBLE PRECISION NOT NULL,
+    high       DOUBLE PRECISION NOT NULL,
+    low        DOUBLE PRECISION NOT NULL,
+    close      DOUBLE PRECISION NOT NULL,
+    volume     BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (timeframe, time)
+  );
+  CREATE INDEX IF NOT EXISTS idx_gold_candles_time
+    ON gold_candles (timeframe, time DESC);
+
   CREATE TABLE IF NOT EXISTS strategy_backtests (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

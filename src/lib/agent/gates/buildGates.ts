@@ -74,12 +74,17 @@ function toBlockingEvents(
 }
 
 /**
- * Deployments are the platform's only calibrated record, so they are the only
- * thing G5 may cite. `winRate` is deliberately absent: the deployments table
- * stores calibrated confidence and its interval, not a win rate, and inventing
- * one from the confidence midpoint would manufacture exactly the unvalidated
- * number G5 exists to refuse. Until the backtest cache supplies real win rates,
- * every match grades `uncalibrated` — which is the truth about them.
+ * The evidence G5 is allowed to cite.
+ *
+ * The sample size is the BACKTESTED trade count, not the live one. Live
+ * outcomes are the decay signal — they tell you whether a validated strategy is
+ * still working — but they start at zero for every newly minted deployment, and
+ * reading them as the sample made a strategy validated on 400 historical trades
+ * look like a strategy with no record at all.
+ *
+ * The win rate comes from that same backtest and is never derived. Computing
+ * one from the calibrated-confidence midpoint would manufacture exactly the
+ * unvalidated number this gate exists to refuse.
  */
 function strategyMatches(support: StatisticalSupport): StrategyMatch[] {
   const deployments = support.deployments ?? [];
@@ -94,7 +99,8 @@ function strategyMatches(support: StatisticalSupport): StrategyMatch[] {
   }
   return deployments.map((item) => ({
     strategyId: item.strategyId,
-    sampleSize: item.liveSampleSize,
+    sampleSize: item.backtestTrades,
+    winRate: item.backtestWinRate ?? undefined,
     calibratedConfidence: item.calibratedConfidence,
   }));
 }

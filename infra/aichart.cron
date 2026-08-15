@@ -18,6 +18,17 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # /api/opportunities/scan. Uncomment only if you want the recurring cost.
 # */30 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor >/dev/null 2>&1
 
+# Gold candle store — hourly. Two motions per run: catch up to the bars that
+# closed since last time (bounded, fast), then dig history a few pages deeper
+# (open-ended, capped per run). The store is what backtests read; it is NOT a
+# live-data cache and nothing in the request path touches it.
+#
+# Hourly rather than nightly on purpose: the forward pass is cheap and keeps
+# the newest bars current, while the backfill reaches years of history across a
+# week instead of holding one long OANDA connection that fails whole. Pass
+# ?pages=N to dig harder on a manual run.
+17 * * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/gold-candles >/dev/null 2>&1
+
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 

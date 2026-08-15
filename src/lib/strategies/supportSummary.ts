@@ -41,6 +41,10 @@ export interface StatisticalSupport {
     calibratedConfidence: number;
     confidenceInterval: [number, number];
     liveSampleSize: number;
+    /** Completed BACKTESTED trades behind the calibration. */
+    backtestTrades: number;
+    /** 0..1 over those trades, or null when the backtest recorded none. */
+    backtestWinRate: number | null;
   }>;
 }
 
@@ -53,7 +57,27 @@ interface DeploymentRow {
   live_sample_size: number;
   suspended_reason: string | null;
   updated_at: number;
+  /** From the backtest the deployment was minted from — see the join below. */
+  backtest_trades: number | null;
+  backtest_win_rate: number | null;
 }
+
+/**
+ * Deployments carry calibration; the BACKTEST behind them carries the evidence
+ * that calibration was computed from.
+ *
+ * Reading deployments alone gave every caller `live_sample_size`, which is the
+ * count of LIVE outcomes observed since deployment — zero for a strategy that
+ * has just been minted, and zero for every strategy on an install whose
+ * recommendations are still being graded. So the evidence gate (G5) saw a
+ * sample size of 0 for a strategy validated on hundreds of backtested trades
+ * and could never grade anything "calibrated". The join is what makes the
+ * factory's work visible to the gate that exists to weigh it.
+ */
+const DEPLOYMENT_COLUMNS = `d.strategy_id, d.state, d.calibrated_confidence,
+                  d.confidence_low, d.confidence_high, d.live_sample_size,
+                  d.suspended_reason, d.updated_at,
+                  b.trade_count AS backtest_trades, b.win_rate AS backtest_win_rate`;
 
 const UNAVAILABLE: StatisticalSupport = {
   level: "unavailable",
@@ -82,11 +106,11 @@ export async function getStatisticalSupport(input: {
     input.userId == null
       ? []
       : await query<DeploymentRow>(
-          `SELECT strategy_id, state, calibrated_confidence, confidence_low, confidence_high,
-                  live_sample_size, suspended_reason, updated_at
-             FROM strategy_deployments
-            WHERE user_id = ? AND symbol = ? AND timeframe = ?
-            ORDER BY updated_at DESC`,
+          `SELECT ${DEPLOYMENT_COLUMNS}
+             FROM strategy_deployments d
+             LEFT JOIN strategy_backtests b ON b.id = d.backtest_id
+            WHERE d.user_id = ? AND d.symbol = ? AND d.timeframe = ?
+            ORDER BY d.updated_at DESC`,
           [input.userId, symbol, timeframe],
         ).catch(() => []);
 
@@ -98,11 +122,11 @@ export async function getStatisticalSupport(input: {
   let shared = false;
   if (!rows.length) {
     rows = await query<DeploymentRow>(
-      `SELECT strategy_id, state, calibrated_confidence, confidence_low, confidence_high,
-              live_sample_size, suspended_reason, updated_at
-         FROM strategy_deployments
-        WHERE symbol = ? AND timeframe = ?
-        ORDER BY updated_at DESC`,
+      `SELECT ${DEPLOYMENT_COLUMNS}
+         FROM strategy_deployments d
+         LEFT JOIN strategy_backtests b ON b.id = d.backtest_id
+        WHERE d.symbol = ? AND d.timeframe = ?
+        ORDER BY d.updated_at DESC`,
       [symbol, timeframe],
     ).catch(() => []);
     shared = rows.length > 0;
@@ -157,6 +181,9 @@ export async function getStatisticalSupport(input: {
       calibratedConfidence: row.calibrated_confidence,
       confidenceInterval: [row.confidence_low, row.confidence_high],
       liveSampleSize: row.live_sample_size,
+      backtestTrades: Number(row.backtest_trades ?? 0),
+      backtestWinRate:
+        row.backtest_win_rate == null ? null : Number(row.backtest_win_rate),
     })),
   };
 }
