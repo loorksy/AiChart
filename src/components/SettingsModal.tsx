@@ -21,7 +21,6 @@ type SettingsProps = {
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
-  mt5LinkEnabled?: boolean;
   mt5Account?: MtAccountMeta | null;
 };
 

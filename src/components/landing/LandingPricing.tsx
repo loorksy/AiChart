@@ -15,8 +15,8 @@ import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy
 import { cn } from "@/lib/utils";
 
 const FEATURE_KEYS = [
-  "mt5Link",
-  "liveExecution",
+  "telegramBot",
+  "trackedRecommendations",
   "scalpEngine",
   "voice",
   "prioritySupport",

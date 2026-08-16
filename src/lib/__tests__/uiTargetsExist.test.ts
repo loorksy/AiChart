@@ -189,26 +189,43 @@ test("every fetch to an internal API route has a route file", () => {
   );
 });
 
-test("every internal link points at a page that exists", () => {
+/**
+ * Every way a component can SEND the user somewhere, not only `href=`.
+ *
+ * The original guard read hrefs alone, and that gap is what it missed: five
+ * navigations that do not render as links — `redirect("/awaiting-approval")`
+ * in five layouts, `router.push("/console/account")` in the profile menu —
+ * pointed at pages deleted by the migration. Every blocked user bounced into
+ * a 404, and no test noticed, because a redirect is not an anchor tag.
+ */
+const NAVIGATION_PATTERNS = [
+  /href=\{?["'`](\/[^"'`{}]*)["'`]/g,
+  /\b(?:redirect|permanentRedirect)\(\s*["'`](\/[^"'`{}]*)["'`]/g,
+  /\.(?:push|replace|prefetch)\(\s*["'`](\/[^"'`{}]*)["'`]/g,
+];
+
+test("every internal link, redirect, and push points at a page that exists", () => {
   const pages = routeSegments("page");
   const violations: string[] = [];
   for (const file of componentFiles) {
     const text = readFileSync(file, "utf8");
-    for (const match of text.matchAll(/href=\{?["'`](\/[^"'`{}]*)["'`]/g)) {
-      const target = match[1]!;
-      // API endpoints, files served from /public, and anchors are not pages.
-      if (target.startsWith("/api/")) continue;
-      if (/\.[a-z0-9]{2,5}$/i.test(target)) continue;
-      const segments = toSegments(target);
-      if (!segments) continue;
-      if (segments.length === 0) continue; // "/" is the root page
-      if (!matches(pages, segments)) {
-        violations.push(`${path.relative(SRC, file)} → ${target}`);
+    for (const pattern of NAVIGATION_PATTERNS) {
+      for (const match of text.matchAll(pattern)) {
+        const target = match[1]!;
+        // API endpoints, files served from /public, and anchors are not pages.
+        if (target.startsWith("/api/")) continue;
+        if (/\.[a-z0-9]{2,5}$/i.test(target)) continue;
+        const segments = toSegments(target);
+        if (!segments) continue;
+        if (segments.length === 0) continue; // "/" is the root page
+        if (!matches(pages, segments)) {
+          violations.push(`${path.relative(SRC, file)} → ${target}`);
+        }
       }
     }
   }
   assert.deepEqual(
-    violations,
+    [...new Set(violations)],
     [],
     `\nA link to a page that does not exist is a 404 with a friendly label:\n${violations.join("\n")}\n`,
   );

@@ -18,7 +18,10 @@ export default async function ConsolePlatformPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  if (user.role !== "admin") redirect("/console");
+  // Straight to /chat: "/console" is not a page, only a legacy next.config
+  // redirect that hops /console → /workspace → /chat. In-code navigation
+  // should not ride a compatibility chain kept for external deep links.
+  if (user.role !== "admin") redirect("/chat");
   const props = await loadConsoleSettingsProps(user);
   const isAdmin = true;
   // Sourced from admin_roles server-side; the client only ever hides nav with it.

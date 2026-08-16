@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   CHAT_QUERY_KEY,
   chatConsoleHref,
-  chatShareHref,
   isValidChatId,
   parseChatIdFromSearchParams,
 } from "@/lib/chatUrl";
@@ -17,10 +16,6 @@ test("chatConsoleHref encodes chat query param", () => {
   assert.equal(chatConsoleHref(id), `/chat?${CHAT_QUERY_KEY}=${id}`);
 });
 
-test("chatShareHref builds pretty share path", () => {
-  const id = "a1b2c3d4-e5f6-4789-a012-3456789abcde";
-  assert.equal(chatShareHref(id), `/console/chats/${id}`);
-});
 
 test("isValidChatId accepts UUID and legacy chat-* ids", () => {
   assert.equal(isValidChatId("a1b2c3d4-e5f6-4789-a012-3456789abcde"), true);

@@ -117,7 +117,7 @@ export type LandingCopy = {
     modelsAll: string;
     modelsCount: string;
     featureLabels: Record<
-      "mt5Link" | "liveExecution" | "voice" | "scalpEngine" | "prioritySupport",
+      "telegramBot" | "trackedRecommendations" | "voice" | "scalpEngine" | "prioritySupport",
       string
     >;
     cta: string;
@@ -200,9 +200,9 @@ const ar: LandingCopy = {
   },
   hero: {
     eyebrow: "مساحة تداول بالذكاء الاصطناعي",
-    title: "حلّل السوق، ناقش الفرصة، ونفّذ بوضوح.",
+    title: "حلّل الذهب، ناقش الفرصة، وخذ توصية واضحة.",
     subtitle:
-      "يجمع Lonora بين الشارت الحي ومحادثة تداول ذكية، ثم يجهّز سيناريوهات واضحة للمراجعة قبل التنفيذ عبر MetaTrader.",
+      "يجمع Lonora بين الشارت الحي ومحادثة ذكية متخصصة في الذهب، ثم يقدّم توصيات بمستويات واضحة تمر عبر فحوص إلزامية وتُتابَع حتى نتيجتها.",
     primaryCta: "افتح Lonora",
     secondaryCta: "افتح مساحة العمل",
     quickPrompts: [
@@ -223,8 +223,8 @@ const ar: LandingCopy = {
       },
       {
         icon: "approval",
-        label: "تنفيذ بموافقتك",
-        detail: "لا يُرسل أمر حي إلا بعد موافقتك الصريحة.",
+        label: "توصيات، لا أوامر",
+        detail: "المنصة لا تنفّذ صفقات إطلاقاً — القرار والتنفيذ بيدك وحدك.",
       },
     ],
   },
@@ -248,7 +248,7 @@ const ar: LandingCopy = {
   },
   benefits: {
     title: "ثلاثة أسباب لاختيار Lonora",
-    subtitle: "تركيز على التجربة الحقيقية: شارت، محادثة، وتنفيذ مضبوط.",
+    subtitle: "تركيز على التجربة الحقيقية: شارت، محادثة، وتوصيات خاضعة للفحص.",
     items: [
       {
         title: "الشارت والمحادثة معاً",
@@ -259,8 +259,8 @@ const ar: LandingCopy = {
         body: "عند وجود مبرر كافٍ، يقدّم Lonora BUY أو SELL أو WAIT أو سيناريو مشروطاً مع الأسباب والمستويات.",
       },
       {
-        title: "تنفيذ MetaTrader بموافقتك",
-        body: "لا يُرسل أمر حي إلا بعد موافقتك الصريحة واجتياز الفحوص التقنية الصالحة.",
+        title: "توصيات تُتابَع حتى النهاية",
+        body: "كل توصية تُخزَّن وتُقاس على شموع السوق حتى تبلغ هدفها أو وقفها — النتيجة تُسجَّل كما حدثت.",
       },
     ],
     workspaceLabel: "مساحة العمل",
@@ -298,7 +298,7 @@ const ar: LandingCopy = {
         value: "3",
         title: "نتائج واضحة",
         body: "BUY أو SELL أو WAIT — قرار واحد مع أسباب ومستويات عند توفرها.",
-        note: "بدون تنفيذ تلقائي",
+        note: "توصيات فقط — لا تنفيذ",
         linkLabel: "كيف يعمل",
         href: "#how",
         icon: "approval",
@@ -329,9 +329,9 @@ const ar: LandingCopy = {
       },
       {
         quote:
-          "أحب أن التنفيذ لا يحدث إلا بعد موافقتي، حتى عندما يكون السيناريو جاهزاً.",
+          "أحب أن كل توصية تمر عبر فحوص واضحة، وإذا رفضتها الفحوص يخبرني لماذا بالاسم.",
         name: "مراجع B",
-        role: "سيناريو توضيحي — مستخدم MT5",
+        role: "سيناريو توضيحي — متداول ذهب",
         initials: "B",
       },
       {
@@ -357,9 +357,9 @@ const ar: LandingCopy = {
       },
       {
         quote:
-          "أستخدم Lonora للمراجعة قبل التنفيذ، وليس كزر تنفيذ تلقائي.",
+          "أستخدم توصيات Lonora كرأي ثانٍ منضبط — القرار الأخير يبقى لي دائماً.",
         name: "مراجع F",
-        role: "سيناريو توضيحي — انضباط تنفيذ",
+        role: "سيناريو توضيحي — إدارة مخاطر",
         initials: "F",
       },
     ],
@@ -375,8 +375,8 @@ const ar: LandingCopy = {
     modelsAll: "كل مودلات الذكاء الاصطناعي",
     modelsCount: "مودلات ذكاء اصطناعي",
     featureLabels: {
-      mt5Link: "ربط حساب MT5",
-      liveExecution: "تنفيذ الصفقات الحي",
+      telegramBot: "وكيل التوصيات عبر تليجرام",
+      trackedRecommendations: "تتبّع كل توصية حتى نتيجتها",
       voice: "الوكيل الصوتي",
       scalpEngine: "محرك السكالب الآلي",
       prioritySupport: "أولوية الدعم",
@@ -387,7 +387,7 @@ const ar: LandingCopy = {
   },
   how: {
     title: "كيف يعمل",
-    subtitle: "ثلاث خطوات بسيطة من فتح السوق إلى التنفيذ.",
+    subtitle: "ثلاث خطوات بسيطة من السؤال إلى توصية مكتملة.",
     steps: [
       {
         n: "1",
@@ -401,8 +401,8 @@ const ar: LandingCopy = {
       },
       {
         n: "3",
-        title: "وافق على التنفيذ",
-        body: "نفّذ عبر حساب MetaTrader المرتبط فقط عندما تكون جاهزاً.",
+        title: "خذ التوصية وتابعها",
+        body: "تصلك توصية بدخول ووقف وأهداف، وتُتابَع تلقائياً حتى نتيجتها — التنفيذ قرارك أنت خارج المنصة.",
       },
     ],
   },
@@ -413,17 +413,17 @@ const ar: LandingCopy = {
       "شارت حي مع الرمز والإطار الزمني",
       "محادثة مع وكيل Lonora",
       "بطاقة توصية بمستويات الدخول والوقف والأهداف",
-      "سجل المحادثات والإحصائيات والصفقات",
+      "سجل المحادثات والتوصيات ونتائجها",
     ],
   },
   trust: {
-    title: "ثقة وتنفيذ مضبوط",
+    title: "ثقة وشفافية",
     subtitle: "حماية عملية تهمّ المتداول — دون ادعاء ضمان النتيجة.",
     items: [
-      "موافقة صريحة قبل أي تنفيذ",
-      "بيانات سوق حالية وصالحة عند التنفيذ",
-      "ربط حساب موثّق بملكيتك",
-      "منع التنفيذ المكرر عند الإمكان",
+      "المنصة لا تنفّذ صفقات — توصيات فقط، والقرار لك",
+      "بيانات سوق حية من OANDA خلف كل توصية",
+      "فحوص إلزامية (أخبار، سيولة، بنية، أدلة) قد ترفض التوصية وتسمّي السبب",
+      "كل توصية تُتابَع حتى نتيجتها النهائية كما حدثت",
       "حالة واضحة للتوصية وسجل تاريخي للمراجعة",
     ],
     riskNote:
@@ -433,9 +433,8 @@ const ar: LandingCopy = {
     title: "تكاملات حقيقية",
     subtitle: "ما هو متاح فعلياً في المنصة اليوم.",
     items: [
-      { name: "MetaTrader 5", availability: "متاح بعد الربط" },
-      { name: "MetaApi", availability: "اختياري" },
-      { name: "Telegram", availability: "اختياري للتنبيهات" },
+      { name: "OANDA", availability: "مصدر بيانات السوق" },
+      { name: "Telegram", availability: "وكيل توصيات كامل" },
       { name: "MCP", availability: "للمستخدمين المصرّح لهم" },
     ],
   },
@@ -446,21 +445,21 @@ const ar: LandingCopy = {
   },
   faq: {
     title: "أسئلة شائعة",
-    subtitle: "إجابات مختصرة عن Lonora، التنفيذ، واللغات المدعومة.",
+    subtitle: "إجابات مختصرة عن Lonora والتوصيات واللغات المدعومة.",
     contactLead: "لم تجد إجابتك؟",
     contactLink: "تواصل معنا",
     items: [
       {
-        q: "هل ينفّذ Lonora الصفقات تلقائياً؟",
-        a: "لا. التنفيذ الحي يتطلب موافقتك الصريحة، ثم فحوصاً تقنية صالحة قبل إرسال الأمر.",
+        q: "هل ينفّذ Lonora الصفقات؟",
+        a: "لا، إطلاقاً — لا تلقائياً ولا بموافقة. Lonora يقدّم توصيات مشروحة بمستوياتها، والتنفيذ قرارك على منصتك الخاصة.",
       },
       {
-        q: "هل أحتاج MetaTrader؟",
-        a: "للتنفيذ الحي نعم تحتاج حساب MetaTrader مرتبطاً. يمكنك فتح الشارت ومناقشة السوق دون تنفيذ.",
+        q: "هل أحتاج حساب وساطة أو MetaTrader؟",
+        a: "لا. لا حاجة لأي ربط وساطة — تسجّل وتحصل على التوصيات مباشرة، وبيانات السوق من OANDA.",
       },
       {
-        q: "هل يمكنني استخدام الشارت دون ربط حساب؟",
-        a: "نعم. الشارت العام متاح للتصفح. الربط مطلوب للتنفيذ والمزامنة مع حسابك.",
+        q: "هل يمكنني استخدام الشارت دون أي ربط خارجي؟",
+        a: "نعم. الشارت والمحادثة والتوصيات كلها تعمل بحسابك في المنصة فقط.",
       },
       {
         q: "ماذا يتحكم فيه Risk per Trade؟",
@@ -475,8 +474,8 @@ const ar: LandingCopy = {
         a: "نعم. يمكنك التبديل بين العربية والإنجليزية من الواجهة.",
       },
       {
-        q: "كيف يُربط حسابي؟",
-        a: "بعد التسجيل وتفعيل الوصول، تربط MetaTrader من داخل المنصة وفق الدليل المعروض لحسابك.",
+        q: "كيف أستقبل التوصيات على تليجرام؟",
+        a: "من إعدادات المنصة اضغط «ربط تليجرام» وافتح الرابط — يجيبك الوكيل نفسه هناك بالتحليل نفسه.",
       },
     ],
   },
@@ -487,7 +486,7 @@ const ar: LandingCopy = {
     secondary: "لدي حساب — تسجيل الدخول",
   },
   footer: {
-    blurb: `${BRAND_NAME} — مساحة عمل تجمع الشارت والمحادثة والتوصيات والتنفيذ عبر MetaTrader.`,
+    blurb: `${BRAND_NAME} — مساحة عمل تجمع الشارت والمحادثة وتوصيات الذهب المتابَعة حتى نتيجتها.`,
     product: "المنتج",
     legal: "قانوني",
     company: "الشركة",
@@ -524,9 +523,9 @@ const en: LandingCopy = {
   },
   hero: {
     eyebrow: "AI trading workspace",
-    title: "Analyze the market. Discuss the setup. Execute with clarity.",
+    title: "Analyze gold. Discuss the setup. Get a clear recommendation.",
     subtitle:
-      "Lonora combines a live chart with an intelligent trading conversation, then prepares clear trade scenarios for review before MetaTrader execution.",
+      "Lonora pairs a live chart with an intelligent gold-focused conversation, then issues recommendations with clear levels — screened by mandatory checks and tracked to their outcome.",
     primaryCta: "Open Lonora",
     secondaryCta: "Open workspace",
     quickPrompts: [
@@ -547,8 +546,8 @@ const en: LandingCopy = {
       },
       {
         icon: "approval",
-        label: "Approval-first execution",
-        detail: "Live orders are sent only after your explicit approval.",
+        label: "Recommendations, never orders",
+        detail: "The platform never places trades — the decision and execution stay yours.",
       },
     ],
   },
@@ -572,7 +571,7 @@ const en: LandingCopy = {
   },
   benefits: {
     title: "Three reasons to use Lonora",
-    subtitle: "Focused on the real workflow: chart, conversation, and controlled execution.",
+    subtitle: "Focused on the real workflow: chart, conversation, and checked recommendations.",
     items: [
       {
         title: "Chart and conversation together",
@@ -583,8 +582,8 @@ const en: LandingCopy = {
         body: "When justified, Lonora offers BUY, SELL, WAIT, or a conditional scenario with reasoning and real levels.",
       },
       {
-        title: "Controlled MetaTrader execution",
-        body: "Live orders are sent only after your explicit approval and valid technical checks.",
+        title: "Recommendations tracked to the end",
+        body: "Every recommendation is stored and measured against market candles until it hits its target or its stop — the outcome is recorded as it happened.",
       },
     ],
     workspaceLabel: "Workspace",
@@ -622,7 +621,7 @@ const en: LandingCopy = {
         value: "3",
         title: "Clear outcomes",
         body: "Buy or sell — one direction, with the plan, the levels, and what invalidates it.",
-        note: "No auto execution",
+        note: "Recommendations only — no execution",
         linkLabel: "How it works",
         href: "#how",
         icon: "approval",
@@ -653,9 +652,9 @@ const en: LandingCopy = {
       },
       {
         quote:
-          "I like that execution only happens after I approve, even when the scenario is ready.",
+          "I like that every recommendation passes named checks, and when a check refuses, it says why.",
         name: "Reviewer B",
-        role: "Illustrative scenario — MT5 user",
+        role: "Illustrative scenario — gold trader",
         initials: "B",
       },
       {
@@ -681,9 +680,9 @@ const en: LandingCopy = {
       },
       {
         quote:
-          "I use Lonora to review before execution, not as an auto-trade button.",
+          "I use Lonora's recommendations as a disciplined second opinion — the final call is always mine.",
         name: "Reviewer F",
-        role: "Illustrative scenario — execution discipline",
+        role: "Illustrative scenario — risk management",
         initials: "F",
       },
     ],
@@ -699,8 +698,8 @@ const en: LandingCopy = {
     modelsAll: "All AI models",
     modelsCount: "AI models",
     featureLabels: {
-      mt5Link: "MT5 account link",
-      liveExecution: "Live trade execution",
+      telegramBot: "Telegram recommendations agent",
+      trackedRecommendations: "Every recommendation tracked to its outcome",
       voice: "Voice agent",
       scalpEngine: "Automated scalp engine",
       prioritySupport: "Priority support",
@@ -711,7 +710,7 @@ const en: LandingCopy = {
   },
   how: {
     title: "How it works",
-    subtitle: "Three simple steps from opening the market to execution.",
+    subtitle: "Three simple steps from a question to a complete recommendation.",
     steps: [
       {
         n: "1",
@@ -725,8 +724,8 @@ const en: LandingCopy = {
       },
       {
         n: "3",
-        title: "Approve execution",
-        body: "Execute through your connected MetaTrader account only when you are ready.",
+        title: "Take the recommendation",
+        body: "You get entry, stop, and targets, tracked automatically to the outcome — execution is your decision, outside the platform.",
       },
     ],
   },
@@ -737,17 +736,17 @@ const en: LandingCopy = {
       "Live chart with symbol and timeframe",
       "Conversation with the Lonora agent",
       "Recommendation card with entry, stop, and targets",
-      "Conversation history, statistics, and trades",
+      "Conversation history, recommendations, and their outcomes",
     ],
   },
   trust: {
-    title: "Trust and execution safety",
+    title: "Trust and transparency",
     subtitle: "Practical safeguards for traders — without promising outcomes.",
     items: [
-      "Explicit approval before any execution",
-      "Current valid market data at execution time",
-      "Authenticated account ownership",
-      "Duplicate-execution prevention where applicable",
+      "The platform never places trades — recommendations only, the decision is yours",
+      "Live OANDA market data behind every recommendation",
+      "Mandatory checks (news, liquidity, structure, evidence) may refuse a recommendation and name the reason",
+      "Every recommendation is tracked to its final outcome as it happened",
       "Clear recommendation status and historical review",
     ],
     riskNote:
@@ -757,9 +756,8 @@ const en: LandingCopy = {
     title: "Real integrations",
     subtitle: "What the platform actually supports today.",
     items: [
-      { name: "MetaTrader 5", availability: "Available after connection" },
-      { name: "MetaApi", availability: "Optional" },
-      { name: "Telegram", availability: "Optional for alerts" },
+      { name: "OANDA", availability: "Market data source" },
+      { name: "Telegram", availability: "Full recommendations agent" },
       { name: "MCP", availability: "Authorized technical use" },
     ],
   },
@@ -770,21 +768,21 @@ const en: LandingCopy = {
   },
   faq: {
     title: "FAQ",
-    subtitle: "Short answers about Lonora, execution, and supported languages.",
+    subtitle: "Short answers about Lonora, recommendations, and supported languages.",
     contactLead: "Can't find your answer?",
     contactLink: "Contact us",
     items: [
       {
-        q: "Does Lonora execute trades automatically?",
-        a: "No. Live execution requires your explicit approval and valid technical checks before an order is sent.",
+        q: "Does Lonora execute trades?",
+        a: "No — never, neither automatically nor with approval. Lonora issues explained recommendations with their levels; execution is your decision on your own platform.",
       },
       {
-        q: "Do I need MetaTrader?",
-        a: "For live execution, yes — a connected MetaTrader account. You can open the chart and discuss the market without executing.",
+        q: "Do I need a broker account or MetaTrader?",
+        a: "No. No broker link is needed — you sign up and receive recommendations directly, with market data from OANDA.",
       },
       {
-        q: "Can I use the chart without connecting an account?",
-        a: "Yes. The public chart is available for browsing. Connection is required for execution and account sync.",
+        q: "Can I use the chart without any external connection?",
+        a: "Yes. The chart, the conversation, and the recommendations all work with your platform account alone.",
       },
       {
         q: "What does Risk per Trade control?",
@@ -799,8 +797,8 @@ const en: LandingCopy = {
         a: "Yes. You can switch between Arabic and English in the interface.",
       },
       {
-        q: "How is my account connected?",
-        a: "After registration and access activation, connect MetaTrader from inside the platform using the guide shown for your account.",
+        q: "How do I receive recommendations on Telegram?",
+        a: "From platform settings, tap \"Link Telegram\" and open the link — the same agent answers there with the same analysis.",
       },
     ],
   },
@@ -811,7 +809,7 @@ const en: LandingCopy = {
     secondary: "I have an account — Sign in",
   },
   footer: {
-    blurb: `${BRAND_NAME} — a workspace that combines chart, conversation, recommendations, and MetaTrader execution.`,
+    blurb: `${BRAND_NAME} — a workspace that combines the chart, the conversation, and gold recommendations tracked to their outcome.`,
     product: "Product",
     legal: "Legal",
     company: "Company",

@@ -72,7 +72,11 @@ function ProfileMenuItems({
         className={rowClass}
         onClick={() => {
           onDone();
-          router.push("/console/account");
+          // Used to push /console/account — a page that has not existed since
+          // the migration, so this item 404'd. Settings opens over the
+          // workspace (same contract as the settings item below), on the
+          // profile tab.
+          openSettings("profile");
         }}
       >
         <UserIcon className="h-4 w-4 shrink-0" aria-hidden />

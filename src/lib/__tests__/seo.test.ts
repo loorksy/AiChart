@@ -82,10 +82,13 @@ describe("public SEO facts", () => {
 
   it("exposes Open Graph, Twitter, canonical, and bilingual alternates", () => {
     const home = pageMetadata("home");
-    assert.equal(home.openGraph?.type, "website");
+    // Next's OpenGraph/Twitter types are discriminated unions where `type` and
+    // `card` exist only on specific variants; the runtime values are what the
+    // assertion is about, so read them through a narrow view.
+    assert.equal((home.openGraph as { type?: string })?.type, "website");
     assert.equal(home.openGraph?.locale, "ar_SA");
     assert.deepEqual(home.openGraph?.alternateLocale, ["en_US"]);
-    assert.equal(home.twitter?.card, "summary_large_image");
+    assert.equal((home.twitter as { card?: string })?.card, "summary_large_image");
     assert.equal(home.alternates?.canonical, BRAND_URL);
     const langs = home.alternates?.languages as Record<string, string>;
     assert.equal(langs.ar, BRAND_URL);
@@ -139,7 +142,7 @@ describe("public SEO facts", () => {
     const manifest = webManifest();
     assert.equal(manifest.name, BRAND_NAME);
     assert.equal(manifest.start_url, "/");
-    assert.doesNotMatch(manifest.description, /Forex scalping|\/console/);
+    assert.doesNotMatch(manifest.description ?? "", /Forex scalping|\/console/);
     const staticManifest = readFileSync(resolve(root, "public/site.webmanifest"), "utf8");
     assert.match(staticManifest, /Lonora/);
     assert.doesNotMatch(staticManifest, /AiChart/);

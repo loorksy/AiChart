@@ -18,8 +18,8 @@ interface TierCard {
   priceUsd: number;
   includedCreditsUsd: number;
   features: {
-    mt5Link: boolean;
-    liveExecution: boolean;
+    telegramBot: boolean;
+    trackedRecommendations: boolean;
     voice: boolean;
     scalpEngine: boolean;
     prioritySupport: boolean;
@@ -69,8 +69,8 @@ export function PricingCards({
 
   const featureRows: Array<{ key: keyof TierCard["features"] | "models"; label: string }> = [
     { key: "models", label: "مودلات الذكاء الاصطناعي" },
-    { key: "mt5Link", label: "ربط حساب MT5" },
-    { key: "liveExecution", label: "تنفيذ الصفقات الحي" },
+    { key: "telegramBot", label: "وكيل التوصيات عبر تليجرام" },
+    { key: "trackedRecommendations", label: "تتبّع كل توصية حتى نتيجتها" },
     { key: "scalpEngine", label: "محرك السكالب الآلي" },
     { key: "voice", label: "الوكيل الصوتي" },
     { key: "prioritySupport", label: "أولوية الدعم" },

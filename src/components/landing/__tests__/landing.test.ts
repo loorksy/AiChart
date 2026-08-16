@@ -91,6 +91,26 @@ describe("landing redesign", () => {
     }
   });
 
+  test("the landing never sells the deleted execution product", () => {
+    // The platform places no orders. The old copy sold "MetaTrader execution
+    // with your approval" for months after the execution layer was deleted —
+    // a feature list nobody could use. Denials are allowed (the FAQ says
+    // "Lonora does not execute"); CLAIMS are not, so the ban is on the
+    // affirmative phrases, not the words.
+    const copy = read("components/landing/landingCopy.ts");
+    const tiers = read("lib/billing/tiers.ts");
+    for (const src of [copy, tiers]) {
+      assert.doesNotMatch(src, /MetaTrader execution|MetaApi|Approval-first execution/i);
+      assert.doesNotMatch(src, /mt5Link|liveExecution/, "the execution feature flags are gone");
+      assert.doesNotMatch(src, /تنفيذ MetaTrader|تنفيذ الصفقات الحي|ربط حساب MT5|وافق على التنفيذ/);
+      assert.doesNotMatch(src, /Live trade execution|Approve execution|MT5 account link/);
+      assert.doesNotMatch(src, /Available after connection|متاح بعد الربط/);
+    }
+    // The one honest survivor: the FAQ names MetaTrader only to say it is
+    // NOT needed.
+    assert.match(copy, /هل أحتاج حساب وساطة أو MetaTrader؟/);
+  });
+
   test("header exposes theme, locale, opaque mobile modal portal, and real CTAs", () => {
     const nav = read("components/landing/LandingNav.tsx");
     assert.match(nav, /landing-theme-toggle/);

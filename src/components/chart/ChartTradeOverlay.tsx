@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Radio, X } from "lucide-react";
+import { Radio, X } from "lucide-react";
 import { LiveAnalysisLog } from "@/components/chart/LiveAnalysisLog";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { LiveReasoningEntry } from "@/lib/analysis/types";
@@ -15,9 +15,6 @@ export function ChartTradeOverlay({
   drawings,
   onHighlightDrawing,
   onStopLive,
-  onExecute,
-  executing,
-  executeLabel,
   className,
 }: {
   recommendation?: Recommendation | null;
@@ -29,9 +26,6 @@ export function ChartTradeOverlay({
   drawings?: ChartDrawing[];
   onHighlightDrawing?: (index: number | null) => void;
   onStopLive?: () => void;
-  onExecute?: () => void;
-  executing?: boolean;
-  executeLabel?: string;
   className?: string;
 }) {
   const hasTrade =
@@ -48,8 +42,7 @@ export function ChartTradeOverlay({
     !isAnalyzing &&
     !liveAnalysis &&
     !drawings?.length &&
-    !(liveReasoningLog?.length) &&
-    !onExecute
+    !(liveReasoningLog?.length)
   ) {
     return null;
   }
@@ -98,17 +91,6 @@ export function ChartTradeOverlay({
         </div>
       )}
 
-      {hasTrade && onExecute && (
-        <button
-          type="button"
-          onClick={onExecute}
-          disabled={executing}
-          className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-card/95 px-3 py-1.5 text-[11px] font-medium text-primary shadow-lg backdrop-blur-md hover:bg-primary/10 disabled:opacity-60"
-        >
-          {executing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          {executeLabel ?? "تنفيذ"}
-        </button>
-      )}
     </div>
   );
 }

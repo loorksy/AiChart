@@ -62,7 +62,9 @@ test("the skeleton library stays fluid at any viewport", () => {
   // in on some screen. Heights are fine — a row is a row at any width.
   assert.doesNotMatch(source, /\bw-\[\d+px\]/, "fixed pixel widths break at small viewports");
   // Column counts must be declared per breakpoint, not left to one grid.
-  assert.match(source, /grid-cols-2 gap-2 lg:grid-cols-4/);
+  // (The exact class list moved with CardGridSkeleton's deletion — the
+  // property is "breakpoint-aware grids exist", not one component's classes.)
+  assert.match(source, /grid-cols-2 gap-3 sm:grid-cols-4/);
   assert.match(source, /sm:grid-cols-2/);
   // Physical margins would not mirror under dir="rtl".
   assert.doesNotMatch(source, /\b(ml|mr)-\d/);

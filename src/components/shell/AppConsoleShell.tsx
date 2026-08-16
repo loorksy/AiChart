@@ -117,7 +117,7 @@ function ConsoleShellBody({
   // Until /api/me resolves, keep non-admin nav conservative (trial-sized).
   const access =
     me?.entitlement?.access ?? (isAdmin ? "admin" : "trial");
-  const items = navForRole(role, access, me?.admin_permissions);
+  const items = navForRole(role, access);
   const adminGroups = useMemo(
     () => (isAdmin ? adminGroupsFor(me?.admin_permissions) : []),
     [isAdmin, me?.admin_permissions],

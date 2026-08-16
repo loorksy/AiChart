@@ -15,7 +15,7 @@ import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import type { AdminLimits, MtAccountMeta, PublicUser, TradingSettings } from "@/lib/types";
+import type { AdminLimits, PublicUser, TradingSettings } from "@/lib/types";
 
 type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "skills";
 
@@ -43,8 +43,6 @@ export default function SettingsClient({
   user,
   settings: initialSettings,
   limits: _limits,
-  mt5LinkEnabled = false,
-  mt5Account = null,
   initialTab,
   embedMode = false,
   visibleTabs,
@@ -56,8 +54,6 @@ export default function SettingsClient({
   settings: TradingSettings;
   limits: AdminLimits;
   mt?: unknown;
-  mt5LinkEnabled?: boolean;
-  mt5Account?: MtAccountMeta | null;
   initialTab?: TabId;
   embedMode?: boolean;
   visibleTabs?: TabId[];

@@ -102,7 +102,7 @@ function ComposerSkeleton() {
   );
 }
 
-export function ChartPreviewSkeleton({ className }: { className?: string }) {
+function ChartPreviewSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={`flex h-full flex-col border-r border-border bg-card/95 backdrop-blur-sm ${className ?? ""}`}
@@ -206,7 +206,7 @@ export function CardSkeleton({
 }
 
 /** Compact list row: leading icon, two text lines, trailing pill. */
-export function ListRowSkeleton() {
+function ListRowSkeleton() {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
       <SkeletonBlock className="h-8 w-8 shrink-0 rounded-lg" />
@@ -293,7 +293,7 @@ export function FormSkeleton({ fields = 3 }: { fields?: number }) {
 }
 
 /** A row of tabs above its panel. */
-export function TabsSkeleton({ tabs = 4 }: { tabs?: number }) {
+function TabsSkeleton({ tabs = 4 }: { tabs?: number }) {
   return (
     <div data-testid="skeleton-tabs" className="flex flex-wrap gap-2">
       {Array.from({ length: tabs }).map((_, i) => (
@@ -311,39 +311,6 @@ export function SidebarListSkeleton({ rows = 6 }: { rows?: number }) {
         <div key={i} className="flex items-center gap-2 rounded-lg px-2 py-2">
           <SkeletonBlock className="h-4 w-4 shrink-0 rounded" />
           <SkeletonLine width={i % 3 === 0 ? "w-2/3" : "w-full"} className="h-3" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
- * A responsive grid of cards — the pair catalogue, plan tiles, panels.
- * Column counts mirror the real grids: two up on a phone, four on a desktop.
- */
-export function CardGridSkeleton({
-  count = 8,
-  className,
-}: {
-  count?: number;
-  className?: string;
-}) {
-  return (
-    <div
-      data-testid="skeleton-card-grid"
-      className={`grid grid-cols-2 gap-2 lg:grid-cols-4 ${className ?? ""}`}
-    >
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="space-y-2 rounded-[var(--radius-lg)] border border-border bg-card p-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <SkeletonLine width="w-20" className="h-3.5" />
-              <SkeletonLine width="w-16" className="h-2.5" />
-            </div>
-            <SkeletonCircle size="sm" className="h-5 w-5" />
-          </div>
-          <SkeletonLine width="w-24" className="h-4" />
-          <SkeletonBlock className="h-[34px] w-full rounded-md" />
         </div>
       ))}
     </div>

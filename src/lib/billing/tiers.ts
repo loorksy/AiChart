@@ -24,8 +24,8 @@ export interface TierDef {
   /** Model refs allowed ("provider/model"); empty = all catalogue models. */
   allowedModels: string[];
   features: {
-    mt5Link: boolean;
-    liveExecution: boolean;
+    telegramBot: boolean;
+    trackedRecommendations: boolean;
     voice: boolean;
     scalpEngine: boolean;
     prioritySupport: boolean;
@@ -42,8 +42,8 @@ export const TIERS: Record<TierId, TierDef> = {
     // Empty = the whole curated model catalogue.
     allowedModels: [],
     features: {
-      mt5Link: true,
-      liveExecution: true,
+      telegramBot: true,
+      trackedRecommendations: true,
       voice: true,
       scalpEngine: true,
       prioritySupport: true,

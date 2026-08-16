@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
-import { activeNav, APP_NAV, ADMIN_NAV, navForRole } from "@/components/shell/navConfig";
+import { activeNav, APP_NAV, navForRole } from "@/components/shell/navConfig";
+import { adminGroupsFor } from "@/components/admin/chrome/adminNavTree";
 
 const root = resolve(process.cwd(), "src");
 const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
@@ -24,7 +25,13 @@ test("trial nav is limited to the workspace only", () => {
 
 
 test("Account, Integrations, Settings are not primary destinations", () => {
-  const hrefs = new Set([...APP_NAV, ...ADMIN_NAV].map((i) => i.href));
+  // The admin hrefs come from the tree the rail actually renders
+  // (adminGroupsFor) — the parallel ADMIN_NAV list this test used to read was
+  // dead at runtime and has been deleted.
+  const adminHrefs = adminGroupsFor().flatMap((g) =>
+    g.items.map((i) => `/console/platform?tab=${i.id}`),
+  );
+  const hrefs = new Set([...APP_NAV.map((i) => i.href), ...adminHrefs]);
   for (const hidden of ["/console/account", "/console/connect", "/console/settings", "/console/chats"]) {
     assert.equal(hrefs.has(hidden), false, hidden);
   }

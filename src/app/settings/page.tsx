@@ -4,7 +4,8 @@ const TAB_MAP: Record<string, string> = {
   profile: "/console/settings/profile",
   subscription: "/console/settings/profile",
   appearance: "/console/settings/profile",
-  integrations: "/console/connect",
+  // /console/connect died with the broker link; settings is where MCP lives now.
+  integrations: "/console/settings",
   alerts: "/console/settings/alerts",
 };
 
