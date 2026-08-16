@@ -454,6 +454,16 @@ label {
   overflow: hidden;
   border-radius: inherit;
   pointer-events: none;
+  /* Punch a hole so the metal lives on the rim only — never the writing field. */
+  padding: 2px;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
 }
 .liquid-metal-frame-shader canvas {
   position: absolute !important;
@@ -468,7 +478,7 @@ label {
   z-index: 1;
   margin: 2px;
   border-radius: 18px;
-  background: color-mix(in srgb, var(--card) 70%, transparent);
+  background: var(--chat-input);
 }
 
 .metal-chip {
