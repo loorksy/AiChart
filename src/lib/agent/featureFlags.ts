@@ -20,7 +20,7 @@ export const FEATURES = {
    * is a recommendations product with no billing story of its own yet, so the
    * pricing/subscribe/billing routes stay unreachable rather than deleted —
    * the entitlement machinery still gates chat access and would have to be
-   * untangled first (see MIGRATION_NOTES.md).
+   * untangled first.
    */
   billing: () => flag("FEATURE_BILLING", false),
 

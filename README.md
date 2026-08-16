@@ -37,6 +37,3 @@ npm run dev
 ```bash
 npm run test:ci         # full suite
 ```
-
-See `MIGRATION_NOTES.md` for the record of what this platform used to be and
-what was removed to get here.

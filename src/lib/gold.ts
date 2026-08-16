@@ -6,8 +6,8 @@
  * either lives here or is a bug (enforced by the gold-only guard test).
  *
  * There is deliberately no "execution symbol" here. The platform never places
- * an order, so no broker spelling of gold exists to resolve — see
- * MIGRATION_NOTES.md. `DATA_SYMBOL` is the canonical key used everywhere in
+ * an order, so no broker spelling of gold exists to resolve.
+ * `DATA_SYMBOL` is the canonical key used everywhere in
  * the app; `OANDA_INSTRUMENT` is the only foreign spelling, used at the one
  * boundary that talks to OANDA.
  */
