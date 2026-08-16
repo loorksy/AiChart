@@ -4,20 +4,14 @@ import { handleError } from "@/lib/api";
 import { buildAccountProfile } from "@/lib/accountProfile";
 import { debugSessionLog } from "@/lib/debugSessionLog";
 import { getTelegramChatId } from "@/lib/store";
-import { rememberOptions } from "@/lib/agent/sessionOptions";
 import { sessionStartCard } from "@/lib/telegramCards";
 import {
   dismissPersistentKeyboardOnce,
   isTelegramConfigured,
   sendMessage,
 } from "@/lib/telegram";
-import {
-  optionsForTelegramFastPath,
-  rememberInlineOptions,
-  telegramSessionId,
-} from "@/lib/telegram/inlineOptions";
 
-/** Bridge: welcome card + agent-authored inline options for a linked chat. */
+/** Bridge: welcome card for a linked chat — no standing keypad. */
 export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
@@ -64,14 +58,8 @@ export async function POST(req: NextRequest) {
 
     const profile = await buildAccountProfile(userId);
     const text = sessionStartCard(profile);
-    const options = optionsForTelegramFastPath("greeting");
     await dismissPersistentKeyboardOnce(chatId);
-    rememberOptions(telegramSessionId(String(chatId)), options);
-    await sendMessage(
-      chatId,
-      text,
-      rememberInlineOptions(String(chatId), options),
-    );
+    await sendMessage(chatId, text);
     // #region agent log
     debugSessionLog({
       location: "telegram/menu/route.ts:POST",
@@ -85,7 +73,6 @@ export async function POST(req: NextRequest) {
       ok: true,
       delivered: true,
       text,
-      options,
     });
   } catch (e) {
     // #region agent log

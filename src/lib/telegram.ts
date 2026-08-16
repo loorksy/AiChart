@@ -142,6 +142,7 @@ export async function sendMessage(
   chatId: string | number,
   text: string,
   buttons?: InlineButton[][],
+  opts?: { replyToMessageId?: number },
 ): Promise<number> {
   const result = (await call("sendMessage", {
     chat_id: chatId,
@@ -149,8 +150,25 @@ export async function sendMessage(
     parse_mode: "HTML",
     disable_web_page_preview: true,
     ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+    ...(opts?.replyToMessageId != null
+      ? { reply_to_message_id: opts.replyToMessageId }
+      : {}),
   })) as { message_id: number };
   return result.message_id;
+}
+
+export async function sendChatAction(
+  chatId: string | number,
+  action: "typing" | "upload_photo" = "typing",
+): Promise<void> {
+  await call("sendChatAction", { chat_id: chatId, action });
+}
+
+export async function deleteMessage(
+  chatId: string | number,
+  messageId: number,
+): Promise<void> {
+  await call("deleteMessage", { chat_id: chatId, message_id: messageId });
 }
 
 /** Sends a message with a persistent Arabic reply keyboard (bottom panel). */
@@ -231,13 +249,15 @@ export async function editMessageText(
   chatId: string | number,
   messageId: number,
   text: string,
+  opts?: { parseMode?: "HTML"; buttons?: InlineButton[][] | null },
 ): Promise<void> {
   await call("editMessageText", {
     chat_id: chatId,
     message_id: messageId,
     text,
     disable_web_page_preview: true,
-    reply_markup: { inline_keyboard: [] },
+    ...(opts?.parseMode ? { parse_mode: opts.parseMode } : {}),
+    reply_markup: { inline_keyboard: opts?.buttons ?? [] },
   });
 }
 
@@ -284,6 +304,7 @@ export async function sendPhotoBuffer(
   buffer: Buffer,
   caption?: string,
   buttons?: InlineButton[][],
+  opts?: { replyToMessageId?: number },
 ): Promise<void> {
   const form = new FormData();
   form.append("chat_id", String(chatId));
@@ -301,6 +322,9 @@ export async function sendPhotoBuffer(
       "reply_markup",
       JSON.stringify({ inline_keyboard: buttons }),
     );
+  }
+  if (opts?.replyToMessageId != null) {
+    form.append("reply_to_message_id", String(opts.replyToMessageId));
   }
 
   const res = await fetch(`${API}/bot${token()}/sendPhoto`, {

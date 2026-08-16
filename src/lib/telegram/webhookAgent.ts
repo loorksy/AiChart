@@ -5,10 +5,10 @@
  * `runUnifiedChartAgent` through the same gate chain, labelled
  * `surface: "platform"`.
  *
- * Replies are interactive the way OpenClaw's Telegram extension is: the
- * agent authors follow-up options for THIS turn and they ride on that
- * message as an inline keyboard. There is no persistent reply keyboard and
- * no execution button — a tap is just the next user turn.
+ * Conversation window matches OpenClaw Telegram: one live bubble that
+ * edits forward (أوقظ → أفكّر → الجواب), leftover status is deleted, and
+ * buttons appear only when the agent authored a question or a report link.
+ * There is no persistent keyboard and no execution button.
  */
 import { newId } from "@/lib/agent/activity";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
@@ -34,13 +34,13 @@ import {
   sendPhotoBuffer,
   type InlineButton,
 } from "@/lib/telegram";
+import { TelegramLiveTurn } from "@/lib/telegram/liveReply";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
 import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
   classifyTelegramTurn,
-  telegramAnalyzing,
   telegramChartCaption,
   telegramChartFailed,
   telegramGreeting,
@@ -51,7 +51,6 @@ import {
 } from "@/lib/telegram/conversation";
 import {
   markChosenReply,
-  optionsForTelegramFastPath,
   rememberInlineOptions,
   resolveInlineOption,
   telegramSessionId,
@@ -64,6 +63,7 @@ export interface TelegramMessage {
   updateId: number;
   chatId: string;
   text: string;
+  messageId?: number;
   from?: { id: number; username?: string };
 }
 
@@ -92,10 +92,12 @@ export function parseTelegramUpdate(update: unknown): TelegramMessage | null {
   const text = message.text;
   if (chatId == null || typeof text !== "string" || !text.trim()) return null;
   const from = message.from as { id?: unknown; username?: unknown } | undefined;
+  const messageId = Number(message.message_id);
   return {
     updateId,
     chatId: String(chatId),
     text: text.trim(),
+    messageId: Number.isFinite(messageId) ? messageId : undefined,
     from:
       from && typeof from.id === "number"
         ? {
@@ -173,24 +175,37 @@ export function resetTelegramDedupe(): void {
   seenUpdates.clear();
 }
 
-function platformLinkButtons(): InlineButton[][] {
-  const base = getPublicAppUrl();
-  return [[{ text: "افتح المنصة", url: `${base}/chat` }]];
+/** Like OpenClaw's "Open Report" — a link on a recommendation, not a standing menu. */
+function reportLinkButtons(): InlineButton[][] {
+  return [[{ text: "📊 افتح التقرير", url: `${getPublicAppUrl()}/chat` }]];
 }
 
-async function sendInteractiveReply(
-  chatId: string,
-  text: string,
-  options?: AgentOption[],
-  extraButtons?: InlineButton[][],
-): Promise<void> {
-  await dismissPersistentKeyboardOnce(chatId);
-  const optionRows = options?.length ? rememberInlineOptions(chatId, options) : [];
-  if (options?.length) {
-    rememberOptions(telegramSessionId(chatId), options);
+async function deliverReply(input: {
+  chatId: string;
+  text: string;
+  live?: TelegramLiveTurn;
+  replyToMessageId?: number;
+  options?: AgentOption[];
+  extraButtons?: InlineButton[][];
+}): Promise<void> {
+  await dismissPersistentKeyboardOnce(input.chatId);
+  const optionRows = input.options?.length
+    ? rememberInlineOptions(input.chatId, input.options)
+    : [];
+  if (input.options?.length) {
+    rememberOptions(telegramSessionId(input.chatId), input.options);
   }
-  const buttons = [...optionRows, ...(extraButtons ?? [])];
-  await sendMessage(chatId, text, buttons.length ? buttons : undefined);
+  const buttons = [...optionRows, ...(input.extraButtons ?? [])];
+  if (input.live) {
+    await input.live.finalize(input.text, buttons.length ? buttons : undefined);
+    return;
+  }
+  await sendMessage(
+    input.chatId,
+    input.text,
+    buttons.length ? buttons : undefined,
+    { replyToMessageId: input.replyToMessageId },
+  );
 }
 
 const LINK_PROMPT =
@@ -246,6 +261,7 @@ export async function handleTelegramCallback(
     updateId: callback.updateId,
     chatId: callback.chatId,
     text: resolved.prompt,
+    messageId: callback.messageId,
     from: callback.from,
   });
 }
@@ -285,11 +301,11 @@ export async function handleTelegramMessage(
       }
       await setTelegramChatId(userId, message.chatId);
       await logAudit(userId, "telegram_linked", `chat=${message.chatId}`);
-      await sendInteractiveReply(
-        message.chatId,
-        telegramLinkedWelcome(),
-        optionsForTelegramFastPath("greeting"),
-      );
+      await deliverReply({
+        chatId: message.chatId,
+        text: telegramLinkedWelcome(),
+        replyToMessageId: message.messageId,
+      });
       return "linked";
     }
 
@@ -301,31 +317,32 @@ export async function handleTelegramMessage(
 
     const turn = classifyTelegramTurn(incoming);
     if (turn.kind === "greeting") {
-      await sendInteractiveReply(
-        message.chatId,
-        telegramGreeting(),
-        optionsForTelegramFastPath("greeting"),
-      );
+      await deliverReply({
+        chatId: message.chatId,
+        text: telegramGreeting(),
+        replyToMessageId: message.messageId,
+      });
       return "answered";
     }
     if (turn.kind === "menu") {
-      await sendInteractiveReply(
-        message.chatId,
-        telegramMenu(),
-        optionsForTelegramFastPath("menu"),
-      );
+      await deliverReply({
+        chatId: message.chatId,
+        text: telegramMenu(),
+        replyToMessageId: message.messageId,
+      });
       return "answered";
     }
     if (turn.kind === "session") {
-      await sendInteractiveReply(
-        message.chatId,
-        telegramSessionStatus(),
-        optionsForTelegramFastPath("session"),
-      );
+      await deliverReply({
+        chatId: message.chatId,
+        text: telegramSessionStatus(),
+        replyToMessageId: message.messageId,
+      });
       return "answered";
     }
     if (turn.kind === "chart_photo") {
-      await sendMessage(message.chatId, telegramPreparingChart()).catch(() => {});
+      const live = new TelegramLiveTurn(message.chatId, message.messageId);
+      await live.show(telegramPreparingChart()).catch(() => {});
       const buffer = await buildChartSnapshotBufferForMarket(
         userId,
         DATA_SYMBOL,
@@ -333,31 +350,25 @@ export async function handleTelegramMessage(
         "forex",
       );
       if (!buffer) {
-        await sendInteractiveReply(
-          message.chatId,
-          telegramChartFailed(),
-          optionsForTelegramFastPath("chart_failed"),
-          platformLinkButtons(),
-        );
+        await live.finalize(telegramChartFailed());
         return "answered";
       }
       const closed = !getSessionStatus(DATA_SYMBOL).isOpen;
-      const options = optionsForTelegramFastPath("chart_photo");
       await dismissPersistentKeyboardOnce(message.chatId);
-      rememberOptions(telegramSessionId(message.chatId), options);
       await sendPhotoBuffer(
         message.chatId,
         buffer,
         telegramChartCaption(closed),
-        [...rememberInlineOptions(message.chatId, options), ...platformLinkButtons()],
+        undefined,
+        { replyToMessageId: message.messageId },
       );
+      await live.discard();
       return "answered";
     }
 
-    // Analysis takes tens of seconds. A greeting must not pretend it is one.
-    if (turn.kind === "analysis") {
-      await sendMessage(message.chatId, telegramAnalyzing()).catch(() => {});
-    }
+    const live = new TelegramLiveTurn(message.chatId, message.messageId);
+    await live.wake().catch(() => {});
+    await live.think().catch(() => {});
 
     const result = await runUnifiedChartAgent({
       surface: "platform",
@@ -391,9 +402,18 @@ export async function handleTelegramMessage(
       activeRecommendation: result.activeRecommendation,
       maxSuggestions: 4,
     }).catch(() => []);
-    const options = generated.length ? generated : result.options;
+    const extraButtons =
+      result.decision === "buy" || result.decision === "sell"
+        ? reportLinkButtons()
+        : undefined;
 
-    await sendInteractiveReply(message.chatId, text, options);
+    await deliverReply({
+      chatId: message.chatId,
+      text,
+      live,
+      options: generated.length ? generated : undefined,
+      extraButtons,
+    });
     await logAudit(userId, "telegram_analysis", `decision=${result.decision}`);
     return "answered";
   } catch (error) {

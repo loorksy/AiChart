@@ -44,7 +44,13 @@ const routeSource = readFileSync(
 
 const message = (over: Record<string, unknown> = {}) => ({
   update_id: 1,
-  message: { chat: { id: 4242 }, text: "أعطني توصية", from: { id: 7 }, ...over },
+  message: {
+    message_id: 55,
+    chat: { id: 4242 },
+    text: "أعطني توصية",
+    from: { id: 7 },
+    ...over,
+  },
 });
 
 describe("the update parser", () => {
@@ -53,6 +59,7 @@ describe("the update parser", () => {
     assert.equal(parsed?.chatId, "4242");
     assert.equal(parsed?.text, "أعطني توصية");
     assert.equal(parsed?.updateId, 1);
+    assert.equal(parsed?.messageId, 55);
   });
 
   it("refuses an update with no text", () => {
@@ -168,6 +175,9 @@ describe("cards carry links, never actions", () => {
     assert.match(agentSource, /rememberInlineOptions/);
     assert.match(agentSource, /handleTelegramCallback/);
     assert.match(agentSource, /generateAgentSuggestions/);
+    assert.match(agentSource, /TelegramLiveTurn/);
+    assert.match(agentSource, /generated.length \? generated : undefined/);
+    assert.doesNotMatch(agentSource, /optionsForTelegramFastPath/);
     assert.doesNotMatch(agentSource, /sendMessageWithReplyKeyboard/);
     assert.doesNotMatch(agentSource, /arabicReplyKeyboardRows/);
     assert.doesNotMatch(agentSource, /cmd:approve|cmd:reject|cmd:env:live/);

@@ -5,7 +5,6 @@ import {
   telegramGreeting,
   telegramLinkedWelcome,
 } from "@/lib/telegram/conversation";
-import { optionsForTelegramFastPath } from "@/lib/telegram/inlineOptions";
 
 describe("classifyTelegramTurn", () => {
   it("treats a hello as a greeting, not an analysis", () => {
@@ -44,11 +43,8 @@ describe("the phone is a conversation, not a standing keypad", () => {
     }
   });
 
-  it("authors follow-up chips for the turn instead of a persistent keyboard", () => {
-    const greeting = optionsForTelegramFastPath("greeting").map((o) => o.label);
-    const afterChart = optionsForTelegramFastPath("chart_photo").map((o) => o.label);
-    assert.ok(greeting.includes("تحليل الشارت الحالي"));
-    assert.ok(afterChart.includes("رأي شراء/بيع/انتظار"));
-    assert.notDeepEqual(greeting, afterChart);
+  it("does not invent a button menu in the greeting prose", () => {
+    assert.equal(telegramGreeting().includes("تحليل الشارت الحالي"), false);
+    assert.equal(telegramLinkedWelcome().includes("افتح التقرير"), false);
   });
 });

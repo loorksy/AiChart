@@ -239,6 +239,9 @@ describe("the phone gets the same answer", () => {
       .map((c) => c.kind)
       // news_risk at "low" and activation with no trigger are deliberate
       // silences, both covered by their own assertions below.
+      // follow_up_options is a button on the message when the agent authored
+      // one — not a numbered dump on every phone reply.
+      .filter((kind) => kind !== "follow_up_options")
       .filter((kind) => kind !== "decision" || false);
     assert.deepEqual(silent, [], "a card with data and no phone rendering is a surface that drifted");
   });

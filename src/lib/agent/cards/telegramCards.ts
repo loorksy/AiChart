@@ -178,11 +178,9 @@ export function renderCardForTelegram(card: AgentCard): string | null {
       return null;
 
     case "follow_up_options":
-      // Numbered, because this surface answers a reply of "1" — the platform's
-      // clickable options and Telegram's numeric replies are the same contract.
-      return `<b>أسئلة متابعة</b>\n${card.options
-        .map((o, i) => `${i + 1}. ${o.label}`)
-        .join("\n")}`;
+      // OpenClaw: follow-ups are inline buttons on the message when the agent
+      // authored them — not a numbered dump on every reply.
+      return null;
 
     // The diagnostic set returns above; these cases exist so the union stays
     // exhaustive if that policy ever changes.
