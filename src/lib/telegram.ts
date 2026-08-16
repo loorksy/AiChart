@@ -185,6 +185,86 @@ export async function removeReplyKeyboard(
   });
 }
 
+const dismissedReplyKeyboards = new Set<string>();
+
+/**
+ * Telegram cannot attach `inline_keyboard` and `remove_keyboard` on one
+ * send. A leftover persistent bar from an older deploy has to be cleared
+ * with its own message — we delete that message so the user never sees it.
+ */
+export async function dismissPersistentKeyboardOnce(
+  chatId: string | number,
+): Promise<void> {
+  const key = String(chatId);
+  if (dismissedReplyKeyboards.has(key)) return;
+  dismissedReplyKeyboards.add(key);
+  try {
+    const result = (await call("sendMessage", {
+      chat_id: chatId,
+      text: "\u2060",
+      reply_markup: { remove_keyboard: true },
+    })) as { message_id: number };
+    await call("deleteMessage", {
+      chat_id: chatId,
+      message_id: result.message_id,
+    }).catch(() => {});
+  } catch {
+    /* best-effort — inline buttons still work if the old bar stays one more turn */
+  }
+}
+
+export function resetDismissedReplyKeyboards(): void {
+  dismissedReplyKeyboards.clear();
+}
+
+export async function answerCallbackQuery(
+  callbackQueryId: string,
+  text?: string,
+): Promise<void> {
+  await call("answerCallbackQuery", {
+    callback_query_id: callbackQueryId,
+    ...(text ? { text } : {}),
+  });
+}
+
+export async function editMessageText(
+  chatId: string | number,
+  messageId: number,
+  text: string,
+): Promise<void> {
+  await call("editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    disable_web_page_preview: true,
+    reply_markup: { inline_keyboard: [] },
+  });
+}
+
+export async function editMessageCaption(
+  chatId: string | number,
+  messageId: number,
+  caption: string,
+): Promise<void> {
+  await call("editMessageCaption", {
+    chat_id: chatId,
+    message_id: messageId,
+    caption,
+    reply_markup: { inline_keyboard: [] },
+  });
+}
+
+export async function editMessageReplyMarkup(
+  chatId: string | number,
+  messageId: number,
+): Promise<void> {
+  await call("editMessageReplyMarkup", {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: { inline_keyboard: [] },
+  });
+}
+
 export async function sendPhoto(
   chatId: string | number,
   photoUrl: string,
@@ -347,15 +427,15 @@ export async function deleteWebhook(): Promise<void> {
  * path. Telegram echoes the token in `X-Telegram-Bot-Api-Secret-Token` on every
  * delivery, and the route rejects anything else.
  *
- * Only `message` updates are subscribed. The cards carry links rather than
- * actions, so there are no callback queries to receive — and asking for update
- * types nothing handles would mean paying to deliver them.
+ * Subscribe to `message` (the question) and `callback_query` (a tap on an
+ * agent-authored option on that message). Execution controls are not a
+ * subscribed concern — option tokens are opaque and never place an order.
  */
 export async function setWebhook(url: string, secretToken: string): Promise<void> {
   await call("setWebhook", {
     url,
     secret_token: secretToken,
-    allowed_updates: ["message"],
+    allowed_updates: ["message", "callback_query"],
     drop_pending_updates: false,
   });
 }

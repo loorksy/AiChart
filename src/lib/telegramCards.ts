@@ -136,7 +136,7 @@ export function sessionStartCard(profile: AccountProfile): string {
   return formatCard(
     "👋 مرحباً — Lonora",
     [
-      "🔹 توصية الذهب · صورة الشارت · حالة السوق",
+      "🔹 اسألني أو اختر خياراً من هذه الرسالة",
       `🔹 الأداة: ${DISPLAY_NAME_AR}`,
       `🔹 ${envLine(profile)}`,
     ],
@@ -259,7 +259,7 @@ export function menuCard(profile: AccountProfile): string {
   return formatCard(
     "📋 القائمة الرئيسية",
     [
-      "🔹 توصية الذهب · صورة الشارت · حالة السوق",
+      "🔹 اسألني أو اختر خياراً من هذه الرسالة",
       `🔹 الأداة: ${DISPLAY_NAME_AR}`,
       `🔹 ${envLine(profile)}`,
     ],

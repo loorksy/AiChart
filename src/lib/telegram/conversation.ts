@@ -124,10 +124,7 @@ export function telegramGreeting(): string {
     `أهلاً. أنا وكيل ${DISPLAY_NAME_AR} على تليجرام.`,
     market,
     "",
-    "اكتب لي أو استخدم الأزرار:",
-    "• توصية الذهب",
-    "• صورة الشارت",
-    "• حالة السوق",
+    "اسألني أو اختر خياراً من هذه الرسالة.",
   ].join("\n");
 }
 
@@ -138,16 +135,15 @@ export function telegramMenu(): string {
 export function telegramSessionStatus(): string {
   const session = getSessionStatus(DATA_SYMBOL);
   if (session.isOpen) {
-    return `السوق مفتوح. اطلب «توصية الذهب» وأحلل ${DISPLAY_NAME_AR} الآن.`;
+    return `السوق مفتوح. اسألني عن ${DISPLAY_NAME_AR} أو اختر خياراً من هذه الرسالة.`;
   }
-  return `${session.reason}\nما في حركة سعر تُقرأ الآن. اطلب «صورة الشارت» لآخر لقطة، أو عد عند الافتتاح لتوصية جديدة.`;
+  return `${session.reason}\nما في حركة سعر تُقرأ الآن. أقدر أرسل آخر شارت أو أنتظر الافتتاح لتوصية جديدة.`;
 }
 
 export function telegramLinkedWelcome(): string {
   return [
     "تم الربط.",
     `اسألني عن ${DISPLAY_NAME_AR} كما تسأل في المنصة — توصية، شرح، أو صورة الشارت.`,
-    "الأزرار تحت تختصر الطلب.",
   ].join("\n");
 }
 

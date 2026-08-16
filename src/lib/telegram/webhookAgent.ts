@@ -1,23 +1,20 @@
 /**
  * Telegram as a first-class surface, not a notification pipe.
  *
- * The bot was outbound-only: the platform pushed cards to it and the setup
- * route deliberately DELETED the webhook. So an operator could receive a
- * recommendation on their phone and had nowhere to ask for one — and the link
- * flow was half-built in the same way, minting a `t.me/bot?start=CODE` deep
- * link that nothing listened for. `consumeLinkCode` had no caller.
+ * Parity means the same brain answers on both surfaces. A message here runs
+ * `runUnifiedChartAgent` through the same gate chain, labelled
+ * `surface: "platform"`.
  *
- * Parity means the same brain answers on both surfaces. A message here runs the
- * SAME `runUnifiedChartAgent` the chat stream runs, through the same gate chain,
- * and is labelled `surface: "platform"` because it IS the platform's brain —
- * the transport changed, the decision path did not.
- *
- * What Telegram does NOT get is a second set of capabilities. There are no
- * execution buttons, because there is nothing to execute; the card carries a
- * link back to the platform and nothing that acts.
+ * Replies are interactive the way OpenClaw's Telegram extension is: the
+ * agent authors follow-up options for THIS turn and they ride on that
+ * message as an inline keyboard. There is no persistent reply keyboard and
+ * no execution button — a tap is just the next user turn.
  */
 import { newId } from "@/lib/agent/activity";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
+import { rememberOptions, resolveOptionReply } from "@/lib/agent/sessionOptions";
+import { generateAgentSuggestions } from "@/lib/agent/suggestions/generateAgentSuggestions";
+import type { AgentOption } from "@/lib/agent/types";
 import { createLogger } from "@/lib/logger";
 import { DATA_SYMBOL } from "@/lib/gold";
 import { getPublicAppUrl } from "@/lib/appUrl";
@@ -28,14 +25,17 @@ import {
   setTelegramChatId,
 } from "@/lib/store";
 import {
+  answerCallbackQuery,
+  dismissPersistentKeyboardOnce,
+  editMessageCaption,
+  editMessageReplyMarkup,
+  editMessageText,
   sendMessage,
-  sendMessageWithReplyKeyboard,
   sendPhotoBuffer,
   type InlineButton,
 } from "@/lib/telegram";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
 import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
-import { arabicReplyKeyboardRows } from "@/lib/telegramCommands";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
@@ -49,6 +49,13 @@ import {
   telegramPreparingChart,
   telegramSessionStatus,
 } from "@/lib/telegram/conversation";
+import {
+  markChosenReply,
+  optionsForTelegramFastPath,
+  rememberInlineOptions,
+  resolveInlineOption,
+  telegramSessionId,
+} from "@/lib/telegram/inlineOptions";
 
 const log = createLogger("telegram.webhook");
 
@@ -58,6 +65,18 @@ export interface TelegramMessage {
   chatId: string;
   text: string;
   from?: { id: number; username?: string };
+}
+
+export interface TelegramCallback {
+  updateId: number;
+  callbackId: string;
+  chatId: string;
+  messageId: number;
+  data: string;
+  from?: { id: number; username?: string };
+  messageText?: string;
+  caption?: string;
+  hasPhoto: boolean;
 }
 
 /** Extract the one message shape this surface handles, or null. */
@@ -77,6 +96,44 @@ export function parseTelegramUpdate(update: unknown): TelegramMessage | null {
     updateId,
     chatId: String(chatId),
     text: text.trim(),
+    from:
+      from && typeof from.id === "number"
+        ? {
+            id: from.id,
+            username: typeof from.username === "string" ? from.username : undefined,
+          }
+        : undefined,
+  };
+}
+
+/** Extract an option tap. Execution-shaped callbacks are ignored at resolve time. */
+export function parseTelegramCallback(update: unknown): TelegramCallback | null {
+  if (!update || typeof update !== "object") return null;
+  const u = update as Record<string, unknown>;
+  const updateId = Number(u.update_id);
+  if (!Number.isFinite(updateId)) return null;
+  const query = u.callback_query as Record<string, unknown> | undefined;
+  if (!query || typeof query !== "object") return null;
+  const data = query.data;
+  if (typeof data !== "string" || !data.trim()) return null;
+  const id = query.id;
+  if (typeof id !== "string" || !id) return null;
+  const message = query.message as Record<string, unknown> | undefined;
+  if (!message || typeof message !== "object") return null;
+  const chat = message.chat as { id?: unknown } | undefined;
+  const chatId = chat?.id;
+  const messageId = Number(message.message_id);
+  if (chatId == null || !Number.isFinite(messageId)) return null;
+  const from = query.from as { id?: unknown; username?: unknown } | undefined;
+  return {
+    updateId,
+    callbackId: id,
+    chatId: String(chatId),
+    messageId,
+    data: data.trim(),
+    messageText: typeof message.text === "string" ? message.text : undefined,
+    caption: typeof message.caption === "string" ? message.caption : undefined,
+    hasPhoto: Array.isArray(message.photo) && message.photo.length > 0,
     from:
       from && typeof from.id === "number"
         ? {
@@ -116,11 +173,24 @@ export function resetTelegramDedupe(): void {
   seenUpdates.clear();
 }
 
-function platformButtons(): InlineButton[][] {
+function platformLinkButtons(): InlineButton[][] {
   const base = getPublicAppUrl();
-  // A link, never an action. There is no order to place from a phone because
-  // there is no order to place at all.
   return [[{ text: "افتح المنصة", url: `${base}/chat` }]];
+}
+
+async function sendInteractiveReply(
+  chatId: string,
+  text: string,
+  options?: AgentOption[],
+  extraButtons?: InlineButton[][],
+): Promise<void> {
+  await dismissPersistentKeyboardOnce(chatId);
+  const optionRows = options?.length ? rememberInlineOptions(chatId, options) : [];
+  if (options?.length) {
+    rememberOptions(telegramSessionId(chatId), options);
+  }
+  const buttons = [...optionRows, ...(extraButtons ?? [])];
+  await sendMessage(chatId, text, buttons.length ? buttons : undefined);
 }
 
 const LINK_PROMPT =
@@ -141,6 +211,46 @@ export function parseTelegramStart(
 }
 
 /**
+ * A tap on an agent-authored option. Answer the spinner first (Telegram
+ * otherwise shows a hang), strip the buttons, then treat the stored prompt
+ * as the next user turn.
+ */
+export async function handleTelegramCallback(
+  callback: TelegramCallback,
+): Promise<"linked" | "answered" | "unlinked" | "ignored" | "failed"> {
+  const resolved = resolveInlineOption(callback.data, callback.chatId);
+  if (!resolved) {
+    await answerCallbackQuery(callback.callbackId, "انتهت صلاحية هذا الخيار").catch(
+      () => {},
+    );
+    await editMessageReplyMarkup(callback.chatId, callback.messageId).catch(() => {});
+    return "ignored";
+  }
+
+  await answerCallbackQuery(callback.callbackId).catch(() => {});
+  const marked = markChosenReply(
+    callback.hasPhoto ? callback.caption : callback.messageText,
+    resolved.label,
+  );
+  try {
+    if (callback.hasPhoto) {
+      await editMessageCaption(callback.chatId, callback.messageId, marked);
+    } else {
+      await editMessageText(callback.chatId, callback.messageId, marked);
+    }
+  } catch {
+    await editMessageReplyMarkup(callback.chatId, callback.messageId).catch(() => {});
+  }
+
+  return handleTelegramMessage({
+    updateId: callback.updateId,
+    chatId: callback.chatId,
+    text: resolved.prompt,
+    from: callback.from,
+  });
+}
+
+/**
  * Handle one message.
  *
  * Returns a short outcome label for the caller's log. Never throws: an update
@@ -150,9 +260,15 @@ export async function handleTelegramMessage(
   message: TelegramMessage,
 ): Promise<"linked" | "answered" | "unlinked" | "ignored" | "failed"> {
   try {
+    const optionPrompt = resolveOptionReply(
+      telegramSessionId(message.chatId),
+      message.text,
+    );
+    const incoming = optionPrompt ?? message.text;
+
     // `/start CODE` — the deep link the platform mints. This is the caller
     // `consumeLinkCode` never had.
-    const startMatch = parseTelegramStart(message.text);
+    const startMatch = parseTelegramStart(incoming);
     if (startMatch) {
       const code = startMatch.code;
       if (!code) {
@@ -169,10 +285,10 @@ export async function handleTelegramMessage(
       }
       await setTelegramChatId(userId, message.chatId);
       await logAudit(userId, "telegram_linked", `chat=${message.chatId}`);
-      await sendMessageWithReplyKeyboard(
+      await sendInteractiveReply(
         message.chatId,
         telegramLinkedWelcome(),
-        arabicReplyKeyboardRows(),
+        optionsForTelegramFastPath("greeting"),
       );
       return "linked";
     }
@@ -183,28 +299,28 @@ export async function handleTelegramMessage(
       return "unlinked";
     }
 
-    const turn = classifyTelegramTurn(message.text);
+    const turn = classifyTelegramTurn(incoming);
     if (turn.kind === "greeting") {
-      await sendMessageWithReplyKeyboard(
+      await sendInteractiveReply(
         message.chatId,
         telegramGreeting(),
-        arabicReplyKeyboardRows(),
+        optionsForTelegramFastPath("greeting"),
       );
       return "answered";
     }
     if (turn.kind === "menu") {
-      await sendMessageWithReplyKeyboard(
+      await sendInteractiveReply(
         message.chatId,
         telegramMenu(),
-        arabicReplyKeyboardRows(),
+        optionsForTelegramFastPath("menu"),
       );
       return "answered";
     }
     if (turn.kind === "session") {
-      await sendMessageWithReplyKeyboard(
+      await sendInteractiveReply(
         message.chatId,
         telegramSessionStatus(),
-        arabicReplyKeyboardRows(),
+        optionsForTelegramFastPath("session"),
       );
       return "answered";
     }
@@ -217,19 +333,23 @@ export async function handleTelegramMessage(
         "forex",
       );
       if (!buffer) {
-        await sendMessageWithReplyKeyboard(
+        await sendInteractiveReply(
           message.chatId,
           telegramChartFailed(),
-          arabicReplyKeyboardRows(),
+          optionsForTelegramFastPath("chart_failed"),
+          platformLinkButtons(),
         );
         return "answered";
       }
       const closed = !getSessionStatus(DATA_SYMBOL).isOpen;
+      const options = optionsForTelegramFastPath("chart_photo");
+      await dismissPersistentKeyboardOnce(message.chatId);
+      rememberOptions(telegramSessionId(message.chatId), options);
       await sendPhotoBuffer(
         message.chatId,
         buffer,
         telegramChartCaption(closed),
-        platformButtons(),
+        [...rememberInlineOptions(message.chatId, options), ...platformLinkButtons()],
       );
       return "answered";
     }
@@ -262,12 +382,18 @@ export async function handleTelegramMessage(
     // never dressed in a plan card — there is no plan card to dress it in when
     // the levels are absent.
     const text = renderCardsForTelegram(deriveCards(result));
+    const generated = await generateAgentSuggestions({
+      locale: "ar",
+      userMessage: turn.message,
+      result,
+      symbol: DATA_SYMBOL,
+      interval: "15m",
+      activeRecommendation: result.activeRecommendation,
+      maxSuggestions: 4,
+    }).catch(() => []);
+    const options = generated.length ? generated : result.options;
 
-    await sendMessageWithReplyKeyboard(
-      message.chatId,
-      text,
-      arabicReplyKeyboardRows(),
-    );
+    await sendInteractiveReply(message.chatId, text, options);
     await logAudit(userId, "telegram_analysis", `decision=${result.decision}`);
     return "answered";
   } catch (error) {

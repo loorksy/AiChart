@@ -5,7 +5,7 @@ import {
   telegramGreeting,
   telegramLinkedWelcome,
 } from "@/lib/telegram/conversation";
-import { arabicReplyKeyboardRows } from "@/lib/telegramCommands";
+import { optionsForTelegramFastPath } from "@/lib/telegram/inlineOptions";
 
 describe("classifyTelegramTurn", () => {
   it("treats a hello as a greeting, not an analysis", () => {
@@ -28,17 +28,12 @@ describe("classifyTelegramTurn", () => {
   });
 });
 
-describe("the phone keyboard is recommendations-only", () => {
-  it("offers analysis, chart, and session — never demo/live/trades", () => {
-    const labels = arabicReplyKeyboardRows().flat();
-    assert.ok(labels.includes("توصية الذهب"));
-    assert.ok(labels.includes("صورة الشارت"));
-    assert.ok(labels.includes("حالة السوق"));
-    assert.ok(!labels.some((l) => /ديمو|حقيقي|صفقات|رصيد/.test(l)));
-  });
-
-  it("greets without leaking internal card taxonomy", () => {
+describe("the phone is a conversation, not a standing keypad", () => {
+  it("greets without listing a fixed command bar", () => {
     const text = `${telegramGreeting()}\n${telegramLinkedWelcome()}`;
+    assert.equal(text.includes("توصية الذهب"), false);
+    assert.equal(text.includes("استخدم الأزرار"), false);
+    assert.equal(text.includes("الأزرار تحت"), false);
     for (const leak of [
       "informational",
       "descriptive_only",
@@ -47,5 +42,13 @@ describe("the phone keyboard is recommendations-only", () => {
     ]) {
       assert.equal(text.includes(leak), false);
     }
+  });
+
+  it("authors follow-up chips for the turn instead of a persistent keyboard", () => {
+    const greeting = optionsForTelegramFastPath("greeting").map((o) => o.label);
+    const afterChart = optionsForTelegramFastPath("chart_photo").map((o) => o.label);
+    assert.ok(greeting.includes("تحليل الشارت الحالي"));
+    assert.ok(afterChart.includes("رأي شراء/بيع/انتظار"));
+    assert.notDeepEqual(greeting, afterChart);
   });
 });

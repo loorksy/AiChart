@@ -10,7 +10,8 @@
  * What these tests hold is the shape of the fix rather than its prose:
  *
  *  - the update parser accepts what Telegram actually sends and refuses the
- *    rest, so a callback query or a photo cannot fall through into the engine;
+ *    rest, so a photo cannot fall through into the engine; option taps are
+ *    parsed separately and never as a free-text prompt;
  *  - the dedupe is real, because Telegram retries on ITS schedule and a
  *    40-second analysis is long enough to be retried mid-flight — the second
  *    run would store a second recommendation for one question;
@@ -25,6 +26,7 @@ import { describe, it } from "node:test";
 import path from "node:path";
 import {
   alreadyHandled,
+  parseTelegramCallback,
   parseTelegramStart,
   parseTelegramUpdate,
   resetTelegramDedupe,
@@ -65,6 +67,26 @@ describe("the update parser", () => {
     assert.equal(parseTelegramUpdate({ message: { chat: { id: 1 }, text: "x" } }), null);
     assert.equal(parseTelegramUpdate(null), null);
     assert.equal(parseTelegramUpdate("not an update"), null);
+  });
+
+  it("reads an option tap as a callback, not as a typed message", () => {
+    const parsed = parseTelegramCallback({
+      update_id: 4,
+      callback_query: {
+        id: "cb-1",
+        data: "o:deadbeef",
+        from: { id: 7, username: "op" },
+        message: {
+          message_id: 88,
+          chat: { id: 4242 },
+          text: "أهلاً",
+        },
+      },
+    });
+    assert.equal(parsed?.chatId, "4242");
+    assert.equal(parsed?.data, "o:deadbeef");
+    assert.equal(parsed?.messageId, 88);
+    assert.equal(parseTelegramCallback(message()), null);
   });
 
   it("accepts an edited message as a question", () => {
@@ -142,16 +164,18 @@ describe("the surface shares the platform's brain", () => {
 });
 
 describe("cards carry links, never actions", () => {
-  it("offers no callback button anywhere on this surface", () => {
-    // A callback_data button is a control. There is nothing to control: the
-    // platform places no orders, so a card that acts could only fail.
-    assert.doesNotMatch(agentSource, /callback_data/);
+  it("attaches agent-authored option taps, never execution controls", () => {
+    assert.match(agentSource, /rememberInlineOptions/);
+    assert.match(agentSource, /handleTelegramCallback/);
+    assert.match(agentSource, /generateAgentSuggestions/);
+    assert.doesNotMatch(agentSource, /sendMessageWithReplyKeyboard/);
+    assert.doesNotMatch(agentSource, /arabicReplyKeyboardRows/);
+    assert.doesNotMatch(agentSource, /cmd:approve|cmd:reject|cmd:env:live/);
   });
 
-  it("subscribes to message updates only", () => {
+  it("subscribes to messages and option callbacks", () => {
     const telegram = readFileSync(path.join(SRC, "lib", "telegram.ts"), "utf8");
-    assert.match(telegram, /allowed_updates: \["message"\]/);
-    assert.doesNotMatch(telegram, /callback_query/);
+    assert.match(telegram, /allowed_updates: \["message", "callback_query"\]/);
   });
 
   it("re-registers the webhook on process boot so a deploy cannot leave the bot deaf", () => {
@@ -169,7 +193,9 @@ describe("the webhook route survives Telegram's retry contract", () => {
   it("verifies the secret token before doing any work", () => {
     const check = routeSource.indexOf("x-telegram-bot-api-secret-token");
     const work = routeSource.indexOf("handleTelegramMessage(");
+    const callback = routeSource.indexOf("handleTelegramCallback(");
     assert.ok(check > 0 && check < work, "the engine must not run for an unverified caller");
+    assert.ok(check < callback);
   });
 
   it("refuses to serve at all without a configured secret", () => {
@@ -182,7 +208,9 @@ describe("the webhook route survives Telegram's retry contract", () => {
   it("dedupes before running the engine, not after", () => {
     const dedupe = routeSource.indexOf("alreadyHandled(");
     const work = routeSource.indexOf("handleTelegramMessage(");
+    const callback = routeSource.indexOf("handleTelegramCallback(");
     assert.ok(dedupe > 0 && dedupe < work);
+    assert.ok(dedupe < callback);
   });
 
   it("acknowledges a malformed or unsupported update instead of erroring", () => {
