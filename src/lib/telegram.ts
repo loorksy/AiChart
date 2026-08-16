@@ -1,9 +1,13 @@
 /**
  * Telegram Bot API client + message builders. Uses the platform bot token
  * (TELEGRAM_BOT_TOKEN). Degrades gracefully when not configured.
+ *
+ * Transport is grammY (`Api`). The Lonora agent still owns every reply —
+ * grammY only speaks Bot API. Inbound webhook parsing stays in webhookAgent.
  */
 
 import dns from "node:dns";
+import { Api, GrammyError, InputFile } from "grammy";
 import { getTelegramChatId } from "./store";
 import { getPublicAppUrl } from "./appUrl";
 import { createLogger } from "./logger";
@@ -20,7 +24,14 @@ dns.setDefaultResultOrder("ipv4first");
 
 const log = createLogger("telegram");
 
-const API = "https://api.telegram.org";
+let cachedApi: { token: string; api: Api } | null = null;
+
+function api(): Api {
+  const t = token();
+  if (cachedApi?.token === t) return cachedApi.api;
+  cachedApi = { token: t, api: new Api(t) };
+  return cachedApi.api;
+}
 
 /**
  * Telegram deep links are `t.me/<username>` — a pasted leading @ becomes
@@ -69,13 +80,9 @@ export async function getTelegramLoginConfig(): Promise<{
   }
 
   try {
-    const res = await fetch(`${API}/bot${token}/getMe`, { cache: "no-store" });
-    const data = (await res.json()) as {
-      ok: boolean;
-      result?: { username: string };
-    };
-    if (data.ok && data.result?.username) {
-      cachedUsername = data.result.username;
+    const me = await new Api(token).getMe();
+    if (me.username) {
+      cachedUsername = me.username;
       return { telegramConfigured: true, botUsername: cachedUsername };
     }
   } catch {
@@ -92,30 +99,34 @@ function token(): string {
 }
 
 async function call(method: string, body: Record<string, unknown>): Promise<unknown> {
-  const res = await fetch(`${API}/bot${token()}/${method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  const data = (await res.json().catch(() => ({}))) as {
-    ok: boolean;
-    description?: string;
-    result?: unknown;
-  };
-  if (!data.ok) {
+  try {
+    const raw = api().raw as unknown as Record<
+      string,
+      (payload: Record<string, unknown>) => Promise<unknown>
+    >;
+    const fn = raw[method];
+    if (typeof fn !== "function") {
+      throw new Error(`Unknown Telegram method: ${method}`);
+    }
+    return await fn(body);
+  } catch (error) {
+    const description =
+      error instanceof GrammyError
+        ? error.description
+        : error instanceof Error
+          ? error.message
+          : String(error);
     // #region agent log
     const { debugSessionLog } = await import("./debugSessionLog");
     debugSessionLog({
       location: "telegram.ts:call",
       message: "telegram api error",
       hypothesisId: "E",
-      data: { method, description: data.description?.slice(0, 120) },
+      data: { method, description: description.slice(0, 120) },
     });
     // #endregion
-    throw new Error(data.description || `Telegram error: ${method}`);
+    throw new Error(description || `Telegram error: ${method}`);
   }
-  return data.result;
 }
 
 export type InlineButton =
@@ -306,39 +317,13 @@ export async function sendPhotoBuffer(
   buttons?: InlineButton[][],
   opts?: { replyToMessageId?: number },
 ): Promise<void> {
-  const form = new FormData();
-  form.append("chat_id", String(chatId));
-  form.append(
-    "photo",
-    new Blob([new Uint8Array(buffer)], { type: "image/png" }),
-    "chart.png",
-  );
-  if (caption) {
-    form.append("caption", caption);
-    form.append("parse_mode", "HTML");
-  }
-  if (buttons) {
-    form.append(
-      "reply_markup",
-      JSON.stringify({ inline_keyboard: buttons }),
-    );
-  }
-  if (opts?.replyToMessageId != null) {
-    form.append("reply_to_message_id", String(opts.replyToMessageId));
-  }
-
-  const res = await fetch(`${API}/bot${token()}/sendPhoto`, {
-    method: "POST",
-    body: form,
-    cache: "no-store",
+  await api().sendPhoto(chatId, new InputFile(buffer, "chart.png"), {
+    ...(caption ? { caption, parse_mode: "HTML" as const } : {}),
+    ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+    ...(opts?.replyToMessageId != null
+      ? { reply_parameters: { message_id: opts.replyToMessageId } }
+      : {}),
   });
-  const data = (await res.json().catch(() => ({}))) as {
-    ok: boolean;
-    description?: string;
-  };
-  if (!data.ok) {
-    throw new Error(data.description || "Telegram sendPhoto failed");
-  }
 }
 
 /** Sends a chart screenshot with optional caption to a linked user. */
@@ -382,30 +367,9 @@ export async function sendVoice(
   buffer: Buffer,
   caption?: string,
 ): Promise<void> {
-  const form = new FormData();
-  form.append("chat_id", String(chatId));
-  form.append(
-    "voice",
-    new Blob([new Uint8Array(buffer)], { type: "audio/ogg" }),
-    "voice.ogg",
-  );
-  if (caption) {
-    form.append("caption", caption);
-    form.append("parse_mode", "HTML");
-  }
-
-  const res = await fetch(`${API}/bot${token()}/sendVoice`, {
-    method: "POST",
-    body: form,
-    cache: "no-store",
+  await api().sendVoice(chatId, new InputFile(buffer, "voice.ogg"), {
+    ...(caption ? { caption, parse_mode: "HTML" as const } : {}),
   });
-  const data = (await res.json().catch(() => ({}))) as {
-    ok: boolean;
-    description?: string;
-  };
-  if (!data.ok) {
-    throw new Error(data.description || "Telegram sendVoice failed");
-  }
 }
 
 /** Sends synthesized voice clip to a linked user. */

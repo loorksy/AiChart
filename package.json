@@ -53,6 +53,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "framer-motion": "^12.40.0",
+    "grammy": "^1.45.1",
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",
     "libphonenumber-js": "^1.13.6",
