@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cairo, Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { LocaleProvider } from "@/components/LocaleProvider";
@@ -26,9 +26,10 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
-import { BRAND_NAME, BRAND_TAGLINE_AR } from "@/lib/brand";
+import { BRAND_NAME, BRAND_TAGLINE_AR, BRAND_URL } from "@/lib/brand";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(BRAND_URL),
   title: `${BRAND_NAME} — ${BRAND_TAGLINE_AR}`,
   description:
     "منصة تداول ذكية، يتحدث فيها كل متداول مع وكيل خبير يراقب السوق ويتحرك عند الفرصة المناسبة فقط.",
@@ -42,6 +43,9 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
+};
+
+export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
     { media: "(prefers-color-scheme: light)", color: "#f7f7f8" },

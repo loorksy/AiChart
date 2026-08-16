@@ -20,6 +20,19 @@ describe("theme persistence architecture", () => {
     assert.match(layout, /dangerouslySetInnerHTML/);
   });
 
+  it("puts themeColor on viewport and sets metadataBase", () => {
+    const layout = readFileSync(resolve(root, "app/layout.tsx"), "utf8");
+    assert.match(layout, /export const viewport/);
+    assert.match(layout, /metadataBase/);
+    assert.match(layout, /BRAND_URL/);
+    const themeColorAt = layout.indexOf("themeColor");
+    const viewportAt = layout.indexOf("export const viewport");
+    const metadataAt = layout.indexOf("export const metadata");
+    assert.ok(themeColorAt > viewportAt, "themeColor belongs on viewport, not metadata");
+    assert.ok(layout.indexOf("metadataBase") > metadataAt);
+    assert.ok(layout.indexOf("metadataBase") < viewportAt);
+  });
+
   it("exposes ThemeToggle with accessible label", () => {
     const toggle = readFileSync(resolve(root, "components/ThemeToggle.tsx"), "utf8");
     assert.match(toggle, /aria-label/);
