@@ -35,15 +35,16 @@ describe("metal chrome", () => {
     assert.match(src, /export const LiquidMetalFrame/);
   });
 
-  it("composer frame uses the rectangular rim, not a circle", () => {
+  it("composer frame fills with metal so the inset face reveals all four sides", () => {
     const src = read("liquid-metal-button.tsx");
-    assert.match(src, /u_shape:\s*0/);
-    assert.match(src, /u_fit:\s*ShaderFitOptions\.none/);
+    assert.match(src, /u_fit:\s*ShaderFitOptions\.cover/);
     assert.match(src, /FRAME_UNIFORMS/);
     assert.match(src, /mountLiquidMetal\(host,\s*FRAME_UNIFORMS\)/);
     const css = readFileSync(join(__dirname, "../../../app/globals.css"), "utf8");
     assert.match(css, /\.liquid-metal-frame-face/);
     assert.match(css, /background:\s*var\(--chat-input\)/);
+    assert.match(css, /mask-composite:\s*exclude/);
+    assert.match(css, /\.liquid-metal-frame-shader/);
   });
 
   it("MetalFx follows the app theme, not only the OS scheme", () => {

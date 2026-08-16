@@ -79,14 +79,19 @@ function mountLiquidMetal(
   }
 }
 
-/** Canvas-fill rim: shape 0 traces the box. Pill offsets/scale would clip the top and bottom. */
+/**
+ * Fill the whole writing field with opaque metal, then the inset face
+ * leaves a ring. Shape 0 (the shader's "rect") fades the short axis of a
+ * wide box, so only the left/right lit up. A covered, zoomed circle keeps
+ * every pixel — including the top and bottom — inside the metal.
+ */
 const FRAME_UNIFORMS: Partial<ShaderMountUniforms> = {
-  u_shape: 0,
-  u_fit: ShaderFitOptions.none,
-  u_scale: 1,
+  u_shape: 1,
+  u_fit: ShaderFitOptions.cover,
+  u_scale: 8,
   u_offsetX: 0,
   u_offsetY: 0,
-  u_contour: 0.35,
+  u_contour: 0,
 };
 
 /**

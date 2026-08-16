@@ -448,6 +448,14 @@ label {
   z-index: 20;
   isolation: isolate;
   border-radius: 20px;
+  /* Fallback platinum on all four sides if the shader is late or faded. */
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--foreground) 72%, var(--background)),
+    color-mix(in srgb, var(--foreground) 22%, var(--background)) 38%,
+    color-mix(in srgb, var(--foreground) 58%, var(--background)) 68%,
+    color-mix(in srgb, var(--foreground) 18%, var(--background))
+  );
 }
 
 .composer-sheet {
@@ -514,6 +522,16 @@ label {
   overflow: hidden;
   border-radius: inherit;
   pointer-events: none;
+  /* Keep the metal on a 3px ring — top, right, bottom and left. */
+  padding: 3px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
 }
 .liquid-metal-frame-shader canvas {
   position: absolute !important;
