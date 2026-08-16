@@ -37,13 +37,15 @@ export function resolveUserMenuInput(text: string): string | null {
 /** callback_data → command text for approval buttons. */
 export const CMD_CALLBACK_MAP: Record<string, string> = {
   "cmd:home": MENU_ACTIONS.qaima,
-  "cmd:balance": MENU_ACTIONS.rased,
-  "cmd:trades": MENU_ACTIONS.safaqat,
-  "cmd:settings": MENU_ACTIONS.iadadat,
-  "cmd:market:forex": MENU_ACTIONS.forex,
-  "cmd:env:demo": MENU_ACTIONS.demo,
-  "cmd:env:live": MENU_ACTIONS.live,
-  "cmd:analyze:pick": MENU_ACTIONS.tahil,
+  "cmd:balance": MENU_ACTIONS.status,
+  "cmd:trades": MENU_ACTIONS.tawsia,
+  "cmd:settings": MENU_ACTIONS.qaima,
+  "cmd:market:forex": MENU_ACTIONS.tawsia,
+  "cmd:env:demo": MENU_ACTIONS.qaima,
+  "cmd:env:live": MENU_ACTIONS.qaima,
+  "cmd:analyze:pick": MENU_ACTIONS.tawsia,
+  "cmd:chart": MENU_ACTIONS.chart,
+  "cmd:status": MENU_ACTIONS.status,
   "cmd:back": "رجوع",
   "cmd:next": "التالي",
 };
@@ -71,20 +73,10 @@ export function wrapAgentCommand(callback: string): string {
 export function mainMenuButtons(): InlineButton[][] {
   return [
     [
-      { text: "📊 تحليل زوج", callback_data: "cmd:analyze:pick" },
-      { text: "💰 الرصيد", callback_data: "cmd:balance" },
+      { text: "توصية الذهب", callback_data: "cmd:analyze:pick" },
+      { text: "صورة الشارت", callback_data: "cmd:chart" },
     ],
-    [
-      { text: "📈 الصفقات", callback_data: "cmd:trades" },
-      { text: "⚙️ الإعدادات", callback_data: "cmd:settings" },
-    ],
-    [
-      { text: "💱 فوركس", callback_data: "cmd:market:forex" },
-    ],
-    [
-      { text: "🧪 ديمو", callback_data: "cmd:env:demo" },
-      { text: "🔴 حقيقي", callback_data: "cmd:env:live" },
-    ],
+    [{ text: "حالة السوق", callback_data: "cmd:status" }],
   ];
 }
 

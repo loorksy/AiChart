@@ -136,8 +136,8 @@ export function sessionStartCard(profile: AccountProfile): string {
   return formatCard(
     "👋 مرحباً — Lonora",
     [
-      "🔹 اختر من الأزرار أو اكتب أمراً.",
-      `🔹 السوق: ${profile.marketType === "forex" ? "فوركس" : "كربتو"}`,
+      "🔹 توصية الذهب · صورة الشارت · حالة السوق",
+      `🔹 الأداة: ${DISPLAY_NAME_AR}`,
       `🔹 ${envLine(profile)}`,
     ],
     profile,
@@ -259,8 +259,8 @@ export function menuCard(profile: AccountProfile): string {
   return formatCard(
     "📋 القائمة الرئيسية",
     [
-      "🔹 تحليل زوج · الرصيد · الصفقات",
-      `🔹 السوق: ${profile.marketType === "forex" ? "فوركس" : "كربتو"}`,
+      "🔹 توصية الذهب · صورة الشارت · حالة السوق",
+      `🔹 الأداة: ${DISPLAY_NAME_AR}`,
       `🔹 ${envLine(profile)}`,
     ],
     profile,

@@ -128,6 +128,12 @@ describe("the surface shares the platform's brain", () => {
     assert.equal(parseTelegramStart("مرحبا"), null);
   });
 
+  it("classifies a hello before the engine so the phone is not a dump", () => {
+    assert.match(agentSource, /classifyTelegramTurn/);
+    assert.match(agentSource, /telegramGreeting/);
+    assert.match(agentSource, /sendPhotoBuffer/);
+  });
+
   it("never answers an unlinked chat with an analysis", () => {
     const unlinkedBranch = agentSource.indexOf("if (userId == null)");
     const analysisCall = agentSource.indexOf("runUnifiedChartAgent(");

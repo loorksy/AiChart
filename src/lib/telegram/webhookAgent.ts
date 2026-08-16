@@ -19,7 +19,7 @@
 import { newId } from "@/lib/agent/activity";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
 import { createLogger } from "@/lib/logger";
-import { DATA_SYMBOL, DISPLAY_NAME_AR } from "@/lib/gold";
+import { DATA_SYMBOL } from "@/lib/gold";
 import { getPublicAppUrl } from "@/lib/appUrl";
 import {
   consumeLinkCode,
@@ -27,9 +27,28 @@ import {
   logAudit,
   setTelegramChatId,
 } from "@/lib/store";
-import { sendMessage, type InlineButton } from "@/lib/telegram";
+import {
+  sendMessage,
+  sendMessageWithReplyKeyboard,
+  sendPhotoBuffer,
+  type InlineButton,
+} from "@/lib/telegram";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
 import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
+import { arabicReplyKeyboardRows } from "@/lib/telegramCommands";
+import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
+import { getSessionStatus } from "@/lib/markets/tradingCalendar";
+import {
+  classifyTelegramTurn,
+  telegramAnalyzing,
+  telegramChartCaption,
+  telegramChartFailed,
+  telegramGreeting,
+  telegramLinkedWelcome,
+  telegramMenu,
+  telegramPreparingChart,
+  telegramSessionStatus,
+} from "@/lib/telegram/conversation";
 
 const log = createLogger("telegram.webhook");
 
@@ -150,10 +169,10 @@ export async function handleTelegramMessage(
       }
       await setTelegramChatId(userId, message.chatId);
       await logAudit(userId, "telegram_linked", `chat=${message.chatId}`);
-      await sendMessage(
+      await sendMessageWithReplyKeyboard(
         message.chatId,
-        `تم الربط. اسألني عن ${DISPLAY_NAME_AR} وسأجيب بنفس التحليل الذي تراه في المنصة.`,
-        platformButtons(),
+        telegramLinkedWelcome(),
+        arabicReplyKeyboardRows(),
       );
       return "linked";
     }
@@ -164,13 +183,65 @@ export async function handleTelegramMessage(
       return "unlinked";
     }
 
-    // The analysis takes tens of seconds. Saying so beats a silence the
-    // operator cannot tell apart from a bot that is down.
-    await sendMessage(message.chatId, `أحلّل ${DISPLAY_NAME_AR} الآن…`).catch(() => {});
+    const turn = classifyTelegramTurn(message.text);
+    if (turn.kind === "greeting") {
+      await sendMessageWithReplyKeyboard(
+        message.chatId,
+        telegramGreeting(),
+        arabicReplyKeyboardRows(),
+      );
+      return "answered";
+    }
+    if (turn.kind === "menu") {
+      await sendMessageWithReplyKeyboard(
+        message.chatId,
+        telegramMenu(),
+        arabicReplyKeyboardRows(),
+      );
+      return "answered";
+    }
+    if (turn.kind === "session") {
+      await sendMessageWithReplyKeyboard(
+        message.chatId,
+        telegramSessionStatus(),
+        arabicReplyKeyboardRows(),
+      );
+      return "answered";
+    }
+    if (turn.kind === "chart_photo") {
+      await sendMessage(message.chatId, telegramPreparingChart()).catch(() => {});
+      const buffer = await buildChartSnapshotBufferForMarket(
+        userId,
+        DATA_SYMBOL,
+        "15m",
+        "forex",
+      );
+      if (!buffer) {
+        await sendMessageWithReplyKeyboard(
+          message.chatId,
+          telegramChartFailed(),
+          arabicReplyKeyboardRows(),
+        );
+        return "answered";
+      }
+      const closed = !getSessionStatus(DATA_SYMBOL).isOpen;
+      await sendPhotoBuffer(
+        message.chatId,
+        buffer,
+        telegramChartCaption(closed),
+        platformButtons(),
+      );
+      return "answered";
+    }
+
+    // Analysis takes tens of seconds. A greeting must not pretend it is one.
+    if (turn.kind === "analysis") {
+      await sendMessage(message.chatId, telegramAnalyzing()).catch(() => {});
+    }
 
     const result = await runUnifiedChartAgent({
       surface: "platform",
-      userMessage: message.text,
+      userMessage: turn.message,
       chartContext: { symbol: DATA_SYMBOL, interval: "15m", dataSource: "oanda" },
       requestContext: { requestId: newId(), userId, emitActivity: () => {} },
       account: null,
@@ -192,7 +263,11 @@ export async function handleTelegramMessage(
     // the levels are absent.
     const text = renderCardsForTelegram(deriveCards(result));
 
-    await sendMessage(message.chatId, text, platformButtons());
+    await sendMessageWithReplyKeyboard(
+      message.chatId,
+      text,
+      arabicReplyKeyboardRows(),
+    );
     await logAudit(userId, "telegram_analysis", `decision=${result.decision}`);
     return "answered";
   } catch (error) {

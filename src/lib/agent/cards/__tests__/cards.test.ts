@@ -273,6 +273,36 @@ describe("the phone gets the same answer", () => {
     assert.ok(!text.includes("الدخول"), "a refusal must carry no entry price");
   });
 
+  it("never prints internal envelope or decision enums on the phone", () => {
+    const text = renderCardsForTelegram(
+      deriveCards(
+        fullResult({
+          decision: "informational",
+          summary: "أهلاً. كيف أساعدك؟",
+          confidenceSemantics: {
+            displayValue: "not_applicable",
+          } as AgentFinalResult["confidenceSemantics"],
+          envelope: {
+            outcome_class: "descriptive_only",
+          } as AgentFinalResult["envelope"],
+          keyReasons: ["Market closed for XAUUSD (weekend)."],
+          riskWarnings: ["لم تصدر أي توصية لأن السوق مغلق."],
+        }),
+      ),
+    );
+    assert.equal(text.includes("أهلاً"), true);
+    for (const leak of [
+      "informational",
+      "not_applicable",
+      "descriptive_only",
+      "operational_blocker",
+      "action_required",
+      "Market closed for",
+    ]) {
+      assert.equal(text.includes(leak), false, `phone must not show ${leak}`);
+    }
+  });
+
   it("stays silent on a quiet news window", () => {
     const card = deriveCards(fullResult({ newsRisk: { level: "low", reason: "هادئ" } })).find(
       (c) => c.kind === "news_risk",
