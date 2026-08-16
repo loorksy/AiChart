@@ -20,6 +20,7 @@ import {
   type RecommendationStatus as CanonicalStatus,
 } from "./canonical";
 import type { ActivationEvidence } from "./activationRule";
+import { normalizeStoredEntryType } from "./entrySemantics";
 import type {
   TrackedRecommendation,
   TrackedRecommendationOutcome,
@@ -97,8 +98,7 @@ function legacyRowInput(row: LegacyTrackedRow): CreateTrackedRecommendationInput
     symbol: row.symbol,
     interval: row.interval,
     direction: row.direction === "sell" ? "sell" : "buy",
-    entryType:
-      row.entry_type === "market" ? "market" : row.entry_type === "limit" ? "limit" : "pending",
+    entryType: normalizeStoredEntryType(row.entry_type),
     entry: Number(row.entry),
     stopLoss: Number(row.stop_loss),
     targets: legacyTargets(row.targets),
@@ -225,7 +225,24 @@ function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unk
     // Round-trips so the deterministic evaluator can enforce the contract's
     // candle-count validity, not only its wall-clock expiry.
     validityCandles: input.validityCandles,
+    // Fill semantics the tracker cannot reconstruct from entry/stop/targets:
+    // the band a retest entry fills inside, and — once filled — the price the
+    // plan is actually graded on, which for a confirmation_close entry is the
+    // confirming candle's close rather than the nominal trigger level.
+    retestZone: input.retestZone ?? null,
+    effectiveEntry: input.effectiveEntry,
   };
+}
+
+function retestZoneValue(value: unknown): { from: number; to: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const zone = value as { from?: unknown; to?: unknown };
+  return typeof zone.from === "number" &&
+    Number.isFinite(zone.from) &&
+    typeof zone.to === "number" &&
+    Number.isFinite(zone.to)
+    ? { from: zone.from, to: zone.to }
+    : null;
 }
 
 function numberValue(value: unknown): number | undefined {
@@ -309,13 +326,13 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     direction:
       effective?.direction ??
       (recommendation.direction === "sell" ? "sell" : "buy"),
-    entryType:
-      recommendation.entryType === "market"
-        ? "market"
-        : recommendation.entryType?.includes("limit")
-          ? "limit"
-          : "pending",
+    // The stored spelling is preserved rather than collapsed to market/limit/
+    // pending: flattening it here is what hid `confirmation_close` from the
+    // tracker, so a plan armed by a close was graded as if it filled on a touch.
+    entryType: normalizeStoredEntryType(recommendation.entryType),
     entry: effective?.entry ?? recommendation.entry ?? 0,
+    effectiveEntry: numberValue(risk.effectiveEntry),
+    retestZone: retestZoneValue(risk.retestZone),
     stopLoss: effective?.stopLoss ?? recommendation.stopLoss ?? 0,
     targets: effective?.targets.length ? effective.targets : recommendation.targets,
     invalidationLevel: numberValue(risk.invalidationLevel),

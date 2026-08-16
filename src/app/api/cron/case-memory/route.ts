@@ -3,20 +3,33 @@ import { verifyCronSecret } from "@/lib/cronAuth";
 import { metrics } from "@/lib/metrics";
 import { query } from "@/lib/db";
 import { INDEXER_VERSION } from "@/lib/marketMemory/caseIndexer";
+import { indexAllGoldCases } from "@/lib/marketMemory/goldCaseIndexer";
 
 /**
- * Read-only coverage report for the historical case memory.
+ * Index new historical cases, then report coverage.
  *
- * There is no more indexing tick here — building a case required a bulk scan
- * of the deleted candle warehouse, which a live-only MetaApi pipeline cannot
- * serve cheaply on a cron cadence. `market_cases` is therefore a frozen
- * dataset now: this endpoint reports what it already holds, but nothing
- * grows it further.
+ * This was a read-only report for a frozen dataset: building a case needs a
+ * bulk scan of candles in sliding windows, and the source that served it was
+ * deleted. The gold candle store is that source again, so the indexing tick is
+ * back — bounded per run, resuming after the newest case already stored, so a
+ * nightly pass indexes what the store gained rather than re-walking years.
+ *
+ * GET still reports coverage either way; `?index=0` skips the tick for a
+ * read-only check.
  */
 export async function GET(req: NextRequest) {
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const url = new URL(req.url);
+  const shouldIndex = url.searchParams.get("index") !== "0";
+  const perTimeframe = Number(url.searchParams.get("max"));
+  const indexed = shouldIndex
+    ? await indexAllGoldCases({
+        maxCasesPerTimeframe: Number.isFinite(perTimeframe) ? perTimeframe : undefined,
+      }).catch(() => [])
+    : [];
   const rows = await query<{
     symbol: string;
     interval: string;
@@ -48,6 +61,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     indexerVersion: INDEXER_VERSION,
+    indexed,
     series: rows.map((row) => ({
       symbol: row.symbol,
       interval: row.interval,

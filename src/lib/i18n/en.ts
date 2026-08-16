@@ -363,6 +363,33 @@ export const en = {
   "agent.evidence.not_execution_grade":
     "This history does not meet the execution gates, so it informs the read but does not authorize a trade.",
 
+
+  // --- Agent artifact cards ---
+  "agent.card.plan": "The plan",
+  "agent.card.entry": "Entry",
+  "agent.card.stop": "Stop",
+  "agent.card.targets": "Targets",
+  "agent.card.net_rr": "Reward:risk (net)",
+  "agent.card.activation": "Activation",
+  "agent.card.activation_immediate": "Immediate",
+  "agent.card.validity": "Valid for (candles)",
+  "agent.card.invalidation": "What invalidates this",
+  "agent.card.alternative": "Alternative scenario",
+  "agent.card.gates": "Checks",
+  "agent.card.reasons": "Reasons",
+  "agent.card.reasoning": "Reasoning",
+  "agent.card.trace": "How this was decided",
+  "agent.card.dimensions": "Evidence dimensions",
+  "agent.card.risks": "Risk warnings",
+  "agent.card.news": "News risk",
+  "agent.card.cost": "Execution cost",
+  "agent.card.cost_estimated": "Estimated, not directly measured",
+  "agent.card.research": "Research systems",
+  "agent.card.timeline": "Evidence timeline",
+  "agent.card.coverage": "Candle coverage",
+  "agent.card.tracked": "Being tracked",
+  "agent.card.skills": "Skills loaded",
+
   "decision.buy": "Buy",
   "decision.sell": "Sell",
   "decision.wait": "Wait",

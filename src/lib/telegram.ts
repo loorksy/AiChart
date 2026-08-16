@@ -303,10 +303,36 @@ export async function getBotUsername(): Promise<string | null> {
 }
 
 /**
- * Releases the bot from web-managed webhooks (outbound-only notifications).
+ * Releases the bot from web-managed webhooks.
+ *
+ * Kept as the way to turn the inbound surface OFF — not, as it once was, the
+ * permanent state of the bot. Pending updates are preserved so a temporary
+ * unregister does not silently discard questions operators already asked.
  */
 export async function deleteWebhook(): Promise<void> {
   await call("deleteWebhook", { drop_pending_updates: false });
+}
+
+/**
+ * Point Telegram at this deployment's inbound webhook.
+ *
+ * The secret token is what makes the endpoint safe to expose: the URL is
+ * guessable and the handler behind it runs the whole decision engine, so
+ * without it anyone could spend the platform's model budget by POSTing to the
+ * path. Telegram echoes the token in `X-Telegram-Bot-Api-Secret-Token` on every
+ * delivery, and the route rejects anything else.
+ *
+ * Only `message` updates are subscribed. The cards carry links rather than
+ * actions, so there are no callback queries to receive — and asking for update
+ * types nothing handles would mean paying to deliver them.
+ */
+export async function setWebhook(url: string, secretToken: string): Promise<void> {
+  await call("setWebhook", {
+    url,
+    secret_token: secretToken,
+    allowed_updates: ["message"],
+    drop_pending_updates: false,
+  });
 }
 
 const sideBilingual = (s: string) =>

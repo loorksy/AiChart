@@ -28,7 +28,10 @@ export interface FingerprintCandle {
 export type Regime = "trend" | "range" | "volatile";
 export type Trend = "up" | "down" | "flat";
 export type RangeZone = "near_low" | "discount" | "mid" | "premium" | "near_high";
-export type Session = "asia" | "london" | "newyork";
+import { sessionOf, type TradingSession } from "@/lib/markets/tradingSession";
+
+/** Re-exported under the name the case schema already uses. */
+export type Session = TradingSession;
 
 export interface CaseFingerprint {
   regime: Regime;
@@ -105,13 +108,6 @@ function atrOf(candles: readonly FingerprintCandle[], period = 14): number {
     );
   }
   return sum / (window.length - 1);
-}
-
-function sessionOf(time: number): Session {
-  const hour = new Date(time).getUTCHours();
-  if (hour >= 7 && hour < 12) return "london";
-  if (hour >= 12 && hour < 21) return "newyork";
-  return "asia";
 }
 
 /**

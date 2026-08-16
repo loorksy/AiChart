@@ -2,6 +2,10 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import {
+  normalizeStoredEntryType,
+  type EntryType,
+} from "@/lib/recommendations/entrySemantics";
+import {
   cancelTrackedRecommendation,
   listActiveTrackedRecommendations,
   updateTrackedRecommendation,
@@ -42,7 +46,13 @@ export type ActiveRecommendation = {
   entry: number;
   /** The area the plan accepts, not only the ideal price. */
   entryZone?: { low: number; high: number };
-  entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
+  /**
+   * Canonical fill semantics, derived from the plan's structure — never the
+   * model's declared order type. See recommendations/entrySemantics.ts.
+   */
+  entryType?: EntryType;
+  /** Fill band for a `retest_zone` entry; absent for every other type. */
+  retestZone?: { from: number; to: number } | null;
   stopLoss: number;
   targets: number[];
   takeProfit?: number;
@@ -146,12 +156,10 @@ export async function getActiveRecommendation(
           match.entryLow != null && match.entryHigh != null
             ? { low: match.entryLow, high: match.entryHigh }
             : undefined,
-        entryType:
-          match.entryType === "market"
-            ? "market"
-            : match.direction === "buy"
-              ? "buy_limit"
-              : "sell_limit",
+        // The stored fill rule, not a re-guess from the direction: rebuilding
+        // it as buy_limit/sell_limit threw away `confirmation_close` on every
+        // replay, so a restored plan graded differently from the original.
+        entryType: normalizeStoredEntryType(match.entryType),
         stopLoss: match.stopLoss,
         targets: match.targets,
         takeProfit: match.targets[0],

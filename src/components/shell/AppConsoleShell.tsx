@@ -32,7 +32,6 @@ import {
 } from "@/components/admin/chrome/adminNavTree";
 import { useLocale } from "@/hooks/useLocale";
 import { useMe } from "@/hooks/useMe";
-import { Mt5PresencePing } from "@/components/Mt5PresencePing";
 import { cn } from "@/lib/utils";
 
 const PLATFORM_PATH = "/console/platform";
@@ -128,7 +127,7 @@ function ConsoleShellBody({
     showConversations ?? (!isAdmin && paidWorkspace);
   const workspaceNoPadding =
     noPadding ||
-    pathname === "/workspace" ||
+    pathname === "/chat" ||
     pathname.startsWith("/chart") ||
     pathname === "/subscribe";
   /**
@@ -334,7 +333,7 @@ function ConsoleShellBody({
     return isAdmin ? adminNav(iconOnly, onNavigate) : productNav(iconOnly, onNavigate);
   };
 
-  const brandHref = isAdmin ? "/console/platform?tab=overview" : "/workspace";
+  const brandHref = isAdmin ? "/console/platform?tab=overview" : "/chat";
 
   const sidebarHeader = (
     <div
@@ -418,7 +417,6 @@ function ConsoleShellBody({
     <ShellMenuProvider value={menuApi}>
       <ConsoleOverlaysProvider value={overlaysApi}>
       {/* V2-B: presence beat drives the MetaApi deploy/undeploy cost saver. */}
-      <Mt5PresencePing />
       <div
         dir={dir}
         data-testid="app-console-shell"
@@ -511,7 +509,7 @@ function ConsoleShellBody({
             showChartToggle={
               !isAdmin &&
               (pathname.startsWith("/chart") ||
-                (pathname === "/workspace" && Boolean(searchParams.get("chat"))))
+                (pathname === "/chat" && Boolean(searchParams.get("chat"))))
             }
           />
           <main

@@ -10,8 +10,25 @@ describe("MCP TOOL_CATALOG", () => {
     assert.equal(new Set(names).size, names.length, "duplicate tool names");
   });
 
-  it("has at least 50 tools registered", () => {
-    assert.ok(TOOL_CATALOG.length >= 50, `expected >=50, got ${TOOL_CATALOG.length}`);
+  it("keeps a working surface without padding it", () => {
+    // The floor was 50 when this server also exposed account, execution and
+    // approval tools. It exposes none of those now — the platform issues
+    // recommendations and holds no broker connection — so 50 was a target that
+    // could only be met by keeping dead definitions in the catalogue.
+    assert.ok(TOOL_CATALOG.length >= 25, `expected >=25, got ${TOOL_CATALOG.length}`);
+  });
+
+  /**
+   * The catalogue is what a connected model reads to learn what it can do.
+   * A definition for a tool nobody registered is not harmless documentation:
+   * it advertises a capability, the model plans around it, and the call fails
+   * as "unknown tool" — or worse, the model reports having done something.
+   */
+  it("advertises no account, execution, or approval capability", () => {
+    const forbidden =
+      /^(open_trade|close_trade|close_partial|modify_sl_tp|evaluate_trade|record_exit_decision|request_approval|respond_approval|get_pending_approvals|get_trade_readiness|get_agent_trade_mode|set_agent_trade_mode|get_live_account|get_account_overview|get_portfolio|get_open_trades|get_position|get_orders?|get_history_orders|get_deals|calculate_margin|propose_.*)$/;
+    const offenders = TOOL_CATALOG.map((t) => t.name).filter((name) => forbidden.test(name));
+    assert.deepEqual(offenders, [], "the platform places no orders and holds no account");
   });
 
   it("every tool has §0.11-style description and annotations", () => {

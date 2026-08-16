@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState } from "react";
 import { Bot, Check, Cpu, Plus, ShieldAlert } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import { useTradeMode } from "@/hooks/useTradeMode";
 import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { ModelChoiceList, useAgentModels } from "@/components/agent/AgentModelPicker";
 import { cn } from "@/lib/utils";
@@ -29,32 +28,12 @@ export function ComposerMoreMenu() {
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const models = useAgentModels(open);
-  const { view, saving, applyMode } = useTradeMode({ enabled: open });
 
   const close = useCallback(() => {
     setOpen(false);
     setConfirming(false);
     setError(null);
   }, []);
-
-  const apply = useCallback(
-    async (mode: "auto" | "advisory") => {
-      setError(null);
-      const result = await applyMode(mode);
-      if (!result.ok) {
-        setError(result.error ?? t("trade_mode.error"));
-        return;
-      }
-      setConfirming(false);
-    },
-    [applyMode, t],
-  );
-
-  // The execution switch exists only while the broker connection is stable —
-  // the same rule the trade-mode panel enforces, for the same reason.
-  const showExecution = Boolean(view?.connected) && view?.downgraded_reason !== "phase_disabled";
-  const mode = view?.mode ?? "advisory";
-  const stage = view?.auto_execution_stage ?? "off";
 
   return (
     <>
@@ -99,81 +78,10 @@ export function ComposerMoreMenu() {
             </section>
           )}
 
-          {showExecution && (
-            <section
-              aria-label={t("trade_mode.title")}
-              data-testid="composer-execution-mode"
-              className={cn(models.available && "mt-2 border-t border-border pt-1")}
-            >
-              <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[11px] font-semibold text-foreground">
-                <Bot className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                {t("trade_mode.title")}
-              </p>
 
-              {confirming ? (
-                // Auto is standing execution authority; it is never one tap.
-                <div className="px-2.5 pb-2">
-                  <p className="text-[11px] font-semibold text-foreground">
-                    {t("trade_mode.confirm.title")}
-                  </p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                    {t("trade_mode.confirm.body")}
-                  </p>
-                  {stage === "off" && (
-                    <p className="mt-1.5 flex items-start gap-1.5 rounded-md border border-warning/35 bg-warning/[0.08] px-2 py-1.5 text-[11px] text-warning">
-                      <ShieldAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
-                      {t("trade_mode.stage.off_note")}
-                    </p>
-                  )}
-                  <div className="mt-2 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => setConfirming(false)}
-                      className="min-h-10 rounded-md border border-border px-2.5 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50 focus-ring"
-                    >
-                      {t("trade_mode.confirm.cancel")}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => void apply("auto")}
-                      data-testid="composer-execution-confirm"
-                      className="min-h-10 rounded-md bg-buy px-2.5 text-[11px] font-semibold text-white hover:bg-buy/90 disabled:opacity-50 focus-ring"
-                    >
-                      {t("trade_mode.confirm.accept")}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <ModeOption
-                    label={t("trade_mode.mode.advisory")}
-                    description={t("trade_mode.desc.advisory")}
-                    selected={mode === "advisory"}
-                    disabled={saving}
-                    onSelect={() => void apply("advisory")}
-                  />
-                  <ModeOption
-                    label={t("trade_mode.mode.auto")}
-                    description={t("trade_mode.desc.auto")}
-                    selected={mode === "auto"}
-                    disabled={saving}
-                    onSelect={() => (mode === "auto" ? undefined : setConfirming(true))}
-                  />
-                  <p className="px-2.5 pb-2 pt-1 text-[10px] text-muted-foreground">
-                    {t("trade_mode.stage.label")}: {t(`trade_mode.stage.${stage}`)}
-                  </p>
-                </>
-              )}
-
-              {error && <p className="px-2.5 pb-2 text-[11px] text-destructive">{error}</p>}
-            </section>
-          )}
-
-          {/* Never an empty box: a console with no provider key and no broker
-              connection is told why there is nothing to set here. */}
-          {!models.available && !showExecution && (
+          {/* Never an empty box: a console with no provider key is told why
+              there is nothing to set here. */}
+          {!models.available && (
             <p className="px-2.5 py-3 text-[11px] leading-relaxed text-muted-foreground">
               {t("composer.more_empty")}
             </p>

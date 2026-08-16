@@ -578,6 +578,40 @@ async function finalizeValidation(
 }
 
 /** Reconciles one asynchronous backtest through metrics and validation gates. */
+/**
+ * Mirror a finished backtest onto its result-cache row.
+ *
+ * The cache is keyed on the CLAIM (strategy, spec revision, bar window), not on
+ * the backtest id, so the sweep can answer "has this already been run?" without
+ * touching the evidence tables. Settling here keeps the two in step: the next
+ * sweep reads a completed row and spends nothing, instead of re-submitting a
+ * job whose answer already exists.
+ *
+ * Best-effort and deliberately silent on failure. The evidence row IS the
+ * record; the cache is an index over it, and a stale index costs one repeated
+ * submission rather than a wrong number.
+ */
+async function settleCacheFor(row: StrategyBacktestRow): Promise<void> {
+  const stored = jsonObject(row.metrics_json).request;
+  const request =
+    stored && typeof stored === "object" && !Array.isArray(stored)
+      ? (stored as Record<string, unknown>)
+      : {};
+  const cacheKey = typeof request.cacheKey === "string" ? request.cacheKey : null;
+  if (!cacheKey) return;
+  try {
+    const { settleBacktestCache } = await import("./backtestRunner");
+    await settleBacktestCache({
+      cacheKey,
+      status: row.status === "eligible" ? "complete" : "failed",
+      tradeCount: row.trade_count,
+      winRate: row.win_rate,
+    });
+  } catch {
+    /* the evidence row is the record; the index catches up next sweep */
+  }
+}
+
 export async function refreshStrategyBacktest(
   context: ResearchCallerContext,
   backtestId: number,
@@ -589,7 +623,10 @@ export async function refreshStrategyBacktest(
   if (!row) return null;
   // Terminal success/rejection stays cached. Failed rows may be retried when the
   // Research job actually succeeded (e.g. after deploying missing artifact APIs).
-  if (["eligible", "ineligible"].includes(row.status)) return toEvidence(row);
+  if (["eligible", "ineligible"].includes(row.status)) {
+    await settleCacheFor(row);
+    return toEvidence(row);
+  }
 
   try {
     if (row.status === "validating") {

@@ -76,7 +76,7 @@ export function SubscribeClient({
           ? `التفعيل عبر Telegram @${AICHART_PLAN.telegramHandle}. فتح الرابط لا يفعّل الاشتراك تلقائياً.`
           : `Activation via Telegram @${AICHART_PLAN.telegramHandle}. Opening the link does not activate the subscription.`}
       </p>
-      <Link href="/workspace" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+      <Link href="/chat" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
         {isAr ? "العودة إلى المنصة" : "Back to the workspace"}
       </Link>
     </div>

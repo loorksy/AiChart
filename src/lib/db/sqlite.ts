@@ -302,52 +302,7 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_oauth_identities_user ON oauth_identities(user_id);
 
-  CREATE TABLE IF NOT EXISTS trade_intents (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id           INTEGER NOT NULL,
-    recommendation_id INTEGER,
-    -- Which revision of that recommendation this order was built from, and who
-    -- authorised it. Both are checked again at execution time.
-    recommendation_revision_no INTEGER,
-    authorization_source TEXT,
-    symbol            TEXT NOT NULL,
-    side              TEXT NOT NULL,
-    notional          REAL NOT NULL,
-    market            TEXT NOT NULL DEFAULT 'forex',
-    broker            TEXT NOT NULL DEFAULT 'metaapi',
-    entry             REAL,
-    stop_loss         REAL,
-    take_profit       REAL,
-    confidence        INTEGER NOT NULL DEFAULT 0,
-    rationale         TEXT,
-    status            TEXT NOT NULL DEFAULT 'pending',
-    reason            TEXT,
-    deny_code         TEXT,
-    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
 
-  CREATE TABLE IF NOT EXISTS trades (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id     INTEGER NOT NULL,
-    intent_id   INTEGER,
-    symbol      TEXT NOT NULL,
-    side        TEXT NOT NULL,
-    qty         REAL NOT NULL DEFAULT 0,
-    quote_qty   REAL NOT NULL DEFAULT 0,
-    avg_price   REAL NOT NULL DEFAULT 0,
-    order_id    TEXT,
-    env         TEXT NOT NULL DEFAULT 'testnet',
-    market      TEXT NOT NULL DEFAULT 'forex',
-    broker      TEXT NOT NULL DEFAULT 'metaapi',
-    status      TEXT NOT NULL DEFAULT 'open',
-    pnl         REAL NOT NULL DEFAULT 0,
-    oco_order_list_id TEXT,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    closed_at   TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
 
   CREATE TABLE IF NOT EXISTS mt_accounts (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1001,6 +956,63 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_recommendation_learning_events_user
     ON recommendation_learning_events (user_id, event_type, occurred_at);
 
+  -- ── The gold candle store ────────────────────────────────────────────────
+  --
+  -- Backtests need bars, and OANDA is a rate-limited API rather than a
+  -- database: re-fetching five years of 15m candles for every strategy run is
+  -- how "lightning backtests" become an overnight job. So closed bars are kept.
+  --
+  -- No symbol column, on purpose. This platform trades one instrument, and a
+  -- symbol column is an invitation to store a second one — the exact drift
+  -- gold-only exists to prevent. The timeframe IS the partition.
+  --
+  -- Only CLOSED bars are ever written. A forming bar's high and low are still
+  -- moving, and a backtest that read one would be trading on a candle the
+  -- market had not finished printing.
+  CREATE TABLE IF NOT EXISTS gold_candles (
+    timeframe  TEXT NOT NULL,
+    time       INTEGER NOT NULL,
+    open       REAL NOT NULL,
+    high       REAL NOT NULL,
+    low        REAL NOT NULL,
+    close      REAL NOT NULL,
+    volume     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (timeframe, time)
+  );
+  CREATE INDEX IF NOT EXISTS idx_gold_candles_time
+    ON gold_candles (timeframe, time DESC);
+
+  -- ── The backtest result cache ────────────────────────────────────────────
+  --
+  -- What makes a backtest "lightning" is not running it faster — it is not
+  -- running it again. A strategy's result over a fixed window of closed bars
+  -- cannot change, so it is computed once and read thereafter.
+  --
+  -- The key is the whole claim: which strategy, at which spec revision, on
+  -- which timeframe, over exactly which bars. A revision bump or a deeper store
+  -- produces a different key and therefore a real re-run, which is the point —
+  -- a cache that survived a spec change would serve results for a strategy that
+  -- no longer exists.
+  CREATE TABLE IF NOT EXISTS backtest_results (
+    cache_key      TEXT PRIMARY KEY,
+    strategy_id    TEXT NOT NULL,
+    spec_revision  TEXT NOT NULL,
+    timeframe      TEXT NOT NULL,
+    bars_from      INTEGER NOT NULL,
+    bars_to        INTEGER NOT NULL,
+    bar_count      INTEGER NOT NULL,
+    backtest_id    INTEGER,
+    job_id         TEXT,
+    status         TEXT NOT NULL,
+    trade_count    INTEGER,
+    win_rate       REAL,
+    metrics_json   TEXT NOT NULL DEFAULT '{}',
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy
+    ON backtest_results (strategy_id, timeframe, updated_at DESC);
+
   CREATE TABLE IF NOT EXISTS strategy_backtests (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id               INTEGER NOT NULL,
@@ -1602,99 +1614,6 @@ function migrate(db: Database.Database) {
         END`,
   );
 
-  const tradeCols = db
-    .prepare("PRAGMA table_info(trades)")
-    .all() as { name: string }[];
-  if (!tradeCols.some((c) => c.name === "oco_order_list_id")) {
-    db.exec("ALTER TABLE trades ADD COLUMN oco_order_list_id TEXT");
-  }
-  if (!tradeCols.some((c) => c.name === "market")) {
-    db.exec("ALTER TABLE trades ADD COLUMN market TEXT NOT NULL DEFAULT 'forex'");
-  }
-  if (!tradeCols.some((c) => c.name === "broker")) {
-    db.exec("ALTER TABLE trades ADD COLUMN broker TEXT NOT NULL DEFAULT 'metaapi'");
-  }
-  if (!tradeCols.some((c) => c.name === "market_type")) {
-    db.exec(
-      "ALTER TABLE trades ADD COLUMN market_type TEXT NOT NULL DEFAULT 'spot'",
-    );
-  }
-  if (!tradeCols.some((c) => c.name === "leverage")) {
-    db.exec("ALTER TABLE trades ADD COLUMN leverage REAL NOT NULL DEFAULT 1");
-  }
-  if (!tradeCols.some((c) => c.name === "order_type")) {
-    db.exec(
-      "ALTER TABLE trades ADD COLUMN order_type TEXT NOT NULL DEFAULT 'market'",
-    );
-  }
-
-  const intentCols = db
-    .prepare("PRAGMA table_info(trade_intents)")
-    .all() as { name: string }[];
-  if (!intentCols.some((c) => c.name === "market")) {
-    db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN market TEXT NOT NULL DEFAULT 'forex'",
-    );
-  }
-  if (!intentCols.some((c) => c.name === "broker")) {
-    db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN broker TEXT NOT NULL DEFAULT 'metaapi'",
-    );
-  }
-  if (!intentCols.some((c) => c.name === "practice")) {
-    db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN practice INTEGER NOT NULL DEFAULT 0",
-    );
-  }
-  if (!intentCols.some((c) => c.name === "market_type")) {
-    db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN market_type TEXT NOT NULL DEFAULT 'spot'",
-    );
-  }
-  if (!intentCols.some((c) => c.name === "deny_code")) {
-    db.exec("ALTER TABLE trade_intents ADD COLUMN deny_code TEXT");
-  }
-  // Server-side proof that a human approved THIS order. Written only by the
-  // authenticated approval path; a caller-supplied "approved" flag can no longer
-  // stand in for it at the choke point. Nullable so legacy rows stay readable —
-  // and, having no proof, stay unexecutable under user_approved.
-  if (!intentCols.some((c) => c.name === "approved_at")) {
-    db.exec("ALTER TABLE trade_intents ADD COLUMN approved_at INTEGER");
-  }
-  if (!intentCols.some((c) => c.name === "approved_by_user_id")) {
-    db.exec("ALTER TABLE trade_intents ADD COLUMN approved_by_user_id INTEGER");
-  }
-  if (!intentCols.some((c) => c.name === "approval_consumed_at")) {
-    db.exec("ALTER TABLE trade_intents ADD COLUMN approval_consumed_at INTEGER");
-  }
-  if (!intentCols.some((c) => c.name === "leverage")) {
-    db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN leverage REAL NOT NULL DEFAULT 1",
-    );
-  }
-  if (!intentCols.some((c) => c.name === "order_type")) {
-    db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN order_type TEXT NOT NULL DEFAULT 'market'",
-    );
-  }
-  if (!intentCols.some((c) => c.name === "limit_price")) {
-    db.exec("ALTER TABLE trade_intents ADD COLUMN limit_price REAL");
-  }
-  // Structured payload for a `broker_action` intent (modify/cancel a pending
-  // order, close a position by symbol) — never populated on a sized order.
-  if (!intentCols.some((c) => c.name === "action_json")) {
-    db.exec("ALTER TABLE trade_intents ADD COLUMN action_json TEXT");
-  }
-  if (!intentCols.some((c) => c.name === "recommendation_revision_no")) {
-    db.exec("ALTER TABLE trade_intents ADD COLUMN recommendation_revision_no INTEGER");
-  }
-  if (!intentCols.some((c) => c.name === "authorization_source")) {
-    db.exec("ALTER TABLE trade_intents ADD COLUMN authorization_source TEXT");
-  }
-  if (!tradeCols.some((c) => c.name === "limit_price")) {
-    db.exec("ALTER TABLE trades ADD COLUMN limit_price REAL");
-  }
-
   const alertCols = db
     .prepare("PRAGMA table_info(alert_log)")
     .all() as { name: string }[];
@@ -2000,11 +1919,7 @@ function migrate(db: Database.Database) {
   `);
 
   db.exec(`
-    UPDATE trades SET market = 'forex' WHERE market = 'crypto';
-    UPDATE trade_intents SET market = 'forex' WHERE market = 'crypto';
     UPDATE recommendations SET market = 'forex' WHERE market = 'crypto';
-    UPDATE trades SET broker = 'metaapi' WHERE broker = 'binance';
-    UPDATE trade_intents SET broker = 'metaapi' WHERE broker = 'binance';
     DROP TABLE IF EXISTS binance_accounts;
   `);
 

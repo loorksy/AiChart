@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 import {
@@ -12,7 +12,15 @@ import {
   SMART_CHART_AGENT_SYSTEM_PROMPT,
 } from "@/lib/agent/systemPrompt";
 
-const SYSTEM_MD = resolve(process.cwd(), "..", "agent", "workspace", "SYSTEM.md");
+// The same candidate ladder canonicalIdentity.ts itself walks. The app used to
+// live in a `web/` subdirectory with `agent/` as its sibling; it no longer
+// does, and hard-coding only the old shape made this test read a path outside
+// the repository and fail with ENOENT rather than compare anything.
+const SYSTEM_MD =
+  [
+    resolve(process.cwd(), "agent", "workspace", "SYSTEM.md"),
+    resolve(process.cwd(), "..", "agent", "workspace", "SYSTEM.md"),
+  ].find(existsSync) ?? resolve(process.cwd(), "agent", "workspace", "SYSTEM.md");
 
 /** Normalize EOL so Windows checkouts (CRLF) stay comparable to LF sources. */
 function normalizeEol(text: string): string {
@@ -41,25 +49,34 @@ test("builtin fallback stays byte-identical to the SYSTEM.md core block", () => 
 
 test("canonical core carries the identity and the hard rules", () => {
   const core = canonicalIdentityCore();
-  assert.match(core, /chat-first Forex scalping assistant/);
+  assert.match(core, /chat-first analyst for gold \(XAUUSD\) only/);
   assert.match(core, /model alone owns the analytical decision/);
-  assert.match(core, /Risk per Trade is the only trading setting/);
-  assert.match(core, /valid stop-loss/);
+  // Recommendations-only: there is no order to place and no lot to size, so
+  // the old execution rules ("valid stop-loss", broker equity) are gone and
+  // their absence is what this now pins.
+  assert.match(core, /never places, modifies, or closes a trade/);
+  assert.match(core, /the platform computes no lots/);
   assert.match(core, /operator's language/);
+  assert.doesNotMatch(core, /MetaTrader|MT5|broker equity|open_trade/i);
 });
 
 test("canonical core states the three-layer doctrine", () => {
   const core = canonicalIdentityCore();
-  // Direction is mandatory on a successful analysis...
-  assert.match(core, /ends in one direction — BUY or SELL/);
-  assert.match(core, /WAIT is not an analytical outcome/);
+  // The MODEL's outcome is still a side. It may not wait.
+  assert.match(core, /it is BUY or SELL; you may not answer WAIT/);
   // ...but an immediate entry is not, so the agent never invents a weak one.
   assert.match(core, /A direction is always required; an immediate entry is not/);
   assert.match(core, /plan type \(immediate, anticipatory, or conditional\)/);
   assert.match(core, /execution state/);
-  // Evidence supports the decision; it never gates it.
-  assert.match(core, /none of them decides whether it may exist/);
-  assert.match(core, /Never claim statistical support without valid evidence/);
+  // Evidence never selects the side; the gates decide only whether a plan may
+  // be ISSUED, and they never flip a direction.
+  assert.match(core, /never selects the side/);
+  assert.match(core, /none of them flips a direction/);
+  assert.match(core, /which check refused/);
+  assert.match(core, /never the model's/);
+  // The fill rule is part of the plan — the incident, stated as doctrine.
+  assert.match(core, /never pair a condition decided by a candle CLOSE/);
+  assert.match(core, /Never claim statistical support you do not have/);
   // A real blocker stays a named blocker, never a disguised wait.
   assert.match(core, /name the operational blocker and its cause/);
 });
@@ -88,7 +105,7 @@ test("the shipped core keeps the product explainable", () => {
   // questions — where a number came from is exactly what this agent owes the
   // operator, and the doctrine elsewhere requires it.
   assert.match(core, /Explain the product freely/);
-  assert.match(core, /which broker book priced it/);
+  assert.match(core, /what evidence supported a decision/);
   assert.match(core, /give the product-level explanation instead/);
 });
 

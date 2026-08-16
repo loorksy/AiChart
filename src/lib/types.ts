@@ -1,5 +1,5 @@
 import type { ChartDrawing } from "./chartDrawings";
-import type { MarketType, BrokerKind, MtPlatform } from "./markets/types";
+import type { MarketType, MtPlatform } from "./markets/types";
 
 export type Role = "user" | "admin";
 export type UserStatus = "pending" | "active" | "suspended";
@@ -169,65 +169,6 @@ export type IntentStatus =
   | "failed"
   | "expired";
 
-export interface TradeIntent {
-  id: number;
-  user_id: number;
-  recommendation_id: number | null;
-  /** Revision of that recommendation the levels came from. */
-  recommendation_revision_no?: number | null;
-  /**
-   * Explicit per-trade approval, or the operator's standing auto mode.
-   * `trade_management` marks an SL/TP-modification proposal for an already-open
-   * trade — such an intent is NEVER an order and must not reach executeIntent.
-   * `broker_action` marks a raw account action (modify/cancel a pending order,
-   * close a position by symbol) — also never a sized order, applied directly
-   * on approval via brokerActionApproval.ts, never executeIntent.
-   */
-  authorization_source?:
-    | "user_approved"
-    | "standing_auto"
-    | "trade_management"
-    | "broker_action"
-    | null;
-  /**
-   * Server-side proof of a human approval, written only by the authenticated
-   * approval path — never from a field in a request body. The choke point
-   * requires it before any `user_approved` order reaches a broker.
-   */
-  approved_at?: number | null;
-  approved_by_user_id?: number | null;
-  approval_consumed_at?: number | null;
-  symbol: string;
-  side: "buy" | "sell";
-  notional: number;
-  market: MarketType;
-  broker: BrokerKind;
-  entry: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
-  confidence: number;
-  rationale: string | null;
-  status: IntentStatus;
-  reason: string | null;
-  practice: number;
-  /** Legacy market type column — spot only on forex-only platform. */
-  market_type?: "spot" | "futures";
-  /** Leverage multiplier for futures (1 = no leverage). */
-  leverage?: number;
-  /** 'market' (default), 'limit', or 'stop' (a pending order). */
-  order_type?: "market" | "limit" | "stop";
-  /** Trigger price for a pending order (limit or stop) — the price it enters at. */
-  limit_price?: number | null;
-  /**
-   * Structured payload for a `broker_action` intent — never present on a sized
-   * order. Holds `{action, params}` for whichever raw broker action (modify a
-   * pending order, cancel one, close a position by symbol) this intent proposes.
-   */
-  action_json?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface Conversation {
   id: number;
   user_id: number;
@@ -279,34 +220,6 @@ export interface SemanticMemory {
   symbol?: string | null;
   timeframe?: string | null;
   strategy_id?: string | null;
-}
-
-export interface Trade {
-  id: number;
-  user_id: number;
-  intent_id: number | null;
-  symbol: string;
-  side: string;
-  qty: number;
-  quote_qty: number;
-  avg_price: number;
-  order_id: string | null;
-  env: string;
-  market: MarketType;
-  broker: BrokerKind;
-  status: string;
-  pnl: number;
-  oco_order_list_id: string | null;
-  /** 'spot' (default) or 'futures'. */
-  market_type?: "spot" | "futures";
-  /** Leverage used (1 = spot/no leverage). */
-  leverage?: number;
-  /** 'market' or 'limit'. */
-  order_type?: "market" | "limit";
-  /** Limit entry price when order_type is limit. */
-  limit_price?: number | null;
-  created_at: string;
-  closed_at: string | null;
 }
 
 export type AlertType =

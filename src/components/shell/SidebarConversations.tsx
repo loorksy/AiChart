@@ -101,7 +101,7 @@ function SidebarConversationsInner({
     setBusy(true);
     try {
       window.dispatchEvent(new Event("aichart:new-chat"));
-      if (pathname !== "/workspace") router.push("/workspace");
+      if (pathname !== "/chat") router.push("/chat");
       onNavigate?.();
     } finally {
       setBusy(false);
@@ -122,7 +122,7 @@ function SidebarConversationsInner({
       const fallback = nextSessions[0];
       if (fallback) router.replace(chatConsoleHref(fallback.id), { scroll: false });
       else {
-        router.replace("/workspace", { scroll: false });
+        router.replace("/chat", { scroll: false });
         window.dispatchEvent(new Event("aichart:new-chat"));
       }
       try {

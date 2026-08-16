@@ -15,11 +15,9 @@ const ALERT_TYPE_LABEL: Record<string, string> = {
 };
 
 export function NotificationPanel({
-  pendingIntents,
   unreadAlerts,
   onCountsChange,
 }: {
-  pendingIntents: number;
   unreadAlerts: number;
   onCountsChange?: () => void;
 }) {
@@ -28,7 +26,9 @@ export function NotificationPanel({
   const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const badgeTotal = pendingIntents + unreadAlerts;
+  // Pending approvals used to count toward this badge; there is nothing to
+  // approve on a platform that places no orders.
+  const badgeTotal = unreadAlerts;
   const showBell = badgeTotal > 0;
 
   const loadAlerts = useCallback(async () => {
@@ -112,20 +112,6 @@ export function NotificationPanel({
           </div>
 
           <div className="max-h-80 overflow-y-auto p-2">
-            {pendingIntents > 0 && (
-              <div className="mb-2 rounded-lg bg-secondary/80 px-3 py-2">
-                <p className="text-sm font-medium">
-                  {pendingIntents} صفقة بانتظار الموافقة
-                </p>
-                <Link
-                  href="/console/trades"
-                  onClick={() => setOpen(false)}
-                  className="text-link text-xs"
-                >
-                  مراجعة الصفقات ←
-                </Link>
-              </div>
-            )}
 
             <p className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               آخر التنبيهات
@@ -170,7 +156,7 @@ export function NotificationPanel({
 
           <div className="border-t border-border px-4 py-2">
             <Link
-              href="/console/connect"
+              href="/console/settings/alerts"
               onClick={() => setOpen(false)}
               className="text-link text-xs"
             >

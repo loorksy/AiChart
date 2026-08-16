@@ -6,10 +6,10 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 */10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/event-monitor >/dev/null 2>&1
 
 # Recommendation-tracker sweep — every 5 min. Evaluates all non-terminal tracked
-# recommendations against fresh candles pulled live from the linked MetaTrader
-# account (no browser, no LLM, no trade execution). Overlap-safe via a
-# distributed lease lock, so an occasional long run is skipped rather than
-# double-processed.
+# recommendations against fresh closed candles from OANDA at platform level (no
+# browser, no LLM, and nothing to execute — this platform places no orders).
+# Overlap-safe via a distributed lease lock, so an occasional long run is
+# skipped rather than double-processed.
 */5 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep >/dev/null 2>&1
 
 # OPTIONAL — 24/7 opportunity monitor. Left unscheduled on purpose: it runs an
@@ -18,8 +18,27 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # /api/opportunities/scan. Uncomment only if you want the recurring cost.
 # */30 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor >/dev/null 2>&1
 
-# Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
-0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
+# Gold candle store — hourly. Two motions per run: catch up to the bars that
+# closed since last time (bounded, fast), then dig history a few pages deeper
+# (open-ended, capped per run). The store is what backtests read; it is NOT a
+# live-data cache and nothing in the request path touches it.
+#
+# Hourly rather than nightly on purpose: the forward pass is cheap and keeps
+# the newest bars current, while the backfill reaches years of history across a
+# week instead of holding one long OANDA connection that fails whole. Pass
+# ?pages=N to dig harder on a manual run.
+17 * * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/gold-candles >/dev/null 2>&1
+
+# Strategy backtest sweep — nightly at 02:40 UTC. Walks the catalogue against
+# the gold candle store and submits the claims the result cache does not
+# already hold. Submission-bounded per run (?max=N), because ~60 strategies
+# across five timeframes is 300 research jobs and firing them in one night
+# would spend a month of budget on the first run. The cache makes it resumable:
+# each night picks up where the last one stopped.
+#
+# Requires STRATEGY_PIPELINE_USER_ID. Without it the route reports the missing
+# configuration rather than no-opping silently.
+40 2 * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/strategy-backtests >/dev/null 2>&1
 
 # Nightly tradability calibration report — declared reachability verdicts vs
 # realized activation, per verdict. Read-only; feeds TRADABILITY_LIMITS tuning
@@ -32,9 +51,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # sends one Telegram message per operator. GET the same path for a preview.
 0 18 * * 0 root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/weekly-report >/dev/null 2>&1
 
-# OPTIONAL — /api/cron/case-memory is GET-only now: a read-only coverage
-# report over the frozen historical case memory. Nothing indexes new cases
-# anymore (that required the deleted candle warehouse), so there is no POST
-# tick left to schedule.
+# Historical case memory — nightly at 03:20 UTC, after the backtest sweep.
+# Walks the gold candle store and records what the market looked like at each
+# moment AND what happened next, both directions. Resumes after the newest case
+# already stored, so a nightly pass indexes what the store gained rather than
+# re-walking years. Bounded per run with ?max=N; ?index=0 reports coverage
+# without indexing.
+20 3 * * * root curl -sS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/case-memory >/dev/null 2>&1
 
 # than 14 days so stale history never bloats disk or future context.

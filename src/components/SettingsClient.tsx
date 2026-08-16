@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Cable, Moon, Save, Sparkles, Sun, User } from "lucide-react";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
-import { Mt5LinkCard } from "@/components/settings/Mt5LinkCard";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
 import { AgentMemoryPanel } from "@/components/settings/AgentMemoryPanel";
 
@@ -177,7 +176,7 @@ export default function SettingsClient({
             </div>
           </dl>
           <Link
-            href="/console/account"
+            href="/console/settings"
             className={cn(buttonVariants({ variant: "outline", size: "xl" }))}
           >
             {t("settings.manage_account")}
@@ -222,7 +221,6 @@ export default function SettingsClient({
 
       {tab === "integrations" && (
         <div className="space-y-4">
-          {mt5LinkEnabled && <Mt5LinkCard account={mt5Account} />}
           <McpConnectCard />
         </div>
       )}

@@ -54,13 +54,6 @@ describe("candle gap detection", () => {
       ]),
       [],
     );
-    // The same wall-clock hole on EURUSD IS a real gap (fx has no break).
-    const fxGaps = detectCandleGaps("EURUSD", "15m", [
-      { time: lastBeforeBreak },
-      { time: firstAfterBreak },
-    ]);
-    assert.equal(fxGaps.length, 1);
-    assert.equal(fxGaps[0]?.missingBars, 4);
   });
 
   it("expects five daily bars per week at the 17:00-NY alignment", () => {

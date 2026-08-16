@@ -1,12 +1,19 @@
 /**
- * Server-side recommendation tracker sweep. Its lifecycle pass is deterministic:
- * pulls candles live from the user's linked MetaTrader account, evaluates each
- * active recommendation, and persists status/outcome changes. After that pass, a
- * separate orchestration layer may consume durable re-evaluation claims through
- * the unified brain. Runs independently of any browser session.
+ * Server-side recommendation tracker sweep.
+ *
+ * Its lifecycle pass is deterministic: pulls closed candles from OANDA at
+ * platform level — there is no linked broker account and never was one on this
+ * path — evaluates each active recommendation, and persists status/outcome
+ * changes. After that pass, a separate orchestration layer may consume durable
+ * re-evaluation claims through the unified brain.
+ *
+ * Runs independently of any browser session, and places nothing: the sweep
+ * grades plans, it does not act on them.
  */
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
-import { isCandleComplete } from "@/lib/ohlc/metaApiOhlc";
+import { getForexLiveQuote } from "@/lib/markets/forexPrice";
+import { pipSizeForSymbol } from "@/lib/spread";
+import { isCandleComplete } from "@/lib/ohlc/candleTime";
 import { barDurationMs } from "@/lib/intervals";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import {
@@ -45,7 +52,6 @@ import {
   type CycleDeps,
 } from "./reevaluationCycle";
 import { notifyLifecycleEvents } from "./lifecycleNotifier";
-import { maybeAutoExecute, autoExecutionStage } from "./autoExecutor";
 import type { TrackedRecommendation } from "./types";
 
 /** Normalize an epoch value to milliseconds (warehouse stores may use seconds). */
@@ -59,6 +65,25 @@ export interface TrackSweepResult {
   terminal: number;
   /** Everything worth announcing from this sweep (see lifecycleEvents). */
   events: LifecycleEvent[];
+}
+
+/**
+ * The current spread in pips, or null when no quote is available.
+ *
+ * Best-effort by contract: a sweep runs over every active plan and must not
+ * fail one because the book went quiet for a second. Absent means the drift
+ * check does not run for this plan on this pass, never that the spread is fine.
+ */
+async function liveSpreadPips(symbol: string): Promise<number | null> {
+  const quote = await getForexLiveQuote(0, symbol, { timeoutMs: 2_000 }).catch(
+    () => null,
+  );
+  if (!quote) return null;
+  const spread = quote.ask - quote.bid;
+  if (!Number.isFinite(spread) || spread < 0) return null;
+  const pip = pipSizeForSymbol(symbol, (quote.ask + quote.bid) / 2);
+  if (!(pip > 0)) return null;
+  return spread / pip;
 }
 
 /** Evaluate one recommendation against fresh candles and persist any change. */
@@ -291,9 +316,18 @@ export async function trackOneRecommendation(
   // with the V2 pipeline on, neither old key existed, so this was NaN and the
   // spread-drift trigger never fired at all.
   const plannedSpread = costEvidencePips(cost);
-  // No live-quote source for spread drift since the EA bridge was removed —
-  // metaapi/mt5local never fed one either, so this was already always null.
-  const currentSpread: number | null = null;
+  // The live half of the comparison.
+  //
+  // This was hardcoded `null` — "no live-quote source since the EA bridge was
+  // removed" — which disabled spread drift entirely: a plan costed at 20 pips
+  // and now trading at 60 re-evaluated for every reason EXCEPT the one that
+  // had actually invalidated it. There IS a source now, the same platform-level
+  // OANDA book G7 revalidates against.
+  //
+  // Converted to PIPS, because `plannedSpread` is pips and comparing a price
+  // difference against it is a ~10^4 error — the same units bug this block's
+  // own comment above records having already been caught once.
+  const currentSpread = await liveSpreadPips(rec.symbol);
   const contextChanged =
     brokeSinceLastSweep ||
     (rec.direction === "buy" && higherBias === "bearish") ||
@@ -393,52 +427,12 @@ export async function trackRecommendations(
   const events: LifecycleEvent[] = [];
   const byUser = new Map<number, LifecycleEvent[]>();
   const placedToday = new Map<number, number>();
-  const autoEnabled = opts.autoExecute !== false && autoExecutionStage() !== "off";
 
   for (const rec of active) {
     try {
       const tracked = await trackOneRecommendation(rec);
       const { recommendation: next, events: recEvents } = tracked;
       events.push(...recEvents);
-
-      // Standing authorisation acts at the moment a plan's own condition is
-      // met — the same moment the operator is told about it, so the two can
-      // never disagree about what happened.
-      if (autoEnabled && recEvents.some((event) => event.type === "activated")) {
-        const outcome = await maybeAutoExecute({
-          recommendation: next ?? rec,
-          events: recEvents,
-          placedToday: placedToday.get(rec.userId) ?? 0,
-        }).catch(() => null);
-        if (outcome?.placed) {
-          placedToday.set(rec.userId, (placedToday.get(rec.userId) ?? 0) + 1);
-          recEvents.push({
-            type: "executed_auto",
-            recommendationId: rec.id,
-            symbol: rec.symbol,
-            revisionNo: rec.revisionNo ?? null,
-            dedupeKey: `${rec.id}:${rec.revisionNo ?? 0}:executed_auto`,
-            detail: outcome.dryRun
-              ? `${rec.symbol}: كان سيُنفَّذ آلياً الآن (وضع المحاكاة).`
-              : `${rec.symbol}: نُفِّذت ��لصفقة آلياً بعد تحقق شرط التفعيل.`,
-            terminal: false,
-            occurredAt: Date.now(),
-          });
-        } else if (outcome && outcome.code !== "stage_off" && outcome.code !== "not_authorized") {
-          // Why an authorised plan was NOT placed matters as much as a fill:
-          // silence here would look like the trade simply never triggered.
-          recEvents.push({
-            type: "execution_skipped",
-            recommendationId: rec.id,
-            symbol: rec.symbol,
-            revisionNo: rec.revisionNo ?? null,
-            dedupeKey: `${rec.id}:${rec.revisionNo ?? 0}:execution_skipped:${outcome.code}`,
-            detail: `${rec.symbol}: امتنع التنفيذ التلقائي — ${outcome.reason}`,
-            terminal: false,
-            occurredAt: Date.now(),
-          });
-        }
-      }
 
       if (recEvents.length) {
         byUser.set(rec.userId, [...(byUser.get(rec.userId) ?? []), ...recEvents]);

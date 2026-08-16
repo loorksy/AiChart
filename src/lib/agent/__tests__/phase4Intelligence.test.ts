@@ -1,108 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  correlationGroup,
-  evaluatePortfolioGate,
-  type OpenPositionView,
-} from "@/lib/agent/portfolioGate";
-import {
   MIN_LESSON_SAMPLE,
   renderLessonsForPrompt,
   summarizeTradeLessons,
   type TradeOutcomeRecord,
 } from "@/lib/agent/learningLoop";
 import { evaluateLifecycle } from "@/lib/strategies/decayLifecycle";
-
-// --- Item 16: portfolio gate -------------------------------------------------
-
-const pos = (symbol: string, direction: "buy" | "sell", riskFraction: number): OpenPositionView => ({
-  symbol,
-  direction,
-  riskFraction,
-});
-
-describe("portfolio gate (item 16)", () => {
-  it("allows a normal trade on a clean book", () => {
-    const v = evaluatePortfolioGate({
-      candidate: pos("XAUUSD", "buy", 0.01),
-      openPositions: [],
-    });
-    assert.equal(v.allowed, true);
-    assert.equal(v.totals.openPositions, 1);
-  });
-
-  it("blocks concentrated correlated risk that each trade alone would pass", () => {
-    // Three 1% longs on USD majors: individually fine, collectively one bet.
-    const v = evaluatePortfolioGate({
-      candidate: pos("EURUSD", "buy", 0.01),
-      openPositions: [pos("EURUSD", "buy", 0.015), pos("EURUSD", "buy", 0.015)],
-    });
-    assert.equal(v.allowed, false);
-    assert.equal(v.code, "correlated_risk_limit");
-  });
-
-  it("groups metals together and USD pairs by their non-USD leg", () => {
-    assert.equal(correlationGroup("XAUUSD"), "metals");
-    assert.equal(correlationGroup("XAGUSD"), "metals");
-    assert.equal(correlationGroup("EURUSD"), correlationGroup("USDEUR"));
-    assert.notEqual(correlationGroup("EURUSD"), correlationGroup("GBPUSD"));
-  });
-
-  it("does not treat opposite directions as concentration", () => {
-    const v = evaluatePortfolioGate({
-      candidate: pos("EURUSD", "sell", 0.02),
-      openPositions: [pos("EURUSD", "buy", 0.02)],
-    });
-    assert.equal(v.allowed, true, "a hedge is not a concentrated bet");
-  });
-
-  it("stops new entries once the daily loss limit is reached", () => {
-    const v = evaluatePortfolioGate({
-      candidate: pos("XAUUSD", "buy", 0.005),
-      openPositions: [],
-      realisedDailyLossFraction: 0.05,
-    });
-    assert.equal(v.allowed, false);
-    assert.equal(v.code, "daily_loss_limit");
-  });
-
-  it("enforces the daily stop BEFORE any other limit", () => {
-    const v = evaluatePortfolioGate({
-      candidate: pos("XAUUSD", "buy", 0.9),
-      openPositions: [pos("GBPJPY", "buy", 0.9)],
-      realisedDailyLossFraction: 0.9,
-    });
-    assert.equal(v.code, "daily_loss_limit", "safety-first ordering");
-  });
-
-  it("blocks on total risk and on position count", () => {
-    assert.equal(
-      evaluatePortfolioGate({
-        candidate: pos("XAUUSD", "buy", 0.02),
-        openPositions: [pos("GBPJPY", "buy", 0.02), pos("EURJPY", "sell", 0.03)],
-      }).code,
-      "total_risk_limit",
-    );
-    assert.equal(
-      evaluatePortfolioGate({
-        candidate: pos("XAUUSD", "buy", 0.001),
-        openPositions: Array.from({ length: 5 }, (_, i) => pos(`CROSS${i}A`, "buy", 0.001)),
-      }).code,
-      "max_open_positions",
-    );
-  });
-
-  it("warns before blocking as a limit is approached", () => {
-    const v = evaluatePortfolioGate({
-      candidate: pos("XAUUSD", "buy", 0.01),
-      openPositions: [pos("GBPJPY", "buy", 0.02), pos("EURJPY", "sell", 0.02)],
-    });
-    assert.equal(v.allowed, true);
-    assert.ok(v.warnings.length > 0, "an approaching limit must be surfaced");
-  });
-});
-
-// --- Item 14: learning loop --------------------------------------------------
 
 const outcome = (over: Partial<TradeOutcomeRecord> = {}): TradeOutcomeRecord => ({
   symbol: "XAUUSD",

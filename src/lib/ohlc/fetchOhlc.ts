@@ -3,10 +3,7 @@ import { normalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { freshnessMeta, type FreshnessMeta } from "@/lib/bridge/freshness";
 import { fetchOandaCandles, oandaConfigured } from "@/lib/markets/oanda";
-import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
-import { TRADABLE_SYMBOLS } from "@/lib/markets/forexInstruments";
-
-const TRADABLE_SET = new Set(TRADABLE_SYMBOLS.map((s) => forexCanonicalKey(s)));
+import { requireGold } from "@/lib/gold";
 
 export interface OhlcCandle {
   time: number;
@@ -69,12 +66,10 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   if (marketBlock) {
     throw new Error(marketBlock);
   }
-  const symbol = forexCanonicalKey(options.symbol) || options.symbol.trim().toUpperCase();
-  if (!TRADABLE_SET.has(symbol)) {
-    throw new Error(
-      `الرمز "${options.symbol}" خارج نطاق الأدوات المتاحة (20 أداة ثابتة).`,
-    );
-  }
+  // Gold is the only instrument; a non-gold symbol reaching the candle pipe
+  // is a caller bug, so it throws rather than silently returning gold data
+  // under someone else's label.
+  const symbol = requireGold(options.symbol);
   const limit = Math.max(1, options.limit ?? 200);
 
   if (!oandaConfigured()) {

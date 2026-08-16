@@ -40,11 +40,9 @@ export function freshnessMeta(
   };
 }
 
-function defaultMaxSpreadPips(): number {
-  const raw = Number(process.env.MAX_SPREAD_PIPS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 30;
-}
-
-export function getMaxSpreadPips(overridePips?: number): number {
-  return overridePips ?? defaultMaxSpreadPips();
-}
+// `getMaxSpreadPips` lived here to pre-flight an order: reject an open_trade
+// when the spread was wider than MAX_SPREAD_PIPS. There is no order to
+// pre-flight — the platform issues recommendations and places nothing — and its
+// only importer re-exported it to nobody. Spread still matters to a plan, and
+// that reasoning lives where it belongs: in the cost evidence the decision
+// weighs and the drift trigger the tracker watches.

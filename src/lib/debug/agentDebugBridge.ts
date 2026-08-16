@@ -29,7 +29,6 @@ export interface AgentDebugSnapshot {
   /** Chart sheet state below `xl`, and the pane layout from `xl` up. */
   chartSheetOpen: boolean;
   desktopLayout: string;
-  voiceStatus: string;
   lastFinalResult: {
     decision: string;
     summary: string;

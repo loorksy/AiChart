@@ -9,7 +9,6 @@ import {
   getSettings,
   getLimits,
   getTodayUsage,
-  countPendingIntents,
   countUnreadAlerts,
 } from "@/lib/store";
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
@@ -65,7 +64,6 @@ export async function GET() {
       limit,
       remaining: Math.max(0, limit - used),
     },
-    pendingIntents: await countPendingIntents(user.id),
     unreadAlerts: await countUnreadAlerts(user.id),
   });
 }

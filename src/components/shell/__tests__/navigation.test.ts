@@ -7,49 +7,21 @@ import { activeNav, APP_NAV, ADMIN_NAV, navForRole } from "@/components/shell/na
 const root = resolve(process.cwd(), "src");
 const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
 
-test("APP_NAV has Chart/Chat, unified Performance, Journal — no Chat History page", () => {
-  const userHrefs = navForRole("user", "full").map((i) => i.href);
-  assert.deepEqual(userHrefs, [
-    "/workspace",
-    "/performance",
-    "/journal",
-    "/console/billing",
-    "/console/support",
-  ]);
-  assert.ok(!userHrefs.includes("/console/chats"));
-  assert.ok(!APP_NAV.some((i) => i.labelKey === "nav.chat_history"));
+test("APP_NAV is the three product surfaces and nothing else", () => {
+  assert.deepEqual(
+    APP_NAV.map((i) => i.href),
+    ["/chat", "/recommendations", "/performance"],
+  );
 });
 
-test("old recommendation/trade/statistics routes redirect into /performance", () => {
-  assert.match(read("app/statistics/page.tsx"), /redirect\("\/performance#statistics"\)/);
-  assert.match(read("app/recommendations/page.tsx"), /redirect\("\/performance#recommendations"\)/);
-  assert.match(read("app/console/trades/page.tsx"), /redirect\("\/performance#trades"\)/);
-  // The unified page hosts all three sections.
-  const page = read("app/performance/page.tsx");
-  assert.match(page, /RecommendationsSection/);
-  assert.match(page, /StatisticsSection/);
-  assert.match(page, /TradesClient/);
-});
 
 test("trial nav is limited to the workspace only", () => {
   assert.deepEqual(
     navForRole("user", "trial").map((i) => i.href),
-    ["/workspace"],
+    ["/chat"],
   );
 });
 
-test("admin nav is dedicated and excludes trader destinations", () => {
-  const adminHrefs = navForRole("admin").map((i) => i.href);
-  // The admin's home is the platform overview, not the trader bridge at /workspace.
-  assert.ok(!adminHrefs.includes("/workspace"));
-  assert.ok(adminHrefs.includes("/console/platform?tab=overview"));
-  assert.ok(adminHrefs.every((h) => h.startsWith("/console/platform")));
-  assert.match(read("app/workspace/page.tsx"), /redirect\("\/console\/platform\?tab=overview"\)/);
-  assert.ok(!adminHrefs.includes("/statistics"));
-  assert.ok(!adminHrefs.includes("/console/trades"));
-  assert.deepEqual(navForRole("admin"), ADMIN_NAV);
-  assert.ok(!ADMIN_NAV.some((i) => i.labelKey === "nav.workspace"));
-});
 
 test("Account, Integrations, Settings are not primary destinations", () => {
   const hrefs = new Set([...APP_NAV, ...ADMIN_NAV].map((i) => i.href));
@@ -59,9 +31,9 @@ test("Account, Integrations, Settings are not primary destinations", () => {
 });
 
 test("activeNav exact vs prefix", () => {
-  const overview = APP_NAV.find((i) => i.href === "/workspace")!;
+  const overview = APP_NAV.find((i) => i.href === "/chat")!;
   const performance = APP_NAV.find((i) => i.href === "/performance")!;
-  assert.equal(activeNav("/workspace", overview), true);
+  assert.equal(activeNav("/chat", overview), true);
   assert.equal(activeNav("/performance", overview), false);
   assert.equal(activeNav("/performance", performance), true);
 });
@@ -119,17 +91,6 @@ test("subscription credit chip renders regardless of billing enforcement flag", 
   assert.match(chip, /data-balance-state=\{empty \? "empty"/);
 });
 
-test("MT equity chip renders zero balances from hook", () => {
-  const hook = read("hooks/useAccountCapital.ts");
-  assert.doesNotMatch(hook, /equity > 0/);
-  const bar = read("components/shell/TopBarAccountStatus.tsx");
-  // Same formatter as the subscription-credit chip — a real zero must render
-  // as "$0.00" in both, not one "$0.00" beside a rounded "$0" that reads as
-  // the other value being broken.
-  assert.match(bar, /formatUsd\(capital\.amount\)/);
-  assert.doesNotMatch(bar, /formatUsdWhole/);
-  assert.match(bar, /data-equity-state="ready"/);
-});
 
 test("risk per trade is a composer control, not a settings section", () => {
   const settings = read("components/SettingsClient.tsx");
@@ -141,44 +102,7 @@ test("risk per trade is a composer control, not a settings section", () => {
   assert.match(risk, /ComposerPopover/);
 });
 
-test("model and execution mode live behind the composer's plus", () => {
-  const input = read("components/agent/AgentChatInput.tsx");
-  assert.match(input, /ComposerMoreMenu/);
-  // The chips they replaced are gone from the row itself.
-  assert.doesNotMatch(input, /AgentModelPicker/);
-  const menu = read("components/agent/ComposerMoreMenu.tsx");
-  assert.match(menu, /data-testid="composer-more"/);
-  assert.match(menu, /ComposerPopover/);
-  assert.match(menu, /ModelChoiceList/);
-  assert.match(menu, /data-testid="composer-execution-mode"/);
-  // Execution authority is never one tap, and never offered while offline.
-  assert.match(menu, /view\?\.connected/);
-  assert.match(menu, /setConfirming\(true\)/);
-  assert.match(menu, /trade_mode\.confirm\.body/);
-  // Mode/account state also live in the top bar; the composer + menu keeps the switch.
-  assert.match(read("components/shell/TopBarAccountStatus.tsx"), /useTradeMode/);
-  const hook = read("hooks/useTradeMode.ts");
-  assert.match(hook, /confirmed_by_user: true/);
-});
 
-test("pair picker is a card catalogue with flags, quotes and live search", () => {
-  const sheet = read("components/agent/SymbolPickerSheet.tsx");
-  // Two columns on a phone, four on a desktop — the requested responsive grid.
-  assert.match(sheet, /grid-cols-2 gap-2 lg:grid-cols-4/);
-  assert.match(sheet, /data-testid="symbol-picker-search"/);
-  assert.match(sheet, /data-testid="pair-card"/);
-  assert.match(sheet, /PairFlags/);
-  assert.match(sheet, /sparklineGeometry/);
-  assert.match(sheet, /IntersectionObserver/);
-  // It is a change of surface, so it takes the one sheet slot.
-  const pickers = read("components/agent/ComposerMarketPickers.tsx");
-  assert.match(pickers, /useSheetSlot\("symbolPicker"\)/);
-  assert.match(pickers, /PairFlags/);
-  // Flags are served from the app, never from a third-party CDN.
-  const flags = read("components/agent/CurrencyFlag.tsx");
-  assert.doesNotMatch(flags, /https?:\/\//);
-  assert.match(flags, /currencyMark/);
-});
 
 test("billing page reads from the dictionaries, not hardcoded Arabic", () => {
   const billing = read("components/billing/BillingClient.tsx");
@@ -186,17 +110,7 @@ test("billing page reads from the dictionaries, not hardcoded Arabic", () => {
   assert.doesNotMatch(billing, /[\u0600-\u06FF]/);
 });
 
-test("old /console/chats route redirects to the workspace", () => {
-  const page = read("app/console/chats/page.tsx");
-  assert.match(page, /redirect\("\/workspace"\)/);
-  assert.doesNotMatch(page, /SidebarConversations|ChatHistoryPage/);
-});
 
-test("chat share route redirects to the workspace with chat query", () => {
-  const page = read("app/console/chats/[chatId]/page.tsx");
-  assert.match(page, /chatConsoleHref/);
-  assert.match(page, /isValidChatId/);
-});
 
 test("workspace syncs chat selection to URL", () => {
   const workspace = read("components/SmartChartWorkspace.tsx");
@@ -258,21 +172,6 @@ test("collapsed rail brand expands the sidebar and does not navigate", () => {
   assert.match(shell, /group-focus-visible:opacity-100/);
 });
 
-test("composer stacks the text over controls and ends in one adaptive slot", () => {
-  const input = read("components/agent/AgentChatInput.tsx");
-  // The chart toggle left the composer for the top bar; the mic stopped being a
-  // permanent icon — stop while running, send once typed, voice when empty.
-  assert.doesNotMatch(input, /composer-chart-toggle/);
-  assert.match(input, /running \?/);
-  assert.match(input, /value\.trim\(\) \?/);
-  assert.match(input, /voiceControl \?\?/);
-  // Logical alignment only, so the row mirrors under dir="rtl".
-  assert.match(input, /ms-auto/);
-  assert.doesNotMatch(input, /\bml-auto\b|\bmr-auto\b/);
-  const topBar = read("components/shell/ConsoleTopBar.tsx");
-  assert.match(topBar, /data-testid="topbar-chart-toggle"/);
-  assert.match(topBar, /CHART_TOGGLE_EVENT/);
-});
 
 test("composer has bottom fade; upper chat shadow removed", () => {
   const css = read("app/globals.css");
@@ -312,7 +211,15 @@ test("auth form prevents mobile horizontal overflow", () => {
 });
 
 test("MCP login uses neutral tokens and preserves oauth routes", () => {
-  const login = readFileSync(resolve(process.cwd(), "../mcp/src/auth/login.ts"), "utf8");
+  // `mcp/` is a subproject of this repository, not a sibling of it — the
+  // `../` dates from when the app lived in a `web/` subdirectory. Both shapes
+  // are tried so the assertion runs instead of dying on ENOENT.
+  const loginPath =
+    [
+      resolve(process.cwd(), "mcp/src/auth/login.ts"),
+      resolve(process.cwd(), "../mcp/src/auth/login.ts"),
+    ].find(existsSync) ?? resolve(process.cwd(), "mcp/src/auth/login.ts");
+  const login = readFileSync(loginPath, "utf8");
   assert.match(login, /prefers-color-scheme: dark/);
   assert.match(login, /viewBox="100 250 900 670"/);
   assert.match(login, /action="\/oauth\/login"/);

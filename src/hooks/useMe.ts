@@ -27,7 +27,6 @@ export interface MeData {
   limits: AdminLimits;
   quota: QuotaInfo;
   displayName: string;
-  pendingIntents: number;
   unreadAlerts: number;
   entitlement?: EntitlementInfo;
 }
@@ -57,7 +56,6 @@ export function useMe(refreshKey = 0) {
         limits: json.limits,
         quota: { used, limit, remaining },
         displayName: displayNameFromEmail(json.user.email),
-        pendingIntents: json.pendingIntents ?? 0,
         unreadAlerts: json.unreadAlerts ?? 0,
         entitlement: json.entitlement
           ? {

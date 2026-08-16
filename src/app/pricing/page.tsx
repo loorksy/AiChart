@@ -9,6 +9,8 @@ import { Surface } from "@/components/foundation";
 import { LandingNav } from "@/components/landing/LandingNav";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { BRAND_NAME } from "@/lib/brand";
+import { redirect } from "next/navigation";
+import { FEATURES } from "@/lib/agent/featureFlags";
 
 export const metadata = {
   title: `الباقات والأسعار — ${BRAND_NAME}`,
@@ -23,6 +25,7 @@ export const metadata = {
  * otherwise the CTA degrades to a live contact link.
  */
 export default async function PricingPage() {
+  if (!FEATURES.billing()) redirect("/");
   await initDb();
   const [user, stripeKeys] = await Promise.all([getCurrentUser(), getStripeKeys()]);
   const tiers = TIER_ORDER.map((id) => TIERS[id]);

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { DEFAULT_MARKET, resolveActiveMarket } from "@/lib/marketPolicy";
+import { DATA_SYMBOL } from "@/lib/gold";
 import {
   execute,
   insertReturningId,
@@ -20,8 +21,6 @@ import type {
   PublicUser,
   Recommendation,
   RecommendationSource,
-  Trade,
-  TradeIntent,
   TradingSettings,
   UserRow,
   UserStatus,
@@ -32,43 +31,12 @@ import {
   computeAccessExpiresAt,
   DEFAULT_ACCESS_DAYS,
 } from "./platformAccess";
-import type { BrokerKind, MarketType, MtPlatform } from "./markets/types";
-import {
-  forexModeToBrokerKind,
-  resolveForexBackendFromPref,
-} from "./brokers/forexBackend";
+import type { MarketType, MtPlatform } from "./markets/types";
 import {
   appendRecommendationHistory,
   createCanonicalRecommendation,
 } from "./recommendations/canonical";
 import { announceOpportunityCreated } from "./recommendations/lifecycleNotifier";
-
-/**
- * Broker kind for a user honoring their per-user forex backend choice (MetaApi
- * vs self-hosted MT5), falling back to the global default. Used at the points
- * that route execution (intent/trade creation) so each user's trades go to the
- * backend they picked.
- */
-export async function resolveBrokerForMarket(
-  userId: number,
-  market: MarketType,
-): Promise<BrokerKind> {
-  if (market !== "forex") {
-    throw new Error("Forex-only platform — non-forex markets are not supported.");
-  }
-  const settings = await getSettings(userId);
-  return forexModeToBrokerKind(
-    resolveForexBackendFromPref(settings.forex_backend),
-  );
-}
-
-/** Effective forex backend mode for a user (per-user choice → global default). */
-export async function resolveForexBackendForUser(
-  userId: number,
-): Promise<"metaapi" | "mt5local"> {
-  const settings = await getSettings(userId);
-  return resolveForexBackendFromPref(settings.forex_backend);
-}
 
 /** Free-tier starting quota for new self-serve accounts: 3 analyses (cost 4 each). */
 export const FREE_TIER_QUOTA = 12;
@@ -124,7 +92,7 @@ export async function getOrCreateChartLayout(
   );
   if (existing) return existing;
   const id = newLayoutId();
-  const sym = (symbol ?? "XAUUSD").toUpperCase();
+  const sym = (symbol ?? DATA_SYMBOL).toUpperCase();
   await execute(
     "INSERT INTO chart_layouts (id, user_id, symbol) VALUES (?, ?, ?)",
     [id, userId, sym],
@@ -907,163 +875,6 @@ export function isDailyQuotaEnforced(): boolean {
   return true;
 }
 
-export async function createIntent(
-  userId: number,
-  intent: {
-    recommendation_id?: number | null;
-    /** Revision of that recommendation these levels came from (CAS at execute). */
-    recommendation_revision_no?: number | null;
-    /** How this order was authorised: explicit approval or a standing mode.
-     *  `trade_management` marks an SL/TP-modify proposal, never an order.
-     *  `broker_action` marks a raw account action, also never an order. */
-    authorization_source?:
-      | "user_approved"
-      | "standing_auto"
-      | "trade_management"
-      | "broker_action"
-      | null;
-    symbol: string;
-    side: "buy" | "sell";
-    notional: number;
-    market?: MarketType;
-    broker?: BrokerKind;
-    entry?: number | null;
-    stop_loss?: number | null;
-    take_profit?: number | null;
-    confidence?: number;
-    rationale?: string | null;
-    status?: string;
-    reason?: string | null;
-    practice?: boolean;
-    market_type?: "spot" | "futures";
-    leverage?: number;
-    order_type?: "market" | "limit" | "stop";
-    limit_price?: number | null;
-    action_json?: string | null;
-  },
-): Promise<TradeIntent> {
-  const market: MarketType = resolveActiveMarket(intent.market ?? DEFAULT_MARKET);
-  const broker: BrokerKind =
-    intent.broker ?? (await resolveBrokerForMarket(userId, market));
-  const id = await insertReturningId(
-    `INSERT INTO trade_intents
-      (user_id, recommendation_id, recommendation_revision_no, authorization_source, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price, action_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      userId,
-      intent.recommendation_id ?? null,
-      intent.recommendation_revision_no ?? null,
-      intent.authorization_source ?? null,
-      // Broker spellings are case-sensitive (XAUUSDm). Folding here made every
-      // cloud order ask MetaApi for an instrument that does not exist.
-      intent.symbol.trim(),
-      intent.side,
-      intent.notional,
-      market,
-      broker,
-      intent.entry ?? null,
-      intent.stop_loss ?? null,
-      intent.take_profit ?? null,
-      Math.round(intent.confidence ?? 0),
-      intent.rationale ?? null,
-      intent.status ?? "pending",
-      intent.reason ?? null,
-      intent.practice ? 1 : 0,
-      intent.market_type ?? "spot",
-      intent.leverage ?? 1,
-      intent.order_type ?? "market",
-      intent.limit_price ?? null,
-      intent.action_json ?? null,
-    ],
-  );
-  return (await getIntent(id))!;
-}
-
-export async function getIntent(
-  id: number,
-  userId?: number,
-): Promise<TradeIntent | null> {
-  if (userId != null) {
-    return queryOne<TradeIntent>(
-      "SELECT * FROM trade_intents WHERE id = ? AND user_id = ?",
-      [id, userId],
-    );
-  }
-  return queryOne<TradeIntent>(
-    "SELECT * FROM trade_intents WHERE id = ?",
-    [id],
-  );
-}
-
-export async function listIntents(
-  userId: number,
-  status?: string,
-  limit = 30,
-): Promise<TradeIntent[]> {
-  if (status) {
-    return query<TradeIntent>(
-      "SELECT * FROM trade_intents WHERE user_id = ? AND status = ? ORDER BY id DESC LIMIT ?",
-      [userId, status, limit],
-    );
-  }
-  return query<TradeIntent>(
-    "SELECT * FROM trade_intents WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-    [userId, limit],
-  );
-}
-
-export async function updateIntentStatus(
-  id: number,
-  status: string,
-  reason?: string | null,
-  userId?: number,
-): Promise<void> {
-  if (userId != null) {
-    await execute(
-      "UPDATE trade_intents SET status = ?, reason = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
-      [status, reason ?? null, id, userId],
-    );
-    return;
-  }
-  await execute(
-    "UPDATE trade_intents SET status = ?, reason = ?, updated_at = datetime('now') WHERE id = ?",
-    [status, reason ?? null, id],
-  );
-}
-
-/**
- * Mark an intent failed and persist the structured technical deny code, so
- * "which rule blocked execution?" is queryable across every path (chat, scalp,
- * monitor) — not only readable from the localized Arabic reason text.
- */
-export async function updateIntentDenied(
-  id: number,
-  reason: string,
-  denyCode: string | null,
-  userId?: number,
-): Promise<void> {
-  if (userId != null) {
-    await execute(
-      "UPDATE trade_intents SET status = 'failed', reason = ?, deny_code = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
-      [reason, denyCode, id, userId],
-    );
-    return;
-  }
-  await execute(
-    "UPDATE trade_intents SET status = 'failed', reason = ?, deny_code = ?, updated_at = datetime('now') WHERE id = ?",
-    [reason, denyCode, id],
-  );
-}
-
-export async function updateIntentNotional(
-  id: number,
-  notional: number,
-): Promise<void> {
-  await execute(
-    "UPDATE trade_intents SET notional = ?, updated_at = datetime('now') WHERE id = ?",
-    [notional, id],
-  );
-}
 
 export async function getRecommendation(
   id: number,
@@ -1081,194 +892,6 @@ export async function getRecommendation(
   );
 }
 
-export async function recordTrade(
-  userId: number,
-  trade: {
-    intent_id?: number | null;
-    symbol: string;
-    side: string;
-    qty: number;
-    quote_qty: number;
-    avg_price: number;
-    order_id?: string | null;
-    env: string;
-    market?: MarketType;
-    broker?: BrokerKind;
-    status?: string;
-    market_type?: "spot" | "futures";
-    leverage?: number;
-    order_type?: "market" | "limit";
-    limit_price?: number | null;
-  },
-): Promise<Trade> {
-  const market: MarketType = resolveActiveMarket(trade.market ?? DEFAULT_MARKET);
-  const broker: BrokerKind =
-    trade.broker ?? (await resolveBrokerForMarket(userId, market));
-  const id = await insertReturningId(
-    `INSERT INTO trades
-      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, market, broker, status, market_type, leverage, order_type, limit_price)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      userId,
-      trade.intent_id ?? null,
-      trade.symbol.trim(),
-      trade.side,
-      trade.qty,
-      trade.quote_qty,
-      trade.avg_price,
-      trade.order_id ?? null,
-      trade.env,
-      market,
-      broker,
-      trade.status ?? "open",
-      trade.market_type ?? "spot",
-      trade.leverage ?? 1,
-      trade.order_type ?? "market",
-      trade.limit_price ?? null,
-    ],
-  );
-  return (await queryOne<Trade>("SELECT * FROM trades WHERE id = ?", [id]))!;
-}
-
-export async function listTrades(userId: number, limit = 50): Promise<Trade[]> {
-  return query<Trade>(
-    "SELECT * FROM trades WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-    [userId, limit],
-  );
-}
-
-export async function listOpenTrades(userId: number, limit = 50): Promise<Trade[]> {
-  return query<Trade>(
-    "SELECT * FROM trades WHERE user_id = ? AND status = 'open' ORDER BY id DESC LIMIT ?",
-    [userId, limit],
-  );
-}
-
-export async function getTrade(
-  userId: number,
-  tradeId: number,
-): Promise<Trade | null> {
-  return queryOne<Trade>(
-    "SELECT * FROM trades WHERE id = ? AND user_id = ?",
-    [tradeId, userId],
-  );
-}
-
-export async function updateTradeClosed(
-  tradeId: number,
-  pnl: number,
-  userId?: number,
-): Promise<void> {
-  if (userId != null) {
-    await execute(
-      `UPDATE trades SET status = 'closed', pnl = ?, closed_at = datetime('now') WHERE id = ? AND user_id = ?`,
-      [pnl, tradeId, userId],
-    );
-    return;
-  }
-  await execute(
-    `UPDATE trades SET status = 'closed', pnl = ?, closed_at = datetime('now') WHERE id = ?`,
-    [pnl, tradeId],
-  );
-}
-
-export async function updateTradeOcoOrderList(
-  tradeId: number,
-  orderListId: string | number,
-): Promise<void> {
-  await execute(
-    "UPDATE trades SET oco_order_list_id = ? WHERE id = ?",
-    [String(orderListId), tradeId],
-  );
-}
-
-export async function listOpenTradesWithOco(
-  userId: number,
-  limit = 20,
-): Promise<Trade[]> {
-  return query<Trade>(
-    `SELECT * FROM trades
-     WHERE user_id = ? AND status = 'open' AND oco_order_list_id IS NOT NULL
-     ORDER BY id ASC LIMIT ?`,
-    [userId, limit],
-  );
-}
-
-export async function countPendingIntents(userId: number): Promise<number> {
-  const row = await queryOne<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM trade_intents WHERE user_id = ? AND status = 'pending'",
-    [userId],
-  );
-  return row?.n ?? 0;
-}
-
-export async function countOpenTrades(userId: number): Promise<number> {
-  const row = await queryOne<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM trades WHERE user_id = ? AND status IN ('open', 'pending_entry')",
-    [userId],
-  );
-  return row?.n ?? 0;
-}
-
-export async function listPendingEntryTrades(
-  userId: number,
-  limit = 10,
-): Promise<Trade[]> {
-  return query<Trade>(
-    "SELECT * FROM trades WHERE user_id = ? AND status = 'pending_entry' ORDER BY id DESC LIMIT ?",
-    [userId, limit],
-  );
-}
-
-export async function updateTradeEntryFilled(
-  tradeId: number,
-  qty: number,
-  quoteQty: number,
-  avgPrice: number,
-): Promise<void> {
-  await execute(
-    `UPDATE trades SET status = 'open', qty = ?, quote_qty = ?, avg_price = ? WHERE id = ?`,
-    [qty, quoteQty, avgPrice, tradeId],
-  );
-}
-
-export async function updateTradeCancelled(tradeId: number): Promise<void> {
-  await execute(
-    `UPDATE trades SET status = 'cancelled', closed_at = datetime('now') WHERE id = ?`,
-    [tradeId],
-  );
-}
-
-export async function todayRealizedPnlUsd(userId: number): Promise<number> {
-  const row = await queryOne<{ pnl: number }>(
-    `SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trades
-     WHERE user_id = ? AND status = 'closed' AND date(closed_at) = date('now')`,
-    [userId],
-  );
-  return row?.pnl ?? 0;
-}
-
-export async function todayRealizedPnlPct(
-  userId: number,
-  capital: number,
-): Promise<number> {
-  if (capital <= 0) return 0;
-  return ((await todayRealizedPnlUsd(userId)) / capital) * 100;
-}
-
-export async function monthRealizedPnlPct(
-  userId: number,
-  capital: number,
-): Promise<number> {
-  if (capital <= 0) return 0;
-  const row = await queryOne<{ pnl: number }>(
-    `SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trades
-     WHERE user_id = ? AND status = 'closed'
-       AND strftime('%Y-%m', closed_at) = strftime('%Y-%m', 'now')`,
-    [userId],
-  );
-  return ((row?.pnl ?? 0) / capital) * 100;
-}
 
 export async function getFlag(key: string): Promise<string | null> {
   const row = await queryOne<{ value: string }>(
@@ -1580,65 +1203,6 @@ export interface AdminPlatformStats {
   claude_calls_today: number;
 }
 
-export async function getAdminPlatformStats(): Promise<AdminPlatformStats> {
-  const users = (await queryOne<{
-    total: number;
-    active: number;
-    pending: number;
-    suspended: number;
-  }>(
-    `SELECT
-       COUNT(*) AS total,
-       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
-       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-       SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended
-     FROM users`,
-  ))!;
-
-  const withMt5 = (await queryOne<{ n: number }>(
-    "SELECT COUNT(DISTINCT user_id) AS n FROM mt_accounts",
-  ))!;
-
-  const trades = (await queryOne<{ total: number; open: number }>(
-    `SELECT
-       COUNT(*) AS total,
-       SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open
-     FROM trades`,
-  ))!;
-
-  const intents = (await queryOne<{
-    pending: number | null;
-    executed: number | null;
-  }>(
-    `SELECT
-       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-       SUM(CASE WHEN status = 'executed' THEN 1 ELSE 0 END) AS executed
-     FROM trade_intents`,
-  ))!;
-
-  const recs = (await queryOne<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM recommendations",
-  ))!;
-
-  const claudeToday = (await queryOne<{ n: number }>(
-    "SELECT COALESCE(SUM(count), 0) AS n FROM claude_usage WHERE day = ?",
-    [today()],
-  ))!;
-
-  return {
-    users_total: users.total,
-    users_active: users.active,
-    users_pending: users.pending,
-    users_suspended: users.suspended,
-    users_with_mt5: withMt5.n,
-    trades_total: trades.total,
-    trades_open: trades.open,
-    intents_pending: intents.pending ?? 0,
-    intents_executed: intents.executed ?? 0,
-    recommendations_total: recs.n,
-    claude_calls_today: claudeToday.n,
-  };
-}
 
 export interface ClaudeUsageRow {
   user_id: number;

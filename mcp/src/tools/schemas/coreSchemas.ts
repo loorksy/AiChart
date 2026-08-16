@@ -325,57 +325,12 @@ const createRecommendationCatalogShape = {
 
 export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
-    name: "get_account_overview",
-    domain: "core",
-    description:
-      "Returns a combined view of the connected account in one call: technical connection status, portfolio summary, the operator's standing trade mode, and (unless include_live=false) live broker account data. When: at session start, or whenever a full picture of the account is needed before discussing balance, exposure, or execution. Not when only one figure changed — get_portfolio/get_agent_trade_mode alone are cheaper. Default include_live=true (pass false only for a faster, connection-only summary). read-only. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence, not a suggestion.",
-    inputSchema: {
-      include_live: z
-        .boolean()
-        .optional()
-        .describe("Include live account (slower) — false for faster summary"),
-    },
-    annotations: READ_ONLY,
-    ui: { widget: "account-overview" },
-  },
-  {
-    name: "get_trade_readiness",
-    domain: "core",
-    description:
-      "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. Not a substitute for open_trade's own checks — a pass here does not skip them, and open_trade still refuses independently on a stale quote, closed session, or unsafe spread. Defaults: market=forex, practice=false. read-only. If recovery_tool is returned (e.g. after a SPREAD_TOO_WIDE or MARKET_CLOSED signal elsewhere), this is usually that recovery_tool — call it immediately, don't ask the operator first.",
-    inputSchema: {
-      symbol: z.string().optional().describe("Pair symbol — for quote/spread check"),
-      market: zMarket,
-      practice: z.boolean().optional(),
-    },
-    annotations: READ_ONLY,
-    ui: { widget: "trade-readiness" },
-  },
-  {
     name: "get_agent_capabilities",
     domain: "core",
     description:
       "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_account_overview -> get_agent_trade_mode), not a suggestion.",
     inputSchema: {},
     annotations: READ_ONLY,
-  },
-  {
-    name: "get_portfolio",
-    domain: "core",
-    description:
-      "Returns the account balance and portfolio summary, including current PnL. When: after get_account_overview when only the portfolio needs refreshing, or when the operator asks about balance or PnL. Not for execution, and not for open-position detail — use get_open_trades for that. read-only.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-    ui: { widget: "portfolio" },
-  },
-  {
-    name: "get_open_trades",
-    domain: "core",
-    description:
-      "Lists all currently open trades together with an Arabic summary (summary_ar). When: before evaluate_trade or any close action, to confirm the result of open_trade/close_trade/modify_sl_tp/cancel_mt5_order/close_partial (none of those five have a before/after position lookup of their own — this is how you verify a change actually landed), or when the operator asks what positions are open. read-only.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-    ui: { widget: "open-trades" },
   },
   {
     name: "get_trade_lessons",
@@ -436,121 +391,10 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. Not for placing a live order — this only records the plan; open_trade or request_approval is the separate, explicit step that acts on it. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
+      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
-  },
-  {
-    name: "open_trade",
-    domain: "core",
-    description:
-      "Opens a live trade on the connected broker account — market by default, or a pending limit/stop order when order_type is set; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata (a limit/stop order is sized off its own limit_price, not the live quote), and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. Not when mode=approval — use request_approval there instead, which also accepts order_type/limit_price for a pending order; this route only ever executes under the operator's own standing auto-mode authorisation, never a per-call approved_by_user claim. stop_loss is mandatory; confidence is audit-only; lots/notional cannot be passed — sizing is always server-computed, never accepted from the caller. side-effect: places a real order or pending order (idempotencyKey deduplicates for 24h). Pass dry_run:true to run every check (failure brake, authorization, market session, verified equity) and return the real risk_amount/equity figures without placing anything — use it to preview before the first live call on a symbol; the response is never cached under idempotencyKey. If recovery_tool is returned on a failure, call it immediately — don't explain or ask the operator first. On a real (non-preview) success, call get_open_trades (market fill) or get_orders (pending limit/stop) next to confirm it actually landed before telling the operator it worked.",
-    inputSchema: {
-      symbol: zSymbol,
-      side: zSide,
-      market: zMarket,
-      entry: z.number().optional(),
-      stop_loss: z.number().describe("Stop loss — mandatory, rejected without it"),
-      take_profit: z.number().optional(),
-      confidence: zConfidence,
-      rationale: z.string().min(10),
-      recommendation_id: z.number().optional(),
-      approved_by_user: z.boolean().optional(),
-      practice: z.boolean().optional(),
-      market_type: z.literal("spot").optional(),
-      order_type: z.enum(["market", "limit", "stop"]).optional(),
-      limit_price: z
-        .number()
-        .positive()
-        .optional()
-        .describe("Trigger price — required (and sized off it, not the live quote) when order_type is limit or stop."),
-      idempotencyKey: z.string().max(128).optional().describe("idempotency 24h"),
-      dry_run: zDryRun,
-    },
-    annotations: IDEMPOTENT_WRITE,
-  },
-  {
-    name: "close_trade",
-    domain: "core",
-    description:
-      "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. Not for reducing size while keeping a position open — that's close_partial, a different tool. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123. Pass dry_run:true to see the live price and estimated PnL each targeted trade would realize, without closing anything — trades on a broker this platform cannot close report would_close:false with the reason instead of a number. On a real (non-preview) call, call get_open_trades next to confirm the trade is actually gone.",
-    inputSchema: {
-      trade_id: zTradeId.optional(),
-      all: z.boolean().optional(),
-      dry_run: zDryRun,
-    },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "evaluate_trade",
-    domain: "core",
-    description:
-      "Evaluates one open trade, returning its live PnL together with current market context. When: a trade is open and the operator asks how it is doing, or before making an exit decision. Not for listing which trades exist — get_open_trades gives the trade_id this tool needs. read-only. Example: trade_id=42.",
-    inputSchema: { trade_id: zTradeId },
-    annotations: READ_ONLY,
-  },
-  {
-    name: "record_exit_decision",
-    domain: "core",
-    description:
-      "Records an exit-management decision (hold | close | adjust_sl) with its reason in the audit trail; it documents the decision only and never closes or modifies the position itself. When: after evaluate_trade, once a management decision has been made — follow with close_trade or modify_sl_tp to act on it. Not the tool that acts — recording decision:close or decision:adjust_sl does nothing to the position by itself; the corresponding call is a separate, required step. side-effect: records decision. Does not auto-close.",
-    inputSchema: {
-      trade_id: zTradeId,
-      decision: z.enum(["hold", "close", "adjust_sl"]),
-      reason: z.string().min(3).max(500),
-      new_stop_loss: z.number().positive().optional(),
-    },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "request_approval",
-    domain: "core",
-    description:
-      "Submits a proposed trade — market, or a pending limit/stop order when order_type is set — for operator approval, creating a pending intent and sending approve/reject buttons to Telegram; the response also renders an approval-card with its own Approve/Reject buttons wired to respond_approval. When: mode=approval — do not use in direct mode, where open_trade acts on the operator's standing authorisation instead. This is the only path to propose a pending (limit/stop) order without standing auto-mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons. Pass dry_run:true to see the risk_amount/equity the card would show and confirm the card would send, without creating the intent or messaging Telegram. On a real (non-preview) success, call get_pending_approvals next to confirm the intent actually queued before telling the operator it was sent.",
-    inputSchema: {
-      symbol: zSymbol,
-      side: zSide,
-      market: zMarket,
-      entry: z.number().optional(),
-      stop_loss: z.number(),
-      take_profit: z.number().optional(),
-      confidence: zConfidence.optional(),
-      rationale: z.string().optional(),
-      recommendation_id: z.number().optional(),
-      practice: z.boolean().optional(),
-      order_type: z.enum(["market", "limit", "stop"]).optional(),
-      limit_price: z
-        .number()
-        .positive()
-        .optional()
-        .describe("Trigger price — required (and sized off it, not the live quote) when order_type is limit or stop."),
-      dry_run: zDryRun,
-    },
-    annotations: DESTRUCTIVE,
-    ui: { widget: "approval-card" },
-  },
-  {
-    name: "respond_approval",
-    domain: "core",
-    description:
-      "Resolves a pending trade intent by approving or rejecting it; approving re-validates the levels against the live market before executing, and may immediately execute the trade — this is the ONLY tool an approval-card's buttons may call. When: a pending intent exists and the operator has given a decision (in chat, or by clicking a card button). Not for a trade that was already approved/rejected/cancelled — check get_pending_approvals or the intent's status first; resolving twice is refused, not silently repeated. side-effect: may execute the trade on approve. Pass dry_run:true to see the pending intent's stored levels and confirm it is still pending, without approving or rejecting it — nothing is resolved and no trade is executed. On a real approve, call get_open_trades next to confirm the trade actually opened — approval alone doesn't guarantee execution succeeded (revalidation or a technical check can still refuse it).",
-    inputSchema: {
-      intent_id: zTradeId,
-      action: z.enum(["approve", "reject"]),
-      dry_run: zDryRun,
-    },
-    annotations: DESTRUCTIVE,
-    ui: { widget: "approval-card" },
-  },
-  {
-    name: "get_pending_approvals",
-    domain: "core",
-    description:
-      "Lists every trade intent still awaiting operator approval, rendered as a queue with inline Approve/Reject per row (each button still only calls respond_approval, which re-validates before executing). When: mode=approval, to review what is pending before requesting or responding, or to confirm a request_approval call actually queued. read-only.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-    ui: { widget: "approval-queue" },
   },
   {
     name: "get_agent_settings",
@@ -559,22 +403,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live equity or exposure figures — that's get_account_overview/get_portfolio. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
-  },
-  {
-    name: "get_agent_trade_mode",
-    domain: "core",
-    description:
-      "Returns the operator's standing trading mode, shared with the platform: mode (auto | advisory), connected, and needs_choice. When: at session start after get_account_overview, and before offering execution. Not needed again mid-session unless the connection just changed — get_account_overview already embeds this. needs_choice=true means a connected operator has not chosen yet — ask ONCE which mode they want, remember the answer, and never re-ask on every analysis. read-only.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-  },
-  {
-    name: "set_agent_trade_mode",
-    domain: "core",
-    description:
-      "Sets the operator's standing trading mode: 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met, and 'advisory' means analysis and recommendations with no execution at all. When: ONLY when the operator explicitly states which mode they want in their own words — for auto, pass confirmed_by_user:true to record that. Not on a hunch that the operator implied it, and not to re-confirm a mode already set — check get_agent_trade_mode/get_account_overview first. auto additionally requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation — the single biggest blast-radius action in this catalog, since it removes the per-trade confirmation step entirely. Call get_agent_trade_mode next to confirm the change actually took effect before telling the operator it did.",
-    inputSchema: setAgentTradeModeShape,
-    annotations: DESTRUCTIVE,
   },
   {
     name: "find_similar_cases",
@@ -588,7 +416,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "send_telegram_menu",
     domain: "core",
     description:
-      "Sends the agent's menu to the operator's Telegram as an outbound notification. When: the operator should be notified on Telegram; this is not an interactive chat channel — a reply the operator sends on Telegram does not come back through this tool call. Not for approval cards — request_approval sends its own Telegram message with approve/reject buttons. side-effect: sends a Telegram message.",
+      "Sends the agent's menu to the operator's Telegram as an outbound notification. When: the operator should be notified on Telegram; this is not an interactive chat channel — a reply the operator sends on Telegram does not come back through this tool call. side-effect: sends a Telegram message.",
     inputSchema: {},
     annotations: DESTRUCTIVE,
   },

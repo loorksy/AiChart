@@ -100,17 +100,3 @@ test("no browser component fetches a bridge-only route", () => {
   );
 });
 
-test("the MetaTrader wizard posts to the session-authenticated route", () => {
-  const wizard = readFileSync(
-    path.join(SRC, "components", "mt5", "Mt5ConnectWizard.tsx"),
-    "utf8",
-  );
-  assert.ok(
-    wizard.includes('fetch("/api/mt/connect"'),
-    "the wizard must use the session route",
-  );
-  assert.ok(
-    !wizard.includes('fetch("/api/agent/mt/connect"'),
-    "the agent route cannot be reached from a browser",
-  );
-});

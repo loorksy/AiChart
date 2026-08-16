@@ -25,18 +25,58 @@ def _value(value: Any) -> float:
     return float(value)
 
 
+# Key under which a timeframe's bar CLOSE times are memoised in the shared
+# cache. It shares that cache with the indicator series because both derive from
+# exactly the same immutable thing — the bar list for one symbol and timeframe —
+# and both must be invalidated by the same event, which is a new run.
+_CLOSE_TIMES = "__close_times__"
+
+
 @dataclass(slots=True)
 class ConditionContext:
     bars_by_timeframe: dict[str, list[Any]]
     decision_time: datetime
     default_timeframe: str
     cache: dict[tuple[Any, ...], list[Any]] = field(default_factory=dict)
+    # Resolved bar index per timeframe, for THIS decision time only. A context
+    # lives for one bar, and inside it every condition leaf asks the same
+    # question.
+    _index_cache: dict[str, int] = field(default_factory=dict)
 
-    def index(self, timeframe: str) -> int:
+    def _close_times(self, timeframe: str) -> list[float]:
+        """Bar close times for one timeframe, computed once per run.
+
+        This used to be rebuilt on EVERY call — an O(n) list construction in
+        order to perform an O(log n) bisect on it. The engine builds one
+        context per bar and each condition leaf resolves its own index, so a
+        50,000-bar run with four leaves rebuilt a 50,000-element list 200,000
+        times: ten billion operations to answer a question whose inputs never
+        change. That, and not the arithmetic inside the indicators, is what made
+        a backtest take minutes.
+
+        The bars for a (symbol, timeframe) are immutable for the life of a run,
+        so the array is memoised in the same cache the indicator series use.
+        """
         bars = self.bars_by_timeframe.get(timeframe, [])
+        if not bars:
+            return []
+        key = (bars[0].symbol, timeframe, _CLOSE_TIMES, ())
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
         duration = TIMEFRAME_MINUTES[timeframe] * 60
         close_times = [bar.timestamp.timestamp() + duration for bar in bars]
-        return bisect.bisect_right(close_times, self.decision_time.timestamp()) - 1
+        self.cache[key] = close_times
+        return close_times
+
+    def index(self, timeframe: str) -> int:
+        cached = self._index_cache.get(timeframe)
+        if cached is not None:
+            return cached
+        close_times = self._close_times(timeframe)
+        resolved = bisect.bisect_right(close_times, self.decision_time.timestamp()) - 1
+        self._index_cache[timeframe] = resolved
+        return resolved
 
     def bars(self, timeframe: str) -> tuple[list[Any], int]:
         bars = self.bars_by_timeframe.get(timeframe, [])

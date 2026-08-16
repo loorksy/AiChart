@@ -71,7 +71,6 @@ test("no transcription or analysis-only identity anywhere in agent prompts", () 
   for (const rel of [
     "lib/agent/systemPrompt.ts",
     "lib/agent/canonicalIdentity.ts",
-    "lib/agent/voice/voiceSessionInstructions.ts",
     "lib/agent/statusReply.ts",
   ]) {
     const source = read(rel);

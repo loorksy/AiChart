@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DATA_SYMBOL } from "@/lib/gold";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { fetchOandaPricing, oandaConfigured } from "@/lib/markets/oanda";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
   try {
     await requirePlatformAccess();
     const symbolsParam = req.nextUrl.searchParams.get("symbols");
-    const symbolRaw = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
+    const symbolRaw = (req.nextUrl.searchParams.get("symbol") || DATA_SYMBOL)
       .trim()
       .replace(/[^A-Za-z0-9._]/g, "");
 

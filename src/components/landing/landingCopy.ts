@@ -6,15 +6,18 @@ export const LANDING_ROUTES = {
   home: "/",
   signup: "/signup",
   login: "/login",
-  chart: "/chart",
-  console: "/workspace",
-  pricing: "/pricing",
-  privacy: "/p/privacy-policy",
-  terms: "/p/terms-of-service",
-  agreement: "/p/user-agreement",
-  risk: "/p/risk-disclosure",
-  about: "/p/about-us",
-  contact: "/p/contact-us",
+  // The product is the chat surface; there is no standalone chart page and no
+  // CMS-backed legal pages any more, so every marketing CTA lands on a route
+  // that actually exists.
+  chart: "/chat",
+  console: "/chat",
+  pricing: "/signup",
+  privacy: "/privacy",
+  terms: "/privacy",
+  agreement: "/privacy",
+  risk: "/privacy",
+  about: "/",
+  contact: "/",
 } as const;
 
 export type LandingCopy = {
@@ -203,7 +206,7 @@ const ar: LandingCopy = {
     primaryCta: "افتح Lonora",
     secondaryCta: "افتح مساحة العمل",
     quickPrompts: [
-      "حلّل EURUSD",
+      "حلّل الذهب",
       "اقترح سيناريو WAIT",
       "راجع مستويات الدخول",
     ],
@@ -233,7 +236,7 @@ const ar: LandingCopy = {
     label: "معاينة مساحة العمل",
     chartPane: "الشارت",
     chatPane: "المحادثة",
-    agentGreeting: "جاهز لمراجعة EURUSD على إطار 15 دقيقة بهدوء.",
+    agentGreeting: "جاهز لمراجعة الذهب على إطار 15 دقيقة بهدوء.",
     recommendationTitle: "سيناريو توضيحي",
     side: "WAIT",
     entry: "الدخول",
@@ -527,7 +530,7 @@ const en: LandingCopy = {
     primaryCta: "Open Lonora",
     secondaryCta: "Open workspace",
     quickPrompts: [
-      "Analyze EURUSD",
+      "Analyze gold",
       "Suggest a WAIT scenario",
       "Review entry levels",
     ],
@@ -557,7 +560,7 @@ const en: LandingCopy = {
     label: "Workspace preview",
     chartPane: "Chart",
     chatPane: "Chat",
-    agentGreeting: "Ready to review EURUSD on the 15-minute chart calmly.",
+    agentGreeting: "Ready to review gold on the 15-minute chart calmly.",
     recommendationTitle: "Illustrative scenario",
     side: "WAIT",
     entry: "Entry",

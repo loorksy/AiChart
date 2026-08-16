@@ -17,7 +17,7 @@ function read(rel: string): string {
 describe("landing redesign", () => {
   test("page redirects authenticated users and exports metadata", () => {
     const page = read("app/page.tsx");
-    assert.match(page, /redirect\("\/workspace"\)/);
+    assert.match(page, /redirect\("\/chat"\)/);
     assert.match(page, /awaiting-approval/);
     assert.match(page, /export const metadata/);
     assert.match(page, /openGraph/);
@@ -27,7 +27,6 @@ describe("landing redesign", () => {
   test("canonical structure mounts redesigned sections without candlestick backdrop", () => {
     const page = read("components/landing/LandingPage.tsx");
     assert.match(page, /LandingHero/);
-    assert.match(page, /LandingPartners/);
     assert.match(page, /LandingBenefits/);
     assert.match(page, /LandingHowItWorks/);
     assert.match(page, /LandingStats/);
@@ -134,13 +133,6 @@ describe("landing redesign", () => {
     assert.ok(!existsSync(resolve(root, "components/landing/landingContent.ts")));
     assert.ok(!existsSync(resolve(root, "components/landing/LandingFeatures.tsx")));
     assert.ok(!existsSync(resolve(root, "components/landing/LandingAccess.tsx")));
-  });
-
-  test("public legal pages share redesigned header/footer without chart backdrop", () => {
-    const pub = read("app/p/[slug]/PublicPageClient.tsx");
-    assert.match(pub, /LandingNav/);
-    assert.match(pub, /LandingFooter/);
-    assert.doesNotMatch(pub, /ChartBackground/);
   });
 
   test("brand mark assets keep the unclipped viewBox", () => {

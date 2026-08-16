@@ -52,6 +52,13 @@ import {
   priceLevelsFromDrawings,
 } from "./envelopePresentation";
 import { evaluateDependencies } from "./dependencyMatrix";
+import { buildGates } from "./gates/buildGates";
+import { gateLineAr, refusalSummaryAr, runGateChain } from "./gates/chain";
+import type { GateChainResult, GateVerdict } from "./gates/types";
+import { newsProviderConfigured } from "./news/newsProvider";
+import { resolveEntryType } from "@/lib/recommendations/entrySemantics";
+import type { EntryType } from "@/lib/recommendations/entrySemantics";
+import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
 import {
@@ -88,10 +95,9 @@ import {
   buildDrawingCandidates,
 } from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
-import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
 import { spanStyleForInterval } from "./trading/scalpGeometry";
-import { collectVisualEvidence } from "./visualEvidence";
+import { collectVisualEvidence, visualCoverageNote } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { recordDecisionForParity } from "./parityLog";
 import { serializeCostEvidence } from "./marketContext/costEvidence";
@@ -99,14 +105,14 @@ import { barDurationMs } from "@/lib/intervals";
 import { metrics } from "@/lib/metrics";
 import { atr as computeAtr } from "@/lib/indicators";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
-import { isCandleComplete } from "@/lib/ohlc/metaApiOhlc";
+import { isCandleComplete } from "@/lib/ohlc/candleTime";
 import {
   assessTradability,
   type TradabilityAssessment,
 } from "@/lib/recommendations/tradability";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
-import { sessionOf } from "@/lib/recommendations/performanceJournal";
-import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
+import { sessionOf } from "@/lib/markets/tradingSession";
+import { getEvidenceCard, getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import { handleIndicatorCommand } from "./indicators/handleIndicatorCommand";
 import {
@@ -1168,11 +1174,22 @@ async function runUnifiedChartAgentInner(
   // Verified statistical support, looked up rather than assembled: the factory's
   // evidence never used to reach an answer because building it mid-request could
   // not finish in time, and evidence that arrives after the decision is none.
-  const statisticalSupport = await getStatisticalSupport({
-    userId: ctx.userId,
-    symbol: market.symbol,
-    timeframe: market.interval,
-  }).catch(() => null);
+  // The grade and the card behind it, together. Run as one await rather than
+  // two: the module's whole premise is that evidence arriving after the
+  // decision is the same as none, and serialising a second lookup here would
+  // spend that budget twice for one table.
+  const [statisticalSupport, evidenceCard] = await Promise.all([
+    getStatisticalSupport({
+      userId: ctx.userId,
+      symbol: market.symbol,
+      timeframe: market.interval,
+    }).catch(() => null),
+    getEvidenceCard({
+      userId: ctx.userId,
+      symbol: market.symbol,
+      timeframe: market.interval,
+    }).catch(() => null),
+  ]);
 
   // What followed structurally similar moments. Read before the decision like
   // every other piece of evidence, and for both directions — the memory must not
@@ -1216,13 +1233,30 @@ async function runUnifiedChartAgentInner(
         interval: market.interval,
         timeoutMs: AGENT_TIMEOUTS.visualEvidence,
       })
-    : { snapshots: [], missing: [], elapsedMs: 0 };
+    : { snapshots: [], requested: [], missing: [], elapsedMs: 0 };
   if (visual.snapshots.length) {
     trackedCtx.emitActivity({
       type: "analysis",
       status: "completed",
       message: `تمت مراجعة ${visual.snapshots.length} لقطات شارت بصرياً.`,
       metadata: { timeframes: visual.snapshots.map((s) => s.timeframe) },
+    });
+  }
+  // A run that asked for charts and got none used to say nothing at all — the
+  // operator could not tell a visual read from a numbers-only one, and neither
+  // could a post-mortem. Partial coverage is reported for the same reason.
+  if (visual.missing.length) {
+    trackedCtx.emitActivity({
+      type: "analysis",
+      status: "warning",
+      message: visual.snapshots.length
+        ? `تعذّر التقاط ${visual.missing.map((m) => m.timeframe).join("، ")} — التحليل يقرأ ما تبقّى فقط.`
+        : "تعذّر التقاط أي شارت — التحليل يقرأ الأرقام وحدها.",
+      metadata: {
+        requested: visual.requested,
+        captured: visual.snapshots.map((s) => s.timeframe),
+        missing: visual.missing,
+      },
     });
   }
 
@@ -1249,6 +1283,7 @@ async function runUnifiedChartAgentInner(
           // ("مقارنة بالخطة السابقة…") instead of reading like a first message.
           conversationBlock: conversationBlockForSynth(input.conversationContext),
           visualSnapshots: visual.snapshots,
+          visualCoverageNote: visualCoverageNote(visual),
           statisticalSupport,
           historicalCases,
           // The designed extension point: fresh keys reach the model prompt
@@ -1265,9 +1300,9 @@ async function runUnifiedChartAgentInner(
         },
         {
           ...input.synthesizerDeps,
-          // The extra-frame round captures through the SAME collector the first
-          // round used — one image, tight budget, failure returns null and the
-          // first decision stands.
+          // A browse round captures through the SAME collector the first round
+          // used — one image, tight budget, failure returns null and the
+          // decision already in hand stands.
           captureExtraFrame:
             input.synthesizerDeps?.captureExtraFrame ??
             (async (timeframe) => {
@@ -1279,6 +1314,30 @@ async function runUnifiedChartAgentInner(
                 timeoutMs: AGENT_TIMEOUTS.visualEvidence,
               }).catch(() => null);
               return extra?.snapshots[0] ?? null;
+            }),
+          // Closed bars for read_candles and read_zone. Only CLOSED candles:
+          // letting the brain read a forming bar would have it reason about a
+          // high and low that are still moving.
+          readCandles:
+            input.synthesizerDeps?.readCandles ??
+            (async (timeframe, count) => {
+              const fetched = await fetchOhlc({
+                userId: ctx.userId ?? 0,
+                symbol: market.symbol,
+                interval: timeframe,
+                limit: Math.min(300, count + 20),
+              }).catch(() => null);
+              if (!fetched?.candles?.length) return null;
+              return fetched.candles
+                .filter((candle) => isCandleComplete(candle.time, timeframe))
+                .slice(-count)
+                .map((candle) => ({
+                  time: candle.time,
+                  open: candle.open,
+                  high: candle.high,
+                  low: candle.low,
+                  close: candle.close,
+                }));
             }),
         },
       ).catch((err) => {
@@ -1378,6 +1437,105 @@ async function runUnifiedChartAgentInner(
   // chartSnapshotHash was computed before the fleet (it also keys the stage
   // checkpoint) — the market window cannot change mid-run, so it is reused.
 
+  // ── The mandatory gate chain (G1–G7) ────────────────────────────────────
+  //
+  // Runs here, BEFORE drawings and before storage, because a refused plan must
+  // leave nothing behind: no entry lines on the chart, no row in the tracker,
+  // no card in the chat. The specialists are not re-run — their results are
+  // re-read as gate ANSWERS instead of as evidence the synthesizer weighs,
+  // since a veto that can be argued down by a prompt is not a veto.
+  //
+  // A refusal does NOT degrade into a weaker recommendation. It produces a WAIT
+  // that names the gate and its reason, which is the only honest answer when
+  // the platform's own checks say a plan should not exist.
+  let gateChain: GateChainResult | null = null;
+  let gateEntryType: EntryType | undefined;
+  const gateRec = finalDecision.recommendation;
+  const gatePlanReady =
+    (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
+    gateRec != null &&
+    gateRec.entry != null &&
+    gateRec.stop_loss != null &&
+    (gateRec.targets?.length ?? 0) > 0;
+  if (gatePlanReady) {
+    // Structure decides the fill semantics, not the model's declared order
+    // type — the incident's plan declared a pending limit while carrying a
+    // close-based rule, and believing the declaration is how that got stored.
+    gateEntryType = resolveEntryType({
+      declared: gateRec.entryType,
+      planType: gateRec.planType ?? finalDecision.planType,
+      activationRule: gateRec.activationRule,
+    });
+    const { gates } = buildGates({
+      now: Date.now(),
+      news,
+      newsProviderConfigured: newsProviderConfigured(),
+      structure,
+      liquidity,
+      supplyDemand,
+      mtf,
+      statisticalSupport,
+      atr: market.atr ?? 0,
+      visualTimeframes: visual.snapshots.map((snapshot) => snapshot.timeframe),
+      plan: {
+        direction: finalDecision.decision === "buy" ? "buy" : "sell",
+        entryType: gateEntryType,
+        entry: gateRec.entry!,
+        stopLoss: gateRec.stop_loss!,
+        targets: gateRec.targets!,
+        activationRule: gateRec.activationRule ?? null,
+        // No RR floor: the doctrine states reward:risk is descriptive evidence,
+        // not an acceptance threshold (systemPrompt.ts). Introducing one here
+        // would silently change what the platform refuses.
+      },
+      // A FRESH quote on purpose. The analysis takes tens of seconds and gold
+      // does not stand still; a plan revalidated against the price the run
+      // STARTED with has been validated against the past.
+      fetchLivePrice: () =>
+        getForexLiveQuote(ctx.userId ?? 0, market.symbol, { timeoutMs: 3_000 })
+          .then((quote) => (quote ? (quote.bid + quote.ask) / 2 : null))
+          .catch(() => null),
+    });
+    gateChain = await runGateChain(gates);
+
+    for (const verdict of gateChain.verdicts) {
+      trackedCtx.emitActivity({
+        type: "analysis",
+        status:
+          verdict.status === "pass"
+            ? "completed"
+            : verdict.status === "veto"
+              ? "failed"
+              : "warning",
+        message: gateLineAr(verdict),
+        metadata: { gate: verdict.id, name: verdict.name, status: verdict.status },
+        visible: verdict.status !== "pass",
+      });
+    }
+
+    if (!gateChain.allowed) {
+      const refusal = refusalSummaryAr(gateChain) ?? "لا توجد توصية الآن.";
+      log.info("agent.gate_chain.refused", {
+        requestId: ctx.requestId,
+        gate: gateChain.vetoedBy?.id,
+        status: gateChain.vetoedBy?.status,
+      });
+      // The plan is retracted, not softened. Leaving the model's own prose in
+      // place would keep telling the operator to sell at a level the platform
+      // has just refused to stand behind.
+      finalDecision.decision = "wait";
+      finalDecision.planType = undefined;
+      finalDecision.executionState = "blocked";
+      finalDecision.confidence = 0;
+      finalDecision.recommendation = { action: "wait" };
+      finalDecision.summary = refusal;
+      finalDecision.riskWarnings = [refusal, ...finalDecision.riskWarnings];
+      // The checklist as far as it got — the operator learns what to wait for
+      // rather than being told "no setup right now".
+      finalDecision.publicReasoningSummary = gateChain.verdicts.map(gateLineAr);
+    }
+  }
+
   // Build the drawing plan: the single source of truth for what may be drawn.
   // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
   const drawingPlan = buildDrawingPlan({
@@ -1434,103 +1592,6 @@ async function runUnifiedChartAgentInner(
           marketSync: market.sync,
         }
       : undefined;
-
-  // Execution intent → Execution Guard (never auto-executes).
-  let requiresConfirmation: boolean | undefined;
-  let confirmationPayload: AgentFinalResult["confirmationPayload"];
-  if (
-    intents.includes("trade_execution") || intents.includes("trade_management")
-  ) {
-    const guard = await withTimeout(
-      captureStage(
-        "execution_guard",
-        runExecutionGuardAgent(trackedCtx, {
-          market,
-          finalDecision,
-          news,
-          canExecute: Boolean(input.canExecute),
-        }),
-      ),
-      AGENT_TIMEOUTS.risk,
-      null,
-    );
-    if (!guard) {
-      // Guard failure → block execution (safe default). The ANALYSIS itself
-      // succeeded, so this stays a descriptive answer with the guard stage
-      // marked degraded — execution authority is simply not granted.
-      return {
-        decision: "action_required",
-        envelope: descriptiveEnvelope({
-          recommendationIssued:
-            finalDecision.recommendation.action === "buy" ||
-            finalDecision.recommendation.action === "sell",
-          traceId: ctx.requestId,
-          degradedStages: degradedStagesFrom([
-            ...stageFailures,
-            { stage: "execution_guard", code: "timeout", retryable: true, operatorDetail: "guard unavailable" },
-          ]),
-        }),
-        confidence: finalDecision.confidence,
-        summary: bilingual(
-          locale,
-          "تعذّر التحقق من شروط التنفيذ — لن يُنفّذ شيء دون تأكيد.",
-          "Could not verify execution conditions — nothing will be executed without confirmation.",
-        ),
-        keyReasons: ["Execution guard failed."],
-        riskWarnings: finalDecision.riskWarnings,
-        activityEvents: collected,
-        drawings,
-        recommendation: finalDecision.recommendation,
-        analysisId,
-      };
-    }
-    if (guard.requiresConfirmation) {
-      requiresConfirmation = true;
-      confirmationPayload = guard.confirmationPayload;
-      return {
-        decision: "action_required",
-        envelope: descriptiveEnvelope({
-          recommendationIssued:
-            finalDecision.recommendation.action === "buy" ||
-            finalDecision.recommendation.action === "sell",
-          traceId: ctx.requestId,
-          degradedStages: degradedStagesFrom(stageFailures),
-        }),
-        confidence: finalDecision.confidence,
-        summary: guard.message,
-        keyReasons: guard.reasons,
-        riskWarnings: [...finalDecision.riskWarnings, ...guard.warnings],
-        activityEvents: collected,
-        recommendation: finalDecision.recommendation,
-        drawings,
-        newsRisk: news
-          ? { level: news.newsRisk, reason: news.reason }
-          : undefined,
-        analysisId,
-        requiresConfirmation,
-        confirmationPayload,
-      };
-    }
-    // Guard blocked (not confirmable) → action_required with the block reason.
-    return {
-      decision: "action_required",
-      envelope: descriptiveEnvelope({
-        recommendationIssued:
-          finalDecision.recommendation.action === "buy" ||
-          finalDecision.recommendation.action === "sell",
-        traceId: ctx.requestId,
-        degradedStages: degradedStagesFrom(stageFailures),
-      }),
-      confidence: finalDecision.confidence,
-      summary: guard.message,
-      keyReasons: guard.reasons,
-      riskWarnings: [...finalDecision.riskWarnings, ...guard.warnings],
-      activityEvents: collected,
-      recommendation: finalDecision.recommendation,
-      drawings,
-      analysisId,
-    };
-  }
 
   // Intelligent research: reliability-weighted influence only; never fabricate usage.
   const researchEvidence = await collectBoundedResearchEvidence({
@@ -1689,6 +1750,10 @@ async function runUnifiedChartAgentInner(
       statisticalSupport: statisticalSupport?.level,
       statisticalStrategyId: statisticalSupport?.strategyId,
       evidenceSnapshot: synth.evidenceSnapshot,
+      entryType: gateEntryType,
+      // The verdict bundle rides with the plan so a post-mortem can reconstruct
+      // what every gate knew at decision time, not just that they all passed.
+      gateVerdicts: gateChain?.verdicts,
     });
   }
 
@@ -1832,11 +1897,20 @@ async function runUnifiedChartAgentInner(
         }
       : undefined,
     publicReasoningSummary: finalDecision.publicReasoningSummary,
-    // Explainability is a validity condition, not a nicety: both of these are
-    // built by the decision engine and were being dropped here, so the trace
-    // and the evidence card never reached the operator at all.
+    // Explainability is a validity condition, not a nicety. The trace and the
+    // dimensions come from the decision engine; the evidence card comes from
+    // the deployment lookup above, and until it was assigned here the field was
+    // declared in the types and rendered by the panel while never once being
+    // set — the operator saw a confidence number and none of the history behind
+    // it. `undefined` when nothing matched: a card of zeros reads as a strategy
+    // that lost rather than one that was never found.
     decisionTrace: finalDecision.decisionTrace,
     evidenceDimensions: finalDecision.evidenceDimensions,
+    evidenceCard: evidenceCard ?? undefined,
+    // The checklist reaches the operator, not just the audit row. A refusal
+    // that names no gate teaches nothing, and a pass that shows no gates
+    // teaches that the gates are only there on bad days.
+    gateVerdicts: gateChain?.verdicts,
     evidenceSnapshot: synth.evidenceSnapshot,
     // Deferred #16: the serialized cost contract rides the result so the MCP
     // analyze response can expose it without re-resolving anything.
@@ -1951,7 +2025,11 @@ function activeRecommendationFromChartContext(
     createdCandleTime: chartContext?.latestCandle?.time,
     direction: rec.action,
     entry: rec.entry,
-    entryType: rec.entryType,
+    entryType: resolveEntryType({
+      declared: rec.entryType,
+      planType: rec.planType,
+      activationRule: rec.activationRule,
+    }),
     stopLoss: rec.stop_loss,
     targets,
     takeProfit: rec.take_profit ?? targets[0],
@@ -2280,6 +2358,10 @@ async function storeFinalRecommendation(input: {
    * log fingerprints, so revision 1 and parity describe one thing.
    */
   evidenceSnapshot?: Record<string, unknown>;
+  /** Canonical fill semantics, derived from the plan's structure by the caller. */
+  entryType?: EntryType;
+  /** Every gate that ran, in order, with its verdict and evidence. */
+  gateVerdicts?: GateVerdict[];
 }): Promise<ActiveRecommendation | null> {
   const rec = input.finalDecision.recommendation;
   if (
@@ -2323,7 +2405,16 @@ async function storeFinalRecommendation(input: {
     statisticalSupport: input.statisticalSupport ?? undefined,
     entry: rec.entry,
     entryZone: rec.entryZone,
-    entryType: rec.entryType,
+    // Canonical semantics from the gate chain, falling back to a structural
+    // derivation so a path that skipped the chain still stores a real fill rule
+    // rather than the model's declared order type.
+    entryType:
+      input.entryType ??
+      resolveEntryType({
+        declared: rec.entryType,
+        planType: rec.planType ?? input.finalDecision.planType,
+        activationRule: rec.activationRule,
+      }),
     stopLoss: rec.stop_loss,
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],
@@ -2387,6 +2478,7 @@ async function storeFinalRecommendation(input: {
       // log fingerprints, so revision 1 and parity finally describe one thing.
       evidenceSnapshot: input.evidenceSnapshot,
       strategyId: input.statisticalStrategyId,
+      gateVerdicts: input.gateVerdicts,
     },
     // The run's own cost evidence, PRICE units — the tradability grade's
     // within-spread-noise check finally sees the spread the LLM was shown
@@ -2505,17 +2597,12 @@ async function persistTrackedRecommendation(
     evidenceSnapshot?: Record<string, unknown>;
     /** Prefer statisticalSupport.strategyId over setupType when binding. */
     strategyId?: string;
+    /** The G1–G7 verdicts that permitted this plan to exist. */
+    gateVerdicts?: GateVerdict[];
   },
   /** The run's resolved cost-evidence spread in PRICE units, for tradability. */
   spreadPrice: number | null = null,
 ): Promise<void> {
-  const entryType: "market" | "limit" | "pending" =
-    active.entryType === "market"
-      ? "market"
-      : active.entryType?.includes("limit")
-        ? "limit"
-        : "pending";
-
   // Is this entry realistically reachable from the current price?
   //
   // The gate shipped wired into the MCP bridge route only, so every plan the
@@ -2539,8 +2626,13 @@ async function persistTrackedRecommendation(
     symbol: active.symbol,
     interval: active.interval,
     direction: active.direction,
-    entryType,
+    // The canonical fill semantics, stored as-is. Collapsing this to
+    // market/limit/pending is what made `confirmation_close` invisible to the
+    // tracker — the plan promised a fill at the confirming close and was then
+    // graded as if it filled on a touch of a level price had already left.
+    entryType: active.entryType ?? "market",
     entry: active.entry,
+    retestZone: active.retestZone ?? null,
     stopLoss: active.stopLoss,
     targets: active.targets,
     invalidationLevel: active.invalidationLevel,
@@ -2587,9 +2679,19 @@ async function persistTrackedRecommendation(
     // operator-facing descriptor; the SNAPSHOT is the raw bundle the brain
     // decided on. Storing only the card while claiming to fingerprint the
     // bundle is the finding.
-    evidence: explanation?.evidenceDimensions
-      ? { evidenceDimensions: explanation.evidenceDimensions }
-      : undefined,
+    evidence:
+      explanation?.evidenceDimensions || explanation?.gateVerdicts
+        ? {
+            ...(explanation.evidenceDimensions
+              ? { evidenceDimensions: explanation.evidenceDimensions }
+              : {}),
+            // What every gate knew when it let this plan through. Without it a
+            // post-mortem can see that the chain passed but not on what.
+            ...(explanation.gateVerdicts
+              ? { gateVerdicts: explanation.gateVerdicts }
+              : {}),
+          }
+        : undefined,
     evidenceSnapshot: explanation?.evidenceSnapshot,
     evidenceSourceSurface: "platform",
   });

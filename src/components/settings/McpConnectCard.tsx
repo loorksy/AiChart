@@ -73,7 +73,7 @@ export function McpConnectCard() {
       <p className="text-sm text-muted-foreground">{t("connect.mcp.note")}</p>
       <p className="text-xs text-muted-foreground">
         {t("connect.mcp.paid_only")}{" "}
-        <Link href="/console/account" className="text-link">
+        <Link href="/console/settings" className="text-link">
           {t("settings.manage_account")}
         </Link>
       </p>

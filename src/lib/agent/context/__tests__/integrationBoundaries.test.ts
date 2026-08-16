@@ -46,11 +46,15 @@ test("general and drawing-only paths still return before market analysis", () =>
   assert.ok(drawing > 0 && drawing < market);
 });
 
-test("market sync, risk and explicit execution guard remain in the orchestrator", () => {
+// The execution guard and its confirmation handshake were DELETED with the
+// rest of the execution layer: this is a recommendations-only platform and
+// nothing here can place an order, so there is no order to guard. What this
+// test now asserts is the inverse — that the orchestrator still runs the market
+// and risk stages, and that no execution path grew back into it.
+test("market and risk stages remain, with no execution path in the orchestrator", () => {
   assert.match(orchestrator, /runMarketDataAgent/);
   assert.match(orchestrator, /runRiskAgent/);
-  assert.match(orchestrator, /runExecutionGuardAgent/);
-  assert.match(orchestrator, /requiresConfirmation/);
+  assert.doesNotMatch(orchestrator, /runExecutionGuardAgent|requiresConfirmation|executeIntent/);
 });
 
 // Gap policy v1.2: "gapped" now means CATASTROPHIC data loss only — that tier

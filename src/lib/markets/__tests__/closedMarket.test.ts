@@ -22,24 +22,17 @@ const WEDNESDAY_OPEN = Date.parse("2026-08-05T14:00:00Z");
 /** 21:30 UTC on that Wednesday = 17:30 New York — the metals halt hour. */
 const WEDNESDAY_METAL_BREAK = Date.parse("2026-08-05T21:30:00Z");
 
-test("the weekend closes every pair", () => {
-  assert.equal(isMarketOpenAt("EURUSD", SATURDAY), false);
+test("the weekend closes the market", () => {
   assert.equal(isMarketOpenAt("XAUUSD", SATURDAY), false);
-  const status = getSessionStatus("EURUSD", new Date(SATURDAY));
+  const status = getSessionStatus("XAUUSD", new Date(SATURDAY));
   assert.equal(status.isOpen, false);
   assert.ok(status.reason.includes("السبت"), status.reason);
 });
 
-test("gold can be closed while EURUSD is open — the answer is per symbol", () => {
-  // Both open mid-session…
-  assert.equal(isMarketOpenAt("EURUSD", WEDNESDAY_OPEN), true);
+test("gold is shut during its daily maintenance hour", () => {
   assert.equal(isMarketOpenAt("XAUUSD", WEDNESDAY_OPEN), true);
-  // …and during the metals maintenance hour only gold is shut. An operator
-  // asking about gold from a EURUSD conversation must be told about gold.
-  assert.equal(isMarketOpenAt("EURUSD", WEDNESDAY_METAL_BREAK), true);
   assert.equal(isMarketOpenAt("XAUUSD", WEDNESDAY_METAL_BREAK), false);
-  assert.equal(isMarketOpenAt("XAGUSD", WEDNESDAY_METAL_BREAK), false);
-  // Broker suffixes are the same instrument and get the same verdict.
+  // Any spelling is the same instrument and gets the same verdict.
   assert.equal(isMarketOpenAt("XAUUSDm", WEDNESDAY_METAL_BREAK), false);
 });
 

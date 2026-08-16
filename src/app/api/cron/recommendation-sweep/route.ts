@@ -15,9 +15,10 @@ const SWEEP_LOCK_MS = 290_000;
 
 /**
  * Scheduled recommendation-tracker sweep. Evaluates every non-terminal tracked
- * recommendation against fresh warehouse candles, persists status/outcome
- * changes, and tells the operator what actually changed. Runs with NO browser
- * session, NO LLM, and NO trade execution.
+ * recommendation against fresh CLOSED candles from OANDA — the warehouse this
+ * once named is gone — persists status/outcome changes, and tells the operator
+ * what actually changed. Runs with NO browser session and NO LLM, and it cannot
+ * execute anything: this platform issues recommendations and places no orders.
  *
  * Set RECOMMENDATION_ALERTS_SILENT=1 to record events without delivering them —
  * the first rollout window, so the real message volume on a live book can be

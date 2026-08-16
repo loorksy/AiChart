@@ -5,7 +5,13 @@
  *
  * Policies (documented on purpose — we never fake precision):
  * - The creation candle never triggers/SLs the recommendation.
- * - A market entry starts triggered; a limit/pending entry triggers on touch.
+ * - The FILL RULE is part of the plan, not an assumption here: a market entry
+ *   starts triggered, a touch entry fills when price reaches its level, a
+ *   confirmation_close entry fills at the confirming candle's CLOSE, and a
+ *   retest_zone entry fills on a return into its band. Grading a close-armed
+ *   plan as if it filled on a touch is the incident entrySemantics.ts records.
+ * - Everything downstream reads `effectiveEntry` — the price the plan is
+ *   actually graded on — never the nominal level.
  * - Same-candle SL + TP after entry is AMBIGUOUS from OHLC alone: we resolve
  *   SL-first (risk honesty) when no TP had been reached before that candle. If a
  *   TP had already been reached earlier, the trade closes at that banked TP.
@@ -13,6 +19,7 @@
  *   at the highest TP reached (win_tp{n}); SL/expiry before any TP is a loss/expiry.
  * - Terminal records (outcome !== "pending") are never re-evaluated.
  */
+import { normalizeStoredEntryType, resolveFill } from "./entrySemantics";
 import type {
   TrackedDirection,
   TrackedRecommendation,
@@ -39,6 +46,8 @@ export interface EvaluateInput {
     | "direction"
     | "entryType"
     | "entry"
+    | "effectiveEntry"
+    | "retestZone"
     | "stopLoss"
     | "targets"
     | "invalidationLevel"
@@ -140,6 +149,10 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     .sort((a, b) => a.time - b.time);
 
   let triggered = base.triggered;
+  /** The price the plan is graded on — the fill, never the nominal level. */
+  let effectiveEntry: number = r.effectiveEntry ?? r.entry;
+  /** True once the activation rule was satisfied on an EARLIER candle. */
+  let armedBefore = false;
   let triggeredAt = r.triggeredAt ?? (r.entryType === "market" ? r.createdAt : undefined);
   let highestTp: 0 | 1 | 2 | 3 =
     (r.tp3HitAt && 3) || (r.tp2HitAt && 2) || (r.tp1HitAt && 1) || 0;
@@ -218,9 +231,26 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
           ? activationReadyAt != null && candle.time >= activationReadyAt
           : activation.observe(candle).activated
         : true;
-      if (conditionMet && entryTouched(dir, candle, r.entry)) {
+      const fill = resolveFill({
+        plan: {
+          direction: dir,
+          // Legacy rows spell a pending limit "limit"/"pending"; both fill on a
+          // touch, which is what those plans were always graded as.
+          entryType: normalizeStoredEntryType(r.entryType),
+          entry: r.entry,
+          retestZone: r.retestZone ?? null,
+        },
+        candle,
+        conditionMet,
+        armedBefore,
+      });
+      if (conditionMet) armedBefore = true;
+      if (fill.filled) {
         triggered = true;
         triggeredAt = candle.time;
+        // A confirmation_close plan is graded on the confirming candle's close,
+        // not on the nominal trigger level — see entrySemantics.ts.
+        if (fill.effectiveEntry != null) effectiveEntry = fill.effectiveEntry;
         activationEvidence = activation?.evidence;
       } else {
         // Missed-opportunity detection: price reached TP1 while the plan was

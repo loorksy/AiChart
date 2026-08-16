@@ -51,7 +51,7 @@ type Store = {
   /** Case-memory rows by state (resolved/pending) — set by the indexer cron. */
   caseMemoryRows: client.Gauge<string>;
   /** Extra-frame second rounds requested / completed / failed. */
-  extraFrameRounds: client.Counter<string>;
+  browseRounds: client.Counter<string>;
   /** Age in seconds of the freshest live cost-profile sample per symbol. */
   costProfileFreshness: client.Gauge<string>;
   /** Critical alerts raised, by kind — any nonzero value is a page. */
@@ -187,10 +187,10 @@ function build(): Store {
     labelNames: ["state"],
     registers: [registry],
   });
-  const extraFrameRounds = new client.Counter({
-    name: "aichart_extra_frame_rounds_total",
-    help: "Second-round timeframe requests by outcome",
-    labelNames: ["outcome"],
+  const browseRounds = new client.Counter({
+    name: "aichart_browse_rounds_total",
+    help: "Browse rounds the decision model requested, by verb and outcome",
+    labelNames: ["outcome", "verb"],
     registers: [registry],
   });
   const costProfileFreshness = new client.Gauge({
@@ -328,7 +328,7 @@ function build(): Store {
     visionLatency,
     evidenceSnapshotBytes,
     caseMemoryRows,
-    extraFrameRounds,
+    browseRounds,
     costProfileFreshness,
     criticalAlerts,
     tradesExecuted,

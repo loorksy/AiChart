@@ -29,7 +29,18 @@ export type TrackedRecommendationOutcome =
 
 export type TrackedDirection = "buy" | "sell";
 
-export type TrackedEntryType = "market" | "limit" | "pending";
+/**
+ * Entry types and their fill semantics live in entrySemantics.ts. The legacy
+ * "limit"/"pending" spellings are kept so stored rows still parse; new plans
+ * use the explicit four.
+ */
+export type TrackedEntryType =
+  | "market"
+  | "limit"
+  | "pending"
+  | "limit_touch"
+  | "confirmation_close"
+  | "retest_zone";
 
 export interface TrackedRecommendation {
   id: string;
@@ -40,7 +51,16 @@ export interface TrackedRecommendation {
   interval: string;
   direction: TrackedDirection;
   entryType: TrackedEntryType;
+  /** Nominal price. For confirmation_close this is the TRIGGER level, not the fill. */
   entry: number;
+  /**
+   * The price the plan is actually graded on once filled. Equals `entry` for
+   * market/limit fills; for confirmation_close it is the confirming candle's
+   * close. R multiples and RR must read this, never `entry`.
+   */
+  effectiveEntry?: number;
+  /** Fill band for retest_zone entries. */
+  retestZone?: { from: number; to: number } | null;
   stopLoss: number;
   targets: number[];
   invalidationLevel?: number;

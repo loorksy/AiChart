@@ -2,76 +2,6 @@ import { widgetHtml } from "./runtime.js";
 
 const PLATFORM_URL = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
 
-const accountOverview = widgetHtml(
-  "Lonora account overview",
-  `<div class="card" id="acct-card">
-    <div class="top">
-      <div>
-        <div class="title" id="acct-title">—</div>
-      </div>
-      <div class="tag" id="acct-tag">—</div>
-    </div>
-    <div class="main">
-      <div class="label" data-i18n="equity">Equity</div>
-      <div class="value" id="equity-val">—</div>
-    </div>
-    <div class="row">
-      <div class="mini"><span data-i18n="balance">Balance</span><strong id="balance-val">—</strong></div>
-      <div class="mini"><span data-i18n="openPnl">Open PnL</span><strong id="pnl-val">—</strong></div>
-    </div>
-    <div class="foot">
-      <span id="status" class="status"></span>
-    </div>
-  </div>`,
-  `
-  function money(AIC, v) {
-    return v == null ? "—" : "$" + AIC.fmt(v, 2);
-  }
-  function pnlClass(v) {
-    if (v == null) return "";
-    return Number(v) >= 0 ? "green" : "red";
-  }
-  window.__aicReady = function (AIC) {
-    AIC.applyStaticLabels();
-    AIC.onData(function (data) {
-      var ac = AIC.parseAccountOverview(data);
-      var conn = ac.conn || {};
-      document.getElementById("acct-title").textContent = ac.acctTitle || "—";
-      var tagEl = document.getElementById("acct-tag");
-      tagEl.textContent = ac.tag || "—";
-      tagEl.className = "tag" + (conn.stale ? " amber" : String(ac.tag || "").toUpperCase() === "LIVE" ? " green" : "");
-      var eqEl = document.getElementById("equity-val");
-      eqEl.textContent = money(AIC, ac.equity);
-      eqEl.className = "value" + (conn.stale && ac.equity == null ? " amber" : "");
-      document.getElementById("balance-val").textContent = money(AIC, ac.balance);
-      var pnlEl = document.getElementById("pnl-val");
-      if (conn.stale) {
-        pnlEl.textContent = "—";
-        pnlEl.className = "amber";
-      } else if (ac.openPnl != null) {
-        pnlEl.textContent = (ac.openPnl >= 0 ? "+" : "") + AIC.fmt(ac.openPnl, 2);
-        pnlEl.className = pnlClass(ac.openPnl);
-      } else {
-        pnlEl.textContent = "—";
-        pnlEl.className = "";
-      }
-      var statusEl = document.getElementById("status");
-      if (conn.stale) {
-        statusEl.textContent = conn.label;
-        statusEl.className = "status stale";
-      } else if (conn.label) {
-        statusEl.textContent = conn.label;
-        statusEl.className = "status live";
-      } else {
-        statusEl.textContent = "";
-        statusEl.className = "status";
-      }
-      AIC.notifySize();
-    });
-  };
-  `,
-);
-
 const analysis = widgetHtml(
   "Lonora analysis",
   `<div class="card" id="analysis-card">
@@ -283,74 +213,6 @@ function genericCard(titleKey: string, _subtitleKey: string) {
   );
 }
 
-const openTradesCard = widgetHtml(
-  "Lonora open trades",
-  `<div class="card">
-    <div class="top">
-      <div><div class="title" id="trades-title">—</div></div>
-      <div class="tag" id="count-tag">—</div>
-    </div>
-    <div class="main" id="trades"><div class="skel"></div></div>
-    <div class="row">
-      <div class="mini"><span data-i18n="totalPnl">Total PnL</span><strong id="total-pnl">—</strong></div>
-      <div class="mini"><span data-i18n="connection">Connection</span><strong id="conn-status">—</strong></div>
-    </div>
-    <div class="foot">
-      <span id="status" class="status"></span>
-    </div>
-  </div>`,
-  `
-  window.__aicReady = function (AIC) {
-    AIC.applyStaticLabels();
-    function sumPnl(trades) {
-      var sum = 0, seen = false;
-      for (var i = 0; i < trades.length; i++) {
-        var t = trades[i] || {};
-        var p = AIC.num(t.profit != null ? t.profit : (t.pnl != null ? t.pnl : t.open_pnl));
-        if (p != null) { sum += p; seen = true; }
-      }
-      return seen ? sum : null;
-    }
-    function render(data) {
-      data = data || {};
-      var stale = AIC.bridgeLinkState(data).stale;
-      var trades = AIC.pickTrades(data);
-      var box = document.getElementById("trades");
-      document.getElementById("count-tag").textContent = String(trades.length);
-      if (stale && !trades.length) {
-        box.innerHTML = '<div class="empty">' + AIC.t("bridgeNoTrades") + '</div>';
-      } else {
-        AIC.renderTradeLines(box, trades, AIC.fmt.bind(AIC));
-      }
-      var pnl = sumPnl(trades);
-      var pnlEl = document.getElementById("total-pnl");
-      if (stale) {
-        pnlEl.textContent = "—";
-        pnlEl.className = "amber";
-      } else if (pnl != null) {
-        pnlEl.textContent = (pnl >= 0 ? "+" : "") + AIC.fmt(pnl, 2);
-        pnlEl.className = pnl >= 0 ? "green" : "red";
-      } else {
-        pnlEl.textContent = "—";
-        pnlEl.className = "";
-      }
-      var connEl = document.getElementById("conn-status");
-      connEl.textContent = stale ? AIC.t("connStale") : AIC.t("connLive");
-      connEl.className = stale ? "amber" : "green";
-      var statusEl = document.getElementById("status");
-      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
-      statusEl.className = stale ? "status stale" : "status";
-      AIC.notifySize();
-    }
-    AIC.onData(render);
-  };
-  `,
-);
-
-/* ────────────────────────────── live chart ──────────────────────────────
- * Canvas mini-chart: candles from get_ohlc + Claude's drawings/recommendation
- * from get_chart_state, refreshed every ~4s via host-mediated callTool.
- * Read-only — no toolbars; one button opens the full TradingView chart. */
 const liveChart = widgetHtml(
   "Lonora live chart",
   `<div class="card">
@@ -909,237 +771,6 @@ const recommendationCard = widgetHtml(
   `,
 );
 
-/* ─────────────────────────── approval decision card ───────────────────────────
- * The one card in the catalog allowed to own buttons — it is an APPROVAL
- * surface, never an execution surface: the only tool its buttons ever call is
- * respond_approval, which itself still runs every server-side check
- * (revalidation, technical execution safety) before anything reaches the
- * broker. Renders 3 states from one shape:
- *  - "actionable": intent.status === "pending" and not a preview → Approve/Reject.
- *  - "preview": dry_run === true (request_approval or respond_approval preview)
- *    → PREVIEW badge, no buttons (nothing exists yet to act on, or this is
- *    only a look-before-you-leap check).
- *  - "resolved": respond_approval's real response (top-level status/ok/reason)
- *    → outcome banner, no buttons.
- * No "modify" button: no tool in this catalog can alter a pending intent's
- * terms — only reject and re-propose (in chat), which is not a card action. */
-const approvalCard = widgetHtml(
-  "Lonora approval",
-  `<div class="card wait" id="appr-card">
-    <div class="top">
-      <div><div class="title" id="appr-title">—</div></div>
-      <div class="tag amber" id="appr-badge">—</div>
-    </div>
-    <div class="main" id="appr-body"><div class="skel"></div></div>
-    <div class="row">
-      <div class="mini"><span data-i18n="stopLoss">Stop loss</span><strong id="appr-sl" class="red">—</strong></div>
-      <div class="mini"><span data-i18n="targetLabel">Target</span><strong id="appr-tp" class="green">—</strong></div>
-    </div>
-    <div class="banner" id="appr-banner" style="display:none"></div>
-    <div class="actions" id="appr-actions" style="display:none">
-      <button type="button" id="appr-approve" class="tag green">✓ <span data-i18n="approve">Approve</span></button>
-      <button type="button" id="appr-reject" class="tag red">✕ <span data-i18n="reject">Reject</span></button>
-    </div>
-    <div class="foot">
-      <span id="appr-status" class="status"></span>
-    </div>
-  </div>`,
-  `
-  function obj(v){ return v && typeof v === "object" ? v : {}; }
-  function first(){ for (var i=0;i<arguments.length;i++){ var v=arguments[i]; if (v!==undefined&&v!==null&&v!=="") return v; } return null; }
-  var state = { intentId: null, busy: false };
-  function titleCase(s){ s = String(s||""); return s ? s.charAt(0).toUpperCase()+s.slice(1).replace(/_/g," ") : ""; }
-  window.__aicReady = function (AIC){
-    AIC.applyStaticLabels();
-    var approveBtn = document.getElementById("appr-approve");
-    var rejectBtn = document.getElementById("appr-reject");
-    function setBusy(b){
-      state.busy = b;
-      approveBtn.disabled = b;
-      rejectBtn.disabled = b;
-    }
-    function render(data){
-      data = obj(data);
-      var preview = data.dry_run === true;
-      var intent = obj(data.intent || data.would_send);
-      var act = AIC.actInfo(intent.side);
-      var card = document.getElementById("appr-card");
-      card.className = "card " + act.cls;
-      var sym = intent.symbol || "—";
-      document.getElementById("appr-title").textContent = intent.side ? sym + " · " + act.label : sym;
-      var badge = document.getElementById("appr-badge");
-      var resolvedStatus = !preview && data.status ? String(data.status) : null;
-      badge.textContent = preview ? AIC.t("previewBadge") : (resolvedStatus ? titleCase(resolvedStatus) : (intent.status ? titleCase(intent.status) : "—"));
-      badge.className = "tag " + (preview ? "amber" : (data.ok === true ? "green" : data.ok === false ? "red" : "amber"));
-      var entry = AIC.num(intent.entry);
-      var sl = AIC.num(intent.stop_loss);
-      var tp = AIC.num(intent.take_profit);
-      var body = document.getElementById("appr-body");
-      var lines = [];
-      if (entry != null) lines.push([AIC.t("entryLabel"), AIC.fmt(entry, 5), "blue"]);
-      if (intent.notional != null) lines.push(["Risk", AIC.cell(intent.notional, 2), ""]);
-      if (intent.broker) lines.push(["Broker", String(intent.broker), ""]);
-      var h = "";
-      if (lines.length) {
-        h = lines.map(function (p) {
-          return '<div class="pair"><strong>'+p[0]+'</strong><span class="'+p[2]+'">'+p[1]+'</span></div>';
-        }).join("");
-      }
-      if (intent.rationale) h += '<div class="sub">' + String(intent.rationale).slice(0, 160) + '</div>';
-      body.innerHTML = h || '<div class="empty">' + AIC.t("noRecommendation") + '</div>';
-      document.getElementById("appr-sl").textContent = sl != null ? AIC.fmt(sl, 5) : "—";
-      document.getElementById("appr-tp").textContent = tp != null ? AIC.fmt(tp, 5) : "—";
-
-      var banner = document.getElementById("appr-banner");
-      var actions = document.getElementById("appr-actions");
-      var actionable = !preview && intent.id != null && intent.status === "pending" && !resolvedStatus;
-      if (actionable) {
-        actions.style.display = "flex";
-        banner.style.display = "none";
-        state.intentId = intent.id;
-      } else {
-        actions.style.display = "none";
-        state.intentId = null;
-        if (resolvedStatus) {
-          banner.style.display = "block";
-          var cls = data.ok === true ? "ok" : (resolvedStatus === "rejected" ? "warn" : "bad");
-          banner.className = "banner " + cls;
-          banner.textContent = titleCase(resolvedStatus) + (data.reason ? " — " + data.reason : "") +
-            (data.tradeId != null ? " (trade #" + data.tradeId + ")" : "");
-        } else if (preview) {
-          banner.style.display = "block";
-          banner.className = "banner warn";
-          banner.textContent = AIC.t("previewBadge") +
-            (data.note ? " — " + data.note : "") +
-            (data.blocking_reason ? " — " + data.blocking_reason : "") +
-            (data.reason ? " — " + data.reason : "");
-        } else {
-          banner.style.display = "none";
-        }
-      }
-      var statusEl = document.getElementById("appr-status");
-      var stale = AIC.bridgeLinkState(data).stale;
-      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
-      statusEl.className = stale ? "status stale" : "status";
-      AIC.notifySize();
-    }
-    function act(action){
-      if (state.busy || state.intentId == null) return;
-      setBusy(true);
-      var statusEl = document.getElementById("appr-status");
-      statusEl.textContent = AIC.t("sending");
-      statusEl.className = "status";
-      AIC.callTool("respond_approval", { intent_id: state.intentId, action: action }).catch(function () {
-        setBusy(false);
-        statusEl.textContent = AIC.t("actionFailed");
-        statusEl.className = "status stale";
-      });
-    }
-    approveBtn.addEventListener("click", function () { act("approve"); });
-    rejectBtn.addEventListener("click", function () { act("reject"); });
-    AIC.onData(function (data) { setBusy(false); render(data); });
-  };
-  `,
-);
-
-/* ─────────────────────────── approval queue (row-action table) ───────────────────────────
- * get_pending_approvals: aggregate count on top, each pending intent as its
- * own row with inline Approve/Reject — same respond_approval call as the
- * decision card, just triggered per-row instead of for a single intent. */
-const approvalQueue = widgetHtml(
-  "Lonora pending approvals",
-  `<div class="card wait" id="queue-card">
-    <div class="top">
-      <div><div class="title" data-i18n="pendingApprovalsTitle">Pending approvals</div></div>
-      <div class="tag amber" id="queue-count">—</div>
-    </div>
-    <div class="main" id="queue-body"><div class="skel"></div></div>
-    <div class="foot">
-      <span id="queue-status" class="status"></span>
-    </div>
-  </div>`,
-  `
-  function obj(v){ return v && typeof v === "object" ? v : {}; }
-  var busyIds = {};
-  window.__aicReady = function (AIC){
-    AIC.applyStaticLabels();
-    function actInfoOf(intent){ return AIC.actInfo(intent.side); }
-    function rowHtml(intent){
-      var act = actInfoOf(intent);
-      var busy = !!busyIds[intent.id];
-      var bits = [];
-      if (AIC.num(intent.entry) != null) bits.push(AIC.t("entryLabel") + " " + AIC.fmt(intent.entry, 5));
-      if (AIC.num(intent.stop_loss) != null) bits.push(AIC.t("stop") + " " + AIC.fmt(intent.stop_loss, 5));
-      if (AIC.num(intent.take_profit) != null) bits.push(AIC.t("target") + " " + AIC.fmt(intent.take_profit, 5));
-      return '<div class="qrow" data-id="' + intent.id + '">' +
-        '<div class="qtop"><strong>' + (intent.symbol || "—") + ' · ' + act.label + '</strong>' +
-        '<span class="qactions">' +
-          '<button type="button" class="tag green qa" data-action="approve" data-id="' + intent.id + '" ' + (busy ? "disabled" : "") + '>✓</button>' +
-          '<button type="button" class="tag red qa" data-action="reject" data-id="' + intent.id + '" ' + (busy ? "disabled" : "") + '>✕</button>' +
-        '</span></div>' +
-        (bits.length ? '<span class="sub">' + bits.join(" · ") + '</span>' : "") +
-        '</div>';
-    }
-    function render(data){
-      data = obj(data);
-      var pending = Array.isArray(data.pending) ? data.pending : [];
-      document.getElementById("queue-count").textContent = String(pending.length);
-      var body = document.getElementById("queue-body");
-      body.innerHTML = pending.length
-        ? pending.slice(0, 8).map(rowHtml).join("")
-        : '<div class="empty">' + AIC.t("noPending") + '</div>';
-      var statusEl = document.getElementById("queue-status");
-      var stale = AIC.bridgeLinkState(data).stale;
-      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
-      statusEl.className = stale ? "status stale" : "status";
-      AIC.notifySize();
-    }
-    document.getElementById("queue-body").addEventListener("click", function (ev) {
-      var btn = ev.target.closest ? ev.target.closest(".qa") : null;
-      if (!btn || btn.disabled) return;
-      var id = Number(btn.getAttribute("data-id"));
-      var action = btn.getAttribute("data-action");
-      if (!id || busyIds[id]) return;
-      busyIds[id] = true;
-      btn.disabled = true;
-      var sibling = btn.parentNode.querySelector('.qa[data-action="' + (action === "approve" ? "reject" : "approve") + '"]');
-      if (sibling) sibling.disabled = true;
-      var statusEl = document.getElementById("queue-status");
-      statusEl.textContent = AIC.t("sending");
-      statusEl.className = "status";
-      // respond_approval's OWN result is single-intent shaped, not the list
-      // this widget renders — chaining a get_pending_approvals refetch after
-      // it is what puts the shared "latest" payload back into {pending:[...]}
-      // shape before the automatic onData re-render fires, otherwise a
-      // one-row action would blank out every other still-pending row.
-      AIC.callTool("respond_approval", { intent_id: id, action: action })
-        .then(function () { return AIC.callTool("get_pending_approvals", {}); })
-        .then(function () {
-        delete busyIds[id];
-      }).catch(function () {
-        delete busyIds[id];
-        btn.disabled = false;
-        if (sibling) sibling.disabled = false;
-        statusEl.textContent = AIC.t("actionFailed");
-        statusEl.className = "status stale";
-      });
-    });
-    AIC.onData(render);
-  };
-  `,
-);
-
-/* ─────────────────────────── scan results (report) ───────────────────────────
- * scan_market compares MULTIPLE symbols and returns a code-only opportunity
- * SCORE per candidate — it computes no direction (no buy/sell field exists
- * anywhere in its response; scanForexSymbol only tallies mixed bullish AND
- * bearish signal strength into one magnitude). The old recommendation-card
- * reuse rendered every row with a fabricated "Wait" badge (its action-lookup
- * found no direction field and fell through to that default) — evidence
- * dressed as a verdict. This card shows exactly what the tool computed:
- * ranked by score, with the actual signal strings that produced it, and
- * nothing colored buy/sell. Directional judgment is the model's, made from
- * real analysis of the winning candidate — never this list. */
 const scanResults = widgetHtml(
   "Lonora scan results",
   `<div class="card" id="scan-card">
@@ -1326,24 +957,27 @@ const jobsReport = widgetHtml(
   `,
 );
 
+/**
+ * Every widget a registered tool can point at.
+ *
+ * The account, open-trades, approval and trade-readiness cards were deleted
+ * with the tools that rendered them. They were not merely unused: an approval
+ * card carries Approve/Reject buttons that call `respond_approval`, and a
+ * button wired to a tool this server no longer exposes is a control that fails
+ * in the operator's hands. There is nothing to approve on a platform that
+ * places no orders.
+ */
 export const WIDGETS: Record<string, string> = {
-  "account-overview": accountOverview,
   analysis,
   "recommendation-card": recommendationCard,
   "scan-results": scanResults,
   "jobs-report": jobsReport,
   "levels-report": levelsReport,
-  "account-status": accountOverview,
   "pair-picker": genericCard("pairPickerTitle", "pairPickerSubtitle"),
   "risk-status": genericCard("riskStatusTitle", "riskStatusSubtitle"),
-  "open-trades": openTradesCard,
-  "approval-card": approvalCard,
-  "approval-queue": approvalQueue,
   "market-snapshot": analysis,
   "mtf-analysis": analysis,
   "chart-drawn": liveChart,
   "live-chart": liveChart,
-  portfolio: accountOverview,
-  "trade-readiness": genericCard("tradeReadinessTitle", "tradeReadinessSubtitle"),
   "lessons-card": genericCard("lessonsTitle", "lessonsSubtitle"),
 };

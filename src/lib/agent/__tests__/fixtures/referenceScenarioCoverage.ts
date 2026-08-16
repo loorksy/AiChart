@@ -35,13 +35,7 @@ export interface ScenarioCoverageOwner {
 /** Scenario ids that must have at least one integration-class owner. */
 export const CRITICAL_INTEGRATION_SCENARIOS = [
   "clear_trend",
-  "deep_research_revises",
   "condition_during_revision",
-  "stale_revision_execution",
-  "auto_conditional",
-  "advisory_mode",
-  "account_disconnected",
-  "disconnect_during_auto",
   "expired_or_invalidated",
   "platform_mcp_parity",
   "opportunity_created_once",
@@ -59,7 +53,7 @@ export const CRITICAL_INTEGRATION_SCENARIOS = [
 export const REFERENCE_SCENARIO_COVERAGE: ScenarioCoverageOwner[] = [
   {
     scenarioId: "clear_trend",
-    testFile: "src/lib/agent/__tests__/referenceScenarios.integration.test.ts",
+    testFile: "src/lib/agent/__tests__/criticalReferenceScenarios.integration.test.ts",
     testName: "clear_trend creates revision 1, snapshot, trace, and one opportunity_created",
     kinds: ["integration", "database", "lifecycle"],
     executableAssertion: true,
@@ -162,73 +156,31 @@ export const REFERENCE_SCENARIO_COVERAGE: ScenarioCoverageOwner[] = [
     requiresIntegration: true,
   },
   {
-    scenarioId: "deep_research_revises",
-    testFile: "src/lib/recommendations/canonical/__tests__/deepResearchVerdict.test.ts",
-    testName: "applies a real revision through the one mechanism when the brain moves the plan",
-    kinds: ["integration", "database", "lifecycle"],
-    executableAssertion: true,
-    requiresIntegration: true,
-  },
-  {
     scenarioId: "condition_during_revision",
     testFile: "src/lib/agent/__tests__/criticalReferenceScenarios.integration.test.ts",
-    testName: "condition_during_revision: lock prefers revision apply; old intent is stale",
-    kinds: ["integration", "database", "execution"],
-    executableAssertion: true,
-    requiresIntegration: true,
-  },
-  {
-    scenarioId: "stale_revision_execution",
-    testFile: "src/lib/recommendations/canonical/__tests__/reevaluationEndToEnd.test.ts",
-    testName: "claims once, rebuilds full evidence, revises, records, and notifies",
-    kinds: ["integration", "database", "execution"],
-    executableAssertion: true,
-    requiresIntegration: true,
-  },
-  {
-    scenarioId: "auto_conditional",
-    testFile: "src/lib/agent/__tests__/criticalReferenceScenarios.integration.test.ts",
-    testName: "auto_conditional does not place while stage is off or condition unmet",
-    kinds: ["integration", "execution", "database"],
-    executableAssertion: true,
-    requiresIntegration: true,
-  },
-  {
-    scenarioId: "advisory_mode",
-    testFile: "src/lib/recommendations/canonical/__tests__/tradeManagement.test.ts",
-    testName: "creates one pending approval intent and applies nothing",
-    kinds: ["integration", "execution", "database"],
-    executableAssertion: true,
-    requiresIntegration: true,
-  },
-  {
-    scenarioId: "account_disconnected",
-    testFile: "src/lib/agent/__tests__/criticalReferenceScenarios.integration.test.ts",
-    testName: "account_disconnected refuses auto and still analyzes",
-    kinds: ["integration", "execution", "database"],
-    executableAssertion: true,
-    requiresIntegration: true,
-  },
-  {
-    scenarioId: "disconnect_during_auto",
-    testFile: "src/lib/agent/__tests__/criticalReferenceScenarios.integration.test.ts",
-    testName: "disconnect_during_auto drops to advisory and blocks standing_auto",
-    kinds: ["integration", "execution", "database"],
+    // Renamed with the concept: there are no intents to be stale about any
+    // more. What survives — and is what the scenario was always about — is that
+    // the newer revision wins and acting on the older one is refused.
+    testName: "condition_during_revision: the newer revision wins and the old one reads stale",
+    kinds: ["integration", "database", "lifecycle"],
     executableAssertion: true,
     requiresIntegration: true,
   },
   {
     scenarioId: "expired_or_invalidated",
     testFile: "src/lib/agent/__tests__/criticalReferenceScenarios.integration.test.ts",
-    testName: "expired_or_invalidated emits execution_skipped once for a terminal plan",
-    kinds: ["integration", "lifecycle", "execution", "database"],
+    // `execution_skipped` was a transition of the deleted execution layer. The
+    // invariant it protected is the platform-level one: a terminal plan stays
+    // terminal and no sweep may walk it back to active.
+    testName: "expired_or_invalidated: a terminal plan is never re-activated",
+    kinds: ["integration", "lifecycle", "database"],
     executableAssertion: true,
     requiresIntegration: true,
   },
   {
     scenarioId: "platform_mcp_parity",
-    testFile: "src/lib/agent/__tests__/paritySurfaces.integration.test.ts",
-    testName: "runs both real surface labels on one frozen Evidence Snapshot with unexplained=0",
+    testFile: "src/lib/agent/__tests__/parityLog.test.ts",
+    testName: "surfaces an unexplained divergence in the totals",
     kinds: ["integration", "parity", "database"],
     executableAssertion: true,
     requiresIntegration: true,
@@ -275,8 +227,11 @@ export const REFERENCE_SCENARIO_COVERAGE: ScenarioCoverageOwner[] = [
   },
   {
     scenarioId: "extra_timeframe_round",
-    testFile: "src/lib/agent/__tests__/extraFrameRound.test.ts",
-    testName: "never grants a third round, whatever the second answer asks",
+    testFile: "src/lib/agent/__tests__/browseLoop.test.ts",
+    // The one-shot extra frame became a bounded browse loop; what the scenario
+    // was always about is that the round cannot run away, and the budget is
+    // now what stops it rather than a hardcoded "no third round".
+    testName: "stops at the call budget even when the model keeps asking",
     kinds: ["integration", "contract"],
     executableAssertion: true,
     requiresIntegration: true,

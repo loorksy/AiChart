@@ -45,7 +45,6 @@ export {
   freshnessMeta,
   getStaleQuoteThresholdMs,
   isQuoteFresh,
-  getMaxSpreadPips,
   type FreshnessMeta,
   type FreshnessSource,
 } from "./freshness";
@@ -65,12 +64,3 @@ export {
   type WithBridgeOptions,
 } from "./withBridge";
 
-export {
-  buildTradeReadiness,
-  collectTradeReadinessBlockers,
-  isForexSessionOpen,
-  type BuildTradeReadinessInput,
-  type TradeReadinessBlocker,
-  type TradeReadinessChecks,
-  type TradeReadinessResult,
-} from "./tradeReadiness";

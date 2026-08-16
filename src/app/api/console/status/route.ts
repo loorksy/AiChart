@@ -1,81 +1,33 @@
 import { NextResponse } from "next/server";
-
 import { requirePlatformAccess, handleError } from "@/lib/api";
-
-import {
-
-  getExecutionEnvSnapshot,
-
-  executionEnvLabelAr,
-
-} from "@/lib/executionEnv";
-
 import { getSettings } from "@/lib/store";
+import { DISPLAY_NAME_AR } from "@/lib/gold";
+import { oandaConfigured } from "@/lib/markets/oanda";
 
-import { getForexConnectionView } from "@/lib/forexConnection";
-
-
-
+/**
+ * Console status.
+ *
+ * The broker-connection and execution-environment blocks are gone with the
+ * execution layer — there is no account to connect and no environment to be
+ * live or demo in. What is left is whether the platform's own data feed is up
+ * and whether the user has linked Telegram.
+ */
 export async function GET() {
-
   try {
-
     const user = await requirePlatformAccess();
-
     const settings = await getSettings(user.id);
 
-    const [forex, executionEnv] = await Promise.all([
-
-      getForexConnectionView(user.id),
-
-      getExecutionEnvSnapshot(user.id),
-
-    ]);
-
-
-
-    const activeEnv = executionEnv.forex.resolved;
-
-
-
     return NextResponse.json({
-
-      mt5: {
-
-        connected: forex.connected,
-
-        online: forex.online,
-
-        // Demo or real, so the UI can label the connected account everywhere.
-
-        accountType: executionEnv.forex.resolved,
-
-        backend: forex.backend,
-
+      instrument: DISPLAY_NAME_AR,
+      marketData: {
+        source: "OANDA",
+        available: oandaConfigured(),
       },
-
       telegram: {
-
         linked: Boolean(settings.telegram_chat_id),
-
       },
-
-      executionEnv: {
-
-        label: executionEnvLabelAr(activeEnv),
-
-        available: executionEnv.forex.online,
-
-      },
-
     });
-
   } catch (e) {
-
     return handleError(e);
-
   }
-
 }
-
-
