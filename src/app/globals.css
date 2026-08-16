@@ -435,12 +435,40 @@ label {
 }
 
 .chat-gpt-input {
-  background: color-mix(in srgb, var(--card) 70%, transparent);
-  border: 1px solid transparent;
+  background: transparent;
+  border: none;
   border-radius: 20px;
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+.liquid-metal-frame {
+  position: relative;
+  border-radius: 20px;
+}
+.liquid-metal-frame-shader {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.liquid-metal-frame-shader canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: inherit !important;
+}
+.liquid-metal-frame-face {
+  position: relative;
+  z-index: 1;
+  margin: 2px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card) 70%, transparent);
 }
 
 .metal-chip {
@@ -464,6 +492,12 @@ label {
 .metal-chip[aria-expanded="true"] {
   color: var(--foreground);
   background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+.metal-chip-icon {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  padding-inline: 0;
+  justify-content: center;
 }
 
 .metal-icon-face {
@@ -728,9 +762,8 @@ label {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.chat-gpt-input:focus-within {
-  border-color: color-mix(in srgb, var(--foreground) 16%, var(--border));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent);
+.chat-gpt-input:focus-within .liquid-metal-frame-face {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 10%, transparent);
 }
 
 /* TradingView legend: keep OHLC / change / volume, hide the pair + exchange title. */

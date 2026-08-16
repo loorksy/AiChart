@@ -18,7 +18,7 @@ import {
   useAgentModels,
 } from "@/components/agent/AgentModelPicker";
 import { ProviderIcon } from "@/components/agent/ProviderIcon";
-import { MetalFx } from "@/components/ui/metal-fx";
+import { LiquidMetalFrame } from "@/components/ui/liquid-metal-button";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
 const MAX_COMPOSER_HEIGHT = 148;
@@ -125,7 +125,6 @@ export function AgentChatInput({
   const [value, setValue] = useState("");
   const [launching, setLaunching] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const chipRowRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-grow: reset to auto first so the box can also shrink back down.
   useLayoutEffect(() => {
@@ -162,7 +161,8 @@ export function AgentChatInput({
         a chart toggle and a send button into the same line as the caret left
         the message itself the narrowest thing in the composer.
       */}
-      <div className="chat-gpt-input mx-auto flex w-full max-w-3xl flex-col px-4 pb-4 pt-5">
+      <LiquidMetalFrame className="chat-gpt-input mx-auto w-full max-w-3xl">
+        <div className="flex flex-col px-4 pb-4 pt-5">
         <textarea
           ref={textareaRef}
           value={value}
@@ -181,7 +181,7 @@ export function AgentChatInput({
           className="mb-4 max-h-[148px] min-h-4 w-full resize-none bg-transparent p-0 text-sm leading-4 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
 
-        <div ref={chipRowRef} className="mt-auto flex items-center gap-3">
+        <div className="mt-auto flex items-center gap-3">
           {/*
             One row for what governs the next turn: which model answers and
             which timeframe is up. There is no instrument picker — the
@@ -197,61 +197,55 @@ export function AgentChatInput({
             End of the row: ONE morphing action slot — the send arrow and the
             stop square crossfade in place (rotate + scale) instead of
             swapping DOM, so the button never jumps under the pointer.
-            Model pick lives on ComposerModelChip; a second plus was a duplicate.
+            Same chip chrome as the model / risk controls.
           */}
           <div className="ms-auto flex items-center">
-            <MetalFx
-              preset="chromatic"
-              variant="circle"
-              strength={1}
-              reflectionTargets={[chipRowRef]}
+            <button
+              type={running ? "button" : "submit"}
+              onClick={running ? onCancel : undefined}
+              disabled={!running && !canSend}
+              aria-label={running ? t("agent.cancel") : t("agent.send")}
+              title={running ? t("agent.cancel") : t("agent.send")}
+              className={cn(
+                "metal-chip metal-chip-icon group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                running && "text-destructive",
+                !running && canSend && "composer-send-ready",
+                !running && !canSend && "opacity-40",
+              )}
             >
-              <button
-                type={running ? "button" : "submit"}
-                onClick={running ? onCancel : undefined}
-                disabled={!running && !canSend}
-                aria-label={running ? t("agent.cancel") : t("agent.send")}
-                title={running ? t("agent.cancel") : t("agent.send")}
+              <span
                 className={cn(
-                  "metal-icon-face group relative transition-opacity duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  running && "bg-destructive text-destructive-foreground",
-                  !running && canSend && "composer-send-ready",
-                  !running && !canSend && "opacity-40",
+                  "absolute inset-0 flex items-center justify-center transition-all duration-300",
+                  running
+                    ? "pointer-events-none rotate-45 scale-50 opacity-0 blur-[1px]"
+                    : "rotate-0 scale-100 opacity-100 blur-none",
+                  launching && !running && "composer-send-launch",
                 )}
+                style={{ transitionTimingFunction: SPRING }}
+                aria-hidden
               >
-                <span
-                  className={cn(
-                    "absolute inset-0 flex items-center justify-center transition-all duration-300",
-                    running
-                      ? "pointer-events-none rotate-45 scale-50 opacity-0 blur-[1px]"
-                      : "rotate-0 scale-100 opacity-100 blur-none",
-                    launching && !running && "composer-send-launch",
-                  )}
-                  style={{ transitionTimingFunction: SPRING }}
-                  aria-hidden
-                >
-                  <ArrowUp
-                    className="composer-send-glyph size-4"
-                    strokeWidth={2.25}
-                  />
-                </span>
-                <span
-                  className={cn(
-                    "absolute inset-0 flex items-center justify-center transition-all duration-300",
-                    running
-                      ? "rotate-0 scale-100 opacity-100 blur-none"
-                      : "pointer-events-none -rotate-45 scale-50 opacity-0 blur-[1px]",
-                  )}
-                  style={{ transitionTimingFunction: SPRING }}
-                  aria-hidden
-                >
-                  <Square className="h-3 w-3 fill-current" />
-                </span>
-              </button>
-            </MetalFx>
+                <ArrowUp
+                  className="composer-send-glyph size-4"
+                  strokeWidth={2.25}
+                />
+              </span>
+              <span
+                className={cn(
+                  "absolute inset-0 flex items-center justify-center transition-all duration-300",
+                  running
+                    ? "rotate-0 scale-100 opacity-100 blur-none"
+                    : "pointer-events-none -rotate-45 scale-50 opacity-0 blur-[1px]",
+                )}
+                style={{ transitionTimingFunction: SPRING }}
+                aria-hidden
+              >
+                <Square className="h-3 w-3 fill-current" />
+              </span>
+            </button>
           </div>
         </div>
-      </div>
+        </div>
+      </LiquidMetalFrame>
     </form>
   );
 }

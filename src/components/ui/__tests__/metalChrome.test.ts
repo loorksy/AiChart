@@ -32,6 +32,7 @@ describe("metal chrome", () => {
     assert.match(src, /type\?: "button" \| "submit"/);
     assert.match(src, /href\?:/);
     assert.match(src, /dispose/);
+    assert.match(src, /export function LiquidMetalFrame/);
   });
 
   it("MetalFx follows the app theme, not only the OS scheme", () => {

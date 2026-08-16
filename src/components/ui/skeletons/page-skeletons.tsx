@@ -90,13 +90,15 @@ export function ChatLayoutSkeleton() {
 
 function ComposerSkeleton() {
   return (
-    <div className="chat-gpt-input mx-auto flex w-full max-w-3xl flex-col px-4 pb-4 pt-5">
-      <SkeletonBlock className="mb-4 h-4 w-full rounded-lg" />
-      <div className="flex items-center gap-3">
-        <SkeletonBlock className="h-9 w-24 rounded-full" />
-        <SkeletonBlock className="h-9 w-16 rounded-full" />
-        <SkeletonBlock className="h-9 w-14 rounded-full" />
-        <SkeletonBlock className="ms-auto size-10 shrink-0 rounded-full" />
+    <div className="chat-gpt-input liquid-metal-frame mx-auto w-full max-w-3xl">
+      <div className="liquid-metal-frame-face flex flex-col px-4 pb-4 pt-5">
+        <SkeletonBlock className="mb-4 h-4 w-full rounded-lg" />
+        <div className="flex items-center gap-3">
+          <SkeletonBlock className="h-9 w-24 rounded-full" />
+          <SkeletonBlock className="h-9 w-16 rounded-full" />
+          <SkeletonBlock className="h-9 w-14 rounded-full" />
+          <SkeletonBlock className="ms-auto size-9 shrink-0 rounded-full" />
+        </div>
       </div>
     </div>
   );

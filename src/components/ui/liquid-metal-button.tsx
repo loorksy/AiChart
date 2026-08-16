@@ -4,6 +4,7 @@ import {
   liquidMetalFragmentShader,
   ShaderFitOptions,
   ShaderMount,
+  type ShaderMountUniforms,
 } from "@paper-design/shaders";
 import Link from "next/link";
 import {
@@ -34,6 +35,74 @@ export interface LiquidMetalButtonProps {
 const ICON_SIZE = 46;
 const TEXT_MIN_WIDTH = 142;
 const HEIGHT = 46;
+
+const LIQUID_METAL_UNIFORMS: ShaderMountUniforms = {
+  u_colorBack: [0, 0, 0, 0],
+  u_colorTint: [1, 1, 1, 1],
+  u_image: undefined,
+  u_isImage: false,
+  u_repetition: 4,
+  u_softness: 0.5,
+  u_shiftRed: 0.3,
+  u_shiftBlue: 0.3,
+  u_distortion: 0,
+  u_contour: 0,
+  u_angle: 45,
+  u_scale: 8,
+  u_shape: 1,
+  u_offsetX: 0.1,
+  u_offsetY: -0.1,
+  u_fit: ShaderFitOptions.contain,
+  u_rotation: 0,
+  u_originX: 0.5,
+  u_originY: 0.5,
+  u_worldWidth: 0,
+  u_worldHeight: 0,
+};
+
+function mountLiquidMetal(host: HTMLDivElement): ShaderMount | null {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  try {
+    return new ShaderMount(
+      host,
+      liquidMetalFragmentShader,
+      { ...LIQUID_METAL_UNIFORMS },
+      undefined,
+      reduce ? 0 : 0.6,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Same liquid-metal ring as the suggestion pills, sized to wrap any surface
+ * (the chat composer). The shader paints the frame; children sit on the
+ * inner face so the writing field stays readable.
+ */
+export function LiquidMetalFrame({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  const shaderRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const host = shaderRef.current;
+    if (!host) return;
+    const mount = mountLiquidMetal(host);
+    return () => mount?.dispose();
+  }, []);
+
+  return (
+    <div className={cn("liquid-metal-frame", className)}>
+      <div ref={shaderRef} className="liquid-metal-frame-shader" aria-hidden />
+      <div className="liquid-metal-frame-face">{children}</div>
+    </div>
+  );
+}
 
 /**
  * Liquid-metal pill. The WebGL sheet is the outer ring; a token-colored
@@ -67,45 +136,11 @@ export function LiquidMetalButton({
   const isIcon = viewMode === "icon";
 
   useEffect(() => {
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const host = shaderRef.current;
     if (!host) return;
 
-    let mount: ShaderMount | null = null;
-    try {
-      mount = new ShaderMount(
-        host,
-        liquidMetalFragmentShader,
-        {
-          u_colorBack: [0, 0, 0, 0],
-          u_colorTint: [1, 1, 1, 1],
-          u_image: undefined,
-          u_isImage: false,
-          u_repetition: 4,
-          u_softness: 0.5,
-          u_shiftRed: 0.3,
-          u_shiftBlue: 0.3,
-          u_distortion: 0,
-          u_contour: 0,
-          u_angle: 45,
-          u_scale: 8,
-          u_shape: 1,
-          u_offsetX: 0.1,
-          u_offsetY: -0.1,
-          u_fit: ShaderFitOptions.contain,
-          u_rotation: 0,
-          u_originX: 0.5,
-          u_originY: 0.5,
-          u_worldWidth: 0,
-          u_worldHeight: 0,
-        },
-        undefined,
-        reduce ? 0 : 0.6,
-      );
-      mountRef.current = mount;
-    } catch {
-      mountRef.current = null;
-    }
+    const mount = mountLiquidMetal(host);
+    mountRef.current = mount;
 
     return () => {
       mount?.dispose();

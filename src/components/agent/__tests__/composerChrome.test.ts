@@ -36,18 +36,18 @@ describe("composer chrome", () => {
     );
   });
 
-  it("uses a metal send control with a live ArrowUp glyph", () => {
+  it("uses a chip-styled send control with a live ArrowUp glyph", () => {
     assert.match(input, /<ArrowUp\b/);
-    assert.match(input, /MetalFx/);
+    assert.match(input, /metal-chip-icon/);
     assert.match(input, /composer-send-ready/);
     assert.match(input, /composer-send-launch/);
     assert.doesNotMatch(input, /<Send\b/);
+    assert.doesNotMatch(input, /MetalFx/);
   });
 
-  it("styles the composer shell and chips like the metal writing field", () => {
+  it("wraps the writing field in the same liquid-metal frame as suggestions", () => {
+    assert.match(input, /LiquidMetalFrame/);
     assert.match(input, /chat-gpt-input/);
     assert.match(input, /metal-chip/);
-    assert.match(input, /metal-icon-face/);
-    assert.match(input, /reflectionTargets/);
   });
 });

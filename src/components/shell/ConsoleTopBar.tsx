@@ -6,9 +6,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { NotificationCenter } from "@/components/agent/NotificationCenter";
 import { BalanceChip } from "@/components/shell/BalanceChip";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
-import { MetalIconButton } from "@/components/ui/metal-icon-button";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
+
+/**
+ * Bare icons, no metal ring. Chromatic glow on the header competed with
+ * the composer and the suggestion pills.
+ */
+const ICON_BUTTON =
+  "flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 /** Fired at the workspace so the chart re-requests its bars in place. */
 export const CHART_RELOAD_EVENT = "aichart:reload-chart";
@@ -109,17 +115,17 @@ export function ConsoleTopBar({
       data-testid="console-top-bar"
       className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2 sm:px-3"
     >
-      <span className="lg:hidden">
-        <MetalIconButton
-          data-testid="mobile-menu-trigger"
-          onClick={onToggleSidebar}
-          aria-label={sidebarOpen ? t("shell.close") : t("shell.open_menu")}
-          aria-expanded={sidebarOpen}
-          aria-controls="mobile-navigation-drawer"
-        >
-          <PanelLeft className="h-5 w-5 rtl:-scale-x-100" />
-        </MetalIconButton>
-      </span>
+      <button
+        type="button"
+        data-testid="mobile-menu-trigger"
+        onClick={onToggleSidebar}
+        aria-label={sidebarOpen ? t("shell.close") : t("shell.open_menu")}
+        aria-expanded={sidebarOpen}
+        aria-controls="mobile-navigation-drawer"
+        className={cn(ICON_BUTTON, "lg:hidden")}
+      >
+        <PanelLeft className="h-5 w-5 rtl:-scale-x-100" />
+      </button>
 
       <div className="relative ms-auto min-w-0 flex-1">
         <div
@@ -135,26 +141,30 @@ export function ConsoleTopBar({
         >
           {showBalance && <BalanceChip />}
           {showChartToggle && (
-            <MetalIconButton
+            <button
+              type="button"
               data-testid="topbar-chart-toggle"
               onClick={() => window.dispatchEvent(new CustomEvent(CHART_TOGGLE_EVENT))}
               aria-label={t("layout.show_chart")}
               title={t("layout.show_chart")}
+              className={ICON_BUTTON}
             >
               <CandlestickChart className="h-5 w-5" />
-            </MetalIconButton>
+            </button>
           )}
           {(refreshMode === "page" || refreshMode === "chart") && (
-            <MetalIconButton
+            <button
+              type="button"
               data-testid={refreshMode === "chart" ? "chart-refresh" : "console-refresh"}
               onClick={refresh}
               aria-label={t("shell.refresh")}
               title={t("shell.refresh")}
+              className={ICON_BUTTON}
             >
               <RefreshCw
                 className={cn("h-5 w-5", spinning && "animate-spin motion-reduce:animate-none")}
               />
-            </MetalIconButton>
+            </button>
           )}
           <NotificationCenter />
           <SidebarProfileMenu variant="topbar" displayName={displayName} />
