@@ -3,7 +3,6 @@
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -18,6 +17,8 @@ import {
   useAgentModels,
 } from "@/components/agent/AgentModelPicker";
 import { ProviderIcon } from "@/components/agent/ProviderIcon";
+import { ComposerChromeProvider } from "@/components/agent/ComposerChrome";
+import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { LiquidMetalFrame } from "@/components/ui/liquid-metal-button";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
@@ -34,18 +35,7 @@ const SPRING = "cubic-bezier(0.175, 0.885, 0.32, 1.275)";
 function ComposerModelChip() {
   const [open, setOpen] = useState(false);
   const { data, saving, choose, activeLabel, available } = useAgentModels(true);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   if (!available || !data) return null;
 
@@ -53,8 +43,9 @@ function ComposerModelChip() {
   const provider = activeRef?.split("/")[0] ?? "openai";
 
   return (
-    <div ref={wrapRef} className="relative min-w-0">
+    <div className="relative min-w-0">
       <button
+        ref={triggerRef}
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setOpen((v) => !v)}
@@ -75,28 +66,23 @@ function ComposerModelChip() {
         />
       </button>
 
-      <div
-        data-testid="composer-model-menu"
-        style={{ transformOrigin: "bottom", transitionTimingFunction: SPRING }}
-        className={cn(
-          "absolute bottom-full start-0 z-50 mb-2 w-64 overflow-hidden rounded-2xl border border-border bg-card/95 shadow-xl backdrop-blur-md transition-all duration-300",
-          open
-            ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
-            : "pointer-events-none translate-y-2 scale-95 opacity-0",
-        )}
+      <ComposerPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={triggerRef}
+        title={activeLabel ?? "model"}
+        testId="composer-model-menu"
       >
-        <div className="composer-menu-scroll max-h-72 p-1">
-          <ModelChoiceList
-            models={data.models}
-            selected={data.selected}
-            saving={saving}
-            onChoose={(ref) => {
-              void choose(ref);
-              setOpen(false);
-            }}
-          />
-        </div>
-      </div>
+        <ModelChoiceList
+          models={data.models}
+          selected={data.selected}
+          saving={saving}
+          onChoose={(ref) => {
+            void choose(ref);
+            setOpen(false);
+          }}
+        />
+      </ComposerPopover>
     </div>
   );
 }
@@ -125,6 +111,8 @@ export function AgentChatInput({
   const [value, setValue] = useState("");
   const [launching, setLaunching] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const shellRef = useRef<HTMLFormElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-grow: reset to auto first so the box can also shrink back down.
   useLayoutEffect(() => {
@@ -147,21 +135,23 @@ export function AgentChatInput({
 
   return (
     <form
+      ref={shellRef}
       data-testid="chat-composer"
-      className="chat-composer-shell relative px-3 pt-1 pb-[max(.5rem,env(safe-area-inset-bottom))]"
+      className="chat-composer-shell relative overflow-visible px-3 pt-1 pb-[max(.5rem,env(safe-area-inset-bottom))]"
       dir={dir}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
     >
+      <ComposerChromeProvider value={{ hostRef: frameRef, rootRef: shellRef }}>
       {/*
         Two tiers, not one row: the text gets the full width to grow into, and
         the controls sit on their own line underneath. Crowding a model picker,
         a chart toggle and a send button into the same line as the caret left
         the message itself the narrowest thing in the composer.
       */}
-      <LiquidMetalFrame className="chat-gpt-input mx-auto w-full max-w-3xl">
+      <LiquidMetalFrame ref={frameRef} className="chat-gpt-input mx-auto w-full max-w-3xl">
         <div className="flex flex-col px-4 pb-4 pt-5">
         <textarea
           ref={textareaRef}
@@ -246,6 +236,7 @@ export function AgentChatInput({
         </div>
         </div>
       </LiquidMetalFrame>
+      </ComposerChromeProvider>
     </form>
   );
 }

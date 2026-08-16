@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ChevronDown, Clock3 } from "lucide-react";
+import { Check, ChevronDown, Clock3 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,13 @@ export function ComposerIntervalPicker({
       >
         <Clock3 className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span dir="ltr">{interval}</span>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300",
+            open && "rotate-180",
+          )}
+          aria-hidden
+        />
       </button>
 
       <ComposerPopover
@@ -43,28 +50,24 @@ export function ComposerIntervalPicker({
         onClose={() => setOpen(false)}
         anchorRef={triggerRef}
         title={t("layout.chart")}
+        testId="composer-interval-menu"
       >
-        <div className="grid grid-cols-4 gap-1 p-2">
-          {INTERVALS.map((iv) => (
-            <button
-              key={iv}
-              type="button"
-              onClick={() => {
-                onSelect(iv);
-                setOpen(false);
-              }}
-              className={cn(
-                "flex min-h-11 items-center justify-center rounded-lg text-xs tabular-nums transition-colors hover:bg-muted sm:min-h-9",
-                iv === interval
-                  ? "bg-muted font-semibold text-foreground"
-                  : "text-muted-foreground",
-              )}
-              dir="ltr"
-            >
-              {iv}
-            </button>
-          ))}
-        </div>
+        {INTERVALS.map((iv) => (
+          <button
+            key={iv}
+            type="button"
+            onClick={() => {
+              onSelect(iv);
+              setOpen(false);
+            }}
+            data-active={iv === interval}
+            className="composer-sheet-item tabular-nums"
+            dir="ltr"
+          >
+            <span>{iv}</span>
+            {iv === interval && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+          </button>
+        ))}
       </ComposerPopover>
     </>
   );

@@ -445,7 +445,66 @@ label {
 
 .liquid-metal-frame {
   position: relative;
+  z-index: 20;
+  isolation: isolate;
   border-radius: 20px;
+}
+
+.composer-sheet {
+  --composer-sheet-tuck: 2.5rem;
+  z-index: 10;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 8%, var(--border));
+  background: color-mix(in srgb, var(--card) 62%, transparent);
+  box-shadow:
+    0 22px 48px color-mix(in srgb, var(--background) 42%, transparent),
+    0 1px 0 color-mix(in srgb, var(--foreground) 6%, transparent);
+  backdrop-filter: blur(28px) saturate(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(1.15);
+  padding-bottom: var(--composer-sheet-tuck);
+  transform-origin: bottom center;
+  animation: composer-sheet-rise 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes composer-sheet-rise {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.96);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-sheet {
+    animation: none;
+    filter: none;
+  }
+}
+.composer-sheet-item {
+  display: flex;
+  min-height: 2.75rem;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  padding-inline: 0.625rem;
+  text-align: start;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.composer-sheet-item:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.composer-sheet-item[data-active="true"] {
+  font-weight: 600;
+  color: var(--foreground);
+  background: var(--muted);
 }
 .liquid-metal-frame-shader {
   position: absolute;
@@ -454,16 +513,6 @@ label {
   overflow: hidden;
   border-radius: inherit;
   pointer-events: none;
-  /* Punch a hole so the metal lives on the rim only — never the writing field. */
-  padding: 2px;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
 }
 .liquid-metal-frame-shader canvas {
   position: absolute !important;
@@ -794,6 +843,8 @@ label {
 .chat-composer-shell {
   position: relative;
   z-index: 20;
+  isolation: isolate;
+  overflow: visible;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;

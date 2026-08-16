@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import { cn } from "@/lib/utils";
 import { ProviderIcon } from "@/components/agent/ProviderIcon";
 import { shortModelLabel } from "@/lib/modelCatalog";
 
@@ -93,8 +92,7 @@ export function useAgentModels(enabled: boolean) {
   };
 }
 
-const ROW_CLASS =
-  "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-start text-xs transition-colors hover:bg-muted sm:min-h-10";
+const ROW_CLASS = "composer-sheet-item";
 
 /** The model list itself, rendered inside whatever surface hosts it. */
 export function ModelChoiceList({
@@ -143,7 +141,8 @@ export function ModelChoiceList({
         type="button"
         disabled={saving}
         onClick={() => onChoose(null)}
-        className={cn(ROW_CLASS, !selected && "font-semibold")}
+        data-active={!selected}
+        className={ROW_CLASS}
       >
         <span>{t("model.platform_default")}</span>
         {!selected && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
@@ -160,7 +159,8 @@ export function ModelChoiceList({
               type="button"
               disabled={saving}
               onClick={() => onChoose(m.ref)}
-              className={cn(ROW_CLASS, selected === m.ref && "font-semibold")}
+              data-active={selected === m.ref}
+              className={ROW_CLASS}
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 <ProviderIcon

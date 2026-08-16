@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { RISK_PER_TRADE } from "@/lib/productModel";
@@ -81,6 +82,13 @@ export function RiskPerTradeControl() {
         )}
       >
         <span dir="ltr">{value.toFixed(1)}%</span>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300",
+            open && "rotate-180",
+          )}
+          aria-hidden
+        />
       </button>
 
       <ComposerPopover
@@ -89,13 +97,14 @@ export function RiskPerTradeControl() {
         anchorRef={triggerRef}
         title={t("settings.trading.risk_label")}
         labelledBy={labelId}
+        testId="composer-risk-menu"
       >
-        <div className="p-3">
+        <div className="px-2.5 py-2">
           <p id={labelId} className="sr-only">
             {t("settings.trading.risk_label")}
           </p>
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            <output className="text-3xl font-semibold tabular-nums" dir="ltr">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <output className="text-xl font-semibold tabular-nums" dir="ltr">
               {draft.toFixed(1)}%
             </output>
             <span className="text-[11px] text-muted-foreground">

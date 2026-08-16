@@ -8,6 +8,7 @@ import {
 } from "@paper-design/shaders";
 import Link from "next/link";
 import {
+  forwardRef,
   useEffect,
   useId,
   useRef,
@@ -60,13 +61,16 @@ const LIQUID_METAL_UNIFORMS: ShaderMountUniforms = {
   u_worldHeight: 0,
 };
 
-function mountLiquidMetal(host: HTMLDivElement): ShaderMount | null {
+function mountLiquidMetal(
+  host: HTMLDivElement,
+  extras: Partial<ShaderMountUniforms> = {},
+): ShaderMount | null {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   try {
     return new ShaderMount(
       host,
       liquidMetalFragmentShader,
-      { ...LIQUID_METAL_UNIFORMS },
+      { ...LIQUID_METAL_UNIFORMS, ...extras },
       undefined,
       reduce ? 0 : 0.6,
     );
@@ -75,34 +79,42 @@ function mountLiquidMetal(host: HTMLDivElement): ShaderMount | null {
   }
 }
 
+/** Canvas-fill rim: shape 0 traces the box. Pill offsets/scale would clip the top and bottom. */
+const FRAME_UNIFORMS: Partial<ShaderMountUniforms> = {
+  u_shape: 0,
+  u_fit: ShaderFitOptions.none,
+  u_scale: 1,
+  u_offsetX: 0,
+  u_offsetY: 0,
+  u_contour: 0.35,
+};
+
 /**
  * Same liquid-metal ring as the suggestion pills, sized to wrap any surface
  * (the chat composer). The shader paints the frame; children sit on the
  * inner face so the writing field stays readable.
  */
-export function LiquidMetalFrame({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+export const LiquidMetalFrame = forwardRef<
+  HTMLDivElement,
+  { children: ReactNode; className?: string }
+>(function LiquidMetalFrame({ children, className }, ref) {
   const shaderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const host = shaderRef.current;
     if (!host) return;
-    const mount = mountLiquidMetal(host);
+    const mount = mountLiquidMetal(host, FRAME_UNIFORMS);
     return () => mount?.dispose();
   }, []);
 
   return (
-    <div className={cn("liquid-metal-frame", className)}>
+    <div ref={ref} className={cn("liquid-metal-frame", className)}>
       <div ref={shaderRef} className="liquid-metal-frame-shader" aria-hidden />
       <div className="liquid-metal-frame-face">{children}</div>
     </div>
   );
-}
+});
+LiquidMetalFrame.displayName = "LiquidMetalFrame";
 
 /**
  * Liquid-metal pill. The WebGL sheet is the outer ring; a token-colored

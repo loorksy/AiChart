@@ -32,19 +32,18 @@ describe("metal chrome", () => {
     assert.match(src, /type\?: "button" \| "submit"/);
     assert.match(src, /href\?:/);
     assert.match(src, /dispose/);
-    assert.match(src, /export function LiquidMetalFrame/);
+    assert.match(src, /export const LiquidMetalFrame/);
   });
 
-  it("composer frame keeps liquid metal on the rim only", () => {
+  it("composer frame uses the rectangular rim, not a circle", () => {
+    const src = read("liquid-metal-button.tsx");
+    assert.match(src, /u_shape:\s*0/);
+    assert.match(src, /u_fit:\s*ShaderFitOptions\.none/);
+    assert.match(src, /FRAME_UNIFORMS/);
+    assert.match(src, /mountLiquidMetal\(host,\s*FRAME_UNIFORMS\)/);
     const css = readFileSync(join(__dirname, "../../../app/globals.css"), "utf8");
-    assert.match(css, /\.liquid-metal-frame-shader/);
-    assert.match(css, /mask-composite:\s*exclude/);
     assert.match(css, /\.liquid-metal-frame-face/);
     assert.match(css, /background:\s*var\(--chat-input\)/);
-    assert.doesNotMatch(
-      css.slice(css.indexOf(".liquid-metal-frame-face"), css.indexOf(".liquid-metal-frame-face") + 220),
-      /70%,\s*transparent/,
-    );
   });
 
   it("MetalFx follows the app theme, not only the OS scheme", () => {
