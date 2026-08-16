@@ -31,12 +31,42 @@ function MessageRowSkeleton({
   );
 }
 
+/**
+ * Home /chat with no conversation: logo, greeting, composer.
+ * Must not look like a thread — that remnant was the old loading state.
+ */
+export function HomeChatSkeleton() {
+  return (
+    <div
+      data-testid="home-chat-skeleton"
+      className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background lg:h-full"
+    >
+      <div className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center gap-6 px-3">
+        <SkeletonCircle size="lg" className="h-11 w-11" />
+        <div className="w-full space-y-2">
+          <SkeletonLine width="w-3/4 sm:w-1/2" className="mx-auto h-7" />
+          <SkeletonLine width="w-1/2 sm:w-1/3" className="mx-auto h-4" />
+        </div>
+        <div className="w-full">
+          <ComposerSkeleton />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Opening a saved chat: thread bubbles + docked composer.
+ * Keep this when entering chat history — do not replace it with the home hero.
+ */
 export function ChatLayoutSkeleton() {
   return (
-    <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background lg:h-full">
+    <div
+      data-testid="chat-history-skeleton"
+      className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background lg:h-full"
+    >
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Message area */}
           <div className="mx-auto w-full max-w-3xl flex-1 space-y-5 overflow-hidden px-4 py-6">
             <MessageRowSkeleton lineCount={3} />
             <MessageRowSkeleton isUser lineCount={1} />
@@ -44,7 +74,6 @@ export function ChatLayoutSkeleton() {
             <MessageRowSkeleton isUser lineCount={1} />
             <MessageRowSkeleton lineCount={2} />
           </div>
-          {/* Composer: textarea + control row (model, interval, risk, send) */}
           <div className="px-3 pt-1 pb-[max(.5rem,env(safe-area-inset-bottom))]">
             <ComposerSkeleton />
           </div>

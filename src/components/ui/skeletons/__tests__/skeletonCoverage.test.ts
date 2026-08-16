@@ -68,6 +68,29 @@ test("the skeleton library stays fluid at any viewport", () => {
   assert.doesNotMatch(source, /\b(ml|mr)-\d/);
 });
 
+test("home and chat-history skeletons stay separate", () => {
+  const library = readFileSync(
+    resolve(process.cwd(), "src/components/ui/skeletons/page-skeletons.tsx"),
+    "utf8",
+  );
+  const chatLoading = readFileSync(
+    resolve(process.cwd(), "src/app/chat/loading.tsx"),
+    "utf8",
+  );
+  const panel = readFileSync(
+    resolve(process.cwd(), "src/components/agent/SmartChartAgentPanel.tsx"),
+    "utf8",
+  );
+  assert.match(library, /data-testid="home-chat-skeleton"/);
+  assert.match(library, /data-testid="chat-history-skeleton"/);
+  assert.match(library, /MessageRowSkeleton/);
+  assert.match(chatLoading, /HomeChatSkeleton/);
+  assert.match(chatLoading, /ChatLayoutSkeleton/);
+  assert.match(chatLoading, /params\.get\("chat"\)/);
+  // Opening a saved conversation still has its own hydrating thread.
+  assert.match(panel, /data-testid="chat-hydrating"/);
+});
+
 test("motion is optional: the shimmer stops for reduced-motion users", () => {
   const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
   assert.match(css, /@keyframes skeleton-shimmer/);
