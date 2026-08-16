@@ -91,7 +91,7 @@ export function buildAgentSkillContext(
     }
     const descriptors = [...reg.discover(), ...extraDescriptors];
     const selected = selectAgentSkills(descriptors, {
-      // Three system slots so pattern-atlas + trading-lexicon can no longer
+      // Three system slots so pattern-atlas + aichart-trading can no longer
       // evict the trading-strategies doctrine, plus one more when the
       // operator's own skills exist so a personal strategy is heard too.
       maxSkills: extraDescriptors.length ? 4 : 3,

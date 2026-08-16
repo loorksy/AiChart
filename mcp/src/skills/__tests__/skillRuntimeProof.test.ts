@@ -13,7 +13,7 @@ describe("MCP skill runtime proof", () => {
     assert.ok(root, "catalogue root must resolve");
     assert.ok(skills.length >= 4, `expected >=4 skills, got ${skills.length}`);
     const names = skills.map((s) => s.metadata.name).sort();
-    assert.ok(names.includes("trading-lexicon"));
+    assert.ok(names.includes("pattern-atlas"));
     assert.ok(names.includes("trading-strategies"));
     assert.ok(names.includes("cards"));
     assert.ok(names.includes("aichart-trading"));
@@ -37,9 +37,9 @@ describe("MCP skill runtime proof", () => {
     assert.ok(analysis.selected.length >= 1);
     assert.ok(
       analysis.selected.some((s) =>
-        ["trading-lexicon", "trading-strategies"].includes(s.name),
+        ["trading-strategies", "pattern-atlas", "aichart-trading"].includes(s.name),
       ),
-      `expected lexicon/strategies, got ${JSON.stringify(analysis.selected.map((s) => s.name))}`,
+      `expected an analysis/recommendation skill, got ${JSON.stringify(analysis.selected.map((s) => s.name))}`,
     );
     assert.ok(
       !analysis.selected.some((s) => s.riskLevel === "execution"),
@@ -57,17 +57,17 @@ describe("MCP skill runtime proof", () => {
 
   it("lazily loads only when loadSkill is called — stubs never contain bodies", () => {
     const { skills } = discoverSkills();
-    const meta = skills.find((s) => s.metadata.name === "trading-lexicon")!;
+    const meta = skills.find((s) => s.metadata.name === "trading-strategies")!;
     const stub = skillResourceStub(meta.metadata);
     assert.match(stub, /not.*loaded skill/i);
     assert.match(stub, /load_agent_skill/);
-    const loaded = loadSkill("trading-lexicon");
+    const loaded = loadSkill("trading-strategies");
     assert.ok(loaded.content.length > 200, "real skill body must have content");
     assert.ok(
       stub.length < loaded.content.length,
       "resource stub must not embed the full skill body",
     );
-    assert.equal(loaded.metadata.name, "trading-lexicon");
+    assert.equal(loaded.metadata.name, "trading-strategies");
   });
 
   it("manual attachment is unnecessary — resolve returns selection evidence", () => {

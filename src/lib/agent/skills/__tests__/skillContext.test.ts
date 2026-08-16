@@ -31,7 +31,7 @@ test("a relevant skill loads for a matching market-analysis request", () => {
   assert.ok(context.catalogueSize >= 4, "canonical catalogue must be discovered");
   const names = context.loaded.map(({ name }) => name);
   assert.ok(
-    names.includes("trading-lexicon") || names.includes("trading-strategies"),
+    names.includes("trading-strategies") || names.includes("aichart-trading"),
     `expected an analysis/recommendation skill, got ${JSON.stringify(names)}`,
   );
   for (const skill of context.loaded) {

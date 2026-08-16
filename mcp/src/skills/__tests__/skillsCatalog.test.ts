@@ -9,9 +9,10 @@ describe("MCP canonical skill catalogue", () => {
     const { skills, root } = discoverSkills();
     assert.ok(root, "skill catalogue root must resolve from agent/workspace/skills");
     const names = skills.map(({ metadata }) => metadata.name);
-    for (const expected of ["aichart-trading", "cards", "trading-lexicon", "trading-strategies"]) {
+    for (const expected of ["aichart-trading", "cards", "pattern-atlas", "trading-strategies"]) {
       assert.ok(names.includes(expected), `missing skill: ${expected}`);
     }
+    assert.ok(!names.includes("trading-lexicon"));
     // Deterministic metadata-first ordering, no bodies.
     assert.deepEqual(names, [...names].sort());
     for (const { metadata } of skills) {
@@ -32,15 +33,16 @@ describe("MCP canonical skill catalogue", () => {
   });
 
   it("loads a relevant skill's full content explicitly", () => {
-    const loaded = loadSkill("trading-lexicon");
-    assert.equal(loaded.metadata.name, "trading-lexicon");
-    assert.ok(loaded.content.length > 500, "content must be the real skill body");
-    assert.match(loaded.content, /Trading Lexicon/i);
+    const loaded = loadSkill("trading-strategies");
+    assert.equal(loaded.metadata.name, "trading-strategies");
+    assert.ok(loaded.content.length > 200, "content must be the real skill body");
+    assert.match(loaded.content, /Evidence Catalogue/i);
   });
 
   it("reports missing skills honestly instead of pretending success", () => {
     assert.throws(() => loadSkill("nonexistent-skill"), /Skill not found/);
-    assert.throws(() => loadSkill("trading-lexicon", "99.0.0"), /Skill not found/);
+    assert.throws(() => loadSkill("trading-lexicon"), /Skill not found/);
+    assert.throws(() => loadSkill("trading-strategies", "99.0.0"), /Skill not found/);
   });
 
   it("aichart-trading is recommendation-only — no execution-risk skill in the catalogue", () => {

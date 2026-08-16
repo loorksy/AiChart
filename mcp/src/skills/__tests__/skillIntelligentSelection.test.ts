@@ -48,7 +48,7 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
     });
     assert.ok(r.candidates.length >= 1, "candidates must be scored");
     assert.ok(
-      r.selected.some((s) => s.name === "trading-lexicon" || s.category === "analysis"),
+      r.selected.some((s) => s.name === "trading-strategies" || s.category === "analysis"),
       `expected analysis skill, got ${JSON.stringify(names(r))} candidates=${JSON.stringify(r.candidates)}`,
     );
     assert.ok(!r.selected.some((s) => s.riskLevel === "execution"));
@@ -72,7 +72,7 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
     assert.ok(
       r.selected.length === 0 ||
         r.selected.every((s) =>
-          ["trading-strategies", "trading-lexicon"].includes(s.name),
+          ["trading-strategies", "pattern-atlas", "aichart-trading"].includes(s.name),
         ),
       `unexpected selection ${JSON.stringify(names(r))}`,
     );
@@ -125,7 +125,7 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
     // Both capability families should appear in candidates with scores.
     const candNames = r.candidates.map((c) => c.name);
     assert.ok(
-      candNames.includes("trading-lexicon") || candNames.includes("trading-strategies"),
+      candNames.includes("trading-strategies") || candNames.includes("pattern-atlas"),
     );
   });
 
@@ -157,10 +157,13 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
   it("keeps capability scoring; only atlas/strategy score pins are name-keyed (web parity)", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const src = fs.readFileSync(
+    const candidates = [
+      path.join(process.cwd(), "mcp/src/skills/select.ts"),
       path.join(process.cwd(), "src/skills/select.ts"),
-      "utf8",
-    );
+    ];
+    const selectPath = candidates.find((file) => fs.existsSync(file));
+    assert.ok(selectPath, "mcp skill selector source must exist");
+    const src = fs.readFileSync(selectPath, "utf8");
     assert.doesNotMatch(src, /metadata\.name === ["']trading-lexicon["']/);
     assert.doesNotMatch(src, /metadata\.name === ["']cards["']/);
     // Intentional parity pins with web skillSelector (not general name routing).

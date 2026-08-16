@@ -22,9 +22,10 @@ test("discovers repository skills in deterministic metadata-only order", () => {
   const registry = createDefaultAgentSkillRegistry();
   const names = registry.discover().map(({ metadata }) => metadata.name);
   assert.deepEqual(names, [...names].sort());
-  for (const name of ["aichart-trading", "cards", "trading-lexicon", "trading-strategies"]) {
+  for (const name of ["aichart-trading", "cards", "pattern-atlas", "trading-strategies"]) {
     assert.ok(names.includes(name));
   }
+  assert.ok(!names.includes("trading-lexicon"));
 });
 
 test("invalid and duplicate skills are rejected without breaking startup", () => {
@@ -73,7 +74,7 @@ test("read-only MCP adapter uses the same registry and cannot grant permissions"
     adapter.list_agent_skills().map(({ name }) => name),
     registry.list().map(({ metadata }) => metadata.name),
   );
-  assert.match(adapter.load_agent_skill({ name: "trading-lexicon" }).content, /Trading Lexicon/);
+  assert.match(adapter.load_agent_skill({ name: "trading-strategies" }).content, /Evidence Catalogue/);
   assert.equal("execute" in adapter, false);
 });
 

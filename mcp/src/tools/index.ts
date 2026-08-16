@@ -113,9 +113,8 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
 
   // Skill catalogue resources: metadata stubs ONLY — driven by discoverSkills().
   // Full bodies are available exclusively via load_agent_skill.
-  // Legacy URIs (aichart://trading-lexicon etc.) also return stubs — never bodies.
+  // Legacy URIs also return stubs — never bodies.
   const LEGACY_SKILL_URIS: Record<string, string> = {
-    "trading-lexicon": "aichart://trading-lexicon",
     "trading-strategies": "aichart://trading-strategies",
     cards: "aichart://cards",
   };

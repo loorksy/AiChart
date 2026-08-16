@@ -23,7 +23,7 @@ test("run trace persists safe tenant-scoped completed/cancelled/failed metadata"
   const trace = await import("@/lib/agent/runTrace");
   const runId = await trace.startAgentRun({
     userId: owner, requestId: "req-1", sessionId: "s1", contextVersion: "v2",
-    contextMessageCount: 5, recalledMemoryCount: 2, skillNames: ["trading-lexicon"],
+    contextMessageCount: 5, recalledMemoryCount: 2, skillNames: ["trading-strategies"],
   });
   assert.ok(runId);
   assert.equal(await trace.getAgentRunForUser(other, runId!), null);
