@@ -10,6 +10,7 @@
  * Every gate that DID run is reported, including the veto, so the operator
  * sees the checklist as far as it got rather than a bare refusal.
  */
+import { t } from "@/lib/i18n";
 import { GATE_NAMES, GATE_REQUIRED_TO_RUN } from "./types";
 import type { GateChainResult, GateId, GateStatus, GateVerdict } from "./types";
 
@@ -64,9 +65,11 @@ export async function runGateChain(
     } catch (error) {
       outcome = {
         status: "unavailable",
-        reasonAr: `تعذّر تشغيل فحص ${GATE_NAMES[gate.id]}: ${
-          error instanceof Error ? error.message : "خطأ غير معروف"
-        }`,
+        reasonAr: t("ar", "gate.run_failed", {
+          gate: GATE_NAMES[gate.id],
+          message:
+            error instanceof Error ? error.message : t("ar", "gate.unknown_error"),
+        }),
       };
     }
 
@@ -107,13 +110,13 @@ export function gateLineAr(v: GateVerdict): string {
 }
 
 export const GATE_LABELS_AR: Record<GateId, string> = {
-  G1: "الأخبار والأحداث الاقتصادية",
-  G2: "خريطة السيولة",
-  G3: "مناطق العرض والطلب",
-  G4: "الهيكل والانحياز",
-  G5: "مطابقة الاستراتيجية والأدلة",
-  G6: "هندسة المخاطرة",
-  G7: "التحقق من السعر الحي",
+  G1: t("ar", "gate.label.G1"),
+  G2: t("ar", "gate.label.G2"),
+  G3: t("ar", "gate.label.G3"),
+  G4: t("ar", "gate.label.G4"),
+  G5: t("ar", "gate.label.G5"),
+  G6: t("ar", "gate.label.G6"),
+  G7: t("ar", "gate.label.G7"),
 };
 
 /**
@@ -126,8 +129,8 @@ export function refusalSummaryAr(result: GateChainResult): string | null {
   if (result.allowed || !result.vetoedBy) return null;
   const v = result.vetoedBy;
   const label = GATE_LABELS_AR[v.id];
-  if (v.status === "unavailable") {
-    return `لا توجد توصية الآن: تعذّر إكمال فحص ${label}${v.reasonAr ? ` — ${v.reasonAr}` : ""}.`;
-  }
-  return `لا توجد توصية الآن: ${label}${v.reasonAr ? ` — ${v.reasonAr}` : ""}.`;
+  const detail = v.reasonAr ? ` — ${v.reasonAr}` : "";
+  return v.status === "unavailable"
+    ? t("ar", "gate.refusal.unavailable", { label, detail })
+    : t("ar", "gate.refusal.veto", { label, detail });
 }

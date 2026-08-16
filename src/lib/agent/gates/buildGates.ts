@@ -11,6 +11,7 @@
  * Nothing here re-runs a specialist or issues a second opinion on direction.
  * Every gate answers a factual question about whether a plan may exist at all.
  */
+import { t } from "@/lib/i18n";
 import type { GateDefinition } from "./chain";
 import { evaluateNewsWindow, newsBlockReasonAr } from "./newsWindow";
 import type { BlockingEvent } from "./newsWindow";
@@ -128,13 +129,13 @@ export function buildGates(input: GateInputs): GateBuildResult {
         if (!input.news) {
           return {
             status: "unavailable",
-            reasonAr: "تعذّر الوصول إلى تقويم الأخبار خلال المهلة.",
+            reasonAr: t("ar", "gate.news.calendar_timeout"),
           };
         }
         if (input.news.newsRisk === "unknown") {
           return {
             status: "unavailable",
-            reasonAr: input.news.reason || "لا يمكن تأكيد نافذة الأخبار حالياً.",
+            reasonAr: input.news.reason || t("ar", "gate.news.window_unconfirmed"),
             evidence: { configured: input.newsProviderConfigured },
           };
         }
@@ -145,7 +146,7 @@ export function buildGates(input: GateInputs): GateBuildResult {
         if (verdict.blocked) {
           return {
             status: "veto",
-            reasonAr: newsBlockReasonAr(verdict) ?? "نافذة خبر عالي التأثير.",
+            reasonAr: newsBlockReasonAr(verdict) ?? t("ar", "gate.news.high_impact_window"),
             evidence: {
               event: verdict.event?.title,
               minutesUntilClear: verdict.minutesUntilClear,
@@ -166,7 +167,7 @@ export function buildGates(input: GateInputs): GateBuildResult {
       id: "G2",
       run: async () => {
         if (!input.liquidity) {
-          return { status: "unavailable", reasonAr: "خريطة السيولة غير متاحة لهذه الجلسة." };
+          return { status: "unavailable", reasonAr: t("ar", "gate.liquidity.unavailable") };
         }
         return {
           status: "pass",
@@ -183,7 +184,7 @@ export function buildGates(input: GateInputs): GateBuildResult {
       id: "G3",
       run: async () => {
         if (!input.supplyDemand) {
-          return { status: "unavailable", reasonAr: "مناطق العرض والطلب غير متاحة." };
+          return { status: "unavailable", reasonAr: t("ar", "gate.supply_demand.unavailable") };
         }
         const side =
           input.plan.direction === "buy"
@@ -205,7 +206,7 @@ export function buildGates(input: GateInputs): GateBuildResult {
         if (!input.structure) {
           return {
             status: "unavailable",
-            reasonAr: "تعذّر قراءة هيكل السوق — لا أساس لبناء خطة.",
+            reasonAr: t("ar", "gate.structure.unavailable"),
           };
         }
         // An HTF conflict does not flip the plan; the direction stays the
@@ -214,10 +215,8 @@ export function buildGates(input: GateInputs): GateBuildResult {
         const seen = input.visualTimeframes ?? [];
         const blind = seen.length === 0;
         const reasons = [
-          conflict
-            ? "تعارض بين الفريم الحالي والفريم الأعلى — الخطة قائمة بثقة أقل."
-            : null,
-          blind ? "لم تتوفر أي لقطة شارت — القراءة من الأرقام وحدها." : null,
+          conflict ? t("ar", "gate.structure.htf_conflict") : null,
+          blind ? t("ar", "gate.structure.no_chart_snapshot") : null,
         ].filter(Boolean);
         return {
           status: "pass",
@@ -251,7 +250,7 @@ export function buildGates(input: GateInputs): GateBuildResult {
         if (!input.statisticalSupport) {
           return {
             status: "unavailable",
-            reasonAr: "تعذّر قراءة سجل الاستراتيجيات المُحقّقة.",
+            reasonAr: t("ar", "gate.strategy.registry_unavailable"),
           };
         }
         const verdict = gradeStrategyEvidence(strategyMatches(input.statisticalSupport));
@@ -287,9 +286,9 @@ export function buildGates(input: GateInputs): GateBuildResult {
         if (problems.length > 0) {
           return {
             status: "veto",
-            reasonAr: `الخطة غير متسقة هندسياً (${problems
-              .map((p) => p.code)
-              .join("، ")}) — لا تُصدر توصية بخطة تناقض شرط تفعيلها.`,
+            reasonAr: t("ar", "gate.plan.incoherent", {
+              problems: problems.map((p) => p.code).join(", "),
+            }),
             evidence: { problems },
           };
         }
@@ -310,7 +309,7 @@ export function buildGates(input: GateInputs): GateBuildResult {
         if (price == null || !Number.isFinite(price) || price <= 0) {
           return {
             status: "unavailable",
-            reasonAr: "تعذّر جلب سعر حي للتحقق النهائي من الخطة.",
+            reasonAr: t("ar", "gate.live_price.unavailable"),
           };
         }
         const verdict = revalidatePlan({
@@ -325,7 +324,7 @@ export function buildGates(input: GateInputs): GateBuildResult {
         if (verdict.status !== "ok") {
           return {
             status: "veto",
-            reasonAr: verdict.reasonAr ?? "الخطة لم تعد صالحة عند السعر الحي.",
+            reasonAr: verdict.reasonAr ?? t("ar", "gate.live_price.plan_invalid"),
             evidence: { ...verdict, currentPrice: price },
           };
         }

@@ -128,10 +128,6 @@ export function lifecycleCard(
   return lines.join("\n");
 }
 
-export function formatAmount(notional: number, currency = "دولار"): string {
-  return `${Math.round(notional)} ${currency}`;
-}
-
 export function sessionStartCard(profile: AccountProfile): string {
   return formatCard(
     "👋 مرحباً — Lonora",
@@ -174,97 +170,6 @@ export function analysisCard(input: {
     `🔹 ${envLine(input.profile)}`,
   );
   return formatCard(`📊 تحليل ${input.symbol}`, fields.slice(0, 8), input.profile);
-}
-
-export function approvalCard(input: {
-  symbol: string;
-  side: string;
-  riskAmount: number;
-  confidence: number;
-  entry?: number | null;
-  stop_loss?: number | null;
-  take_profit?: number | null;
-  profile: AccountProfile;
-  /** 'market' (default), 'limit', or 'stop' — a pending order proposal. */
-  orderType?: "market" | "limit" | "stop";
-  /** Trigger price for a pending order (limit or stop). */
-  limitPrice?: number | null;
-}): string {
-  const sideAr = input.side === "buy" ? "شراء 🟢" : "بيع 🔴";
-  const fields = [
-    `🔹 الاتجاه: ${sideAr} · الثقة: ${input.confidence}%`,
-    `🔹 مبلغ المخاطرة (مثال تعليمي): ${formatAmount(input.riskAmount, "دولار")}`,
-  ];
-  if (input.orderType === "limit" || input.orderType === "stop") {
-    const kind = input.orderType === "limit" ? "معلّق (Limit)" : "معلّق (Stop)";
-    fields.push(`🔹 نوع الأمر: ${kind} عند ${input.limitPrice ?? "—"}`);
-  }
-  if (input.entry) {
-    const sl = input.stop_loss ? ` · SL: ${input.stop_loss}` : "";
-    const tp = input.take_profit ? ` · TP: ${input.take_profit}` : "";
-    fields.push(`🔹 الدخول: ${input.entry}${sl}${tp}`);
-  }
-  fields.push(
-    "🔹 الأسلوب: Scalping",
-    `🔹 ${envLine(input.profile)}`,
-    "🔹 اضغط موافق أو رفض أدناه.",
-  );
-  return formatCard(`🤖 طلب صفقة ${input.symbol}`, fields, input.profile);
-}
-
-export function cancelledTradeCard(input: {
-  symbol: string;
-  reason: string;
-  profile: AccountProfile;
-}): string {
-  return formatCard(
-    "❌ تم إلغاء الصفقة",
-    [`🔹 زوج التداول: ${input.symbol}`, `🔹 السبب: ${input.reason}`],
-    input.profile,
-  );
-}
-
-export function tradeResultCard(input: {
-  symbol: string;
-  side: string;
-  qty: number;
-  avg_price: number;
-  pnl?: number;
-  profile: AccountProfile;
-}): string {
-  const sideAr = input.side === "buy" ? "شراء 🟢" : "بيع 🔴";
-  const fields = [
-    `🔹 الاتجاه: ${sideAr}`,
-    `🔹 الكمية: ${input.qty}`,
-    `🔹 السعر: ${input.avg_price}`,
-  ];
-  if (input.pnl != null) {
-    const sign = input.pnl >= 0 ? "+" : "";
-    fields.push(`🔹 النتيجة: ${sign}${input.pnl.toFixed(2)} دولار`);
-  }
-  return formatCard(`✅ صفقة ${input.symbol}`, fields, input.profile);
-}
-
-export function balanceCard(input: {
-  balance: string;
-  equity?: string;
-  profile: AccountProfile;
-}): string {
-  const fields = [`🔹 الرصيد: ${input.balance}`];
-  if (input.equity) fields.push(`🔹 حقوق الملكية: ${input.equity}`);
-  return formatCard("💰 المحفظة", fields, input.profile);
-}
-
-export function menuCard(profile: AccountProfile): string {
-  return formatCard(
-    "📋 القائمة الرئيسية",
-    [
-      "🔹 اسألني أو اختر خياراً من هذه الرسالة",
-      `🔹 الأداة: ${DISPLAY_NAME_AR}`,
-      `🔹 ${envLine(profile)}`,
-    ],
-    profile,
-  );
 }
 
 /** @deprecated Use analysisCard — kept for callers migrating gradually. */

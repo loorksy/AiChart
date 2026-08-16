@@ -238,3 +238,66 @@ liveReply test pins that no status prose exists in the module; liveProgress
 pins that the empty render is an empty string and the bubble is born from
 the first real event; parity pins the informational-result delivery shape
 and both narration wires.
+
+## Round 2, Phase E — Arabic out of system files: the language map + the ratchet
+
+The owner's rule, verbatim in intent: system files must contain no Arabic at
+all — Arabic is added to the language map (`src/lib/i18n`), and static texts
+must not exist. Two things follow from taking that seriously:
+
+1. **User-facing Arabic becomes i18n data.** Every migrated string now lives
+   in BOTH `src/lib/i18n/en.ts` (which defines `TranslationKey`, so the
+   compiler enforces parity) and `ar.ts`, and reaches code through
+   `t(locale, key, replacements)`. Migrated in this phase, chosen for being
+   what the operator actually reads:
+   - `markets/tradingCalendar.ts` — the five session-status reasons
+     (`session.*`).
+   - The whole gate chain — G1–G7 labels, the crash template, both refusal
+     composers (`gates/chain.ts`), every per-gate reason in
+     `gates/buildGates.ts`, `newsWindow.ts`, `revalidation.ts`,
+     `strategyEvidence.ts` (`gate.*`).
+   - `closedMarketScenario.ts` — the deterministic scenario notice and the
+     synthesizer's scenario preamble (`scenario.*`).
+   - `cards/telegramCards.ts` — every card header and phrase, reusing the
+     web renderer's existing `agent.card.*` keys where the strings matched
+     (`tg.*` where Telegram-specific).
+   - `telegram/webhookAgent.ts` + `telegram/conversation.ts` — link prompt,
+     receipts, captions, error notices, the tools-block line (`tg.*`).
+   - `errorTaxonomy.ts` — both inline ar/en failure-message maps became
+     `fault.*` keys; the stage-list joiner is `list.separator` so even the
+     comma is locale data.
+   - `orchestrator.ts` — all 38 Arabic lines: activity narration templates,
+     blocker summaries, restored-recommendation fields, invalidation-rule
+     templates (`orch.*`). `bilingual()` survives only where it selects
+     between two COMPUTED values (dataQuality coverage summaries).
+   - `evidenceCard.ts` summary line (`evidence.*`),
+     `sessionRecommendation.ts` direction words (reuses `decision.*`).
+
+2. **The ratchet** (`src/lib/__tests__/arabicInSystemFiles.test.ts`, in
+   `test:guards`). The rule cannot be applied retroactively in one sweep —
+   ~240 files still carry ~2,060 Arabic lines — so the guard records the
+   debt per file (`arabicBaseline.json`) and fails on: Arabic in any file
+   NOT in the baseline; any recorded file whose count GROWS; and any
+   baseline entry LARGER than reality (so the recorded debt is always the
+   real debt and can only move toward zero). Probed before trusting: an
+   injected new-file violation and an injected count increase were both
+   caught. Exempt as language data, not exceptions to the rule:
+   `src/lib/i18n/**`, `telegram-ar-commands.json` (menu vocabulary),
+   `landingCopy.ts` (structured bilingual content map), and test files
+   (they pin Arabic behavior).
+
+Dead code found by the migration and deleted rather than translated:
+`telegramCommands.ts` lost its execution-era surface (approval/positions
+buttons, the callback→command map, reply-keyboard rows — zero importers, all
+promising trade execution the platform doesn't do); `lib/telegramCards.ts`
+lost `approvalCard`, `tradeResultCard`, `balanceCard`, `cancelledTradeCard`,
+`menuCard`, `formatAmount` and `telegram.ts` its re-export of the first two
+(zero importers). `CHART_ACTION` is now exported from `telegramCommands.ts`
+off the menu JSON instead of being duplicated as a literal in
+`conversation.ts`.
+
+Deliberately NOT migrated (recorded in the baseline instead): input-matching
+vocabulary (`intentRouter.ts`'s 156 lines match what USERS type — that is a
+classifier's data, not output; same for the Arabic keyword in
+`errorTaxonomy`'s auth matcher), admin panels, and the long tail. The
+baseline is the worklist; the guard guarantees it only shrinks.

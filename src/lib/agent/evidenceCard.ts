@@ -17,6 +17,7 @@
  *    confidence the live read does not support.
  */
 // TYPE-only import (erased at build time) — safe from the client bundle.
+import { t } from "@/lib/i18n";
 import type { StrategyBacktestEvidence, StrategyDeployment } from "@/lib/strategies/evidence";
 // VALUE import must come from the dependency-free thresholds module: importing
 // it from evidence.ts would drag the database into the browser bundle and break
@@ -206,16 +207,13 @@ export function scoreHistoricalEvidence(card: EvidenceCard): {
 export function summarizeEvidenceCard(card: EvidenceCard, locale: "ar" | "en"): string {
   const wf =
     card.walkForward === "passed"
-      ? locale === "ar" ? "اجتاز الاختبار الأمامي" : "passed walk-forward"
+      ? t(locale, "evidence.walkforward.passed")
       : card.walkForward === "failed"
-        ? locale === "ar" ? "لم يجتز الاختبار الأمامي" : "failed walk-forward"
-        : locale === "ar" ? "لم يُقيَّم أمامياً" : "walk-forward not evaluated";
-  if (locale === "ar") {
-    return `${card.tradeCount} صفقة تاريخية · ${wf}${
-      card.liveSampleSize > 0 ? ` · ${card.liveSampleSize} نتيجة حية` : ""
-    }`;
-  }
-  return `${card.tradeCount} historical trades · ${wf}${
-    card.liveSampleSize > 0 ? ` · ${card.liveSampleSize} live results` : ""
+        ? t(locale, "evidence.walkforward.failed")
+        : t(locale, "evidence.walkforward.none");
+  return `${t(locale, "evidence.trades_count", { count: String(card.tradeCount) })} · ${wf}${
+    card.liveSampleSize > 0
+      ? ` · ${t(locale, "tg.live_results", { count: String(card.liveSampleSize) })}`
+      : ""
   }`;
 }

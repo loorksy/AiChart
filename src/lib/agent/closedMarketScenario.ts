@@ -4,8 +4,8 @@
  * For as long as this platform has existed, a weekend request for a
  * recommendation was answered with an apology: `market_closed`, "come back
  * when the session opens". The Telegram greeting meanwhile PROMISED the
- * opposite — "والتوصية تنتظر الافتتاح" — a product promise with no code path
- * behind it. This module is that code path.
+ * opposite — "the recommendation awaits the open" — a product promise with no
+ * code path behind it. This module is that code path.
  *
  * The doctrine does not change: the model may not wait, the gates may refuse.
  * What changes is what a closed market MEANS. It is not an operational
@@ -20,6 +20,7 @@
  * strings; these functions exist so the exemptions are CALLS a test can
  * make, not strings it greps for.
  */
+import { t } from "@/lib/i18n";
 import { getSessionStatus, nextMarketOpenAt } from "@/lib/markets/tradingCalendar";
 import type { ActivationRule } from "@/lib/recommendations/activationRule";
 
@@ -105,12 +106,10 @@ const nextOpenFormatter = new Intl.DateTimeFormat("ar", {
  * "the market is closed" from code that cannot forget to say it.
  */
 export function scenarioNoticeAr(scenario: ClosedMarketScenario): string {
-  const opens = nextOpenFormatter.format(scenario.nextOpenAt);
-  return (
-    `السوق مغلق الآن (${scenario.reasonAr.replace(/\.$/, "")}). ` +
-    `هذا سيناريو متوقع مبني على آخر إغلاق — التوصية شرطية وتنتظر التفعيل بعد ` +
-    `فتح السوق (${opens} بتوقيت الرياض).`
-  );
+  return t("ar", "scenario.notice", {
+    reason: scenario.reasonAr.replace(/\.$/, ""),
+    opens: nextOpenFormatter.format(scenario.nextOpenAt),
+  });
 }
 
 /**
@@ -119,12 +118,5 @@ export function scenarioNoticeAr(scenario: ClosedMarketScenario): string {
  * notice above) never depends on the model honoring this.
  */
 export function scenarioPromptBlock(scenario: ClosedMarketScenario): string {
-  return [
-    "## وضع السيناريو — السوق مغلق",
-    `السوق مغلق حالياً (${scenario.reasonAr}) وأحدث البيانات هي إغلاق آخر جلسة.`,
-    "المطلوب: سيناريو متوقع للافتتاح القادم مع توصية شرطية كاملة —",
-    "مستويات دخول ووقف وأهداف مبنية على آخر إغلاق، وشرط تفعيل صريح",
-    "(كسر/إغلاق/لمسة) يُقاس على شموع ما بعد الافتتاح. لا تعتذر عن إغلاق",
-    "السوق ولا تؤجل الإجابة — الإغلاق مذكور للمستخدم تلقائياً.",
-  ].join("\n");
+  return t("ar", "scenario.prompt_block", { reason: scenario.reasonAr });
 }

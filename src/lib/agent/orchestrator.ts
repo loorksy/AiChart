@@ -12,7 +12,7 @@ import type {
   DecisionTrace,
 } from "./types";
 import type { EvidenceDimension } from "./evidenceDimensions";
-import type { AppLocale } from "@/lib/i18n";
+import { t, type AppLocale } from "@/lib/i18n";
 import type { AgentConversationContext } from "./context";
 import { contextualizeIntentMessage } from "./context";
 import { newId } from "./activity";
@@ -444,11 +444,7 @@ async function runUnifiedChartAgentInner(
         },
         locale,
         userMessage,
-        fallback: bilingual(
-          locale,
-          "ألغيت التوصية النشطة في هذه الجلسة.",
-          "The active recommendation in this session has been cancelled.",
-        ),
+        fallback: t(locale, "orch.rec_cancelled"),
       });
       return {
         decision: "informational",
@@ -487,7 +483,7 @@ async function runUnifiedChartAgentInner(
   // clarify). This NEVER runs market/risk/news agents and NEVER opens a trade —
   // it only reads the safe serialized user drawings and returns an answer or a
   // set of idempotent mutations the client applies after the final SSE. Checked
-  // before explain_chart_drawings because "رأيك في رسمي" references the user's
+  // before explain_chart_drawings because "what do you think of my drawing" references the user's
   // OWN manual drawing, not the agent's AiChart drawings.
   if (isUserDrawingEdit(intents)) {
     return handleUserDrawingCommand({
@@ -589,7 +585,7 @@ async function runUnifiedChartAgentInner(
    * A closed market used to be an operational blocker: an early return here,
    * `market_closed`, "come back when the session opens". That answered a
    * weekend question about gold with an apology while the Telegram greeting
-   * promised "والتوصية تنتظر الافتتاح" — a promise nothing implemented.
+   * promised the recommendation would await the open — a promise nothing implemented.
    *
    * Scenario mode is that implementation. Nothing is broken on a weekend —
    * the tape is paused at Friday's close, which is complete, real data — so
@@ -615,7 +611,9 @@ async function runUnifiedChartAgentInner(
     trackedCtx.emitActivity({
       type: "data",
       status: "completed",
-      message: `${marketClosedScenario.reasonAr} أبني سيناريو الافتتاح القادم من آخر إغلاق.`,
+      message: t("ar", "orch.scenario_building", {
+        reason: marketClosedScenario.reasonAr,
+      }),
       metadata: { stage: "market_data", code: "market_closed_scenario" },
     });
   }
@@ -662,18 +660,14 @@ async function runUnifiedChartAgentInner(
       confidence: 0,
       confidenceSemantics: newsSemantics,
       summary: unknownNews
-        ? bilingual(
-            locale,
-            "خطر الأخبار غير معروف لأن مزوّد الأخبار غير مفعّل، لا يمكن تأكيد خطر الأخبار حالياً.",
-            "News risk is unknown because no news provider is configured — I cannot confirm news risk right now.",
-          )
+        ? t(locale, "orch.news_unknown")
         : news?.reason
           ? news.reason
-          : bilingual(locale, "تمت مراجعة الأخبار.", "News review completed."),
+          : t(locale, "orch.news_reviewed"),
       keyReasons: [],
       riskWarnings:
         level === "high"
-          ? [bilingual(locale, "خطر إخباري مرتفع قريب.", "High-impact news risk is near.")]
+          ? [t(locale, "orch.news_high_risk")]
           : [],
       activityEvents: collected,
       newsRisk: {
@@ -768,7 +762,7 @@ async function runUnifiedChartAgentInner(
     trackedCtx.emitActivity({
       type: "data",
       status: "failed",
-      message: "تعذّر تجهيز بيانات السوق — لا يمكن إكمال تحليل الشارت الآن.",
+      message: t("ar", "orch.market_data_failed_activity"),
       metadata: marketFailure
         ? { stage: marketFailure.stage, code: marketFailure.code }
         : { stage: "market_data", code: "timeout" },
@@ -783,18 +777,14 @@ async function runUnifiedChartAgentInner(
         traceId: ctx.requestId,
       }),
       confidence: 0,
-      summary: bilingual(
-        locale,
-        "تعذّر تجهيز بيانات السوق من المخزن/حساب MetaTrader. حاول مرة أخرى بعد قليل.",
-        "Could not prepare market data from the warehouse/your MetaTrader account. Try again shortly.",
-      ),
+      summary: t(locale, "orch.market_data_failed_summary"),
       keyReasons: [
         marketFailure
           ? `Market data unavailable (${marketFailure.code}).`
           : "Market data unavailable (stage deadline).",
       ],
       riskWarnings: [
-        bilingual(locale, "لم تصدر توصية بسبب نقص البيانات.", "No recommendation was issued due to missing data."),
+        t(locale, "orch.no_rec_missing_data"),
       ],
       activityEvents: collected,
       analysisId,
@@ -810,18 +800,14 @@ async function runUnifiedChartAgentInner(
       market.sync.warehouseLastTime != null
         ? Math.max(0, Math.round((Date.now() - market.sync.warehouseLastTime) / 1000))
         : null;
-    const ageAr =
+    const age =
       tailAgeSec == null
         ? ""
         : tailAgeSec < 120
-          ? ` آخر شمعة متوفرة عمرها ${tailAgeSec} ثانية.`
-          : ` آخر شمعة متوفرة عمرها ${Math.round(tailAgeSec / 60)} دقيقة.`;
-    const ageEn =
-      tailAgeSec == null
-        ? ""
-        : tailAgeSec < 120
-          ? ` Latest available candle is ${tailAgeSec}s old.`
-          : ` Latest available candle is ${Math.round(tailAgeSec / 60)}m old.`;
+          ? t(locale, "orch.tail_age_seconds", { age: String(tailAgeSec) })
+          : t(locale, "orch.tail_age_minutes", {
+              age: String(Math.round(tailAgeSec / 60)),
+            });
     return {
       decision: "action_required",
       envelope: operationalBlockerEnvelope({
@@ -831,18 +817,13 @@ async function runUnifiedChartAgentInner(
         traceId: ctx.requestId,
       }),
       confidence: 0,
-      summary: bilingual(
-        locale,
-        `${market.sync.reason}${ageAr} بدأ تحديث تلقائي من حساب MetaTrader — أعد طلبك خلال لحظات وسيكتمل التحليل.`,
-        `${market.sync.reason}${ageEn} An automatic refresh from your MetaTrader account is already running — ask again in a moment and the analysis will complete.`,
-      ),
+      summary: t(locale, "orch.sync_stale_summary", {
+        reason: market.sync.reason,
+        age,
+      }),
       keyReasons: [market.sync.reason],
       riskWarnings: [
-        bilingual(
-          locale,
-          "تعذّر تأكيد أحدث الأسعار — لم تُصدر توصية.",
-          "Latest prices could not be confirmed — no recommendation was issued.",
-        ),
+        t(locale, "orch.prices_unconfirmed"),
       ],
       activityEvents: collected,
       analysisId,
@@ -889,11 +870,7 @@ async function runUnifiedChartAgentInner(
       ),
       keyReasons: [market.dataQuality.coverage.summaryEn],
       riskWarnings: [
-        bilingual(
-          locale,
-          "أُوقف التحليل لأن سلسلة الأسعار تفتقد جزءاً كبيراً من البيانات — بدأ الإصلاح التلقائي.",
-          "Analysis was stopped because a large part of the price series is missing — automatic repair has started.",
-        ),
+        t(locale, "orch.analysis_stopped_gaps"),
       ],
       activityEvents: collected,
       analysisId,
@@ -917,11 +894,7 @@ async function runUnifiedChartAgentInner(
   // Significant (non-blocking) gaps: surface as a warning event + evidence.
   const significantGapWarning =
     market.dataQuality.coverage.gapSeverity === "significant"
-      ? bilingual(
-          locale,
-          "توجد فجوات بيانات ملحوظة في بعض الفريمات — بدأ الإصلاح التلقائي؛ اعتُبرت الأدلة المتأثرة أضعف.",
-          "Noticeable data gaps exist on some timeframes — automatic repair started; affected evidence is weighted lower.",
-        )
+      ? t(locale, "orch.gaps_warning")
       : null;
   if (significantGapWarning) {
     trackedCtx.emitActivity({
@@ -1097,7 +1070,7 @@ async function runUnifiedChartAgentInner(
       // had read the market and chosen to stand aside, which is not what
       // happened. The returned envelope has always been informational; only the
       // wording was lying.
-      message: "تعذّر إكمال فحص المخاطر — عائق تشغيلي، لا قرار سوقي.",
+      message: t("ar", "orch.risk_check_failed"),
       metadata: { stage: "risk", code: riskFailure?.code ?? "timeout" },
     });
     return buildAgentFallbackResult(
@@ -1218,7 +1191,9 @@ async function runUnifiedChartAgentInner(
     trackedCtx.emitActivity({
       type: "analysis",
       status: "completed",
-      message: `تمت مراجعة ${visual.snapshots.length} لقطات شارت بصرياً.`,
+      message: t("ar", "orch.visual_reviewed", {
+        count: String(visual.snapshots.length),
+      }),
       metadata: { timeframes: visual.snapshots.map((s) => s.timeframe) },
     });
   }
@@ -1230,8 +1205,12 @@ async function runUnifiedChartAgentInner(
       type: "analysis",
       status: "warning",
       message: visual.snapshots.length
-        ? `تعذّر التقاط ${visual.missing.map((m) => m.timeframe).join("، ")} — التحليل يقرأ ما تبقّى فقط.`
-        : "تعذّر التقاط أي شارت — التحليل يقرأ الأرقام وحدها.",
+        ? t("ar", "orch.visual_partial", {
+            missing: visual.missing
+              .map((m) => m.timeframe)
+              .join(t("ar", "list.separator")),
+          })
+        : t("ar", "orch.visual_none"),
       metadata: {
         requested: visual.requested,
         captured: visual.snapshots.map((s) => s.timeframe),
@@ -1270,7 +1249,7 @@ async function runUnifiedChartAgentInner(
           // Realised-outcome lessons (item 14): evidence the model weighs.
           lessonsBlock,
           // Phase C4: continuity aid so the summary can reference prior turns
-          // ("مقارنة بالخطة السابقة…") instead of reading like a first message.
+          // ("compared with the previous plan…") instead of reading like a first message.
           conversationBlock: conversationBlockForSynth(input.conversationContext),
           visualSnapshots: visual.snapshots,
           visualCoverageNote: visualCoverageNote(visual),
@@ -1537,7 +1516,7 @@ async function runUnifiedChartAgentInner(
     }
 
     if (!gateChain.allowed) {
-      const refusal = refusalSummaryAr(gateChain) ?? "لا توجد توصية الآن.";
+      const refusal = refusalSummaryAr(gateChain) ?? t("ar", "orch.no_rec_now");
       log.info("agent.gate_chain.refused", {
         requestId: ctx.requestId,
         gate: gateChain.vetoedBy?.id,
@@ -1985,11 +1964,7 @@ async function noStoredRecommendation(
     facts: { storedRecommendation: null },
     locale,
     userMessage,
-    fallback: bilingual(
-      locale,
-      "لا توجد توصية محفوظة في هذه الجلسة حاليًا.",
-      "There is no saved recommendation in this session right now.",
-    ),
+    fallback: t(locale, "orch.no_saved_rec"),
   });
   return {
     decision: "informational",
@@ -2068,14 +2043,14 @@ function activeRecommendationFromChartContext(
     takeProfit: rec.take_profit ?? targets[0],
     rr: rec.rr,
     status: "pending_entry",
-    triggerCondition: "توصية مستعادة من الشارت الحالي.",
+    triggerCondition: t("ar", "orch.restored_trigger"),
     invalidationLevel: rec.stop_loss,
     invalidationRule:
       rec.action === "buy"
-        ? `إغلاق شمعة تحت ${rec.stop_loss} يبطل السيناريو.`
-        : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`,
-    summary: "توصية مستعادة من الرسم/التخطيط الحالي على الشارت.",
-    keyReasons: ["التوصية موجودة على الشارت الحالي وتم استخدامها كسياق للمتابعة."],
+        ? t("ar", "orch.invalidation_below", { level: String(rec.stop_loss) })
+        : t("ar", "orch.invalidation_above", { level: String(rec.stop_loss) }),
+    summary: t("ar", "orch.restored_summary"),
+    keyReasons: [t("ar", "orch.restored_reason")],
     riskWarnings: [],
     publicReasoningSummary: [],
     priceAtCreation: chartContext?.latestCandle?.close,
@@ -2100,11 +2075,7 @@ async function drawStoredRecommendation(
       facts: { activeRecommendation: null },
       locale,
       userMessage,
-      fallback: bilingual(
-        locale,
-        "لا توجد توصية نشطة لأرسم تفاصيلها.",
-        "There is no active recommendation to draw.",
-      ),
+      fallback: t(locale, "orch.no_active_rec_draw"),
     });
     return {
       decision: "informational",
@@ -2137,16 +2108,11 @@ async function drawStoredRecommendation(
     locale,
     userMessage,
     fallback: drawings.length
-      ? bilingual(
-          locale,
-          `رسمت تفاصيل التوصية النشطة (${recommendationDirectionAr(rec.direction)} على ${rec.symbol}): الدخول والوقف والأهداف. لم أُنشئ توصية جديدة.`,
-          `Re-drew the active ${rec.direction} recommendation on ${rec.symbol}: entry, stop, and targets. No new recommendation was created.`,
-        )
-      : bilingual(
-          locale,
-          "التوصية النشطة موجودة لكن لا توجد رسومات محفوظة لها لإعادة عرضها.",
-          "The active recommendation exists but has no saved drawings to re-display.",
-        ),
+      ? t(locale, "orch.redrew_details", {
+          direction: t(locale, `decision.${rec.direction}`),
+          symbol: rec.symbol,
+        })
+      : t(locale, "orch.no_saved_drawings"),
   });
   return {
     decision: "informational",
@@ -2237,7 +2203,7 @@ async function trackStoredRecommendation(input: {
   ctx.emitActivity({
     type: "analysis",
     status: "started",
-    message: "أراجع التوصية السابقة وحالتها الحالية.",
+    message: t("ar", "orch.reviewing_rec"),
   });
   const market = await runMarketDataAgent({ ...ctx, emitActivity: () => {} }, {
     symbol: rec.symbol,
@@ -2257,11 +2223,7 @@ async function trackStoredRecommendation(input: {
         retryable: true,
       }),
       confidence: 0,
-      summary: bilingual(
-        locale,
-        "تعذّر تأكيد أحدث الأسعار من حساب MetaTrader الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
-        "Could not confirm the latest broker prices right now. Wait a few seconds and ask again — no page refresh needed.",
-      ),
+      summary: t(locale, "orch.broker_prices_unconfirmed"),
       keyReasons: [market.sync.reason],
       riskWarnings: [],
       activityEvents: collected,
@@ -2299,11 +2261,7 @@ async function trackStoredRecommendation(input: {
       ),
       keyReasons: [market.dataQuality.coverage.summaryEn],
       riskWarnings: [
-        bilingual(
-          locale,
-          "أُوقف تحديث التوصية لأن سلسلة الأسعار تفتقد جزءاً كبيراً من البيانات — بدأ الإصلاح التلقائي.",
-          "Recommendation status was not updated because a large part of the price series is missing — automatic repair has started.",
-        ),
+        t(locale, "orch.rec_update_stopped_gaps"),
       ],
       activityEvents: collected,
       activeRecommendation: {
@@ -2327,7 +2285,7 @@ async function trackStoredRecommendation(input: {
   const evaluated = evaluateRecommendationStatus({ recommendation: rec, market });
   await updateActiveRecommendationStatus(rec.id, evaluated.status, evaluated.reason);
   // Same market, same moment, same verdict on the CARD: run the canonical
-  // rule-aware tracker for this plan too, so "تابع التوصية" cannot answer one
+  // rule-aware tracker for this plan too, so "follow the recommendation" cannot answer one
   // thing in prose while the tracked card waits for the next cron sweep to
   // say another.
   if (ctx.userId != null) {
@@ -2348,7 +2306,7 @@ async function trackStoredRecommendation(input: {
   ctx.emitActivity({
     type: "analysis",
     status: "completed",
-    message: "حدّثت حالة التوصية المحفوظة.",
+    message: t("ar", "orch.rec_status_updated"),
     metadata: { status: evaluated.status },
   });
 
@@ -2474,8 +2432,8 @@ async function storeFinalRecommendation(input: {
     invalidationRule:
       rec.invalidationRule ??
       (rec.action === "buy"
-        ? `إغلاق شمعة تحت ${rec.stop_loss} يبطل السيناريو.`
-        : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`),
+        ? t("ar", "orch.invalidation_below", { level: String(rec.stop_loss) })
+        : t("ar", "orch.invalidation_above", { level: String(rec.stop_loss) })),
     setupType: input.scalp ? "scalp" : candidate?.setupType,
     poi: candidate
       ? {

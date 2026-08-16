@@ -23,6 +23,7 @@
  * decision path, and a bilingual card would mean two strings drifting apart.
  */
 import { GATE_LABELS_AR } from "../gates/chain";
+import { t } from "@/lib/i18n";
 import { escapeTelegramHtml as esc } from "@/lib/telegram/html";
 import {
   assertNeverCard,
@@ -31,9 +32,9 @@ import {
 } from "./types";
 
 const DECISION_AR: Record<string, string> = {
-  buy: "شراء",
-  sell: "بيع",
-  wait: "انتظار",
+  buy: t("ar", "decision.buy"),
+  sell: t("ar", "decision.sell"),
+  wait: t("ar", "decision.wait"),
 };
 
 /** Values the model/envelope use internally — never show these on a phone. */
@@ -70,7 +71,10 @@ export function renderCardForTelegram(card: AgentCard): string | null {
         hour: "numeric",
         minute: "2-digit",
       }).format(card.nextOpenAt);
-      return `🕒 <b>السوق مغلق — سيناريو للافتتاح القادم</b>\n${esc(card.reasonAr)} يفتح ${opens} بتوقيت الرياض، والتوصية أدناه شرطية تنتظر التفعيل.`;
+      return `🕒 <b>${t("ar", "tg.scenario.title")}</b>\n${t("ar", "tg.scenario.body", {
+        reason: esc(card.reasonAr),
+        opens,
+      })}`;
     }
 
     case "decision": {
@@ -93,40 +97,47 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
     case "plan_levels": {
       const lines = [
-        `الدخول: ${price(card.entry)}${
+        `${t("ar", "agent.card.entry")}: ${price(card.entry)}${
           card.entryZone
             ? ` (${price(card.entryZone.low)}–${price(card.entryZone.high)})`
             : ""
         }`,
-        `الوقف: ${price(card.stopLoss)}`,
-        `الأهداف: ${card.targets.map(price).join(" / ")}`,
+        `${t("ar", "agent.card.stop")}: ${price(card.stopLoss)}`,
+        `${t("ar", "agent.card.targets")}: ${card.targets.map(price).join(" / ")}`,
       ];
       // Net of costs or not at all. A gross reward:risk is a number the
       // operator cannot actually obtain.
-      if (card.netRr != null) lines.push(`العائد/المخاطرة (صافي): ${card.netRr.toFixed(2)}`);
-      return `<b>الخطة</b>\n${bullets(lines)}`;
+      if (card.netRr != null)
+        lines.push(`${t("ar", "agent.card.net_rr")}: ${card.netRr.toFixed(2)}`);
+      return `<b>${t("ar", "agent.card.plan")}</b>\n${bullets(lines)}`;
     }
 
     case "activation":
       return card.triggerCondition
-        ? `<b>التفعيل</b>\n${esc(card.triggerCondition)}${
-            card.validityCandles ? `\nصالحة ${card.validityCandles} شمعة` : ""
+        ? `<b>${t("ar", "agent.card.activation")}</b>\n${esc(card.triggerCondition)}${
+            card.validityCandles
+              ? `\n${t("ar", "tg.validity_candles", { count: String(card.validityCandles) })}`
+              : ""
           }`
         : card.activationClass === "immediate"
-          ? "<b>التفعيل</b>\nفوري"
+          ? `<b>${t("ar", "agent.card.activation")}</b>\n${t("ar", "agent.card.activation_immediate")}`
           : null;
 
     case "invalidation": {
       const parts = [
         card.rule ? esc(card.rule) : card.rule,
-        card.level != null ? `المستوى: ${price(card.level)}` : null,
+        card.level != null
+          ? `${t("ar", "agent.card.level")}: ${price(card.level)}`
+          : null,
       ].filter(Boolean);
-      return parts.length ? `<b>ما يُبطل الخطة</b>\n${parts.join("\n")}` : null;
+      return parts.length
+        ? `<b>${t("ar", "agent.card.invalidation")}</b>\n${parts.join("\n")}`
+        : null;
     }
 
 
     case "alternative_scenario":
-      return `<b>السيناريو البديل</b>\n${esc(card.scenario)}`;
+      return `<b>${t("ar", "agent.card.alternative")}</b>\n${esc(card.scenario)}`;
 
     case "gate_checklist": {
       const lines = card.verdicts.map((v) => {
@@ -134,11 +145,11 @@ export function renderCardForTelegram(card: AgentCard): string | null {
         const label = GATE_LABELS_AR[v.id] ?? v.id;
         return v.reasonAr ? `${mark} ${label} — ${esc(v.reasonAr)}` : `${mark} ${label}`;
       });
-      return `<b>الفحوصات</b>\n${lines.join("\n")}`;
+      return `<b>${t("ar", "agent.card.gates")}</b>\n${lines.join("\n")}`;
     }
 
     case "key_reasons":
-      return `<b>الأسباب</b>\n${bullets(card.reasons.map(esc))}`;
+      return `<b>${t("ar", "agent.card.reasons")}</b>\n${bullets(card.reasons.map(esc))}`;
 
     case "public_reasoning":
       return bullets(card.points.map(esc));
@@ -147,35 +158,42 @@ export function renderCardForTelegram(card: AgentCard): string | null {
       const c = card.card;
       const wf =
         c.walkForward === "passed"
-          ? "اجتاز الاختبار الأمامي"
+          ? t("ar", "tg.walkforward.passed")
           : c.walkForward === "failed"
-            ? "لم يجتز الاختبار الأمامي"
-            : "لم يُقيَّم أمامياً";
+            ? t("ar", "tg.walkforward.failed")
+            : t("ar", "tg.walkforward.none");
       // The shortfall is part of the evidence, not a footnote: a card that
       // shows only the trade count reads as validated when it is not.
-      const grade = c.meetsExecutionGates ? "" : "\n(دون عتبة الأدلة الكاملة)";
-      return `<b>الأدلة التاريخية</b>\n${c.tradeCount} صفقة · ${wf}${
-        c.liveSampleSize > 0 ? ` · ${c.liveSampleSize} نتيجة حية` : ""
+      const grade = c.meetsExecutionGates
+        ? ""
+        : `\n${t("ar", "tg.evidence.below_threshold")}`;
+      return `<b>${t("ar", "agent.card.evidence_history")}</b>\n${t("ar", "tg.trades_count", {
+        count: String(c.tradeCount),
+      })} · ${wf}${
+        c.liveSampleSize > 0
+          ? ` · ${t("ar", "tg.live_results", { count: String(c.liveSampleSize) })}`
+          : ""
       }${grade}`;
     }
 
     case "evidence_dimensions":
-      return `<b>الأدلة</b>\n${bullets(
+      return `<b>${t("ar", "tg.evidence")}</b>\n${bullets(
         card.dimensions.map((d) => `${esc(d.key)}: ${esc(d.detail)}`),
       )}`;
 
     case "risk_warnings":
-      return `<b>تنبيهات</b>\n${bullets(card.warnings.map(esc), "⚠️")}`;
+      return `<b>${t("ar", "tg.warnings")}</b>\n${bullets(card.warnings.map(esc), "⚠️")}`;
 
     case "news_risk":
       return card.risk.level === "low"
         ? null
-        : `<b>مخاطر الأخبار: ${card.risk.level}</b>\n${esc(card.risk.reason)}`;
+        : `<b>${t("ar", "agent.card.news")}: ${card.risk.level}</b>\n${esc(card.risk.reason)}`;
 
     case "cost_evidence":
-      return `التكلفة المتوقعة: ${card.spreadPips?.toFixed(1)} نقطة${
-        card.fallbackUsed ? " (تقدير)" : ""
-      }`;
+      return t("ar", "tg.cost_line", {
+        pips: String(card.spreadPips?.toFixed(1)),
+        suffix: card.fallbackUsed ? ` (${t("ar", "tg.estimate")})` : "",
+      });
 
     case "candle_coverage":
       // Reached only if this card leaves COLLAPSED_BY_DEFAULT; kept honest
@@ -183,7 +201,7 @@ export function renderCardForTelegram(card: AgentCard): string | null {
       return card.report.sufficientForTrade ? null : esc(card.report.summaryAr);
 
     case "tracked_recommendation":
-      return `<b>قيد المتابعة</b>\n${card.symbol} ${card.interval} · ${
+      return `<b>${t("ar", "agent.card.tracked")}</b>\n${card.symbol} ${card.interval} · ${
         DECISION_AR[card.direction] ?? card.direction
       } · ${card.status}`;
 

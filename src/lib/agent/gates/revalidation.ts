@@ -18,6 +18,7 @@
  *
  * Both produce a rewrite or a WAIT — never a quiet emission of the stale plan.
  */
+import { t } from "@/lib/i18n";
 import { rewardToRisk } from "@/lib/recommendations/entrySemantics";
 
 /** How far price may sit from the entry, in ATR(M5) multiples, and stay reachable. */
@@ -80,9 +81,10 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
       liveRr,
       distance,
       maxDistance,
-      reasonAr: `السعر تجاوز الدخول بمسافة ${distance.toFixed(2)} (الحد ${maxDistance.toFixed(
-        2,
-      )}) — الخطة لم تعد قابلة للتنفيذ بسعرها المكتوب.`,
+      reasonAr: t("ar", "gate.revalidation.unreachable", {
+        distance: distance.toFixed(2),
+        maxDistance: maxDistance.toFixed(2),
+      }),
     };
   }
 
@@ -92,9 +94,10 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
       liveRr,
       distance,
       maxDistance,
-      reasonAr: `نسبة العائد/المخاطرة من السعر الحي ${liveRr.toFixed(
-        2,
-      )} أقل من الحد الأدنى ${input.minRr} — الخطة لم تعد تستحق الدخول.`,
+      reasonAr: t("ar", "gate.revalidation.rr_degraded", {
+        liveRr: liveRr.toFixed(2),
+        minRr: String(input.minRr),
+      }),
     };
   }
 

@@ -26,9 +26,18 @@ test("drawing-only commands compose their replies dynamically", () => {
 
 test("safety and protocol messages respect the operator locale", () => {
   const orchestrator = read("lib/agent/orchestrator.ts");
-  // Static gate texts remain (allowed for safety) but must be bilingual.
+  // Safety/blocker texts localize through the dictionary: `t(locale, …)`
+  // resolves both languages from src/lib/i18n, where the compiler enforces
+  // that every key exists in ar AND en. Inline literals are banned — the
+  // arabicInSystemFiles ratchet pins that repo-wide; here the orchestrator
+  // specifically must sit at zero.
+  const dictionaryCalls = orchestrator.match(/\bt\(\s*locale/g) ?? [];
+  assert.ok(dictionaryCalls.length >= 10, "safety gates must localize via t(locale, …)");
+  // bilingual() survives only where it SELECTS between two computed values
+  // (dataQuality coverage summaries), never for literals.
   const bilingualCalls = orchestrator.match(/bilingual\(\s*locale/g) ?? [];
-  assert.ok(bilingualCalls.length >= 10, "safety gates must localize via bilingual()");
+  assert.ok(bilingualCalls.length >= 1, "computed ar/en pairs still select via bilingual()");
+  assert.doesNotMatch(orchestrator, /[؀-ۿ]/, "no Arabic literals in the orchestrator");
 });
 
 test("composer never adds greetings/introductions and falls back honestly without an LLM", async () => {

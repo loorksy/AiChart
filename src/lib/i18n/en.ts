@@ -356,6 +356,183 @@ export const en = {
   "agent.run_details": "Run details",
   "agent.error": "Something went wrong",
 
+  // --- Gate chain (G1–G7): labels, refusals, per-gate reasons ---
+  "gate.label.G1": "News & economic events",
+  "gate.label.G2": "Liquidity map",
+  "gate.label.G3": "Supply & demand zones",
+  "gate.label.G4": "Structure & bias",
+  "gate.label.G5": "Strategy match & evidence",
+  "gate.label.G6": "Risk engineering",
+  "gate.label.G7": "Live-price validation",
+  "gate.run_failed": "Could not run the {gate} check: {message}",
+  "gate.unknown_error": "unknown error",
+  "gate.refusal.unavailable":
+    "No recommendation right now: the {label} check could not be completed{detail}.",
+  "gate.refusal.veto": "No recommendation right now: {label}{detail}.",
+  "gate.news.blocked":
+    "High-impact news ({event}) — recommendations are blocked for {minutes} minutes.",
+  "gate.news.calendar_timeout": "Could not reach the news calendar within the timeout.",
+  "gate.news.window_unconfirmed": "The news window cannot be confirmed right now.",
+  "gate.news.high_impact_window": "High-impact news window.",
+  "gate.liquidity.unavailable": "The liquidity map is unavailable for this session.",
+  "gate.supply_demand.unavailable": "Supply & demand zones are unavailable.",
+  "gate.structure.unavailable": "Could not read market structure — no basis to build a plan.",
+  "gate.structure.htf_conflict":
+    "The current timeframe conflicts with the higher timeframe — the plan stands with less confidence.",
+  "gate.structure.no_chart_snapshot":
+    "No chart snapshot was available — reading from the numbers alone.",
+  "gate.strategy.none": "No strategy matches current market conditions — no recommendation.",
+  "gate.strategy.calibrated":
+    "Strategy {strategy} — calibrated win rate {winRate}% over {sample} trades.",
+  "gate.strategy.uncalibrated":
+    "Strategy {strategy} matches but is uncalibrated (only {sample} trades, threshold {minSample}) — no statistics will be quoted.",
+  "gate.strategy.registry_unavailable": "Could not read the verified-strategies registry.",
+  "gate.plan.incoherent":
+    "The plan is geometrically inconsistent ({problems}) — no recommendation is issued for a plan that contradicts its own activation condition.",
+  "gate.live_price.unavailable":
+    "Could not fetch a live price for the plan's final validation.",
+  "gate.live_price.plan_invalid": "The plan is no longer valid at the live price.",
+  "gate.revalidation.unreachable":
+    "Price has moved past the entry by {distance} (limit {maxDistance}) — the plan is no longer executable at its written price.",
+  "gate.revalidation.rr_degraded":
+    "Reward-to-risk from the live price {liveRr} is below the minimum {minRr} — the plan is no longer worth entering.",
+
+  // --- Evidence card summary (evidenceCard.ts) ---
+  "evidence.trades_count": "{count} historical trades",
+  "evidence.walkforward.passed": "passed walk-forward",
+  "evidence.walkforward.failed": "failed walk-forward",
+  "evidence.walkforward.none": "walk-forward not evaluated",
+
+  // --- Orchestrator: receipts, blockers, activity narration ---
+  "orch.rec_cancelled": "The active recommendation in this session has been cancelled.",
+  "orch.scenario_building": "{reason} Building the next-open scenario from the last close.",
+  "orch.news_unknown":
+    "News risk is unknown because no news provider is configured — I cannot confirm news risk right now.",
+  "orch.news_reviewed": "News review completed.",
+  "orch.news_high_risk": "High-impact news risk is near.",
+  "orch.market_data_failed_activity":
+    "Could not prepare market data — the chart analysis cannot be completed right now.",
+  "orch.market_data_failed_summary":
+    "Could not prepare market data from the warehouse/your MetaTrader account. Try again shortly.",
+  "orch.no_rec_missing_data": "No recommendation was issued due to missing data.",
+  "orch.tail_age_seconds": " Latest available candle is {age}s old.",
+  "orch.tail_age_minutes": " Latest available candle is {age}m old.",
+  "orch.sync_stale_summary":
+    "{reason}{age} An automatic refresh from your MetaTrader account is already running — ask again in a moment and the analysis will complete.",
+  "orch.prices_unconfirmed":
+    "Latest prices could not be confirmed — no recommendation was issued.",
+  "orch.analysis_stopped_gaps":
+    "Analysis was stopped because a large part of the price series is missing — automatic repair has started.",
+  "orch.gaps_warning":
+    "Noticeable data gaps exist on some timeframes — automatic repair started; affected evidence is weighted lower.",
+  "orch.risk_check_failed":
+    "Could not complete the risk check — an operational blocker, not a market decision.",
+  "orch.visual_reviewed": "Visually reviewed {count} chart snapshots.",
+  "orch.visual_partial": "Could not capture {missing} — the analysis reads only what remains.",
+  "orch.visual_none": "Could not capture any chart — the analysis reads the numbers alone.",
+  "orch.no_rec_now": "No recommendation right now.",
+  "orch.no_saved_rec": "There is no saved recommendation in this session right now.",
+  "orch.restored_trigger": "Recommendation restored from the current chart.",
+  "orch.invalidation_below": "A candle close below {level} invalidates the scenario.",
+  "orch.invalidation_above": "A candle close above {level} invalidates the scenario.",
+  "orch.restored_summary":
+    "Recommendation restored from the current drawing/plan on the chart.",
+  "orch.restored_reason":
+    "The recommendation exists on the current chart and was used as follow-up context.",
+  "orch.no_active_rec_draw": "There is no active recommendation to draw.",
+  "orch.redrew_details":
+    "Re-drew the active {direction} recommendation on {symbol}: entry, stop, and targets. No new recommendation was created.",
+  "orch.no_saved_drawings":
+    "The active recommendation exists but has no saved drawings to re-display.",
+  "orch.reviewing_rec": "Reviewing the previous recommendation and its current status.",
+  "orch.broker_prices_unconfirmed":
+    "Could not confirm the latest broker prices right now. Wait a few seconds and ask again — no page refresh needed.",
+  "orch.rec_update_stopped_gaps":
+    "Recommendation status was not updated because a large part of the price series is missing — automatic repair has started.",
+  "orch.rec_status_updated": "Updated the saved recommendation's status.",
+
+  // --- Failure taxonomy: user-facing sentences (errorTaxonomy.ts) ---
+  "list.separator": ", ",
+  "fault.timeout_stages":
+    "The analysis did not complete: {stages} did not finish within the allowed time. Whatever evidence was gathered before that is shown below; nothing has been assumed in its place.",
+  "fault.insufficient_data_stages":
+    "The analysis did not complete: {stages} does not have enough historical coverage yet. Whatever evidence was gathered before that is shown below; nothing has been assumed in its place.",
+  "fault.auth":
+    "Cannot reach the service provider due to an authorization problem — the configuration needs review.",
+  "fault.rate_limit": "The service provider is busy right now — try again shortly.",
+  "fault.timeout": "The operation took longer than allowed — try again shortly.",
+  "fault.network": "A network connection problem occurred — try again shortly.",
+  "fault.provider_unavailable":
+    "The service provider is temporarily unavailable — try again shortly.",
+  "fault.provider_bad_request":
+    "The AI provider rejected the request (missing model or unsupported parameters) — review the model configuration in the admin panel.",
+  "fault.provider_billing":
+    "The AI provider account is out of credit. Add credit with the provider or switch to another configured provider in the keys panel — retrying will not help.",
+  "fault.invalid_payload":
+    "An invalid response arrived from the service provider — try again shortly.",
+  "fault.schema_mismatch":
+    "The model reply did not match the expected contract — try again shortly.",
+  "fault.stale_data":
+    "Available prices are not fresh enough for a reliable decision — wait a few seconds and retry.",
+  "fault.insufficient_data":
+    "The available historical data is not enough to complete this analysis.",
+  "fault.artifact_missing": "A required result is missing — operational review needed.",
+  "fault.resource_exhausted":
+    "Operational resources are temporarily exhausted — try again shortly.",
+  "fault.cancelled": "The request was cancelled before completion.",
+  "fault.configuration":
+    "A server-side configuration is missing — retrying will not help.",
+  "fault.unknown": "An unexpected error occurred during analysis.",
+
+  // --- Telegram surface: receipts, buttons, errors ---
+  "tg.linked_welcome":
+    "Linked.\nAsk me about {name} just as you would on the platform — a recommendation, an explanation, or the chart photo.",
+  "tg.chart_caption": "{name} · 15m",
+  "tg.chart_caption_closed": "{name} · 15m — last snapshot before the close.",
+  "tg.chart_failed":
+    "Couldn't prepare the chart photo right now. Open the platform from the button, or try again shortly.",
+  "tg.open_report": "📊 Open report",
+  "tg.tools_used": "Used {count} checks and tools",
+  "tg.link_prompt":
+    "This chat is not linked to an account. Open Settings on the Lonora platform and tap “Link Telegram” to get your link code, then come back here.",
+  "tg.option_expired": "This option has expired",
+  "tg.link_code_invalid":
+    "The link code is invalid or has expired. Create a new one from the platform settings.",
+  "tg.chat_title": "Telegram chat",
+  "tg.analysis_failed": "Could not complete the analysis right now. Try again shortly.",
+
+  // --- Telegram card rendering (telegramCards.ts) ---
+  "agent.card.level": "Level",
+  "agent.card.evidence_history": "Historical evidence",
+  "tg.scenario.title": "Market closed — scenario for the next open",
+  "tg.scenario.body":
+    "{reason} — opens {opens} (Riyadh time); the recommendation below is conditional and awaits activation.",
+  "tg.validity_candles": "Valid for {count} candles",
+  "tg.walkforward.passed": "Passed walk-forward testing",
+  "tg.walkforward.failed": "Failed walk-forward testing",
+  "tg.walkforward.none": "Not walk-forward evaluated",
+  "tg.evidence.below_threshold": "(below the full-evidence threshold)",
+  "tg.trades_count": "{count} trades",
+  "tg.live_results": "{count} live results",
+  "tg.evidence": "Evidence",
+  "tg.warnings": "Warnings",
+  "tg.cost_line": "Expected cost: {pips} pips{suffix}",
+  "tg.estimate": "estimate",
+
+  // --- Closed-market scenario mode (closedMarketScenario.ts) ---
+  "scenario.notice":
+    "The market is closed right now ({reason}). This is an expected scenario built on the last close — the recommendation is conditional and awaits activation after the market opens ({opens}, Riyadh time).",
+  "scenario.prompt_block":
+    "## Scenario mode — market closed\nThe market is currently closed ({reason}) and the freshest data is the last session's close.\nRequired: an expected scenario for the next open with a complete conditional recommendation —\nentry, stop and target levels built on the last close, and an explicit activation condition\n(break/close/touch) measured on post-open candles. Do not apologize for the market being\nclosed and do not defer the answer — the closure is stated to the user automatically.",
+
+  // --- Trading-session status reasons (tradingCalendar.getSessionStatus) ---
+  "session.open": "Market is open.",
+  "session.closed_saturday": "Weekend — market closed (Saturday).",
+  "session.closed_friday": "Market closed for Friday.",
+  "session.closed_sunday": "Market has not opened yet (Sunday).",
+  "session.maintenance_break":
+    "Daily maintenance break — trading resumes within the hour.",
+
   // --- Phase 0: persistent execution-mode badge + operational-blocker card ---
   "agent.mode.descriptive": "Descriptive — not authorized to execute",
   "agent.mode.shadow": "Shadow",

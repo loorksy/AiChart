@@ -239,19 +239,21 @@ export function failureCodeFromSynthesizerKind(
  *
  * Stage ids are internal, so they are translated through the same
  * `agent.stage.*` keys the run checklist uses rather than printed raw — the
- * operator sees "بيانات السوق", not "market_data".
+ * operator sees the localized stage name, not "market_data".
  */
 function namedStages(stages: readonly string[], locale: AppLocale): string {
   const seen = [...new Set(stages.filter((stage) => stage.trim()))];
   if (!seen.length) return "";
-  return seen.map((stage) => t(locale, `agent.stage.${stage}`)).join("، ");
+  return seen
+    .map((stage) => t(locale, `agent.stage.${stage}`))
+    .join(t(locale, "list.separator"));
 }
 
 /**
  * Safe, localized user-facing sentence for a failure code. No internals.
  *
  * `cause.stages` turns the generic sentence into the one the doctrine actually
- * requires. "استغرقت العملية وقتاً أطول من المسموح" names neither the blocker
+ * requires. "The operation took longer than allowed" names neither the blocker
  * nor its cause, so an operator hitting it — and the person debugging it —
  * learned nothing beyond a request id. The orchestrator already tracks which
  * stages degraded; this is where that knowledge reaches the reader.
@@ -265,61 +267,13 @@ export function userMessageForFailure(
   // Timeout and insufficient_data both carry stage ids, but they are different
   // faults. Folding insufficient_data into the "did not finish in time"
   // sentence made coverage/gap blockers look like MetaApi deadlines — which is
-  // exactly the "بيانات السوق لم تنتهِ ضمن المهلة" operators kept seeing when
-  // the warehouse was simply thin.
+  // exactly the "market data did not finish within the deadline" operators
+  // kept seeing when the warehouse was simply thin.
   if (stages && code === "timeout") {
-    return locale === "en"
-      ? `The analysis did not complete: ${stages} did not finish within the allowed time. ` +
-          `Whatever evidence was gathered before that is shown below; nothing has been assumed in its place.`
-      : `لم يكتمل التحليل: ${stages} لم تنتهِ ضمن المهلة المسموحة. ` +
-          `ما جُمع من أدلة قبل ذلك معروض أدناه، ولم يُفترض شيء مكانه.`;
+    return t(locale, "fault.timeout_stages", { stages });
   }
   if (stages && code === "insufficient_data") {
-    return locale === "en"
-      ? `The analysis did not complete: ${stages} does not have enough historical coverage yet. ` +
-          `Whatever evidence was gathered before that is shown below; nothing has been assumed in its place.`
-      : `لم يكتمل التحليل: تغطية ${stages} التاريخية غير كافية بعد. ` +
-          `ما جُمع من أدلة قبل ذلك معروض أدناه، ولم يُفترض شيء مكانه.`;
+    return t(locale, "fault.insufficient_data_stages", { stages });
   }
-  const ar: Record<AgentFailureCode, string> = {
-    auth: "لا يمكن الاتصال بمزوّد الخدمة بسبب مشكلة صلاحيات — تحتاج مراجعة الإعداد.",
-    rate_limit: "مزوّد الخدمة مشغول حالياً — أعد المحاولة بعد قليل.",
-    timeout: "استغرقت العملية وقتاً أطول من المسموح — أعد المحاولة بعد قليل.",
-    network: "تعذّر الاتصال بالشبكة — أعد المحاولة بعد قليل.",
-    provider_unavailable: "مزوّد الخدمة غير متاح مؤقتاً — أعد المحاولة بعد قليل.",
-    provider_bad_request:
-      "رفض مزوّد الذكاء الاصطناعي الطلب (نموذج غير موجود أو معاملات غير مدعومة) — راجع إعداد النموذج في لوحة التحكم.",
-    provider_billing:
-      "رصيد حساب الذكاء الاصطناعي منتهٍ لدى المزوّد. أضف رصيداً في حساب المزوّد أو بدّل إلى مزوّد آخر مُعدّ من لوحة المفاتيح — إعادة المحاولة لن تُجدي.",
-    invalid_payload: "وصل رد غير صالح من مزوّد الخدمة — أعد المحاولة بعد قليل.",
-    schema_mismatch: "رد النموذج لا يطابق العقد المتوقع — أعد المحاولة بعد قليل.",
-    stale_data: "الأسعار المتاحة ليست حديثة بما يكفي لقرار موثوق — انتظر ثوانٍ ثم أعد المحاولة.",
-    insufficient_data: "البيانات التاريخية المتاحة غير كافية لإكمال هذا التحليل.",
-    artifact_missing: "نتيجة مطلوبة غير موجودة — تحتاج مراجعة تشغيلية.",
-    resource_exhausted: "الموارد التشغيلية ممتلئة مؤقتاً — أعد المحاولة بعد قليل.",
-    cancelled: "أُلغي الطلب قبل اكتماله.",
-    configuration: "هناك إعداد ناقص على الخادم — هذه المشكلة لن تُحل بإعادة المحاولة.",
-    unknown: "حدث خطأ غير متوقع أثناء التحليل.",
-  };
-  const en: Record<AgentFailureCode, string> = {
-    auth: "Cannot reach the service provider due to an authorization problem — the configuration needs review.",
-    rate_limit: "The service provider is busy right now — try again shortly.",
-    timeout: "The operation took longer than allowed — try again shortly.",
-    network: "A network connection problem occurred — try again shortly.",
-    provider_unavailable: "The service provider is temporarily unavailable — try again shortly.",
-    provider_bad_request:
-      "The AI provider rejected the request (missing model or unsupported parameters) — review the model configuration in the admin panel.",
-    provider_billing:
-      "The AI provider account is out of credit. Add credit with the provider or switch to another configured provider in the keys panel — retrying will not help.",
-    invalid_payload: "An invalid response arrived from the service provider — try again shortly.",
-    schema_mismatch: "The model reply did not match the expected contract — try again shortly.",
-    stale_data: "Available prices are not fresh enough for a reliable decision — wait a few seconds and retry.",
-    insufficient_data: "The available historical data is not enough to complete this analysis.",
-    artifact_missing: "A required result is missing — operational review needed.",
-    resource_exhausted: "Operational resources are temporarily exhausted — try again shortly.",
-    cancelled: "The request was cancelled before completion.",
-    configuration: "A server-side configuration is missing — retrying will not help.",
-    unknown: "An unexpected error occurred during analysis.",
-  };
-  return locale === "en" ? en[code] : ar[code];
+  return t(locale, `fault.${code}`);
 }

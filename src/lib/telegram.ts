@@ -547,7 +547,6 @@ const sideBilingual = (s: string) =>
   s === "buy" ? "🟢 شراء · Buy" : "🔴 بيع · Sell";
 
 /** Bilingual card for a recorded recommendation — delegates to telegramCards. */
-export { recommendationCard, approvalCard } from "./telegramCards";
 
 export function executedCard(t: {
   symbol: string;

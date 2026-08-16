@@ -24,6 +24,7 @@
  * minutes never shift.
  */
 import { forexCanonicalKey } from "./forexCanonical";
+import { t } from "@/lib/i18n";
 
 export type TradingClass = "metal";
 
@@ -134,22 +135,22 @@ export function getSessionStatus(
 ): TradingSessionStatus {
   const ms = now.getTime();
   if (isMarketOpenAt(symbol, ms)) {
-    return { isOpen: true, reason: "السوق مفتوح." };
+    return { isOpen: true, reason: t("ar", "session.open") };
   }
 
   const { weekday, hour } = nyWallHour(ms);
   if (weekday === 6) {
-    return { isOpen: false, reason: "عطلة نهاية الأسبوع — السوق مغلق (السبت)." };
+    return { isOpen: false, reason: t("ar", "session.closed_saturday") };
   }
   if (weekday === 5 && hour >= WEEK_CLOSE_HOUR_NY) {
-    return { isOpen: false, reason: "أغلق السوق ليوم الجمعة." };
+    return { isOpen: false, reason: t("ar", "session.closed_friday") };
   }
   if (weekday === 0) {
-    return { isOpen: false, reason: "لم يفتح السوق بعد (الأحد)." };
+    return { isOpen: false, reason: t("ar", "session.closed_sunday") };
   }
   return {
     isOpen: false,
-    reason: "استراحة الصيانة اليومية — يعود التداول خلال ساعة.",
+    reason: t("ar", "session.maintenance_break"),
   };
 }
 

@@ -1,5 +1,6 @@
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import { parseChartDrawingsJson } from "@/lib/chartDrawings";
+import { t } from "@/lib/i18n";
 import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import {
   normalizeStoredEntryType,
@@ -265,5 +266,5 @@ export function isActiveRecommendationLive(
 }
 
 export function recommendationDirectionAr(direction: "buy" | "sell"): string {
-  return direction === "buy" ? "شراء" : "بيع";
+  return direction === "buy" ? t("ar", "decision.buy") : t("ar", "decision.sell");
 }

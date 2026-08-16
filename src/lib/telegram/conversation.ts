@@ -3,7 +3,7 @@
  *
  * This module used to be a classifier: phrase lists for greetings, the menu,
  * session questions — each mapped to a canned Arabic paragraph. That is a
- * bot's shape, not an agent's: "مرحبا" got the same fixed reply forever, a
+ * bot's shape, not an agent's: a greeting got the same fixed reply forever, a
  * greeting with one extra word fell through to the full engine, and the
  * canned answers drifted from what the agent would actually say.
  *
@@ -16,14 +16,12 @@
  * always stood for and ride to the agent like any typed message.
  */
 import { DISPLAY_NAME_AR } from "@/lib/gold";
-import { resolveUserMenuInput } from "@/lib/telegramCommands";
+import { t } from "@/lib/i18n";
+import { CHART_ACTION, resolveUserMenuInput } from "@/lib/telegramCommands";
 
 export type TelegramCommand =
   | { kind: "chart_photo" }
   | { kind: "prompt"; message: string };
-
-/** The agent-action string the chart command expands to (from the menu JSON). */
-const CHART_ACTION = "أرسل صورة الشارت";
 
 /**
  * Resolve an EXPLICIT command — a slash command or an exact menu string.
@@ -41,20 +39,17 @@ export function resolveTelegramCommand(raw: string): TelegramCommand | null {
 
 /** The /start deep-link response — an auth mechanism's receipt, not a reply. */
 export function telegramLinkedWelcome(): string {
-  return [
-    "تم الربط.",
-    `اسألني عن ${DISPLAY_NAME_AR} كما تسأل في المنصة — توصية، شرح، أو صورة الشارت.`,
-  ].join("\n");
+  return t("ar", "tg.linked_welcome", { name: DISPLAY_NAME_AR });
 }
 
 /** Caption for the mechanical /chart command's photo. */
 export function telegramChartCaption(closed: boolean): string {
   return closed
-    ? `${DISPLAY_NAME_AR} · 15م — آخر لقطة قبل الإغلاق.`
-    : `${DISPLAY_NAME_AR} · 15م`;
+    ? t("ar", "tg.chart_caption_closed", { name: DISPLAY_NAME_AR })
+    : t("ar", "tg.chart_caption", { name: DISPLAY_NAME_AR });
 }
 
 /** Failure receipt for the mechanical /chart command. */
 export function telegramChartFailed(): string {
-  return "ما قدرت أجهّز صورة الشارت الآن. افتح المنصة من الزر، أو أعد المحاولة بعد قليل.";
+  return t("ar", "tg.chart_failed");
 }

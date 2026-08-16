@@ -6,11 +6,12 @@
  * `surface: "platform"`.
  *
  * Conversation window matches OpenClaw Telegram: one live bubble that
- * edits forward (أوقظ → أفكّر → الجواب), leftover status is deleted, and
+ * edits forward (progress checklist → the answer), leftover status is deleted, and
  * buttons appear only when the agent authored a question or a report link.
  * There is no persistent keyboard and no execution button.
  */
 import { newId } from "@/lib/agent/activity";
+import { t } from "@/lib/i18n";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
 import { rememberOptions, resolveOptionReply } from "@/lib/agent/sessionOptions";
 import { generateAgentSuggestions } from "@/lib/agent/suggestions/generateAgentSuggestions";
@@ -188,13 +189,13 @@ export function resetTelegramDedupe(): void {
 
 /** Like OpenClaw's "Open Report" — a link on a recommendation, not a standing menu. */
 function reportLinkButtons(): InlineButton[][] {
-  return [[{ text: "📊 افتح التقرير", url: `${getPublicAppUrl()}/chat` }]];
+  return [[{ text: t("ar", "tg.open_report"), url: `${getPublicAppUrl()}/chat` }]];
 }
 
 /**
  * The "Called N tools" block from the owner's screenshots, Telegram-native.
  *
- * `<blockquote expandable>` collapses to its first line — "استخدمت N فحوصات"
+ * `<blockquote expandable>` collapses to its first line — "used N checks"
  * — and expands on tap to the per-stage checklist with the same ✓/✗ marks
  * the live bubble showed. Rendered from the stages the reporter actually
  * observed, never from a list someone maintains by hand.
@@ -207,7 +208,9 @@ export function renderToolsBlock(
   const lines = finished.map(
     (row) => `${row.status === "failed" ? "✗" : "✓"} ${stageLabelAr(row.stage)}`,
   );
-  return `<blockquote expandable>🛠 استخدمت ${finished.length} فحوصات وأدوات\n${lines.join("\n")}</blockquote>`;
+  return `<blockquote expandable>🛠 ${t("ar", "tg.tools_used", {
+    count: String(finished.length),
+  })}\n${lines.join("\n")}</blockquote>`;
 }
 
 async function deliverReply(input: {
@@ -242,9 +245,7 @@ async function deliverReply(input: {
   );
 }
 
-const LINK_PROMPT =
-  "هذه المحادثة غير مرتبطة بحساب. افتح الإعدادات في منصة Lonora واضغط «ربط تليجرام» " +
-  "لتحصل على رابط الربط، ثم عد إلى هنا.";
+const LINK_PROMPT = t("ar", "tg.link_prompt");
 
 /**
  * `/start`, `/start@bot`, `/start CODE`, `/start@bot CODE`, or a bare
@@ -269,7 +270,7 @@ export async function handleTelegramCallback(
 ): Promise<"linked" | "answered" | "unlinked" | "ignored" | "failed"> {
   const resolved = resolveInlineOption(callback.data, callback.chatId);
   if (!resolved) {
-    await answerCallbackQuery(callback.callbackId, "انتهت صلاحية هذا الخيار").catch(
+    await answerCallbackQuery(callback.callbackId, t("ar", "tg.option_expired")).catch(
       () => {},
     );
     await editMessageReplyMarkup(callback.chatId, callback.messageId).catch(() => {});
@@ -329,7 +330,7 @@ export async function handleTelegramMessage(
       if (userId == null) {
         await sendMessage(
           message.chatId,
-          "رمز الربط غير صالح أو انتهت صلاحيته. أنشئ رمزاً جديداً من إعدادات المنصة.",
+          t("ar", "tg.link_code_invalid"),
         );
         return "unlinked";
       }
@@ -352,7 +353,7 @@ export async function handleTelegramMessage(
     // Explicit commands are the ONE mechanical path: /chart produces a photo
     // (which the agent cannot send as prose); the other menu commands expand
     // to the Arabic prompt they stand for and ride to the agent like any
-    // typed message. Everything else — greetings, "من انت", questions — goes
+    // typed message. Everything else — greetings, identity questions — goes
     // to the agent UNCLASSIFIED: the orchestrator routes conversational vs
     // market itself and generates the reply live. The phrase lists and canned
     // paragraphs that used to answer here were a bot's reflexes, not an
@@ -401,7 +402,7 @@ export async function handleTelegramMessage(
         userId,
         symbol: DATA_SYMBOL,
         interval: "15m",
-        title: "محادثة تليجرام",
+        title: t("ar", "tg.chat_title"),
       });
       const [persisted, recalled] = await Promise.all([
         getMessages(userId, sessionId, 160),
@@ -573,7 +574,7 @@ export async function handleTelegramMessage(
     });
     await sendMessage(
       message.chatId,
-      "تعذّر إكمال التحليل الآن. حاول مرة أخرى بعد قليل.",
+      t("ar", "tg.analysis_failed"),
     ).catch(() => {});
     return "failed";
   }

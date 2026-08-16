@@ -10,9 +10,10 @@
  *
  * So this gate has three outcomes, not two:
  *   - a calibrated match  → pass, cite the stats, confidence comes FROM them
- *   - an uncalibrated match → pass, labelled "غير مُعاير", no stats quoted
+ *   - an uncalibrated match → pass, labelled uncalibrated, no stats quoted
  *   - no match at all      → veto, WAIT
  */
+import { t } from "@/lib/i18n";
 
 /** Below this, a strategy's live/backtest record may not be cited as evidence. */
 export const MIN_SAMPLE_SIZE = 100;
@@ -59,7 +60,7 @@ export function gradeStrategyEvidence(
   if (matches.length === 0) {
     return {
       grade: "none",
-      reasonAr: "لا توجد استراتيجية مطابقة لظروف السوق الحالية — لا توصية.",
+      reasonAr: t("ar", "gate.strategy.none"),
     };
   }
 
@@ -86,16 +87,22 @@ export function gradeStrategyEvidence(
         expectancy: best.expectancy,
         calibratedConfidence: best.calibratedConfidence,
       },
-      reasonAr: `استراتيجية ${best.strategyId} — معدل نجاح مُعاير ${Math.round(
-        best.winRate * 100,
-      )}% على ${best.sampleSize} صفقة.`,
+      reasonAr: t("ar", "gate.strategy.calibrated", {
+        strategy: best.strategyId,
+        winRate: String(Math.round(best.winRate * 100)),
+        sample: String(best.sampleSize),
+      }),
     };
   }
 
   return {
     grade: "uncalibrated",
     match: best,
-    reasonAr: `استراتيجية ${best.strategyId} مطابقة لكنها غير مُعايرة (${best.sampleSize} صفقة فقط، الحد ${minSample}) — لن تُذكر أي نسب.`,
+    reasonAr: t("ar", "gate.strategy.uncalibrated", {
+      strategy: best.strategyId,
+      sample: String(best.sampleSize),
+      minSample: String(minSample),
+    }),
   };
 }
 

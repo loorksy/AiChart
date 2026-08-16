@@ -11,6 +11,7 @@
  * of two-way spread and unstable structure — which resolve faster than the
  * anticipation does.
  */
+import { t } from "@/lib/i18n";
 import { getPlatformValue } from "@/lib/platformConfig";
 
 export const DEFAULT_BLOCK_BEFORE_MIN = 30;
@@ -85,5 +86,8 @@ export function evaluateNewsWindow(input: {
 export function newsBlockReasonAr(verdict: NewsWindowVerdict): string | null {
   if (!verdict.blocked || !verdict.event) return null;
   const mins = verdict.minutesUntilClear;
-  return `خبر عالي التأثير (${verdict.event.title}) — التوصيات محجوبة لمدة ${mins} دقيقة.`;
+  return t("ar", "gate.news.blocked", {
+    event: verdict.event.title,
+    minutes: String(mins),
+  });
 }

@@ -7,7 +7,7 @@
  *    interpolated MODEL-AUTHORED text straight into that HTML. The first
  *    summary containing a bare `<` (a price comparison, a typo) makes the
  *    Bot API answer 400 "can't parse entities", the send throws, and the
- *    operator gets the generic "تعذّر إكمال التحليل" — for an analysis that
+ *    operator gets the generic "analysis could not be completed" — for an analysis that
  *    succeeded.
  * 2. Telegram caps message text at 4096 characters and nothing in the repo
  *    split anything. A long answer 400'd the same way, and the fallback send

@@ -4,7 +4,7 @@
  * The engine narrates itself twice over: `emitStage` marks each task's
  * lifecycle (market data, structure, liquidity, news, decision…) and
  * `emitActivity` carries the specialist's own sentence at the moment its
- * work finished ("حدّدت بنية السوق: اتجاه صاعد…"). This reporter renders
+ * work finished ("identified market structure: uptrend…"). This reporter renders
  * BOTH into the bubble: a ticking checklist of the actual tasks, with the
  * latest narration line under it.
  *
