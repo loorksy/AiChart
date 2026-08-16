@@ -223,33 +223,17 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         <div
           ref={scrollerRef}
           data-testid="chat-scroll-region"
-          className="chat-scroll-region aichart-scroll min-h-0 flex-1 overflow-y-auto p-3"
+          data-hero={isHero || undefined}
+          className={
+            isHero
+              ? "chat-scroll-region aichart-scroll flex min-h-0 flex-1 flex-col overflow-y-auto p-3"
+              : "chat-scroll-region aichart-scroll min-h-0 flex-1 overflow-y-auto p-3"
+          }
         >
-          <div className="flex min-h-full flex-col space-y-3">
-          {hydrating && messages.length === 0 && (
-            <div
-              data-testid="chat-hydrating"
-              className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-1 pt-6"
-              aria-busy="true"
-            >
-              <div className="ms-auto h-9 w-2/5 animate-pulse rounded-2xl bg-muted" />
-              <div className="space-y-2.5">
-                <div className="h-4 w-11/12 animate-pulse rounded bg-muted/70" />
-                <div className="h-4 w-3/4 animate-pulse rounded bg-muted/70" />
-                <div className="h-4 w-4/6 animate-pulse rounded bg-muted/50" />
-              </div>
-              <div className="ms-auto h-9 w-1/3 animate-pulse rounded-2xl bg-muted" />
-              <div className="space-y-2.5">
-                <div className="h-4 w-5/6 animate-pulse rounded bg-muted/70" />
-                <div className="h-4 w-2/3 animate-pulse rounded bg-muted/50" />
-              </div>
-            </div>
-          )}
-
           {isHero && (
             <div
               data-testid="composer-hero"
-              className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center gap-6 text-center"
+              className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 text-center"
             >
               <AgentAvatar size={44} state="idle" className="opacity-90" />
               <h2 className="font-serif text-balance px-4 text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
@@ -273,6 +257,27 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             </div>
           )}
 
+          {!isHero && (
+          <div className="flex flex-col space-y-3">
+          {hydrating && messages.length === 0 && (
+            <div
+              data-testid="chat-hydrating"
+              className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-1 pt-6"
+              aria-busy="true"
+            >
+              <div className="ms-auto h-9 w-2/5 animate-pulse rounded-2xl bg-muted" />
+              <div className="space-y-2.5">
+                <div className="h-4 w-11/12 animate-pulse rounded bg-muted/70" />
+                <div className="h-4 w-3/4 animate-pulse rounded bg-muted/70" />
+                <div className="h-4 w-4/6 animate-pulse rounded bg-muted/50" />
+              </div>
+              <div className="ms-auto h-9 w-1/3 animate-pulse rounded-2xl bg-muted" />
+              <div className="space-y-2.5">
+                <div className="h-4 w-5/6 animate-pulse rounded bg-muted/70" />
+                <div className="h-4 w-2/3 animate-pulse rounded bg-muted/50" />
+              </div>
+            </div>
+          )}
           {messages.map((m) => (
             <div
               key={m.id}
@@ -441,6 +446,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             </p>
           )}
           </div>
+          )}
         </div>
 
         {!isHero && (

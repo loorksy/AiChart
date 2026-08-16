@@ -184,6 +184,7 @@ test("composer has bottom fade; upper chat shadow removed", () => {
   const panel = read("components/agent/SmartChartAgentPanel.tsx");
   assert.match(panel, /composer-fade|chat-composer-fade/);
   assert.match(panel, /chat-panel-shell/);
+  assert.match(panel, /data-hero=\{isHero/);
 });
 
 test("profile menu uses opaque portal surface", () => {

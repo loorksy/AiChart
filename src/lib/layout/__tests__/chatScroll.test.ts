@@ -29,6 +29,27 @@ describe("chat stick-to-bottom", () => {
     assert.equal(el.scrollTop, 800);
   });
 
+  it("the empty hero fills the pane instead of sitting under the header", () => {
+    const panel = readFileSync(
+      resolve(process.cwd(), "src/components/agent/SmartChartAgentPanel.tsx"),
+      "utf8",
+    );
+    const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
+    const workspace = readFileSync(
+      resolve(process.cwd(), "src/components/SmartChartWorkspace.tsx"),
+      "utf8",
+    );
+    assert.match(panel, /data-hero=\{isHero/);
+    assert.match(panel, /data-testid="composer-hero"/);
+    assert.match(panel, /flex-1 flex-col items-center justify-center/);
+    assert.doesNotMatch(
+      panel.slice(panel.indexOf("composer-hero"), panel.indexOf("composer-hero") + 280),
+      /className="[^"]*\bh-full\b/,
+    );
+    assert.match(css, /chat-scroll-region:not\(\[data-hero\]\)/);
+    assert.match(workspace, /flex h-full min-h-0 w-full flex-col/);
+  });
+
   it("the live thread pins on send and follows the growing reply", () => {
     const panel = readFileSync(
       resolve(process.cwd(), "src/components/agent/SmartChartAgentPanel.tsx"),

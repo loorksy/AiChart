@@ -702,7 +702,7 @@ function SmartChartWorkspaceInner({
   );
   // Chat: full width up to xl, persisted width beside the chart from xl.
   const chatPaneClass = cn(
-    "flex min-h-0 w-full flex-col border-border/40",
+    "flex h-full min-h-0 w-full flex-col border-border/40",
     desktopLayout === "chartOnly"
       ? "xl:hidden"
       : desktopLayout === "chatOnly"
