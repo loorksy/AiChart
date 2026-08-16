@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowUp, ChevronDown, Square } from "lucide-react";
+import { ChevronDown, Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
@@ -78,23 +78,26 @@ function ComposerModelChip() {
       </button>
 
       <div
+        data-testid="composer-model-menu"
         style={{ transformOrigin: "bottom", transitionTimingFunction: SPRING }}
         className={cn(
-          "absolute bottom-full start-0 z-50 mb-2 max-h-72 w-64 overflow-y-auto rounded-2xl border border-border bg-card/95 p-1 shadow-xl backdrop-blur-md transition-all duration-300",
+          "absolute bottom-full start-0 z-50 mb-2 w-64 overflow-hidden rounded-2xl border border-border bg-card/95 shadow-xl backdrop-blur-md transition-all duration-300",
           open
             ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
             : "pointer-events-none translate-y-2 scale-95 opacity-0",
         )}
       >
-        <ModelChoiceList
-          models={data.models}
-          selected={data.selected}
-          saving={saving}
-          onChoose={(ref) => {
-            void choose(ref);
-            setOpen(false);
-          }}
-        />
+        <div className="composer-menu-scroll max-h-72 p-1">
+          <ModelChoiceList
+            models={data.models}
+            selected={data.selected}
+            saving={saving}
+            onChoose={(ref) => {
+              void choose(ref);
+              setOpen(false);
+            }}
+          />
+        </div>
       </div>
     </div>
   );
@@ -122,6 +125,7 @@ export function AgentChatInput({
 }) {
   const { t, dir } = useLocale();
   const [value, setValue] = useState("");
+  const [launching, setLaunching] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Auto-grow: reset to auto first so the box can also shrink back down.
@@ -135,6 +139,8 @@ export function AgentChatInput({
   const submit = useCallback(() => {
     const v = value.trim();
     if (!v || running) return;
+    setLaunching(true);
+    window.setTimeout(() => setLaunching(false), 450);
     setValue("");
     onSend(v);
   }, [value, running, onSend]);
@@ -202,10 +208,11 @@ export function AgentChatInput({
               aria-label={running ? t("agent.cancel") : t("agent.send")}
               title={running ? t("agent.cancel") : t("agent.send")}
               className={cn(
-                "relative flex size-11 shrink-0 items-center justify-center rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9",
+                "group relative flex size-11 shrink-0 items-center justify-center rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9",
                 running
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   : "bg-foreground text-background hover:opacity-90",
+                !running && canSend && "composer-send-ready",
                 !running && !canSend && "opacity-40",
               )}
             >
@@ -215,11 +222,15 @@ export function AgentChatInput({
                   running
                     ? "pointer-events-none rotate-45 scale-50 opacity-0 blur-[1px]"
                     : "rotate-0 scale-100 opacity-100 blur-none",
+                  launching && !running && "composer-send-launch",
                 )}
                 style={{ transitionTimingFunction: SPRING }}
                 aria-hidden
               >
-                <ArrowUp className="h-4 w-4" />
+                <Send
+                  className="composer-send-glyph h-4 w-4 transition-transform duration-300 rtl:-scale-x-100"
+                  strokeWidth={2.25}
+                />
               </span>
               <span
                 className={cn(

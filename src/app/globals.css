@@ -535,6 +535,12 @@ label {
   .animate-landing-modal {
     animation: none;
   }
+
+  .composer-send-ready:hover .composer-send-glyph,
+  .composer-send-launch .composer-send-glyph {
+    animation: none;
+    transform: none;
+  }
 }
 
 .bottom-nav {
@@ -619,6 +625,67 @@ label {
 .aichart-scroll:hover::-webkit-scrollbar-thumb,
 .aichart-scroll:focus-within::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+}
+
+/* Model menu: keep the thumb inside the rounded panel (RTL puts it on the start edge). */
+.composer-menu-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 40%, transparent) transparent;
+}
+.composer-menu-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.composer-menu-scroll::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.composer-menu-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 0.5rem;
+}
+.composer-menu-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+@keyframes composer-send-launch {
+  0% {
+    transform: translate(0, 0) rotate(0) scale(1);
+    opacity: 1;
+  }
+  55% {
+    transform: translate(0.35rem, -0.55rem) rotate(-18deg) scale(0.8);
+    opacity: 0;
+  }
+  56% {
+    transform: translate(-0.15rem, 0.25rem) scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(0, 0) rotate(0) scale(1);
+    opacity: 1;
+  }
+}
+.composer-send-ready:hover .composer-send-glyph {
+  transform: translate(0.1rem, -0.15rem) rotate(-12deg);
+}
+.chat-composer-shell[dir="rtl"] .composer-send-ready:hover .composer-send-glyph {
+  transform: translate(-0.1rem, -0.15rem) rotate(12deg);
+}
+.composer-send-launch .composer-send-glyph {
+  animation: composer-send-launch 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-send-ready:hover .composer-send-glyph,
+  .composer-send-launch .composer-send-glyph {
+    animation: none;
+    transform: none;
+  }
 }
 
 .sidebar-nav-item {

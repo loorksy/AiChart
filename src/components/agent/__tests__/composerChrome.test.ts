@@ -24,4 +24,22 @@ describe("composer chrome", () => {
   it("shows the model name without the company in the picker", () => {
     assert.match(picker, /shortModelLabel/);
   });
+
+  it("clips the model menu scrollbar inside the rounded panel", () => {
+    assert.match(input, /composer-model-menu/);
+    assert.match(input, /overflow-hidden rounded-2xl/);
+    assert.match(input, /composer-menu-scroll/);
+    assert.doesNotMatch(
+      input,
+      /overflow-y-auto rounded-2xl/,
+      "scrollbar must not live on the rounded shell",
+    );
+  });
+
+  it("uses an animated paper-plane send control", () => {
+    assert.match(input, /<Send\b/);
+    assert.match(input, /composer-send-ready/);
+    assert.match(input, /composer-send-launch/);
+    assert.doesNotMatch(input, /<ArrowUp\b/);
+  });
 });
