@@ -47,6 +47,24 @@ export function isAllowedModelRef(ref: string): boolean {
 }
 
 /**
+ * Composer-facing label: the model name only, not the company that ships it.
+ * "Claude Fable 5" → "Fable 5", "OpenAI: GPT-4o Mini" → "GPT-4o Mini".
+ * Admin catalogues keep the full string; the picker already shows a provider icon.
+ */
+export function shortModelLabel(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return trimmed;
+  const stripped = trimmed
+    .replace(
+      /^(OpenAI|Anthropic|Google|Meta|Mistral|DeepSeek|xAI|Qwen|OpenRouter|Amazon|Microsoft|Cohere|Perplexity)\s*[:·|-]\s*/i,
+      "",
+    )
+    .replace(/^(Claude|OpenAI|Anthropic)\s+/i, "")
+    .trim();
+  return stripped || trimmed;
+}
+
+/**
  * o-series and gpt-5 models "think" before answering — reasoning tokens
  * spend wall-clock time and completion budget before the visible answer
  * starts, the same way Claude 5-family extended thinking does. Callers that

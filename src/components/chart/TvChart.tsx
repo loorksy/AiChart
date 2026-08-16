@@ -388,8 +388,10 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         // URL, which a client-side navigation can rewrite before this runs.
         const isCapture = captureRef.current;
 
-        // Capture: strip every toolbar. Live charts: library owns legend and
-        // resolution — no hand-built overlays and no chart-owned trading UI.
+        // Live and capture both drop TradingView's own top/bottom chrome.
+        // Interval stays in the composer; refresh lives in the console top bar.
+        // Legend keeps price/volume — only the series title (XAUUSD · MT5 CLOUD)
+        // is hidden via overrides below.
         const disabled: ChartingLibraryWidgetOptions["disabled_features"] = [
           "use_localstorage_for_settings",
           "header_saveload",
@@ -397,15 +399,11 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           "header_compare",
           // Drawing tools are the agent's job — levels arrive programmatically.
           "left_toolbar",
-          ...(isCapture
-            ? ([
-                "header_widget",
-                "header_indicators",
-                "timeframes_toolbar",
-                "control_bar",
-                "legend_context_menu",
-              ] as const)
-            : []),
+          "header_widget",
+          "header_indicators",
+          "timeframes_toolbar",
+          "control_bar",
+          ...(isCapture ? (["legend_context_menu"] as const) : []),
         ];
 
         const options = {
@@ -422,19 +420,22 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           theme: bootTheme,
           autosize: true,
           timezone: "Etc/UTC",
+          custom_css_url: "aichart-hide-series-title.css",
           disabled_features: disabled,
-          // Legend = library symbol display (#10). Header resolutions replace
-          // the hand-built timeframe strip.
           enabled_features: isCapture
             ? []
             : ([
-                "header_widget",
                 "display_legend_on_all_charts",
                 "seconds_resolution",
+                "hide_resolution_in_legend",
               ] as const),
           overrides: {
             "paneProperties.background": bootTheme === "dark" ? "#050505" : "#f4f5f7",
             "paneProperties.backgroundType": "solid",
+            "paneProperties.legendProperties.showSeriesTitle": false,
+            "paneProperties.legendProperties.showSeriesOHLC": true,
+            "paneProperties.legendProperties.showBarChange": true,
+            "paneProperties.legendProperties.showVolume": true,
           },
           loading_screen: {
             backgroundColor: bootTheme === "dark" ? "#050505" : "#f4f5f7",
@@ -444,40 +445,11 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         const w = new window.TradingView.widget(options);
         widgetRef.current = w;
 
-        if (!isCapture) {
-          void w.headerReady().then(() => {
-            if (cancelled) return;
-            for (const action of headerActionsRef.current ?? []) {
-              const btn = w.createButton();
-              btn.textContent = action.text;
-              if (action.title) btn.setAttribute("title", action.title);
-              if (action.color) btn.style.color = action.color;
-              btn.dir = directionRef.current;
-              btn.style.direction = directionRef.current;
-              btn.addEventListener("click", () => {
-                const latest = headerActionsRef.current?.find((a) => a.id === action.id);
-                latest?.onClick?.();
-              });
-              headerButtonsRef.current.set(action.id, btn);
-            }
-            // Chart refresh lives in the library header (not page top bar).
-            const refreshBtn = w.createButton();
-            refreshBtn.setAttribute("title", "Refresh");
-            refreshBtn.setAttribute("data-testid", "chart-refresh");
-            refreshBtn.textContent = "↻";
-            refreshBtn.addEventListener("click", () => {
-              try {
-                widgetRef.current?.activeChart().resetData();
-              } catch {
-                /* torn down */
-              }
-            });
-            headerButtonsRef.current.set("refresh", refreshBtn);
-          });
-        }
-
         w.onChartReady(() => {
           if (cancelled) return;
+          w.applyOverrides({
+            "paneProperties.legendProperties.showSeriesTitle": false,
+          });
           readyRef.current = true;
           const chart = w.activeChart();
           managerRef.current = new TvDrawingManager(chart);
@@ -655,6 +627,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         w.applyOverrides({
           "paneProperties.background": theme === "dark" ? "#050505" : "#f4f5f7",
           "paneProperties.backgroundType": "solid",
+          "paneProperties.legendProperties.showSeriesTitle": false,
         });
       }).catch(() => {});
     }
@@ -664,9 +637,47 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     }
   }, [theme, direction, ready]);
 
+  // TradingView sizes its canvas on window resize, not on container or
+  // visualViewport changes. After idle, tab restore, or the mobile sheet
+  // growing to the top of the screen, the candles would sit above a gap
+  // unless we re-notify the widget.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !ready) return;
+    let raf = 0;
+    const notify = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        window.dispatchEvent(new Event("resize"));
+      });
+    };
+    const ro = new ResizeObserver(notify);
+    ro.observe(el);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") notify();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", notify);
+    window.visualViewport?.addEventListener("resize", notify);
+    window.visualViewport?.addEventListener("scroll", notify);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", notify);
+      window.visualViewport?.removeEventListener("resize", notify);
+      window.visualViewport?.removeEventListener("scroll", notify);
+    };
+  }, [ready]);
+
   return (
     <div dir={direction} className={cn("relative h-full w-full", className)}>
-      <div ref={containerRef} data-symbol={symbol} className="h-full w-full" />
+      <div
+        ref={containerRef}
+        data-symbol={symbol}
+        data-tv-chart
+        className="h-full w-full"
+      />
       <ChartScanOverlay active={analyzing} />
     </div>
   );

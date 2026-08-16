@@ -156,6 +156,36 @@ function SmartChartWorkspaceInner({
   useEffect(() => {
     if (!chartSheetOpen) setSheetExpanded(false);
   }, [chartSheetOpen]);
+  /**
+   * Below `xl` the chart is a bottom sheet. `100dvh` / `88dvh` drift after
+   * idle, tab restore, or the mobile chrome showing/hiding — size the sheet
+   * from the visual viewport instead so candles fill the pane.
+   */
+  const [isWide, setIsWide] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1280px)");
+    const syncWide = () => setIsWide(query.matches);
+    syncWide();
+    query.addEventListener("change", syncWide);
+    const syncHeight = () => {
+      setViewportHeight(window.visualViewport?.height ?? window.innerHeight);
+    };
+    syncHeight();
+    window.visualViewport?.addEventListener("resize", syncHeight);
+    window.visualViewport?.addEventListener("scroll", syncHeight);
+    window.addEventListener("resize", syncHeight);
+    window.addEventListener("pageshow", syncHeight);
+    document.addEventListener("visibilitychange", syncHeight);
+    return () => {
+      query.removeEventListener("change", syncWide);
+      window.visualViewport?.removeEventListener("resize", syncHeight);
+      window.visualViewport?.removeEventListener("scroll", syncHeight);
+      window.removeEventListener("resize", syncHeight);
+      window.removeEventListener("pageshow", syncHeight);
+      document.removeEventListener("visibilitychange", syncHeight);
+    };
+  }, []);
   const sheetPaneRef = useRef<HTMLDivElement>(null);
   const { handleProps: sheetHandleProps } = useSheetGesture({
     sheetRef: sheetPaneRef,
@@ -648,10 +678,16 @@ function SmartChartWorkspaceInner({
    * as an ordinary pane.
    */
   const chartVisibleDesktop = !chatEnabled || desktopLayout !== "chatOnly";
+  const sheetHeightPx =
+    !isWide && chatEnabled && viewportHeight != null
+      ? Math.round(sheetExpanded ? viewportHeight : viewportHeight * 0.88)
+      : null;
   const chartPaneClass = cn(
     "relative flex min-h-0 flex-col overflow-hidden bg-background",
     chatEnabled && [
-      sheetExpanded ? "fixed inset-x-0 bottom-0 z-40 h-[100dvh]" : "fixed inset-x-0 bottom-0 z-40 h-[88dvh]",
+      sheetExpanded
+        ? "fixed inset-x-0 bottom-0 z-40 h-[100dvh]"
+        : "fixed inset-x-0 bottom-0 z-40 h-[88dvh]",
       "rounded-t-[var(--radius-lg)] border-t border-border shadow-2xl",
       "transition-[transform,height] duration-300 ease-out motion-reduce:transition-none",
       chartSheetOpen
@@ -680,15 +716,6 @@ function SmartChartWorkspaceInner({
    * or gives the width back. Both regimes are tracked so the button's pressed
    * state matches whichever one the operator is actually looking at.
    */
-  const [isWide, setIsWide] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 1280px)");
-    const sync = () => setIsWide(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
   const toggleChart = useCallback(() => {
     if (isWide) {
       applyDesktopLayout(desktopLayout === "chatOnly" ? "split" : "chatOnly");
@@ -776,6 +803,11 @@ function SmartChartWorkspaceInner({
           data-testid="workspace-chart-pane"
           data-expanded={sheetExpanded || undefined}
           className={chartPaneClass}
+          style={sheetHeightPx != null ? { height: `${sheetHeightPx}px` } : undefined}
+          onTransitionEnd={(event) => {
+            if (event.propertyName !== "height" && event.propertyName !== "transform") return;
+            window.dispatchEvent(new Event("resize"));
+          }}
         >
           {/* Grab bar: the sheet's drag handle under xl, and the surface that
               carries its dismiss affordance. Hidden once the chart is a pane. */}
@@ -814,6 +846,24 @@ function SmartChartWorkspaceInner({
                 onIntervalChange={handleIntervalChange}
               />
             </ChartErrorBoundary>
+
+            {!chatEnabled && !capture && headerActions.length > 0 && (
+              <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-end px-2">
+                <div className="pointer-events-auto flex flex-wrap justify-end gap-1">
+                  {headerActions.map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      title={action.title}
+                      onClick={action.onClick}
+                      className="rounded-lg border border-border/60 bg-background/90 px-2 py-1 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur-md hover:bg-muted hover:text-foreground"
+                    >
+                      {action.text}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <ChartTradeOverlay
               recommendation={recommendation}

@@ -55,11 +55,11 @@ test("both consoles share one top bar: account, alerts, nav", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /<ConsoleTopBar/);
   assert.doesNotMatch(shell, /needsPageMenu/);
-  // Traders refresh from the library header button; admin page refresh stays in the top bar.
-  assert.match(shell, /refreshMode=\{isAdmin \? "page" : "none"\}/);
+  // Library header is hidden; traders refresh candles from the top bar.
+  assert.match(shell, /refreshMode=\{isAdmin \? "page" : "chart"\}/);
   assert.match(
-    read("components/chart/TvChart.tsx"),
-    /setAttribute\(\s*"data-testid"\s*,\s*"chart-refresh"\s*\)/,
+    read("components/shell/ConsoleTopBar.tsx"),
+    /data-testid=\{refreshMode === "chart" \? "chart-refresh" : "console-refresh"\}/,
   );
   assert.match(read("components/shell/ConsoleTopBar.tsx"), /data-testid="topbar-scroll"/);
   // Read past the imports so the order below is the rendered order, not the

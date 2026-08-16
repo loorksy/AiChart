@@ -44,11 +44,9 @@ export function ChatLayoutSkeleton() {
             <MessageRowSkeleton isUser lineCount={1} />
             <MessageRowSkeleton lineCount={2} />
           </div>
-          {/* Input bar */}
-          <div className="border-t border-border/50 bg-card/60 px-4 py-3 backdrop-blur-md">
-            <div className="mx-auto max-w-3xl">
-              <SkeletonBlock className="h-12 w-full rounded-[1.75rem]" />
-            </div>
+          {/* Composer: textarea + control row (model, interval, risk, send) */}
+          <div className="px-3 pt-1 pb-[max(.5rem,env(safe-area-inset-bottom))]">
+            <ComposerSkeleton />
           </div>
         </div>
       </div>
@@ -58,23 +56,28 @@ export function ChatLayoutSkeleton() {
 
 /* ────────────────────────────────────────────────────────────
    Live Chart Preview Skeleton
-   Mimics: TradingView wrapper with header toolbar + empty axes
+   Mimics: TradingView pane (no library header/footer chrome) + empty axes
    ──────────────────────────────────────────────────────────── */
+
+function ComposerSkeleton() {
+  return (
+    <div className="chat-gpt-input mx-auto flex w-full max-w-3xl flex-col gap-1 px-2 py-1.5">
+      <SkeletonBlock className="h-9 w-full rounded-lg" />
+      <div className="flex items-center gap-1">
+        <SkeletonBlock className="h-8 w-24 rounded-full" />
+        <SkeletonBlock className="h-8 w-14 rounded-lg" />
+        <SkeletonBlock className="h-8 w-12 rounded-lg" />
+        <SkeletonBlock className="ms-auto size-9 shrink-0 rounded-full" />
+      </div>
+    </div>
+  );
+}
 
 export function ChartPreviewSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={`flex h-full flex-col border-r border-border bg-card/95 backdrop-blur-sm ${className ?? ""}`}
     >
-      {/* Toolbar */}
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <SkeletonBlock className="h-7 w-28 rounded-md" />
-        <div className="flex items-center gap-1">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <SkeletonBlock key={i} className="h-7 w-8 rounded-md" />
-          ))}
-        </div>
-      </div>
       {/* Chart canvas */}
       <div className="relative flex-1 p-3">
         {/* Y-axis labels */}
@@ -129,7 +132,7 @@ export function WorkspaceSkeleton() {
           <MessageRowSkeleton lineCount={3} />
         </div>
         <div className="px-3 pb-3">
-          <SkeletonBlock className="h-11 w-full rounded-3xl" />
+          <ComposerSkeleton />
         </div>
       </div>
     </div>

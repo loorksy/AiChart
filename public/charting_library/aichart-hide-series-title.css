@@ -1,0 +1,8 @@
+/* Loaded inside the TradingView iframe via custom_css_url.
+   Hides the pair + exchange title (XAUUSD · MT5 CLOUD) while leaving
+   OHLC, bar change, and volume in the legend. */
+.pane-legend-title__description,
+.pane-legend-title__container,
+.pane-legend-line__title-wrapper {
+  display: none !important;
+}

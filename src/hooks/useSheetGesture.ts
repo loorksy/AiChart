@@ -101,7 +101,8 @@ export function useSheetGesture({
         // Upward: the top edge follows the finger until the sheet fills the
         // viewport. Height, not transform — the bottom edge must stay put.
         el.style.transform = "";
-        el.style.height = `${Math.min(g.baseHeight - dy, window.innerHeight)}px`;
+        const viewportH = window.visualViewport?.height ?? window.innerHeight;
+        el.style.height = `${Math.min(g.baseHeight - dy, viewportH)}px`;
       }
     },
     [sheetRef],
@@ -126,7 +127,9 @@ export function useSheetGesture({
       if (
         dy < 0 &&
         latest.current.expandable &&
-        (flickUp || -dy > (window.innerHeight - g.baseHeight) * 0.4)
+        (flickUp ||
+          -dy >
+            ((window.visualViewport?.height ?? window.innerHeight) - g.baseHeight) * 0.4)
       ) {
         latest.current.onExpandedChange?.(true);
         return;

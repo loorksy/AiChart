@@ -500,8 +500,8 @@ function ConsoleShellBody({
             displayName={displayName}
             sidebarOpen={mobileOpen}
             onToggleSidebar={() => setMobileOpen(!mobileOpen)}
-            // Traders refresh from the library header; admins still reload the page.
-            refreshMode={isAdmin ? "page" : "none"}
+            // Library header is hidden; traders refresh candles from here.
+            refreshMode={isAdmin ? "page" : "chart"}
             showBalance={!isAdmin}
             showAccountStatus={!isAdmin}
             // Home composer (no ?chat=) hides the chart icon — that screen is

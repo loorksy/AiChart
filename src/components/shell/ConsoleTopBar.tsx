@@ -33,7 +33,7 @@ export function ConsoleTopBar({
   displayName,
   onToggleSidebar,
   sidebarOpen,
-  /** Admins reload the page; traders no longer refresh from the top bar. */
+  /** Admins reload the page; traders re-request candles without a remount. */
   refreshMode,
   showBalance = false,
   showChartToggle = false,
@@ -42,7 +42,7 @@ export function ConsoleTopBar({
   displayName: string;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
-  refreshMode: "page" | "none";
+  refreshMode: "page" | "chart" | "none";
   /** Traders see subscription credit; the admin console is not a metered account. */
   showBalance?: boolean;
   /** Hidden on the bare home composer (no chat) — chart summon is not the job there. */
@@ -57,10 +57,14 @@ export function ConsoleTopBar({
   const [canScrollEnd, setCanScrollEnd] = useState(false);
 
   const refresh = useCallback(() => {
-    if (refreshMode !== "page") return;
+    if (refreshMode === "none") return;
     setSpinning(true);
     window.setTimeout(() => setSpinning(false), 600);
-    router.refresh();
+    if (refreshMode === "page") {
+      router.refresh();
+      return;
+    }
+    window.dispatchEvent(new CustomEvent(CHART_RELOAD_EVENT));
   }, [refreshMode, router]);
 
   const updateScrollAffordance = useCallback(() => {
@@ -148,10 +152,10 @@ export function ConsoleTopBar({
               <CandlestickChart className="h-5 w-5" />
             </button>
           )}
-          {refreshMode === "page" && (
+          {(refreshMode === "page" || refreshMode === "chart") && (
             <button
               type="button"
-              data-testid="console-refresh"
+              data-testid={refreshMode === "chart" ? "chart-refresh" : "console-refresh"}
               onClick={refresh}
               aria-label={t("shell.refresh")}
               title={t("shell.refresh")}

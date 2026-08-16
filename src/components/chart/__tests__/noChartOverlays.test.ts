@@ -30,9 +30,13 @@ describe("no hand-built chart overlays", () => {
     assert.doesNotMatch(workspace, /tradingEnabled/);
   });
 
-  it("keeps the library header for live charts and strips it only for capture", () => {
+  it("hides library header and bottom chrome on live charts, not only capture", () => {
     assert.match(tvChart, /header_widget/);
-    assert.match(tvChart, /isCapture/);
+    assert.match(tvChart, /timeframes_toolbar/);
+    assert.match(tvChart, /control_bar/);
+    assert.match(tvChart, /showSeriesTitle": false/);
+    assert.match(tvChart, /custom_css_url/);
     assert.match(tvChart, /SpreadPriceLines/);
+    assert.doesNotMatch(tvChart, /enabled_features:[\s\S]{0,200}header_widget/);
   });
 });

@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { ProviderIcon } from "@/components/agent/ProviderIcon";
+import { shortModelLabel } from "@/lib/modelCatalog";
 
 interface ModelOption {
   ref: string;
@@ -75,11 +76,12 @@ export function useAgentModels(enabled: boolean) {
   }, []);
 
   const activeRef = data ? (data.selected ?? data.platformDefault) : null;
-  const activeLabel = data
+  const rawActiveLabel = data
     ? (data.models.find((m) => m.ref === activeRef)?.label ??
       activeRef?.split("/").pop() ??
       activeRef)
     : null;
+  const activeLabel = rawActiveLabel ? shortModelLabel(rawActiveLabel) : null;
 
   return {
     data,
@@ -167,7 +169,7 @@ export function ModelChoiceList({
                   className="text-muted-foreground"
                 />
                 <span className="truncate" dir="ltr">
-                  {m.label}
+                  {shortModelLabel(m.label)}
                 </span>
               </span>
               {selected === m.ref && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}

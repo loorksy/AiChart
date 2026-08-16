@@ -11,7 +11,6 @@ import {
 import { ArrowUp, ChevronDown, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
-import { ComposerMoreMenu } from "@/components/agent/ComposerMoreMenu";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
 import { ComposerIntervalPicker } from "@/components/agent/ComposerMarketPickers";
 import {
@@ -190,13 +189,12 @@ export function AgentChatInput({
           <RiskPerTradeControl />
 
           {/*
-            End of the row: the plus holds what is set once and left alone,
-            and beside it ONE morphing action slot — the send arrow and the
+            End of the row: ONE morphing action slot — the send arrow and the
             stop square crossfade in place (rotate + scale) instead of
             swapping DOM, so the button never jumps under the pointer.
+            Model pick lives on ComposerModelChip; a second plus was a duplicate.
           */}
           <div className="ms-auto flex items-center gap-0.5">
-            <ComposerMoreMenu />
             <button
               type={running ? "button" : "submit"}
               onClick={running ? onCancel : undefined}

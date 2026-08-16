@@ -546,6 +546,13 @@ label {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent);
 }
 
+/* TradingView legend: keep OHLC / change / volume, hide the pair + exchange title. */
+[data-tv-chart] .pane-legend-title__description,
+[data-tv-chart] .pane-legend-title__container,
+[data-tv-chart] .pane-legend-line__title-wrapper {
+  display: none !important;
+}
+
 /* Floating composer — no outer footer card; theme-aware bottom fade behind it */
 .chat-panel-shell {
   position: relative;
