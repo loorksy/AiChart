@@ -20,6 +20,8 @@ export default async function OpenGraphImage() {
     readFile(join(process.cwd(), "public/brand/aichart-mark-dark.png")),
   ]);
   const markSrc = `data:image/png;base64,${mark.toString("base64")}`;
+  const titleAr = `شارت حي وتوصيات ${DISPLAY_NAME_AR}`;
+  const titleEn = `Live chart and ${DISPLAY_NAME_EN} recommendations — review cards, not trade execution.`;
 
   return new ImageResponse(
     (
@@ -38,6 +40,7 @@ export default async function OpenGraphImage() {
       >
         <div
           style={{
+            display: "flex",
             position: "absolute",
             top: 0,
             left: 0,
@@ -46,23 +49,40 @@ export default async function OpenGraphImage() {
             background: "#c9a227",
           }}
         />
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        <div style={{ display: "flex", alignItems: "center" }}>
           <img src={markSrc} width={72} height={72} alt="" />
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 36, letterSpacing: -0.5 }}>{BRAND_NAME}</div>
-            <div style={{ fontSize: 20, color: "#a8a29e" }}>{BRAND_DOMAIN}</div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              marginLeft: 20,
+            }}
+          >
+            <div style={{ display: "flex", fontSize: 36, letterSpacing: -0.5 }}>
+              {BRAND_NAME}
+            </div>
+            <div style={{ display: "flex", fontSize: 20, color: "#a8a29e" }}>
+              {BRAND_DOMAIN}
+            </div>
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ fontSize: 54, lineHeight: 1.2 }}>
-            شارت حي وتوصيات {DISPLAY_NAME_AR}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", fontSize: 54, lineHeight: 1.2 }}>
+            {titleAr}
           </div>
-          <div style={{ fontSize: 28, color: "#d6d3d1", lineHeight: 1.35 }}>
-            Live chart and {DISPLAY_NAME_EN} recommendations — review cards, not
-            trade execution.
+          <div
+            style={{
+              display: "flex",
+              fontSize: 28,
+              color: "#d6d3d1",
+              lineHeight: 1.35,
+              marginTop: 16,
+            }}
+          >
+            {titleEn}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ display: "flex" }}>
           {["الذهب", "توصيات", "بدون تنفيذ"].map((label) => (
             <div
               key={label}
@@ -73,6 +93,7 @@ export default async function OpenGraphImage() {
                 padding: "8px 18px",
                 fontSize: 22,
                 color: "#e7e5e4",
+                marginRight: 12,
               }}
             >
               {label}
