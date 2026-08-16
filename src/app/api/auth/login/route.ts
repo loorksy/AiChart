@@ -6,6 +6,7 @@ import { verifyPassword, setSession } from "@/lib/auth";
 import { isSingleUserMode, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { hasPlatformAccess } from "@/lib/platformAccess";
+import { getAdminRole, permissionsForRole } from "@/lib/adminRoles";
 import type { UserRow } from "@/lib/types";
 
 const schema = z.object({
@@ -81,9 +82,16 @@ export async function POST(req: NextRequest) {
       email: row.email,
       role: row.role,
     });
+    // Same cosmetic list /api/me returns — the Flutter admin shell gates
+    // the Admins tab on roles_write and must not wait for a second round-trip.
+    const adminPermissions =
+      row.role === "admin"
+        ? permissionsForRole(await getAdminRole(row.id))
+        : [];
     return NextResponse.json({
       user: publicUser,
       platform_access: hasPlatformAccess(publicUser),
+      admin_permissions: adminPermissions,
       token,
     });
   } catch (err) {

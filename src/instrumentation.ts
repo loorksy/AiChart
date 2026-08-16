@@ -9,8 +9,17 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    const dns = await import("node:dns");
+    dns.setDefaultResultOrder("ipv4first");
+
     const { initDb } = await import("./lib/db");
     await initDb();
+
+    // Keep the inbound Telegram surface alive across deploys. The bot
+    // token lives in platform_config; without this, a fresh process has
+    // a working token and a deaf webhook.
+    const { ensureTelegramWebhook } = await import("./lib/telegram");
+    void ensureTelegramWebhook();
 
     // Event-loop lag sampler (RELIABILITY_PLAN.md item 9). Heavy synchronous
     // work starves the loop long before users report anything — the exact

@@ -13,13 +13,19 @@ export const metadata: Metadata = {
   description: `${BRAND_NAME} — ${BRAND_TAGLINE_AR} · MetaTrader 5`,
 };
 
-export default async function WorkspaceLayout({
+/**
+ * The chat surface's shell — sidebar navigation, conversations list and the
+ * mobile drawer. This lived on /workspace before the surface moved to /chat;
+ * the page moved but the layout was left behind, so /chat rendered bare (no
+ * sidebar, no hamburger on mobile). Moved here to finish that migration.
+ */
+export default async function ChatLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/login?next=/workspace");
+  if (!user) redirect("/login?next=/chat");
   if (needsMcpCredentials(user)) redirect("/complete-profile");
   if (user.role !== "admin" && !hasPlatformAccess(user)) {
     redirect("/awaiting-approval");

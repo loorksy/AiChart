@@ -5,13 +5,13 @@ import { buildAccountProfile } from "@/lib/accountProfile";
 import { debugSessionLog } from "@/lib/debugSessionLog";
 import { getTelegramChatId } from "@/lib/store";
 import { sessionStartCard } from "@/lib/telegramCards";
-import { arabicReplyKeyboardRows } from "@/lib/telegramCommands";
 import {
+  dismissPersistentKeyboardOnce,
   isTelegramConfigured,
-  sendMessageWithReplyKeyboard,
+  sendMessage,
 } from "@/lib/telegram";
 
-/** Bridge: welcome card + Arabic reply keyboard for linked Telegram chat. */
+/** Bridge: welcome card for a linked chat — no standing keypad. */
 export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
@@ -58,7 +58,8 @@ export async function POST(req: NextRequest) {
 
     const profile = await buildAccountProfile(userId);
     const text = sessionStartCard(profile);
-    await sendMessageWithReplyKeyboard(chatId, text, arabicReplyKeyboardRows());
+    await dismissPersistentKeyboardOnce(chatId);
+    await sendMessage(chatId, text);
     // #region agent log
     debugSessionLog({
       location: "telegram/menu/route.ts:POST",
@@ -72,7 +73,6 @@ export async function POST(req: NextRequest) {
       ok: true,
       delivered: true,
       text,
-      keyboard: arabicReplyKeyboardRows(),
     });
   } catch (e) {
     // #region agent log

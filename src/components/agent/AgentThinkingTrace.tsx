@@ -1,0 +1,277 @@
+"use client";
+
+/**
+ * Claude-style collapsible run trace.
+ *
+ * One header line — shimmering while the run is live, a quiet summary once it
+ * settles — with the REAL pipeline underneath: every row is an actual stage
+ * event from the engine (aggregateStageEvents), never a scripted animation.
+ * Collapsed by default on purpose: the answer is the product, the trace is
+ * there for whoever wants to look.
+ *
+ * Two sources, one look:
+ *  - live: AgentStageEvent[] streaming over SSE while the run is in flight,
+ *    plus the model-generated ticker line as the "current activity" row.
+ *  - done: the persisted result stages ({ stage, durationMs }) rendered from
+ *    the run_stages card after the run completes.
+ */
+import { useMemo, useState } from "react";
+import { Check, ChevronDown, History, Sparkles, TriangleAlert } from "lucide-react";
+import { useLocale } from "@/hooks/useLocale";
+import { cn } from "@/lib/utils";
+import {
+  aggregateStageEvents,
+  type AgentStageEvent,
+} from "@/lib/agent/stageEvents";
+import type { AgentTickerItem } from "@/lib/agent/ticker/types";
+
+/** Stage names with a translated label; unknown names render as-is. */
+const KNOWN_STAGES = new Set([
+  "market_data",
+  "structure",
+  "liquidity",
+  "supply_demand",
+  "multi_timeframe",
+  "news",
+  "risk",
+  "final_decision",
+  "drawing",
+  "execution_guard",
+  "general",
+  "research",
+]);
+
+interface TraceRow {
+  stage: string;
+  status: "running" | "done" | "failed" | "resumed";
+  durationMs: number | null;
+}
+
+function formatSeconds(ms: number): string {
+  return ms >= 100 ? `${(ms / 1000).toFixed(1)}s` : "";
+}
+
+function StatusIcon({ status }: { status: TraceRow["status"] }) {
+  if (status === "running") {
+    return (
+      <span
+        aria-hidden
+        className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-border border-t-foreground/70"
+      />
+    );
+  }
+  if (status === "failed") {
+    return <TriangleAlert className="h-3 w-3 shrink-0 text-warning" aria-hidden />;
+  }
+  if (status === "resumed") {
+    return <History className="h-3 w-3 shrink-0 text-info" aria-hidden />;
+  }
+  return <Check className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />;
+}
+
+function TraceBody({
+  rows,
+  tickerText,
+}: {
+  rows: TraceRow[];
+  tickerText?: string | null;
+}) {
+  const { t } = useLocale();
+  return (
+    <div className="relative ms-[7px] border-s border-border/70 ps-3.5">
+      <div className="flex flex-col gap-0.5 py-1">
+        {rows.map((row, i) => {
+          const label = KNOWN_STAGES.has(row.stage)
+            ? t(`agent.stage.${row.stage}`)
+            : row.stage;
+          const time = row.durationMs != null ? formatSeconds(row.durationMs) : "";
+          return (
+            <div
+              key={row.stage}
+              className="flex min-h-6 items-center gap-2 rounded-md px-1 text-[12.5px]"
+              style={{
+                animation: `trace-fade-up 320ms cubic-bezier(0.23,1,0.32,1) ${Math.min(i, 8) * 60}ms both`,
+              }}
+            >
+              <StatusIcon status={row.status} />
+              <span
+                className={cn(
+                  "min-w-0 truncate",
+                  row.status === "running"
+                    ? "font-medium text-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </span>
+              {row.status === "resumed" ? (
+                <span className="shrink-0 text-[11px] text-muted-foreground/70">
+                  {t("agent.stage.resumed")}
+                </span>
+              ) : null}
+              {time ? (
+                <span className="ms-auto shrink-0 font-mono text-[10.5px] tabular-nums text-muted-foreground/70">
+                  {time}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+        {tickerText ? (
+          <div
+            className="flex min-h-6 items-center gap-2 px-1 text-[12px] italic text-muted-foreground"
+            style={{ animation: "trace-fade-in 300ms ease-out both" }}
+          >
+            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/60" />
+            <span className="min-w-0">{tickerText}</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function TraceShell({
+  live,
+  headerLabel,
+  rows,
+  tickerText,
+}: {
+  live: boolean;
+  headerLabel: string;
+  rows: TraceRow[];
+  tickerText?: string | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="my-1" data-testid="agent-thinking-trace">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+        className="-ms-1.5 flex w-fit min-h-8 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors duration-100 hover:bg-muted/60"
+      >
+        <Sparkles
+          className={cn(
+            "h-3.5 w-3.5 shrink-0",
+            live ? "text-foreground/70" : "text-muted-foreground",
+          )}
+          aria-hidden
+        />
+        {live ? (
+          <span
+            className="whitespace-nowrap bg-clip-text text-[13px] font-medium text-transparent"
+            style={{
+              backgroundImage:
+                "linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%)",
+              backgroundSize: "200% 100%",
+              animation: "trace-shimmer 1.4s linear infinite",
+            }}
+          >
+            {headerLabel}
+          </span>
+        ) : (
+          <span className="whitespace-nowrap text-[13px] font-medium text-muted-foreground">
+            {headerLabel}
+          </span>
+        )}
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-300",
+            expanded && "rotate-180",
+          )}
+          aria-hidden
+        />
+      </button>
+
+      <div
+        className="grid transition-[grid-template-rows,opacity] duration-300"
+        style={{
+          gridTemplateRows: expanded ? "1fr" : "0fr",
+          opacity: expanded ? 1 : 0,
+          transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)",
+        }}
+      >
+        <div className="overflow-hidden">
+          <TraceBody rows={rows} tickerText={tickerText} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Live variant: renders the run as it happens from real SSE stage events. */
+export function AgentThinkingTraceLive({
+  events,
+  ticker,
+}: {
+  events: readonly AgentStageEvent[];
+  ticker?: AgentTickerItem | null;
+}) {
+  const { t } = useLocale();
+  const rows = useMemo(() => aggregateStageEvents(events), [events]);
+  const runningRow = rows.find((r) => r.status === "running");
+  const headerLabel = runningRow
+    ? KNOWN_STAGES.has(runningRow.stage)
+      ? t(`agent.stage.${runningRow.stage}`)
+      : runningRow.stage
+    : t("agent.thinking");
+  const tickerText = ticker?.text?.trim()
+    ? ticker.text.replace(/[.،…\s]+$/g, "")
+    : null;
+
+  // Nothing recorded yet — a bare shimmer line, no empty chevron box.
+  if (!rows.length && !tickerText) {
+    return (
+      <div className="flex min-h-8 items-center gap-2 py-1" data-testid="agent-thinking-trace">
+        <Sparkles className="h-3.5 w-3.5 shrink-0 text-foreground/70" aria-hidden />
+        <span
+          className="bg-clip-text text-[13px] font-medium text-transparent"
+          style={{
+            backgroundImage:
+              "linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%)",
+            backgroundSize: "200% 100%",
+            animation: "trace-shimmer 1.4s linear infinite",
+          }}
+        >
+          {t("agent.thinking")}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <TraceShell
+      live
+      headerLabel={headerLabel}
+      rows={rows}
+      tickerText={tickerText}
+    />
+  );
+}
+
+/** Done variant: the persisted stage summary once the run has settled. */
+export function AgentThinkingTraceDone({
+  stages,
+}: {
+  stages: readonly { stage: string; durationMs?: number | null }[];
+}) {
+  const { t } = useLocale();
+  if (!stages.length) return null;
+  const totalMs = stages.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
+  const total = totalMs >= 100 ? ` · ${(totalMs / 1000).toFixed(1)}s` : "";
+  const rows: TraceRow[] = stages.map((s) => ({
+    stage: s.stage,
+    status: "done",
+    durationMs: s.durationMs ?? null,
+  }));
+
+  return (
+    <TraceShell
+      live={false}
+      headerLabel={`${t("agent.trace_done")}${total}`}
+      rows={rows}
+    />
+  );
+}

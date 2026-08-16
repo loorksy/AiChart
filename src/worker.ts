@@ -5,6 +5,9 @@
  *
  * Requires REDIS_URL. With it unset this exits early (web runs jobs inline).
  */
+import dns from "node:dns";
+dns.setDefaultResultOrder("ipv4first");
+
 import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 

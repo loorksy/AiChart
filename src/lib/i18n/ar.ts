@@ -324,7 +324,21 @@ export const ar: Record<TranslationKey, string> = {
   "agent.needs_confirmation": "تحتاج الصفقة تأكيدك قبل التنفيذ",
   "agent.account_live": "حساب LIVE",
   "agent.account_demo": "محاكاة/ديمو",
+  "telegram.link.title": "ربط الوكيل بتليجرام",
+  "telegram.link.description":
+    "اربط حسابك ببوت المنصة ليصلك الوكيل بالتنبيهات والتوصيات، وتسأله مباشرة من تليجرام.",
+  "telegram.link.linked": "مرتبط",
+  "telegram.link.connect": "ربط تليجرام",
+  "telegram.link.unlink": "إلغاء الربط",
+  "telegram.link.open_bot": "فتح البوت في تليجرام",
+  "telegram.link.copy": "نسخ الرمز",
+  "telegram.link.pending_hint":
+    "افتح البوت وأرسل الأمر التالي — يكتمل الربط تلقائياً خلال ثوانٍ.",
+  "telegram.link.unconfigured":
+    "بوت تليجرام غير مفعّل على المنصة بعد — يجب أن يضيف المشرف توكن البوت أولاً من لوحة الإدارة.",
   "agent.processing": "جاري المعالجة",
+  "agent.thinking": "يفكّر",
+  "agent.trace_done": "المهام المنجزة",
   "agent.run_stages": "كيف أُنتج هذا الرد",
   "agent.stage.market_data": "بيانات السوق",
   "agent.stage.structure": "البنية السعرية",

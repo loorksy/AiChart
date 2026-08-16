@@ -628,30 +628,6 @@ export async function listOpenAIChatModels(
     .sort((a, b) => b.id.localeCompare(a.id));
 }
 
-export async function listOpenAIRealtimeModels(
-  apiKey: string,
-): Promise<CompatModelInfo[]> {
-  const res = await fetchWithTimeout(
-    "https://api.openai.com/v1/models",
-    {
-      headers: { authorization: `Bearer ${apiKey}` },
-      cache: "no-store",
-    },
-    { timeoutMs: httpTimeoutMs(), label: "OpenAI models" },
-  );
-  if (!res.ok) throw new Error(await readError(res, "OpenAI"));
-  const data = (await res.json()) as { data?: { id: string; created?: number }[] };
-  // Keep only models that can host a speech-to-speech session. The
-  // transcribe / whisper / translate variants are realtime-named but do a
-  // different job, and offering them would silently break the voice agent.
-  const include = /realtime/i;
-  const exclude = /transcribe|whisper|translate/i;
-  return (data.data ?? [])
-    .filter((m) => include.test(m.id) && !exclude.test(m.id))
-    .map((m) => ({ id: m.id, display_name: m.id, created: m.created }))
-    .sort((a, b) => (b.created ?? 0) - (a.created ?? 0) || b.id.localeCompare(a.id));
-}
-
 type OpenRouterModelRow = {
   id?: string;
   name?: string;
@@ -661,15 +637,27 @@ type OpenRouterModelRow = {
     input_modalities?: string[];
     output_modalities?: string[];
   };
+  pricing?: {
+    prompt?: string;
+    completion?: string;
+  };
 };
 
 /**
- * Live catalogue from https://openrouter.ai/api/v1/models.
- * Keeps text-capable chat routes; drops image/audio-only endpoints.
+ * A route costs nothing when OpenRouter says so. Both signals are checked —
+ * the `:free` id suffix is the documented convention, but the pricing object
+ * is the billing truth, and a route missing both must be assumed paid.
  */
-export async function listOpenRouterModels(
+function isOpenRouterFreeRow(m: OpenRouterModelRow): boolean {
+  if (m.id?.trim().toLowerCase().endsWith(":free")) return true;
+  const p = m.pricing;
+  if (!p) return false;
+  return Number(p.prompt ?? "1") === 0 && Number(p.completion ?? "1") === 0;
+}
+
+async function fetchOpenRouterRows(
   apiKey: string,
-): Promise<CompatModelInfo[]> {
+): Promise<OpenRouterModelRow[]> {
   const res = await fetchWithTimeout(
     "https://openrouter.ai/api/v1/models",
     {
@@ -684,17 +672,20 @@ export async function listOpenRouterModels(
   if (!res.ok) throw new Error(await readError(res, "OpenRouter"));
   const data = (await res.json()) as { data?: OpenRouterModelRow[] };
   const exclude = /embed|whisper|tts|moderation|image-edit|upscal/i;
-  return (data.data ?? [])
-    .filter((m) => {
-      const id = m.id?.trim();
-      if (!id || exclude.test(id)) return false;
-      const outs = m.architecture?.output_modalities ?? [];
-      const modality = m.architecture?.modality ?? "";
-      // Prefer text-producing models; if OpenRouter omits architecture, keep it.
-      if (outs.length > 0) return outs.includes("text");
-      if (modality) return modality.includes("text");
-      return true;
-    })
+  return (data.data ?? []).filter((m) => {
+    const id = m.id?.trim();
+    if (!id || exclude.test(id)) return false;
+    const outs = m.architecture?.output_modalities ?? [];
+    const modality = m.architecture?.modality ?? "";
+    // Prefer text-producing models; if OpenRouter omits architecture, keep it.
+    if (outs.length > 0) return outs.includes("text");
+    if (modality) return modality.includes("text");
+    return true;
+  });
+}
+
+function toCompatInfo(rows: OpenRouterModelRow[]): CompatModelInfo[] {
+  return rows
     .map((m) => ({
       id: m.id!.trim(),
       display_name: (m.name ?? m.id)!.trim(),
@@ -704,4 +695,27 @@ export async function listOpenRouterModels(
       (a, b) =>
         (b.created ?? 0) - (a.created ?? 0) || a.id.localeCompare(b.id),
     );
+}
+
+/**
+ * Live catalogue from https://openrouter.ai/api/v1/models.
+ * Keeps text-capable chat routes; drops image/audio-only endpoints.
+ */
+export async function listOpenRouterModels(
+  apiKey: string,
+): Promise<CompatModelInfo[]> {
+  return toCompatInfo(await fetchOpenRouterRows(apiKey));
+}
+
+/**
+ * The FREE subset of the live catalogue — the only OpenRouter models the
+ * platform offers. The admin pastes a key; nobody picks routes by hand, and
+ * a paid route can never be served by accident (OmniRoute-style gateway).
+ */
+export async function listOpenRouterFreeModels(
+  apiKey: string,
+): Promise<CompatModelInfo[]> {
+  return toCompatInfo(
+    (await fetchOpenRouterRows(apiKey)).filter(isOpenRouterFreeRow),
+  );
 }

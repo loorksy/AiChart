@@ -42,15 +42,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "gpt-4.1",
   },
   {
-    key: "OPENAI_REALTIME_MODEL",
-    label: "نموذج المحادثة الصوتية (Realtime)",
-    labelEn: "OPENAI_REALTIME_MODEL",
-    group: "ai",
-    secret: false,
-    plainStorage: false,
-    placeholder: "gpt-realtime",
-  },
-  {
     key: "OPENAI_API_KEY",
     label: "مفتاح OpenAI",
     labelEn: "OPENAI_API_KEY",
@@ -142,15 +133,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "اتركه فارغاً لاستخدام النموذج الأساسي",
   },
   {
-    key: "VOICE_RESPONSES_ENABLED",
-    label: "تفعيل الردود الصوتية (OpenAI TTS)",
-    labelEn: "VOICE_RESPONSES_ENABLED",
-    group: "ops",
-    secret: false,
-    plainStorage: false,
-    type: "toggle",
-  },
-  {
     key: "TELEGRAM_BOT_TOKEN",
     label: "توكن بوت تليجرام",
     labelEn: "TELEGRAM_BOT_TOKEN",
@@ -219,37 +201,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     secret: false,
     plainStorage: false,
     placeholder: "practice | live",
-  },
-  {
-    // Optional; MetaApi picks a region itself when this is blank. Not a secret,
-    // which is why the schema migration marks it plain=1.
-    key: "METAAPI_REGION",
-    label: "منطقة MetaApi (اختياري)",
-    labelEn: "METAAPI_REGION",
-    group: "markets",
-    secret: false,
-    plainStorage: false,
-    placeholder: "new-york — اتركه فارغاً للاختيار التلقائي",
-  },
-  {
-    // V2-B: MetaApi linking UX (wizard, presence deploy, backfill).
-    key: "METAAPI_UX_ENABLED",
-    label: "تفعيل ربط MT5 السحابي (MetaApi)",
-    labelEn: "METAAPI_UX_ENABLED",
-    group: "markets",
-    secret: false,
-    plainStorage: false,
-    type: "toggle",
-  },
-  {
-    // V2-B: measured deploy-hour rate — set from the first real MetaApi invoice.
-    key: "METAAPI_HOURLY_USD",
-    label: "تكلفة ساعة النشر في MetaApi (دولار)",
-    labelEn: "METAAPI_HOURLY_USD",
-    group: "markets",
-    secret: false,
-    plainStorage: false,
-    placeholder: "0.02",
   },
   {
     // V2-A4: Google Sign-In — paste the OAuth client and flip the toggle.

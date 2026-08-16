@@ -1,15 +1,105 @@
 "use client";
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Send, Square } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { ArrowUp, ChevronDown, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { cn } from "@/lib/utils";
 import { ComposerMoreMenu } from "@/components/agent/ComposerMoreMenu";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
 import { ComposerIntervalPicker } from "@/components/agent/ComposerMarketPickers";
+import {
+  ModelChoiceList,
+  useAgentModels,
+} from "@/components/agent/AgentModelPicker";
+import { ProviderIcon } from "@/components/agent/ProviderIcon";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
 const MAX_COMPOSER_HEIGHT = 148;
+
+const SPRING = "cubic-bezier(0.175, 0.885, 0.32, 1.275)";
+
+/**
+ * The model chip — the user's own model choice, visible in the composer row
+ * (Claude-style) instead of buried in the options menu. Real catalogue only:
+ * the list is /api/agent/models (curated trios + live free OpenRouter routes)
+ * and the pick persists to the user's settings.
+ */
+function ComposerModelChip() {
+  const [open, setOpen] = useState(false);
+  const { data, saving, choose, activeLabel, available } = useAgentModels(true);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  if (!available || !data) return null;
+
+  const activeRef = data.selected ?? data.platformDefault;
+  const provider = activeRef?.split("/")[0] ?? "openai";
+
+  return (
+    <div ref={wrapRef} className="relative min-w-0">
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={activeLabel ?? "model"}
+        className={cn(
+          "flex min-h-9 max-w-40 items-center gap-1 rounded-full px-2 py-1 text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground sm:min-h-7",
+          open && "bg-muted text-foreground",
+        )}
+      >
+        <ProviderIcon provider={provider} size={13} className="shrink-0 opacity-80" />
+        <span className="truncate text-xs font-semibold" dir="ltr">
+          {activeLabel}
+        </span>
+        <ChevronDown
+          className={cn(
+            "h-3 w-3 shrink-0 transition-transform duration-300",
+            open && "rotate-180",
+          )}
+          aria-hidden
+        />
+      </button>
+
+      <div
+        style={{ transformOrigin: "bottom", transitionTimingFunction: SPRING }}
+        className={cn(
+          "absolute bottom-full start-0 z-50 mb-2 max-h-72 w-64 overflow-y-auto rounded-2xl border border-border bg-card/95 p-1 shadow-xl backdrop-blur-md transition-all duration-300",
+          open
+            ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+            : "pointer-events-none translate-y-2 scale-95 opacity-0",
+        )}
+      >
+        <ModelChoiceList
+          models={data.models}
+          selected={data.selected}
+          saving={saving}
+          onChoose={(ref) => {
+            void choose(ref);
+            setOpen(false);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 export function AgentChatInput({
   running,
@@ -24,7 +114,6 @@ export function AgentChatInput({
   running: boolean;
   onSend: (message: string) => void;
   onCancel: () => void;
-  /** Rendered in the adaptive end slot while the box is empty. */
   /** Market context row: the pair and frame the next question is about. */
   symbol?: string;
   interval?: string;
@@ -35,10 +124,6 @@ export function AgentChatInput({
   const { t, dir } = useLocale();
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  // Context chip (Phase 3.2): whether execution is armed is part of what
-  // governs the next turn, so it sits visibly in the row — read-only here;
-  // changing it stays behind the options menu's explicit confirmation flow.
 
   // Auto-grow: reset to auto first so the box can also shrink back down.
   useLayoutEffect(() => {
@@ -55,6 +140,8 @@ export function AgentChatInput({
     onSend(v);
   }, [value, running, onSend]);
 
+  const canSend = Boolean(value.trim()) && !running;
+
   return (
     <form
       data-testid="chat-composer"
@@ -67,11 +154,11 @@ export function AgentChatInput({
     >
       {/*
         Two tiers, not one row: the text gets the full width to grow into, and
-        the controls sit on their own line underneath. Crowding a model picker, a
-        mic, a chart toggle and a send button into the same line as the caret
-        left the message itself the narrowest thing in the composer.
+        the controls sit on their own line underneath. Crowding a model picker,
+        a chart toggle and a send button into the same line as the caret left
+        the message itself the narrowest thing in the composer.
       */}
-      <div className="chat-gpt-input flex flex-col gap-1 px-2 py-1.5">
+      <div className="chat-gpt-input mx-auto flex w-full max-w-3xl flex-col gap-1 px-2 py-1.5">
         <textarea
           ref={textareaRef}
           value={value}
@@ -90,55 +177,65 @@ export function AgentChatInput({
           className="max-h-[148px] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:text-sm"
         />
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           {/*
-            One row for what governs the next turn: which timeframe is up and
-            which model answers. There is no instrument picker — the platform
-            analyses gold and only gold.
+            One row for what governs the next turn: which model answers and
+            which timeframe is up. There is no instrument picker — the
+            platform analyses gold and only gold.
           */}
+          <ComposerModelChip />
           {interval && onIntervalChange && (
             <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
           )}
           <RiskPerTradeControl />
 
           {/*
-            End of the row: the plus holds what is set once and left alone (the
-            model, the execution mode), and beside it ONE adaptive slot —
-            generating → stop, text typed → send, empty → disabled. The
-            control stops being a permanent icon fighting the pickers for width
-            on a 390px row; it appears exactly when it is the action.
+            End of the row: the plus holds what is set once and left alone,
+            and beside it ONE morphing action slot — the send arrow and the
+            stop square crossfade in place (rotate + scale) instead of
+            swapping DOM, so the button never jumps under the pointer.
           */}
           <div className="ms-auto flex items-center gap-0.5">
             <ComposerMoreMenu />
-            {running ? (
-              <button
-                type="button"
-                onClick={onCancel}
-                aria-label={t("agent.cancel")}
-                title={t("agent.cancel")}
-                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors duration-150 hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9"
+            <button
+              type={running ? "button" : "submit"}
+              onClick={running ? onCancel : undefined}
+              disabled={!running && !canSend}
+              aria-label={running ? t("agent.cancel") : t("agent.send")}
+              title={running ? t("agent.cancel") : t("agent.send")}
+              className={cn(
+                "relative flex size-11 shrink-0 items-center justify-center rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9",
+                running
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : "bg-foreground text-background hover:opacity-90",
+                !running && !canSend && "opacity-40",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute inset-0 flex items-center justify-center transition-all duration-300",
+                  running
+                    ? "pointer-events-none rotate-45 scale-50 opacity-0 blur-[1px]"
+                    : "rotate-0 scale-100 opacity-100 blur-none",
+                )}
+                style={{ transitionTimingFunction: SPRING }}
+                aria-hidden
+              >
+                <ArrowUp className="h-4 w-4" />
+              </span>
+              <span
+                className={cn(
+                  "absolute inset-0 flex items-center justify-center transition-all duration-300",
+                  running
+                    ? "rotate-0 scale-100 opacity-100 blur-none"
+                    : "pointer-events-none -rotate-45 scale-50 opacity-0 blur-[1px]",
+                )}
+                style={{ transitionTimingFunction: SPRING }}
+                aria-hidden
               >
                 <Square className="h-3 w-3 fill-current" />
-              </button>
-            ) : value.trim() ? (
-              <button
-                type="submit"
-                aria-label={t("agent.send")}
-                title={t("agent.send")}
-                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9"
-              >
-                <Send className="h-4 w-4 rtl:rotate-180" />
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled
-                aria-label={t("agent.send")}
-                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background opacity-40 sm:size-9"
-              >
-                <Send className="h-4 w-4 rtl:rotate-180" />
-              </button>
-            )}
+              </span>
+            </button>
           </div>
         </div>
       </div>

@@ -288,6 +288,9 @@ export const COLLAPSED_BY_DEFAULT: ReadonlySet<CardKind> = new Set([
   "research_evidence",
   "skills_used",
   "run_stages",
+  // Internal taxonomy (descriptive_only / operational_blocker). The panel
+  // has its own badge; a phone must never print the enum.
+  "envelope_status",
 ]);
 
 /**

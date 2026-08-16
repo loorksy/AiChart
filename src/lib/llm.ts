@@ -20,6 +20,7 @@ import {
 import {
   callOpenAICompat,
   callOpenAICompatStream,
+  listOpenRouterFreeModels,
   type OpenAICompatTarget,
 } from "./openaiCompat";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -133,7 +134,73 @@ const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
 };
 
 const DEFAULT_MODEL = "gpt-4.1";
+
+/**
+ * Last-resort OpenRouter route, used only when the free catalogue cannot be
+ * fetched. Normal resolution auto-picks a live FREE route (the admin supplies
+ * a key and nothing else — see resolveOpenRouterAutoModel).
+ */
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-4o-mini";
+
+const OPENROUTER_AUTO_TTL_MS = 6 * 60 * 60 * 1000;
+let openRouterAutoModel: { id: string; at: number } | null = null;
+
+export function resetOpenRouterAutoModelForTests(): void {
+  openRouterAutoModel = null;
+}
+
+/**
+ * Auto-pick a FREE OpenRouter route when neither the request nor the operator
+ * named one. Newest free route wins (the list is already newest-first), cached
+ * so the catalogue is not re-fetched per call. Falls back to the static
+ * default only when the catalogue is unreachable or has no free routes —
+ * failing the call outright would take the whole provider down over a
+ * catalogue hiccup.
+ */
+async function resolveOpenRouterAutoModel(): Promise<string> {
+  if (
+    openRouterAutoModel &&
+    Date.now() - openRouterAutoModel.at < OPENROUTER_AUTO_TTL_MS
+  ) {
+    return openRouterAutoModel.id;
+  }
+  const key = getProviderApiKey("openrouter")?.trim();
+  if (!key) return DEFAULT_OPENROUTER_MODEL;
+  try {
+    const free = await listOpenRouterFreeModels(key);
+    // OpenRouter's own free auto-router beats any local heuristic — the
+    // gateway routes each request to the best free model it currently has.
+    // Only when that route is absent fall back to the newest free model.
+    const gatewayRouter = free.find((m) => /^openrouter\/(free|auto)/i.test(m.id));
+    const picked = gatewayRouter?.id ?? free[0]?.id;
+    if (picked) {
+      openRouterAutoModel = { id: picked, at: Date.now() };
+      return picked;
+    }
+  } catch (err) {
+    llmLog.warn("openrouter.auto_model.failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return DEFAULT_OPENROUTER_MODEL;
+}
+
+/**
+ * The model the call will actually use. Async because the OpenRouter
+ * auto-pick may need one catalogue fetch; every other path is the sync
+ * resolution unchanged.
+ */
+async function modelForTierAsync(tier: ModelTier): Promise<string> {
+  const model = modelForTier(tier);
+  if (
+    getActiveProvider() === "openrouter" &&
+    !requestModel.getStore() &&
+    model === DEFAULT_OPENROUTER_MODEL
+  ) {
+    return resolveOpenRouterAutoModel();
+  }
+  return model;
+}
 
 function isExplicitlyDisabled(raw?: string | null): boolean {
   const v = raw?.trim().toLowerCase();
@@ -343,7 +410,7 @@ export async function callLLM(
 ): Promise<AnthropicResponse> {
   const provider = getActiveProvider();
   const tier = opts?.tier ?? "deep";
-  const model = modelForTier(tier);
+  const model = await modelForTierAsync(tier);
   const started = performance.now();
   try {
     const res =
@@ -371,7 +438,7 @@ export async function callLLMStream(
 ): Promise<AnthropicResponse> {
   const provider = getActiveProvider();
   const tier = opts?.tier ?? "deep";
-  const model = modelForTier(tier);
+  const model = await modelForTierAsync(tier);
   const started = performance.now();
   try {
     const res =

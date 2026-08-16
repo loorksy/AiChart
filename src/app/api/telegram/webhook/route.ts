@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/logger";
 import {
   alreadyHandled,
+  handleTelegramCallback,
   handleTelegramMessage,
+  parseTelegramCallback,
   parseTelegramUpdate,
 } from "@/lib/telegram/webhookAgent";
 
@@ -55,16 +57,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignored: "unparseable" });
   }
 
-  const message = parseTelegramUpdate(body);
-  if (!message) return NextResponse.json({ ok: true, ignored: "unsupported_update" });
-  if (alreadyHandled(message.updateId)) {
+  const callback = parseTelegramCallback(body);
+  const message = callback ? null : parseTelegramUpdate(body);
+  if (!callback && !message) {
+    return NextResponse.json({ ok: true, ignored: "unsupported_update" });
+  }
+  const updateId = (callback ?? message)!.updateId;
+  if (alreadyHandled(updateId)) {
     return NextResponse.json({ ok: true, ignored: "duplicate" });
   }
 
-  const outcome = await handleTelegramMessage(message);
+  const outcome = callback
+    ? await handleTelegramCallback(callback)
+    : await handleTelegramMessage(message!);
   log.info("telegram.webhook.handled", {
-    updateId: message.updateId,
+    updateId,
     outcome,
+    kind: callback ? "callback" : "message",
   });
   return NextResponse.json({ ok: true, outcome });
 }
