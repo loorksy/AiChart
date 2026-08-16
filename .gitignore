@@ -101,3 +101,4 @@ next-env.d.ts
 # TradingView Advanced Charts is committed here deliberately (2026-08-01).
 # It is LICENSED, not open source: this repository is PRIVATE for that reason
 # and must stay private. Making it public would redistribute the library.
+dump.rdb
