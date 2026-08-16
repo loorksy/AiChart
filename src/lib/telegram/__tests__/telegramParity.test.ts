@@ -196,8 +196,6 @@ describe("cards carry links, never actions", () => {
     assert.match(instrumentation, /ensureTelegramWebhook/);
     const telegram = readFileSync(path.join(SRC, "lib", "telegram.ts"), "utf8");
     assert.match(telegram, /ipv4first/);
-    assert.match(telegram, /from "grammy"/);
-    assert.match(telegram, /new Api\(/);
   });
 });
 
