@@ -864,6 +864,7 @@ function SmartChartWorkspaceInner({
               dataSource={dataSource}
               chatId={chat.activeChatId ?? undefined}
               initialMessages={chat.activeMessages}
+              hydrating={chat.loadingMessages}
               getVisibleRange={() => chartRef.current?.visibleRange() ?? undefined}
               getLatestCandle={() => chartRef.current?.latestCandle() ?? undefined}
               getDrawings={() => drawings}

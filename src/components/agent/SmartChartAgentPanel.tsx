@@ -10,8 +10,7 @@ import {
 } from "@/hooks/useSmartChartAgent";
 import { useLocale } from "@/hooks/useLocale";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
-import { AgentThinkingTicker } from "./AgentThinkingTicker";
-import { AgentRunStages } from "./AgentRunStages";
+import { AgentThinkingTraceLive } from "./AgentThinkingTrace";
 import { AgentChatInput } from "./AgentChatInput";
 import { AgentModeBadge, AgentFaultCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
 import { AgentCards } from "./cards/AgentCards";
@@ -65,6 +64,12 @@ interface Props {
   brokerConnected?: boolean;
   onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
+  /**
+   * A conversation is being hydrated from history. Suppresses the hero
+   * landing (which used to flash while messages loaded) in favour of a
+   * conversation skeleton — the two surfaces stay visually separate.
+   */
+  hydrating?: boolean;
 }
 
 /** Docked, chart-connected Smart Chart Agent chat — one visible agent. */
@@ -91,6 +96,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       brokerConnected,
       onSymbolChange,
       onIntervalChange,
+      hydrating = false,
     },
     ref,
   ) {
@@ -168,8 +174,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
      * One composer element for two placements. Empty conversation: it sits
      * mid-screen under the greeting — the question IS the page, nothing else
      * competes. First message sent: it docks to the bottom for the exchange.
+     * While a history conversation hydrates, NEITHER surface is the hero —
+     * the skeleton keeps the landing and the conversation strictly separate.
      */
-    const isHero = messages.length === 0 && !running;
+    const isHero = messages.length === 0 && !running && !hydrating;
     const composer = (
       <AgentChatInput
         running={running}
@@ -193,13 +201,33 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             generated suggestions rendered per turn (never hardcoded buttons).
             Analysis is reachable from the chart's Analyze control and by typing. */}
         <div className="chat-scroll-region aichart-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          {hydrating && messages.length === 0 && (
+            <div
+              data-testid="chat-hydrating"
+              className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-1 pt-6"
+              aria-busy="true"
+            >
+              <div className="ms-auto h-9 w-2/5 animate-pulse rounded-2xl bg-muted" />
+              <div className="space-y-2.5">
+                <div className="h-4 w-11/12 animate-pulse rounded bg-muted/70" />
+                <div className="h-4 w-3/4 animate-pulse rounded bg-muted/70" />
+                <div className="h-4 w-4/6 animate-pulse rounded bg-muted/50" />
+              </div>
+              <div className="ms-auto h-9 w-1/3 animate-pulse rounded-2xl bg-muted" />
+              <div className="space-y-2.5">
+                <div className="h-4 w-5/6 animate-pulse rounded bg-muted/70" />
+                <div className="h-4 w-2/3 animate-pulse rounded bg-muted/50" />
+              </div>
+            </div>
+          )}
+
           {isHero && (
             <div
               data-testid="composer-hero"
-              className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center gap-5 text-center"
+              className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center gap-6 text-center"
             >
               <AgentAvatar size={44} state="idle" className="opacity-90" />
-              <h2 className="text-balance px-4 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              <h2 className="font-serif text-balance px-4 text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
                 {emptyState.greeting ?? t("agent.empty")}
               </h2>
               <div className="w-full">{composer}</div>
@@ -225,50 +253,35 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               key={m.id}
               data-role={m.role}
               className={
-                // Logical auto-margins: `ml-auto` pinned the operator's own
-                // messages to the physical right, which is the START edge under
-                // dir="rtl" — the side the agent speaks from.
+                // Claude-style thread: one centred reading column. The
+                // operator's own messages sit in a soft bubble on the END
+                // edge (logical margins keep RTL correct); the agent answers
+                // as plain text across the column — no bubble, no avatar.
                 m.role === "user"
-                  ? "ms-auto max-w-[min(85%,36rem)] rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm text-foreground"
-                  : "me-auto flex max-w-[min(95%,42rem)] gap-2.5 px-1 py-2 text-sm text-foreground"
+                  ? "mx-auto w-full max-w-3xl"
+                  : "mx-auto w-full max-w-3xl px-1 py-2 text-[0.9375rem] leading-7 text-foreground"
               }
             >
-              {/* Who is speaking, on every agent turn rather than only while it
-                  is still thinking. The operator's own messages carry the bubble
-                  as their marker and need no avatar. */}
-              {m.role === "assistant" && !m.pending ? (
-                <AgentAvatar size={24} state="idle" className="mt-0.5 shrink-0" />
-              ) : null}
-              <div className={m.role === "assistant" ? "min-w-0 flex-1" : undefined}>
-              {/* Temporary assistant bubble: live thinking ticker while the run
-                  is in flight. Replaced in place by the final answer. */}
+              {m.role === "user" ? (
+                <div className="ms-auto w-fit max-w-[min(85%,36rem)] rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm leading-6 text-foreground">
+                  <p className="whitespace-pre-wrap">{m.content}</p>
+                </div>
+              ) : (
+              <div className="min-w-0">
+              {/* Temporary assistant turn: the Claude-style trace runs while
+                  the pipeline is in flight — real stages, collapsed by
+                  default — and the final answer replaces it in place. */}
               {m.pending ? (
-                <div className="flex items-start gap-2.5">
-                  <AgentAvatar size={22} state="thinking" className="mt-0.5" />
-                  <div className="min-w-0 flex-1">
-                    {m.streamText ? (
-                      /* Live streamed answer (general questions): the text
-                         grows in place; the final event replaces the bubble. */
-                      <p className="whitespace-pre-wrap py-0.5 text-sm leading-relaxed text-foreground">
-                        {m.streamText}
-                        <span className="ms-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-foreground/60 align-middle" />
-                      </p>
-                    ) : m.ticker ? (
-                      <AgentThinkingTicker item={m.ticker} />
-                    ) : (
-                      <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-foreground/70" />
-                        <span>{t("agent.processing")}</span>
-                      </div>
-                    )}
-                    {/* Live run-stage checklist: what the agent is actually
-                        doing right now, stage by stage — never dead air. */}
-                    {stageEvents.length ? (
-                      <div className="mt-2 max-w-64 rounded-lg border border-border/50 bg-muted/20 px-2.5 py-2">
-                        <AgentRunStages events={stageEvents} />
-                      </div>
-                    ) : null}
-                  </div>
+                <div className="min-w-0">
+                  <AgentThinkingTraceLive events={stageEvents} ticker={m.ticker} />
+                  {m.streamText ? (
+                    /* Live streamed answer (general questions): the text
+                       grows in place; the final event replaces the bubble. */
+                    <p className="whitespace-pre-wrap py-0.5 leading-7 text-foreground">
+                      {m.streamText}
+                      <span className="ms-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-foreground/60 align-middle" />
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <>
@@ -393,11 +406,12 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 </>
               )}
               </div>
+              )}
             </div>
           ))}
 
           {error && (
-            <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <p className="mx-auto w-full max-w-3xl rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {error}
             </p>
           )}

@@ -48,6 +48,7 @@ import {
 import { GATE_LABELS_AR } from "@/lib/agent/gates/chain";
 import type { AgentFinalResult } from "@/lib/agent/types";
 import { AgentEvidenceCard, AgentFaultCard } from "../AgentEnvelopeStatus";
+import { AgentThinkingTraceDone } from "../AgentThinkingTrace";
 
 /** A card's frame. Uniform on purpose: the CONTENT should distinguish them. */
 function Shell({
@@ -397,15 +398,9 @@ function CardView({
       );
 
     case "run_stages":
-      return (
-        <Collapsible icon={<Clock className="h-3 w-3" />} title={t("agent.run_stages")}>
-          <Bullets
-            items={card.stages.map((s) =>
-              s.durationMs != null ? `${s.stage} · ${s.durationMs}ms` : String(s.stage),
-            )}
-          />
-        </Collapsible>
-      );
+      // Claude-style settled trace: same collapsed-by-default header the live
+      // run shows, fed by the SAME persisted stage data this card always had.
+      return <AgentThinkingTraceDone stages={card.stages} />;
 
     case "follow_up_options":
       return (

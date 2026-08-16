@@ -15,32 +15,30 @@ export interface ModelChoice {
   label: string;
 }
 
+/** Exactly three multimodal (text+vision) OpenAI models. The user picks; the
+ *  admin only supplies the key. */
 export const OPENAI_MODEL_CHOICES: ModelChoice[] = [
   { id: "gpt-5.6-luna-pro", label: "GPT-5.6 Luna Pro" },
   { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+  { id: "gpt-4.1", label: "GPT-4.1" },
 ];
 
+/** Exactly three multimodal Claude models, mirroring the OpenAI trio. */
 export const ANTHROPIC_MODEL_CHOICES: ModelChoice[] = [
   { id: "claude-fable-5", label: "Claude Fable 5" },
   { id: "claude-opus-5", label: "Claude Opus 5" },
   { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-  { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
 ];
 
-/**
- * OpenRouter route ids keep the upstream vendor prefix (e.g. openai/gpt-4o-mini).
- * Offered only when the admin enables OpenRouter for testing.
- */
-export const OPENROUTER_MODEL_CHOICES: ModelChoice[] = [
-  { id: "openai/gpt-4o-mini", label: "GPT-4o Mini (OpenRouter)" },
-  { id: "anthropic/claude-sonnet-4", label: "Claude Sonnet 4 (OpenRouter)" },
-  { id: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash (OpenRouter)" },
-];
+// OpenRouter has NO static catalogue on purpose: the admin pastes a key and
+// every FREE route on openrouter.ai is offered automatically (see
+// listOpenRouterFreeModels + the live-gateway branch of isOfferedModelRef).
+// A hardcoded list here would go stale the day OpenRouter rotates its free
+// tier, and a paid route sneaking in would bill the operator silently.
 
 const ALLOWED_REFS = new Set<string>([
   ...OPENAI_MODEL_CHOICES.map((m) => `openai/${m.id}`),
   ...ANTHROPIC_MODEL_CHOICES.map((m) => `anthropic/${m.id}`),
-  ...OPENROUTER_MODEL_CHOICES.map((m) => `openrouter/${m.id}`),
 ]);
 
 /** Is this "provider/model" ref one the platform offers? */

@@ -66,7 +66,7 @@ export function useChatSessions(opts: {
   interval?: string;
   /** Current UI locale — new chats inherit it (stored on the session). */
   locale?: "ar" | "en";
-  /** Active chat from `/workspace?chat=` — wins over localStorage on first load. */
+  /** Active chat from `/chat?chat=` — wins over localStorage on first load. */
   urlChatId?: string | null;
   /** Keep the browser URL aligned with the active chat. `null` clears it. */
   syncChatUrl?: (chatId: string | null, mode: ChatUrlSyncMode) => void;
@@ -123,6 +123,9 @@ export function useChatSessions(opts: {
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+    // A deep-linked conversation is about to hydrate — flag it immediately so
+    // the panel shows the conversation skeleton, never the hero landing.
+    if (urlChatId) setLoadingMessages(true);
     void (async () => {
       const res = await fetch("/api/agent/chats");
       const json = res.ok
@@ -150,6 +153,7 @@ export function useChatSessions(opts: {
           setActiveChatId(null);
           setActiveMessages([]);
         }
+        setLoadingMessages(false);
         setReady(true);
         return;
       }
@@ -160,6 +164,7 @@ export function useChatSessions(opts: {
           setActiveChatId(null);
           setActiveMessages([]);
         }
+        setLoadingMessages(false);
         setReady(true);
         return;
       }
@@ -169,6 +174,7 @@ export function useChatSessions(opts: {
       setActiveMessages(msgs);
       setActiveChatId(active.id);
       setPanelKey(active.id);
+      setLoadingMessages(false);
       setReady(true);
     })();
     return () => {

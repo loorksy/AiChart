@@ -35,6 +35,9 @@ const DECISION_AR: Record<string, string> = {
   wait: "انتظار",
 };
 
+/** Values the model/envelope use internally — never show these on a phone. */
+const INTERNAL_LABEL = /^(not_applicable|informational|action_required|descriptive_only|operational_blocker|execution_validated|[a-z_]+)$/;
+
 /** Trim a number for display without inventing precision it does not have. */
 function price(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
@@ -58,13 +61,20 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
   switch (card.kind) {
     case "decision": {
+      // A greeting or a closed-market note is a sentence, not a trade badge.
+      if (card.decision === "informational" || card.decision === "action_required") {
+        return card.summary;
+      }
       const head = `<b>${DECISION_AR[card.decision] ?? card.decision}</b>`;
       // The bare percentage is deliberately absent: `confidenceSemantics`
       // exists because one number meant three different things depending on
       // which path produced it, and a phone is the worst place to guess which.
-      const confidence = card.semantics?.displayValue
-        ? ` · ${card.semantics.displayValue}`
-        : "";
+      const raw =
+        typeof card.semantics?.displayValue === "string"
+          ? card.semantics.displayValue.trim()
+          : "";
+      const confidence =
+        raw && !INTERNAL_LABEL.test(raw) ? ` · ${raw}` : "";
       return `${head}${confidence}\n${card.summary}`;
     }
 
@@ -165,14 +175,12 @@ export function renderCardForTelegram(card: AgentCard): string | null {
       } · ${card.status}`;
 
     case "envelope_status":
-      return `<i>${card.envelope.outcome_class}</i>`;
+      return null;
 
     case "follow_up_options":
-      // Numbered, because this surface answers a reply of "1" — the platform's
-      // clickable options and Telegram's numeric replies are the same contract.
-      return `<b>أسئلة متابعة</b>\n${card.options
-        .map((o, i) => `${i + 1}. ${o.label}`)
-        .join("\n")}`;
+      // OpenClaw: follow-ups are inline buttons on the message when the agent
+      // authored them — not a numbered dump on every reply.
+      return null;
 
     // The diagnostic set returns above; these cases exist so the union stays
     // exhaustive if that policy ever changes.
@@ -190,7 +198,29 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
 /** The whole answer as one Telegram message body. */
 export function renderCardsForTelegram(cards: AgentCard[]): string {
+  const decision = cards.find((c) => c.kind === "decision");
+  const talkOnly =
+    decision?.kind === "decision" &&
+    (decision.decision === "informational" ||
+      decision.decision === "action_required");
+  // A hello or a closed-market note is one paragraph. Repeating it as
+  // "reasons" / "warnings" / a gate checklist is what made the phone feel
+  // like a debug dump.
+  const skip = talkOnly
+    ? new Set([
+        "key_reasons",
+        "risk_warnings",
+        "gate_checklist",
+        "public_reasoning",
+        "cost_evidence",
+        "evidence_strategy",
+        "evidence_dimensions",
+        "news_risk",
+      ])
+    : new Set<string>();
+
   return cards
+    .filter((card) => !skip.has(card.kind))
     .map(renderCardForTelegram)
     .filter((block): block is string => block != null && block.trim().length > 0)
     .join("\n\n");

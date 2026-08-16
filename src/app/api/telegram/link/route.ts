@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
 import { requireUser, handleError } from "@/lib/api";
 import { createLinkCode, clearTelegramChatId, getTelegramChatId } from "@/lib/store";
-import { isTelegramConfigured, getBotUsername } from "@/lib/telegram";
+import {
+  isTelegramConfiguredAsync,
+  getBotUsername,
+  normalizeBotUsername,
+} from "@/lib/telegram";
 
 export async function GET() {
   try {
     const user = await requireUser();
+    const botUsername = normalizeBotUsername(await getBotUsername());
     return NextResponse.json({
-      configured: isTelegramConfigured(),
+      configured: await isTelegramConfiguredAsync(),
       linked: Boolean(await getTelegramChatId(user.id)),
-      botUsername: await getBotUsername(),
+      botUsername,
     });
   } catch (err) {
     return handleError(err);
@@ -19,14 +24,14 @@ export async function GET() {
 export async function POST() {
   try {
     const user = await requireUser();
-    if (!isTelegramConfigured()) {
+    if (!(await isTelegramConfiguredAsync())) {
       return NextResponse.json(
         { error: "بوت تليجرام غير مُفعّل على الخادم بعد." },
         { status: 503 },
       );
     }
     const code = await createLinkCode(user.id);
-    const username = await getBotUsername();
+    const username = normalizeBotUsername(await getBotUsername());
     return NextResponse.json({
       code,
       botUsername: username,

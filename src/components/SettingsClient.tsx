@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Cable, Moon, Save, Sparkles, Sun, User } from "lucide-react";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
+import { TelegramLinkCard } from "@/components/settings/TelegramLinkCard";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
 import { AgentMemoryPanel } from "@/components/settings/AgentMemoryPanel";
 
@@ -226,6 +227,10 @@ export default function SettingsClient({
       )}
 
       {tab === "alerts" && (
+        <>
+        {/* Alerts are delivered over Telegram — the link card lives right
+            above the toggles it makes meaningful. */}
+        <TelegramLinkCard />
         <Surface padding="lg" className="space-y-4">
           <div>
             <h2 className="text-lg font-semibold">{t("settings.tab.alerts")}</h2>
@@ -262,6 +267,7 @@ export default function SettingsClient({
             </p>
           )}
         </Surface>
+        </>
       )}
 
       {tab === "skills" && <UserSkillsPanel />}
