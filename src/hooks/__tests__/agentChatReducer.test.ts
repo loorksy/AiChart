@@ -3,35 +3,36 @@ import { describe, it } from "node:test";
 import {
   appendUserAndPending,
   applyFinal,
-  applyTicker,
+  applyLiveNote,
   dropPending,
 } from "@/hooks/agentChatReducer";
-import type { AgentTickerItem } from "@/lib/agent/ticker/types";
 
-const ticker: AgentTickerItem = { id: "t1", stage: "thinking", text: "أفحص السياق" };
+// The live note is the ENGINE's own sentence, streamed at the moment the work
+// happened — its predecessor was a pre-generated ticker script.
+const note = "حدّدت بنية السوق: اتجاه صاعد فوق 4010";
 
-describe("agentChatReducer (pending ticker bubble)", () => {
+describe("agentChatReducer (pending narration bubble)", () => {
   it("sending a message adds the user message and a pending assistant bubble", () => {
     const next = appendUserAndPending([], { id: "u1", content: "حلل" }, "p1");
     assert.equal(next.length, 2);
     assert.equal(next[0].role, "user");
     assert.equal(next[1].role, "assistant");
     assert.equal(next[1].pending, true);
-    assert.equal(next[1].ticker, null);
+    assert.equal(next[1].liveNote, null);
   });
 
-  it("a ticker event updates the pending assistant message", () => {
+  it("an activity narration line updates the pending assistant message", () => {
     const base = appendUserAndPending([], { id: "u1", content: "حلل" }, "p1");
-    const next = applyTicker(base, "p1", ticker);
-    assert.equal(next[1].ticker, ticker);
+    const next = applyLiveNote(base, "p1", note);
+    assert.equal(next[1].liveNote, note);
     assert.equal(next[1].pending, true);
   });
 
   it("the final event replaces the pending message in place (no duplicate)", () => {
-    const base = applyTicker(
+    const base = applyLiveNote(
       appendUserAndPending([], { id: "u1", content: "حلل" }, "p1"),
       "p1",
-      ticker,
+      note,
     );
     const next = applyFinal(base, "p1", { content: "التحليل جاهز.", options: [] });
     // Still exactly 2 messages — the pending bubble was replaced, not appended.
@@ -40,15 +41,15 @@ describe("agentChatReducer (pending ticker bubble)", () => {
     assert.equal(assistants.length, 1);
     assert.equal(assistants[0].id, "p1");
     assert.equal(assistants[0].pending, false);
-    assert.equal(assistants[0].ticker, null);
+    assert.equal(assistants[0].liveNote, null);
     assert.equal(assistants[0].content, "التحليل جاهز.");
   });
 
-  it("cancel/error drops the pending bubble and leaves no stuck ticker", () => {
-    const base = applyTicker(
+  it("cancel/error drops the pending bubble and leaves no stuck note", () => {
+    const base = applyLiveNote(
       appendUserAndPending([], { id: "u1", content: "حلل" }, "p1"),
       "p1",
-      ticker,
+      note,
     );
     const next = dropPending(base, "p1");
     assert.equal(next.length, 1);

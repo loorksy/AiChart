@@ -1,10 +1,9 @@
 /**
  * Pure message-list transitions for the Smart Chart Agent chat. Extracted from
- * the React hook so the pending-bubble / ticker / final-replacement behavior is
- * unit-testable without a DOM runner.
+ * the React hook so the pending-bubble / live-note / final-replacement behavior
+ * is unit-testable without a DOM runner.
  */
 import type { AgentChatMessage } from "@/hooks/useSmartChartAgent";
-import type { AgentTickerItem } from "@/lib/agent/ticker/types";
 
 /** Append the user's message plus a temporary pending assistant bubble. */
 export function appendUserAndPending(
@@ -15,18 +14,25 @@ export function appendUserAndPending(
   return [
     ...messages,
     { id: user.id, role: "user", content: user.content },
-    { id: pendingId, role: "assistant", content: "", pending: true, ticker: null },
+    { id: pendingId, role: "assistant", content: "", pending: true, liveNote: null },
   ];
 }
 
-/** Update the pending bubble's live ticker line (UI-only, never persisted). */
-export function applyTicker(
+/**
+ * Update the pending bubble's live narration line (UI-only, never persisted).
+ *
+ * The note is the engine's own latest visible `activity` sentence — authored
+ * by the specialist that just did the work, at the moment it happened. Its
+ * predecessor was a model-generated "ticker" script played on a timer;
+ * narration that does not come from the run does not go in the bubble.
+ */
+export function applyLiveNote(
   messages: AgentChatMessage[],
   pendingId: string,
-  item: AgentTickerItem,
+  note: string,
 ): AgentChatMessage[] {
   return messages.map((m) =>
-    m.id === pendingId && m.pending ? { ...m, ticker: item } : m,
+    m.id === pendingId && m.pending ? { ...m, liveNote: note } : m,
   );
 }
 
@@ -47,19 +53,19 @@ export function applyStreamText(
 
 /**
  * Replace the pending bubble in place with the final assistant message. Keeps
- * the same id (no duplicate assistant message) and drops the ticker text.
+ * the same id (no duplicate assistant message) and drops the live note.
  * If the pending bubble is gone (e.g. chat switched), the final is appended.
  */
 export function applyFinal(
   messages: AgentChatMessage[],
   pendingId: string,
-  final: Omit<AgentChatMessage, "id" | "role" | "pending" | "ticker">,
+  final: Omit<AgentChatMessage, "id" | "role" | "pending" | "liveNote">,
 ): AgentChatMessage[] {
   const finalMessage: AgentChatMessage = {
     id: pendingId,
     role: "assistant",
     pending: false,
-    ticker: null,
+    liveNote: null,
     ...final,
   };
   const exists = messages.some((m) => m.id === pendingId);

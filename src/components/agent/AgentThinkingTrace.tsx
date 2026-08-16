@@ -11,7 +11,9 @@
  *
  * Two sources, one look:
  *  - live: AgentStageEvent[] streaming over SSE while the run is in flight,
- *    plus the model-generated ticker line as the "current activity" row.
+ *    plus the engine's latest activity sentence as the "current" row —
+ *    real narration from the specialist that just did the work, never a
+ *    script.
  *  - done: the persisted result stages ({ stage, durationMs }) rendered from
  *    the run_stages card after the run completes.
  */
@@ -24,7 +26,6 @@ import {
   aggregateStageEvents,
   type AgentStageEvent,
 } from "@/lib/agent/stageEvents";
-import type { AgentTickerItem } from "@/lib/agent/ticker/types";
 
 
 interface TraceRow {
@@ -190,21 +191,29 @@ function TraceShell({
 /** Live variant: renders the run as it happens from real SSE stage events. */
 export function AgentThinkingTraceLive({
   events,
-  ticker,
+  liveNote,
 }: {
   events: readonly AgentStageEvent[];
-  ticker?: AgentTickerItem | null;
+  /** The engine's latest visible activity sentence — real work, live. */
+  liveNote?: string | null;
 }) {
   const { t } = useLocale();
   const rows = useMemo(() => aggregateStageEvents(events), [events]);
   const runningRow = rows.find((r) => r.status === "running");
+  // The header is always a REAL stage: the one running, else the last one
+  // recorded. There is no synthetic "thinking" fallback — before any event
+  // exists the empty state below renders a bare shimmer instead of a word,
+  // because a status the engine never reported is a status we invented.
+  const labelFor = (stage: string) =>
+    KNOWN_STAGES.has(stage) ? t(`agent.stage.${stage}`) : stage;
+  const lastRow = rows[rows.length - 1];
   const headerLabel = runningRow
-    ? KNOWN_STAGES.has(runningRow.stage)
-      ? t(`agent.stage.${runningRow.stage}`)
-      : runningRow.stage
-    : t("agent.thinking");
-  const tickerText = ticker?.text?.trim()
-    ? ticker.text.replace(/[.،…\s]+$/g, "")
+    ? labelFor(runningRow.stage)
+    : lastRow
+      ? labelFor(lastRow.stage)
+      : "";
+  const tickerText = liveNote?.trim()
+    ? liveNote.replace(/[.،…\s]+$/g, "")
     : null;
 
   // Nothing recorded yet — a bare shimmer line, no empty chevron box.
@@ -213,16 +222,16 @@ export function AgentThinkingTraceLive({
       <div className="flex min-h-8 items-center gap-2 py-1" data-testid="agent-thinking-trace">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-foreground/70" aria-hidden />
         <span
-          className="bg-clip-text text-[13px] font-medium text-transparent"
+          aria-hidden
+          className="h-3 w-24 rounded-full"
           style={{
             backgroundImage:
               "linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%)",
             backgroundSize: "200% 100%",
             animation: "trace-shimmer 1.4s linear infinite",
+            opacity: 0.35,
           }}
-        >
-          {t("agent.thinking")}
-        </span>
+        />
       </div>
     );
   }

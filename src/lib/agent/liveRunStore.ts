@@ -19,7 +19,6 @@
  * server-side, and multi-tab sync (module scope is per-tab by design).
  */
 import type { AgentFinalResult, AgentOption } from "./types";
-import type { AgentTickerItem } from "./ticker/types";
 import type { AgentStageEvent } from "./stageEvents";
 import type { AgentActivityEvent } from "./types";
 
@@ -35,7 +34,7 @@ export interface LiveRunSnapshot {
   pendingId: string;
   /** The user turn that started the run — replayed into a remounted chat. */
   userMessage: string;
-  ticker: AgentTickerItem | null;
+  liveNote: string | null;
   streamText: string | null;
   stageEvents: AgentStageEvent[];
   running: boolean;
@@ -69,7 +68,7 @@ export function beginLiveRun(input: {
 }): void {
   runs.set(input.chatId, {
     ...input,
-    ticker: null,
+    liveNote: null,
     streamText: null,
     stageEvents: [],
     running: true,
@@ -84,13 +83,13 @@ export function updateLiveRun(
   /** The run this update belongs to — a superseded run's late events are dropped. */
   pendingId: string,
   patch: Partial<
-    Pick<LiveRunSnapshot, "ticker" | "streamText" | "running" | "final">
+    Pick<LiveRunSnapshot, "liveNote" | "streamText" | "running" | "final">
   > & { addStageEvent?: AgentStageEvent },
 ): void {
   const run = runs.get(chatId);
   if (!run || run.pendingId !== pendingId) return;
   if (patch.addStageEvent) run.stageEvents = [...run.stageEvents, patch.addStageEvent];
-  if ("ticker" in patch) run.ticker = patch.ticker ?? null;
+  if ("liveNote" in patch) run.liveNote = patch.liveNote ?? null;
   if ("streamText" in patch) run.streamText = patch.streamText ?? null;
   if ("final" in patch) run.final = patch.final ?? null;
   if ("running" in patch) run.running = patch.running ?? false;

@@ -338,7 +338,6 @@ export const en = {
   "telegram.link.unconfigured":
     "The Telegram bot is not enabled on this platform yet — an admin must add the bot token from the admin console first.",
   "agent.processing": "Processing",
-  "agent.thinking": "Thinking",
   "agent.trace_done": "Tasks completed",
   "agent.run_stages": "How this was produced",
   "agent.stage.market_data": "Market data",

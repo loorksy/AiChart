@@ -55,6 +55,21 @@ describe("renderProgressAr", () => {
     assert.ok(text.includes("✗ الأخبار"));
   });
 
+  it("shows the specialist's own sentence under the checklist", () => {
+    const text = renderProgressAr(
+      [{ stage: "structure", status: "done" }],
+      "حدّدت بنية السوق: اتجاه صاعد فوق 4010",
+    );
+    assert.ok(text.includes("«حدّدت بنية السوق: اتجاه صاعد فوق 4010»"));
+  });
+
+  it("renders NOTHING when the engine has said nothing — no invented line", () => {
+    // The empty state used to be "⌛ أفكّر…", a pre-printed thought. An empty
+    // string here is what keeps the bubble from existing before real work.
+    assert.equal(renderProgressAr([]), "");
+    assert.equal(renderProgressAr([], "   "), "");
+  });
+
   it("renders an unknown stage as its raw name instead of hiding it", () => {
     assert.equal(stageLabelAr("mystery_stage"), "mystery_stage");
   });
@@ -93,6 +108,16 @@ describe("TelegramProgressReporter", () => {
     assert.equal(h.shows.length, 1, "a late edit would overwrite the final answer");
   });
 
+  it("creates no bubble until the engine's first event", async () => {
+    const h = harness();
+    await h.reporter.start();
+    assert.equal(h.shows.length, 0, "no pre-printed bubble — typing only");
+    assert.ok(h.typings() >= 1, "the native typing indicator carries the signal");
+    h.reporter.onStage({ stage: "market_data", status: "running" });
+    assert.equal(h.shows.length, 1, "the first REAL event creates the bubble");
+    h.reporter.finish();
+  });
+
   it("ignores events after finish and survives a throwing transport", async () => {
     const shows: string[] = [];
     const reporter = new TelegramProgressReporter(
@@ -111,6 +136,6 @@ describe("TelegramProgressReporter", () => {
     reporter.finish();
     reporter.onStage({ stage: "news", status: "done" });
     await sleep(20);
-    assert.equal(shows.length, 1, "only the initial bubble was attempted");
+    assert.equal(shows.length, 0, "nothing was ever attempted after finish");
   });
 });

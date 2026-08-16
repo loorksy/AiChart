@@ -339,15 +339,13 @@ export interface AgentFinalResult {
    */
   marketClosedScenario?: import("./closedMarketScenario").ClosedMarketScenario;
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM,
-   *  ticker state, candle counts, and the drawing-plan
+   *  candle counts, and the drawing-plan
    *  decision. Never carries secrets or raw reasoning. */
   debugDecisionFlow?: AgentDebugDecisionFlow;
 }
 
 export interface AgentDebugDecisionFlow {
   usedLLM: boolean;
-  tickerGenerated: boolean;
-  tickerHiddenReason?: string;
   candleCount: number;
   htfCandleCount: number;
   dailyCandleCount: number;

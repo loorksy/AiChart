@@ -850,7 +850,6 @@ async function runUnifiedChartAgentInner(
         process.env.NODE_ENV === "development"
           ? {
               usedLLM: false,
-              tickerGenerated: false,
               candleCount: market.currentTfCandles.length,
               htfCandleCount: market.higherTfCandles.length,
               dailyCandleCount: market.dailyCandles.length,
@@ -902,7 +901,6 @@ async function runUnifiedChartAgentInner(
         process.env.NODE_ENV === "development"
           ? {
               usedLLM: false,
-              tickerGenerated: false,
               candleCount: market.currentTfCandles.length,
               htfCandleCount: market.higherTfCandles.length,
               dailyCandleCount: market.dailyCandles.length,
@@ -1597,7 +1595,6 @@ async function runUnifiedChartAgentInner(
       ? {
           usedLLM: synth.usedLLM,
           // Ticker state is owned by the SSE route; it overwrites these.
-          tickerGenerated: false,
           candleCount: market.currentTfCandles.length,
           htfCandleCount: market.higherTfCandles.length,
           dailyCandleCount: market.dailyCandles.length,

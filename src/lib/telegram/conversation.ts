@@ -1,145 +1,45 @@
 /**
- * How a linked Telegram chat should feel: a conversation, not a card dump.
+ * Telegram COMMANDS, and nothing else.
  *
- * The webhook used to run the full gold engine on every line — including
- * "مرحبا" — then print internal envelope labels. This module decides the
- * turn first, answers greetings and chart-photo asks without a market run,
- * and keeps the analysis path for actual recommendation requests.
+ * This module used to be a classifier: phrase lists for greetings, the menu,
+ * session questions — each mapped to a canned Arabic paragraph. That is a
+ * bot's shape, not an agent's: "مرحبا" got the same fixed reply forever, a
+ * greeting with one extra word fell through to the full engine, and the
+ * canned answers drifted from what the agent would actually say.
+ *
+ * The classification is gone. Free text goes to the agent — the orchestrator
+ * routes conversational vs market itself and GENERATES the reply live, the
+ * same as the platform chat. What survives here is the one thing that is
+ * legitimately mechanical: explicit commands. `/chart` (and the exact menu
+ * strings that mean it) produces a chart photo, which the agent cannot send
+ * as prose; the other slash commands expand to the Arabic prompt they have
+ * always stood for and ride to the agent like any typed message.
  */
-import { DATA_SYMBOL, DISPLAY_NAME_AR } from "@/lib/gold";
-import { getSessionStatus } from "@/lib/markets/tradingCalendar";
-import {
-  isGeneralOnly,
-  needsMarketContext,
-  routeIntent,
-} from "@/lib/agent/intentRouter";
-import type { AgentRunContext } from "@/lib/agent/types";
+import { DISPLAY_NAME_AR } from "@/lib/gold";
 import { resolveUserMenuInput } from "@/lib/telegramCommands";
 
-export type TelegramTurnKind =
-  | "greeting"
-  | "menu"
-  | "session"
-  | "chart_photo"
-  | "analysis"
-  | "general";
+export type TelegramCommand =
+  | { kind: "chart_photo" }
+  | { kind: "prompt"; message: string };
 
-export type TelegramTurn = {
-  kind: TelegramTurnKind;
-  /** Text handed to the agent when this turn still needs the brain. */
-  message: string;
-};
+/** The agent-action string the chart command expands to (from the menu JSON). */
+const CHART_ACTION = "أرسل صورة الشارت";
 
-const GREETING = [
-  "مرحبا",
-  "مرحباً",
-  "مرحبا بك",
-  "هلا",
-  "اهلا",
-  "أهلا",
-  "السلام عليكم",
-  "سلام",
-  "صباح الخير",
-  "مساء الخير",
-  "hi",
-  "hello",
-  "hey",
-  "thanks",
-  "thank you",
-  "شكرا",
-  "شكراً",
-  "تسلم",
-];
-
-const MENU = ["القائمة", "قائمة", "مساعدة", "help", "menu", "/qaima"];
-
-const CHART_PHOTO = [
-  "صورة الشارت",
-  "صورة الشارت",
-  "ارسل صورة الشارت",
-  "أرسل صورة الشارت",
-  "ارسل صورة",
-  "أرسل صورة",
-  "لقطة الشارت",
-  "لقطة",
-  "screenshot",
-  "send chart",
-  "chart photo",
-  "chart image",
-];
-
-const SESSION = ["حالة السوق", "هل السوق مفتوح", "هل السوق مفتوح؟", "هل السوق مفتوح الآن؟"];
-
-function norm(text: string): string {
-  return text.trim().replace(/\s+/g, " ");
-}
-
-function eq(text: string, phrase: string): boolean {
-  return norm(text).toLocaleLowerCase("ar") === phrase.toLocaleLowerCase("ar");
-}
-
-function has(text: string, phrase: string): boolean {
-  return norm(text).toLocaleLowerCase("ar").includes(phrase.toLocaleLowerCase("ar"));
-}
-
-const noopCtx: AgentRunContext = {
-  requestId: "telegram-turn",
-  emitActivity: () => {},
-};
-
-export function classifyTelegramTurn(raw: string): TelegramTurn {
-  const trimmed = norm(raw);
-  const mapped = resolveUserMenuInput(trimmed) ?? trimmed;
-
-  if (GREETING.some((p) => eq(trimmed, p) || eq(mapped, p))) {
-    return { kind: "greeting", message: mapped };
+/**
+ * Resolve an EXPLICIT command — a slash command or an exact menu string.
+ * Returns null for everything else: free text is the agent's, untouched.
+ */
+export function resolveTelegramCommand(raw: string): TelegramCommand | null {
+  const trimmed = raw.trim().replace(/\s+/g, " ");
+  const mapped = resolveUserMenuInput(trimmed);
+  if (mapped === CHART_ACTION || trimmed === CHART_ACTION) {
+    return { kind: "chart_photo" };
   }
-  if (MENU.some((p) => eq(trimmed, p) || eq(mapped, p))) {
-    return { kind: "menu", message: mapped };
-  }
-  if (SESSION.some((p) => eq(trimmed, p) || eq(mapped, p) || has(mapped, p))) {
-    return { kind: "session", message: mapped };
-  }
-  if (CHART_PHOTO.some((p) => eq(trimmed, p) || eq(mapped, p) || has(mapped, p))) {
-    return { kind: "chart_photo", message: mapped };
-  }
-
-  const intents = routeIntent({
-    message: mapped,
-    chartContext: { symbol: DATA_SYMBOL, interval: "15m" },
-    ctx: noopCtx,
-  });
-  if (needsMarketContext(intents) && !isGeneralOnly(intents)) {
-    return { kind: "analysis", message: mapped };
-  }
-  return { kind: "general", message: mapped };
+  if (mapped) return { kind: "prompt", message: mapped };
+  return null;
 }
 
-export function telegramGreeting(): string {
-  const session = getSessionStatus(DATA_SYMBOL);
-  const market = session.isOpen
-    ? "السوق مفتوح الآن."
-    : `${session.reason} أقدر أرسل آخر شارت قبل الإغلاق، والتوصية تنتظر الافتتاح.`;
-  return [
-    `أهلاً. أنا وكيل ${DISPLAY_NAME_AR} على تليجرام.`,
-    market,
-    "",
-    "اسألني أو اختر خياراً من هذه الرسالة.",
-  ].join("\n");
-}
-
-export function telegramMenu(): string {
-  return telegramGreeting();
-}
-
-export function telegramSessionStatus(): string {
-  const session = getSessionStatus(DATA_SYMBOL);
-  if (session.isOpen) {
-    return `السوق مفتوح. اسألني عن ${DISPLAY_NAME_AR} أو اختر خياراً من هذه الرسالة.`;
-  }
-  return `${session.reason}\nما في حركة سعر تُقرأ الآن. أقدر أرسل آخر شارت أو أنتظر الافتتاح لتوصية جديدة.`;
-}
-
+/** The /start deep-link response — an auth mechanism's receipt, not a reply. */
 export function telegramLinkedWelcome(): string {
   return [
     "تم الربط.",
@@ -147,20 +47,14 @@ export function telegramLinkedWelcome(): string {
   ].join("\n");
 }
 
+/** Caption for the mechanical /chart command's photo. */
 export function telegramChartCaption(closed: boolean): string {
   return closed
     ? `${DISPLAY_NAME_AR} · 15م — آخر لقطة قبل الإغلاق.`
     : `${DISPLAY_NAME_AR} · 15م`;
 }
 
+/** Failure receipt for the mechanical /chart command. */
 export function telegramChartFailed(): string {
   return "ما قدرت أجهّز صورة الشارت الآن. افتح المنصة من الزر، أو أعد المحاولة بعد قليل.";
-}
-
-export function telegramPreparingChart(): string {
-  return "أحضّر صورة الشارت…";
-}
-
-export function telegramAnalyzing(): string {
-  return `أحلّل ${DISPLAY_NAME_AR}…`;
 }

@@ -178,3 +178,63 @@ two transports. A context failure logs and never blocks the answer.
 
 grammY stays out (the team tried and reverted it in five minutes); everything
 here is the raw-fetch client.
+
+## Round 2, Phase D — a live agent, not a bot: no pre-printed thinking anywhere
+
+The owner's correction, verbatim in effect: the Telegram agent must never
+show pre-printed thinking — it must show the tasks the agent is ACTUALLY
+doing and part of its real thinking; the same applies to the platform's SSE;
+and there must be no fixed question-matching ("من انت" and friends). A live
+agent, not a bot.
+
+The audit found pre-printed thinking in three places, one of them elaborate:
+
+1. **The web "ticker" was fake thinking with its own LLM bill.** Every run
+   paid a model call to PRE-GENERATE a script of plausible thinking lines
+   from the request, then `streamTicker` played them on a timer — scrolling
+   regardless of what the run was actually doing. Meanwhile the engine's REAL
+   narration (`activity` events: sentences authored by each specialist at the
+   moment its work finished) was streaming over the same SSE connection,
+   collected into state, and never rendered. The ticker module is deleted
+   whole (plan generator, streamer, sanitizer, types, its test); the pending
+   bubble's live line is now `liveNote` — the latest visible activity
+   sentence, set the instant it arrives. The trace header's synthetic
+   "يفكّر" fallback and its i18n key are gone too: before the first event the
+   empty state shows a bare shimmer, because a status the engine never
+   reported is a status we invented.
+
+2. **Telegram's wake/think bubble was two fixed strings.** "أوقظ الوكيل…"
+   then "أفكّر…", fired back-to-back at every user before any work happened.
+   Deleted. The bubble is now LAZY: it does not exist until the engine's
+   first real event creates it. Before that, the native typing indicator is
+   the only "working" signal. The bubble renders the task checklist (real
+   stage transitions) with the specialist's latest sentence beneath it —
+   both narration channels (`emitStage` + visible `emitActivity`) wired in.
+
+3. **The phrase classifier was a bot's reflexes.** GREETING/MENU/SESSION
+   phrase lists mapped "مرحبا", "القائمة", "حالة السوق" to canned Arabic
+   paragraphs — the same fixed reply forever, drifting from what the agent
+   would say, one extra word away from the wrong path. All deleted. Free
+   text goes to the agent UNCLASSIFIED; the orchestrator routes
+   conversational vs market itself and GENERATES the reply live, exactly as
+   the platform chat does. The one mechanical survivor is explicit commands:
+   `/chart` (and its exact menu strings) produces a photo the agent cannot
+   send as prose; the other commands expand to the Arabic prompt they always
+   stood for and ride to the agent as ordinary messages. The conversational/
+   analysis split is now decided by what the run RETURNED (`informational` →
+   plain generated reply, no cards/chips/tools block), never by guessing the
+   question's kind up front — and a conversational run, which emits no
+   events by design, never gets a bubble at all: the right theatre falls out
+   of honesty instead of classification.
+
+What deliberately stays: `/start`'s link receipt (an auth mechanism's
+confirmation, not a reply), the chart command's caption and failure notice
+(mechanical command results), and the stage LABELS (a checklist names its
+tasks; the narration between them is the agent's own words).
+
+Tests moved with the behavior: the conversation test now pins the
+classifier's ABSENCE and that free text reaches the agent untouched; the
+liveReply test pins that no status prose exists in the module; liveProgress
+pins that the empty render is an empty string and the bubble is born from
+the first real event; parity pins the informational-result delivery shape
+and both narration wires.

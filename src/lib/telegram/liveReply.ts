@@ -7,7 +7,7 @@
  *   AGENTS.md                     one visible preview; edit it forward
  *   draft-stream.ts               send + editMessageText; delete leftover previews
  *   bot-message-dispatch-draft.ts live lane that becomes the final answer
- *   bot-message-dispatch-progress.ts  "Thinking…" then collapse in place
+ *   bot-message-dispatch-progress.ts  live status, then collapse in place
  *   progress-draft-preview.ts     status lines on that same bubble
  *   send-actions.ts               sendChatAction + deleteMessage
  *   send-edit.ts                  finalize / strip buttons
@@ -16,9 +16,12 @@
  *   question-finalization         tap → edit, drop keyboard, mark chosen
  *
  * Lonora does not stream tokens. This is the same window contract: one
- * status bubble (أوقظ → أفكّر) that becomes the answer, or is deleted when
- * the real payload is a photo. Buttons are not this module's job — the
- * agent attaches them only when it authored a question or a report link.
+ * status bubble that becomes the answer, or is deleted when the real payload
+ * is a photo. The bubble carries no pre-printed text — it is created lazily
+ * by the first REAL engine event (see liveProgress.ts), so its every line is
+ * something the agent actually did or said. Buttons are not this module's
+ * job — the agent attaches them only when it authored a question or a
+ * report link.
  */
 import {
   deleteMessage,
@@ -28,8 +31,6 @@ import {
   type InlineButton,
 } from "@/lib/telegram";
 
-export const LIVE_WAKE_TEXT = "⌛ أوقظ الوكيل…";
-export const LIVE_THINK_TEXT = "⌛ أفكّر…";
 
 export class TelegramLiveTurn {
   private messageId: number | null = null;
@@ -52,13 +53,7 @@ export class TelegramLiveTurn {
     }).catch(() => {});
   }
 
-  async wake(): Promise<void> {
-    await this.show(LIVE_WAKE_TEXT);
-  }
 
-  async think(): Promise<void> {
-    await this.show(LIVE_THINK_TEXT);
-  }
 
   async finalize(text: string, buttons?: InlineButton[][]): Promise<void> {
     if (this.messageId == null) {

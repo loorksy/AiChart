@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { LIVE_THINK_TEXT, LIVE_WAKE_TEXT } from "@/lib/telegram/liveReply";
 
 const SRC = path.join(import.meta.dirname, "..", "..", "..");
 
 describe("OpenClaw-style live Telegram window", () => {
-  it("uses a waking then thinking status, not a leftover analyzing dump", () => {
-    assert.equal(LIVE_WAKE_TEXT.includes("أوقظ"), true);
-    assert.equal(LIVE_THINK_TEXT.includes("أفكّر"), true);
+  it("carries no pre-printed status text — the engine writes every line", () => {
+    // "أوقظ الوكيل…" and "أفكّر…" were fixed strings shown to every user on
+    // every run. The bubble is now created lazily by the first REAL engine
+    // event (liveProgress.ts), so this module owns no status prose at all.
+    const live = readFileSync(path.join(SRC, "lib", "telegram", "liveReply.ts"), "utf8");
+    assert.doesNotMatch(live, /LIVE_WAKE_TEXT|LIVE_THINK_TEXT/);
+    assert.doesNotMatch(live, /أوقظ|أفكّر/);
   });
 
   it("edits the same bubble forward and deletes it when a photo replaces it", () => {

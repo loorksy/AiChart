@@ -8,13 +8,12 @@ import type {
   AgentFinalResult,
   AgentOption,
 } from "@/lib/agent/types";
-import type { AgentTickerItem } from "@/lib/agent/ticker/types";
 import type { AgentStageEvent } from "@/lib/agent/stageEvents";
 import {
   appendUserAndPending,
   applyFinal,
   applyStreamText,
-  applyTicker,
+  applyLiveNote,
   dropPending,
 } from "@/hooks/agentChatReducer";
 import { resolveLatestChartCandle } from "@/lib/agent/marketContext/resolveLatestChartCandle";
@@ -38,8 +37,8 @@ export interface AgentChatMessage {
   options?: AgentOption[];
   /** A temporary assistant bubble shown while the agent runs. Not persisted. */
   pending?: boolean;
-  /** Live thinking-ticker line shown inside the pending bubble. */
-  ticker?: AgentTickerItem | null;
+  /** Latest engine narration line shown inside the pending bubble. */
+  liveNote?: string | null;
   /** Live streamed answer text (cumulative, sanitized) for general answers.
    *  UI-only — the final event replaces the whole bubble. */
   streamText?: string | null;
@@ -112,7 +111,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   );
   const [activityEvents, setActivityEvents] = useState<AgentActivityEvent[]>([]);
   const [stageEvents, setStageEvents] = useState<AgentStageEvent[]>([]);
-  const [currentTicker, setCurrentTicker] = useState<AgentTickerItem | null>(null);
+  const [liveNote, setLiveNote] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -123,7 +122,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   const cancel = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setCurrentTicker(null);
+    setLiveNote(null);
     setRunning(false);
     // An explicit cancel forgets the live run — nothing to re-attach to.
     endLiveRun(sessionIdRef.current);
@@ -142,13 +141,13 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       if (run.running) {
         setRunning(true);
         setStageEvents(run.stageEvents);
-        setCurrentTicker(run.ticker);
+        setLiveNote(run.liveNote);
         setMessages((prev) => {
           const hasPending = prev.some((m) => m.id === run.pendingId);
           if (hasPending) {
             return prev.map((m) =>
               m.id === run.pendingId && m.pending
-                ? { ...m, ticker: run.ticker, streamText: run.streamText }
+                ? { ...m, liveNote: run.liveNote, streamText: run.streamText }
                 : m,
             );
           }
@@ -166,7 +165,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               role: "assistant" as const,
               content: "",
               pending: true,
-              ticker: run.ticker,
+              liveNote: run.liveNote,
               streamText: run.streamText,
             },
           ];
@@ -194,7 +193,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       }
       setRunning(false);
       setStageEvents([]);
-      setCurrentTicker(null);
+      setLiveNote(null);
       endLiveRun(chatId, run.pendingId);
     };
     sync();
@@ -226,7 +225,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
-      // A temporary assistant bubble hosts the live ticker while the run is in
+      // A temporary assistant bubble hosts the live narration while the run is in
       // flight; the final event replaces it in place (same id → no duplicate).
       const pendingId = uuid();
       let finalized = false;
@@ -312,13 +311,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
             } catch {
               continue;
             }
-            if (eventName === "ticker") {
-              // UI-only: drives the pending bubble's line; never stored in history.
-              const item = data as AgentTickerItem;
-              setCurrentTicker(item);
-              setMessages((prev) => applyTicker(prev, pendingId, item));
-              updateLiveRun(chatId, pendingId, { ticker: item });
-            } else if (eventName === "answer_text") {
+            if (eventName === "answer_text") {
               // Cumulative sanitized text — replace, never append, so a
               // dropped frame cannot corrupt the rendered answer.
               const text = (data as { text?: string }).text;
@@ -335,7 +328,16 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               });
             } else if (eventName === "activity") {
               // Live stream only — the server already filtered to visible work.
-              setActivityEvents((prev) => [...prev, data as AgentActivityEvent]);
+              const event = data as AgentActivityEvent;
+              setActivityEvents((prev) => [...prev, event]);
+              // The bubble's narration line IS this stream: the specialist's
+              // own sentence, at the moment its work finished. Nothing
+              // pre-generated ever writes here.
+              if (event.message?.trim()) {
+                setLiveNote(event.message);
+                setMessages((prev) => applyLiveNote(prev, pendingId, event.message));
+                updateLiveRun(chatId, pendingId, { liveNote: event.message });
+              }
             } else if (eventName === "final") {
               const result = data as AgentFinalResult;
               const turnActivity = result.activityEvents ?? [];
@@ -369,7 +371,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               // Clear the live stream + ticker — the run is over.
               setActivityEvents([]);
               setStageEvents([]);
-              setCurrentTicker(null);
+              setLiveNote(null);
               // Only the final event delivers drawings to the chart. Ticker and
               // activity events NEVER touch the chart.
               opts.onResult?.(result);
@@ -431,7 +433,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
-        setCurrentTicker(null);
+        setLiveNote(null);
         setRunning(false);
         // No final arrived (error / cancel / dropped stream) → drop the pending
         // bubble so it never gets stuck showing a ticker.
@@ -449,12 +451,12 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       messages,
       activityEvents,
       stageEvents,
-      currentTicker,
+      liveNote,
       running,
       error,
       sendMessage,
       cancel,
     }),
-    [messages, activityEvents, stageEvents, currentTicker, running, error, sendMessage, cancel],
+    [messages, activityEvents, stageEvents, liveNote, running, error, sendMessage, cancel],
   );
 }

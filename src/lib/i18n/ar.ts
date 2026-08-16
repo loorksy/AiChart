@@ -337,7 +337,6 @@ export const ar: Record<TranslationKey, string> = {
   "telegram.link.unconfigured":
     "بوت تليجرام غير مفعّل على المنصة بعد — يجب أن يضيف المشرف توكن البوت أولاً من لوحة الإدارة.",
   "agent.processing": "جاري المعالجة",
-  "agent.thinking": "يفكّر",
   "agent.trace_done": "المهام المنجزة",
   "agent.run_stages": "كيف أُنتج هذا الرد",
   "agent.stage.market_data": "بيانات السوق",

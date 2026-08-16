@@ -55,14 +55,10 @@ import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
-  classifyTelegramTurn,
+  resolveTelegramCommand,
   telegramChartCaption,
   telegramChartFailed,
-  telegramGreeting,
   telegramLinkedWelcome,
-  telegramMenu,
-  telegramPreparingChart,
-  telegramSessionStatus,
 } from "@/lib/telegram/conversation";
 import {
   markChosenReply,
@@ -353,34 +349,17 @@ export async function handleTelegramMessage(
       return "unlinked";
     }
 
-    const turn = classifyTelegramTurn(incoming);
-    if (turn.kind === "greeting") {
-      await deliverReply({
-        chatId: message.chatId,
-        text: telegramGreeting(),
-        replyToMessageId: message.messageId,
-      });
-      return "answered";
-    }
-    if (turn.kind === "menu") {
-      await deliverReply({
-        chatId: message.chatId,
-        text: telegramMenu(),
-        replyToMessageId: message.messageId,
-      });
-      return "answered";
-    }
-    if (turn.kind === "session") {
-      await deliverReply({
-        chatId: message.chatId,
-        text: telegramSessionStatus(),
-        replyToMessageId: message.messageId,
-      });
-      return "answered";
-    }
-    if (turn.kind === "chart_photo") {
-      const live = new TelegramLiveTurn(message.chatId, message.messageId);
-      await live.show(telegramPreparingChart()).catch(() => {});
+    // Explicit commands are the ONE mechanical path: /chart produces a photo
+    // (which the agent cannot send as prose); the other menu commands expand
+    // to the Arabic prompt they stand for and ride to the agent like any
+    // typed message. Everything else — greetings, "من انت", questions — goes
+    // to the agent UNCLASSIFIED: the orchestrator routes conversational vs
+    // market itself and generates the reply live. The phrase lists and canned
+    // paragraphs that used to answer here were a bot's reflexes, not an
+    // agent's.
+    const command = resolveTelegramCommand(incoming);
+    if (command?.kind === "chart_photo") {
+      await sendChatAction(message.chatId, "upload_photo").catch(() => {});
       const buffer = await buildChartSnapshotBufferForMarket(
         userId,
         DATA_SYMBOL,
@@ -388,7 +367,9 @@ export async function handleTelegramMessage(
         "forex",
       );
       if (!buffer) {
-        await live.finalize(telegramChartFailed());
+        await sendMessage(message.chatId, telegramChartFailed(), undefined, {
+          replyToMessageId: message.messageId,
+        }).catch(() => {});
         return "answered";
       }
       const closed = !getSessionStatus(DATA_SYMBOL).isOpen;
@@ -400,9 +381,9 @@ export async function handleTelegramMessage(
         undefined,
         { replyToMessageId: message.messageId },
       );
-      await live.discard();
       return "answered";
     }
+    const turnMessage = command?.kind === "prompt" ? command.message : incoming;
 
     // ── Shared turn context: per-chat memory and session ─────────────────
     //
@@ -412,7 +393,7 @@ export async function handleTelegramMessage(
     // persisted messages. Same store, same builder, same token budget now —
     // one memory, two transports. A context failure never blocks the answer.
     const sessionId = telegramSessionId(message.chatId);
-    const session = updateSessionFromMessage(sessionId, turn.message);
+    const session = updateSessionFromMessage(sessionId, turnMessage);
     let conversationContext: AgentConversationContext | undefined;
     try {
       await ensureChat({
@@ -426,7 +407,7 @@ export async function handleTelegramMessage(
         getMessages(userId, sessionId, 160),
         recallAgentMemoryForContext({
           userId,
-          query: turn.message,
+          query: turnMessage,
           symbol: DATA_SYMBOL,
           timeframe: "15m",
           locale: "ar",
@@ -438,7 +419,7 @@ export async function handleTelegramMessage(
         userId,
         chatId: sessionId,
         sessionId,
-        userMessage: turn.message,
+        userMessage: turnMessage,
         locale: "ar",
         chartContext: { symbol: DATA_SYMBOL, interval: "15m" },
         persistedMessages: adaptAuthorizedChatHistory({
@@ -461,7 +442,7 @@ export async function handleTelegramMessage(
       try {
         await appendMessage(userId, sessionId, {
           role: "user",
-          content: turn.message,
+          content: turnMessage,
           symbol: DATA_SYMBOL,
           interval: "15m",
         });
@@ -482,35 +463,15 @@ export async function handleTelegramMessage(
 
     // ── Conversational turns: the right theatre ──────────────────────────
     //
-    // "من انت" used to get the full ceremony — the wake/think bubble, a gold
-    // chartContext handed to the engine for chit-chat, an EXTRA suggestions
-    // LLM round-trip, and four trading chips on an identity answer. Same
-    // brain (the orchestrator short-circuits general questions itself), but
-    // a conversation deserves a conversation's shape: one typing indicator,
-    // the summary as the whole reply, no cards, no chips.
-    if (turn.kind === "general") {
-      await sendChatAction(message.chatId).catch(() => {});
-      const result = await runUnifiedChartAgent({
-        surface: "platform",
-        userMessage: turn.message,
-        requestContext: { requestId: newId(), userId, emitActivity: () => {}, sessionId, session },
-        conversationContext,
-        account: null,
-        canExecute: false,
-        locale: "ar",
-      });
-      const answer = escapeTelegramHtml(result.summary);
-      await deliverReply({
-        chatId: message.chatId,
-        text: answer,
-        replyToMessageId: message.messageId,
-      });
-      await persistTurns(result.summary, result);
-      await logAudit(userId, "telegram_chat", "general");
-      return "answered";
-    }
-
-    // ── Analysis turns: live progress, then the full answer ──────────────
+    // ── One agent path, live narration, the right theatre by RESULT ──────
+    //
+    // No pre-classification: the orchestrator routes conversational vs market
+    // itself. The bubble is LAZY — it does not exist until the engine's first
+    // real event creates it, so a conversational run (which emits nothing by
+    // design) never shows a bubble at all, and an analysis run shows a
+    // checklist of the tasks actually underway with the specialist's latest
+    // sentence beneath it. Nothing pre-printed ever renders: before the first
+    // event, the native typing indicator is the only "working" signal.
     const live = new TelegramLiveTurn(message.chatId, message.messageId);
     const reporter = TelegramProgressReporter.forLiveTurn(live, () =>
       sendChatAction(message.chatId),
@@ -519,16 +480,22 @@ export async function handleTelegramMessage(
 
     const result = await runUnifiedChartAgent({
       surface: "platform",
-      userMessage: turn.message,
+      userMessage: turnMessage,
       chartContext: { symbol: DATA_SYMBOL, interval: "15m", dataSource: "oanda" },
       requestContext: {
         requestId: newId(),
         userId,
-        emitActivity: () => {},
-        // The engine has been narrating itself all along; the bubble finally
-        // listens. Stage events tick the checklist the operator watches.
+        // Both narration channels reach the bubble: stages tick the task
+        // checklist; visible activity sentences — authored by the specialist
+        // that just did the work — are the "thinking" the operator reads.
+        emitActivity: (event) => {
+          if (event.visible !== false && event.message?.trim()) {
+            reporter.onActivity(event.message);
+          }
+        },
         emitStage: (event) => reporter.onStage(event),
         sessionId,
+        session,
       },
       conversationContext,
       account: null,
@@ -539,6 +506,23 @@ export async function handleTelegramMessage(
     // the answer would overwrite it.
     reporter.finish();
 
+    // A conversational answer keeps a conversation's shape: the generated
+    // reply alone — no cards, no suggestion chips, no report button, no tools
+    // block. Everything else gets the full derived-cards answer. The split is
+    // decided by what the run RETURNED, not by guessing the question's kind
+    // up front.
+    if (result.decision === "informational") {
+      await deliverReply({
+        chatId: message.chatId,
+        text: escapeTelegramHtml(result.summary),
+        live,
+        replyToMessageId: message.messageId,
+      });
+      await persistTurns(result.summary, result);
+      await logAudit(userId, "telegram_chat", "general");
+      return "answered";
+    }
+
     // Parity, structurally. The bespoke `analysisCard` builder that used to
     // compose this message carried a side, three levels and three reasons —
     // and silently dropped the gate checklist, the invalidation level, what
@@ -546,11 +530,6 @@ export async function handleTelegramMessage(
     // which the same run had already computed. Deriving the message from the
     // same cards the panel renders means the phone cannot fall behind: a card
     // type added without a Telegram rendering does not compile.
-    //
-    // A WAIT needs no special case any more. The decision card leads with the
-    // refusal and the gate checklist names which gate refused, so a refusal is
-    // never dressed in a plan card — there is no plan card to dress it in when
-    // the levels are absent.
     //
     // The collapsed tools block is Telegram-native (<blockquote expandable>):
     // the checks that produced the answer, one tap away, never a wall.
@@ -562,7 +541,7 @@ export async function handleTelegramMessage(
       .join("\n\n");
     const generated = await generateAgentSuggestions({
       locale: "ar",
-      userMessage: turn.message,
+      userMessage: turnMessage,
       result,
       symbol: DATA_SYMBOL,
       interval: "15m",

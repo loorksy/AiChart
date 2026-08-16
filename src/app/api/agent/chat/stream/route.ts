@@ -35,9 +35,6 @@ import {
 } from "@/lib/agent/sessionOptions";
 import { routeIntent } from "@/lib/agent/intentRouter";
 import { generateAgentSuggestions } from "@/lib/agent/suggestions/generateAgentSuggestions";
-import { generateTickerPlan } from "@/lib/agent/ticker/generateTickerPlan";
-import { streamTicker } from "@/lib/agent/ticker/streamTicker";
-import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
 import { createLogger } from "@/lib/logger";
 import { recordRequestWithoutFinal } from "@/lib/metrics";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
@@ -288,11 +285,9 @@ export async function POST(req: NextRequest) {
     }
     const trialMetered = trialClaim.mode === "trial";
 
-    // V2-A2: refuse a spent balance HERE — before the burst slot, before the
-    // ticker, before any model call. Checking inside the stream meant a user
-    // with no credits still paid for the ticker's own LLM call before being
-    // told no. A plain 402 also leaves the SSE crash path as the only place
-    // that emits an error event, which is the contract phase-0 locks.
+    // V2-A2: refuse a spent balance HERE — before the burst slot, before any
+    // model call. A plain 402 also leaves the SSE crash path as the only
+    // place that emits an error event, which is the contract phase-0 locks.
     const gate = await checkSpendAllowed(user.id);
     if (!gate.allowed) {
       if (trialMetered) await releaseTrialInteraction(user.id, requestId);
@@ -426,15 +421,12 @@ export async function POST(req: NextRequest) {
           send("answer_text", { text: fullText });
         };
 
-        // --- Live thinking ticker (UI-only, model-generated per run). ---
-        // Runs CONCURRENTLY with the agent: the final answer never waits for
-        // ticker generation, and if generation fails the ticker is simply
-        // hidden — there is NO static fallback text, ever.
-        let done = false;
-        const tickerDebug: {
-          tickerGenerated: boolean;
-          tickerHiddenReason?: string;
-        } = { tickerGenerated: false };
+        // The pending bubble narrates itself from REAL work only: `stage` and
+        // `activity` events emitted by the engine at the moment things happen.
+        // A model-generated "ticker plan" used to be produced up front and
+        // played on a timer here — pre-printed thinking with its own LLM cost,
+        // scrolling regardless of what the run was actually doing. Deleted:
+        // the honest narration was already streaming underneath it.
         const previewIntents = routeIntent({
           message: resolvedMessage,
           chartContext: body.chartContext,
@@ -459,38 +451,6 @@ export async function POST(req: NextRequest) {
               recalledMemoryCount: conversationContext?.recalledMemoryIds.length ?? 0,
             })
           : null;
-        // The ticker is dependent work: it must be CANCELLABLE so the burst
-        // slot is never released while its model call is still in flight
-        // (RELIABILITY_PLAN.md item 2).
-        const tickerAbort = new AbortController();
-        const tickerTask = (async () => {
-          try {
-            const plan = await generateTickerPlan({
-              userMessage: resolvedMessage,
-              symbol: body.chartContext?.symbol,
-              interval: body.chartContext?.interval,
-              intent: previewIntents,
-              hasChartContext: Boolean(body.chartContext?.symbol),
-              newsProviderConfigured: newsProviderConfigured(),
-              canUseMarketTools: true,
-              canUseNewsTools: newsProviderConfigured(),
-              signal: tickerAbort.signal,
-            });
-            if (done || req.signal.aborted) return;
-            tickerDebug.tickerGenerated = true;
-            await streamTicker({
-              items: plan,
-              sendTicker: (item) => send("ticker", item),
-              shouldStop: () => done || req.signal.aborted,
-            });
-          } catch (error) {
-            tickerDebug.tickerHiddenReason = "ticker_generation_failed";
-            log.warn("agent.ticker.failed", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        })();
-        void tickerTask;
 
         try {
           // The user's own model choice governs every LLM call in this run.
@@ -607,9 +567,6 @@ export async function POST(req: NextRequest) {
             maxSuggestions: 4,
           }).catch(() => []);
 
-          // Stop the ticker the moment the final result is ready.
-          done = true;
-
           // Number-reply resolver targets the suggestions actually shown.
           if (suggestions.length) {
             rememberOptions(sessionId, suggestions);
@@ -631,10 +588,9 @@ export async function POST(req: NextRequest) {
             // Replace static contextual options with the dynamic suggestions.
             options: suggestions,
             suggestions,
-            // Accurate ticker state in dev diagnostics only.
             debugDecisionFlow:
-              process.env.NODE_ENV === "development" && result.debugDecisionFlow
-                ? { ...result.debugDecisionFlow, ...tickerDebug }
+              process.env.NODE_ENV === "development"
+                ? result.debugDecisionFlow
                 : undefined,
           });
         } catch (error) {
@@ -736,20 +692,7 @@ export async function POST(req: NextRequest) {
             recordRequestWithoutFinal("agent.chat.stream", "no_final_event");
             log.error("agent.stream.slo_breach", { requestId, reason: "no_final_event" });
           }
-          done = true; // stop any in-flight ticker loop
           clearInterval(heartbeat);
-          // Do not release the burst slot while dependent work is still running
-          // (RELIABILITY_PLAN.md item 2): abort the ticker, then wait — briefly
-          // and boundedly — for it to unwind. Otherwise the next run could
-          // start while this run's provider calls are still consuming quota.
-          tickerAbort.abort();
-          // The abort tears the ticker's model call down, so this normally
-          // settles in milliseconds; the cap only bounds a pathological unwind
-          // (it must stay short — the slot gates the operator's next request).
-          await Promise.race([
-            tickerTask.catch(() => {}),
-            new Promise<void>((resolve) => setTimeout(resolve, 250)),
-          ]);
           release?.();
           try {
             controller.close();

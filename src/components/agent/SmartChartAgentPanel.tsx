@@ -303,7 +303,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   default — and the final answer replaces it in place. */}
               {m.pending ? (
                 <div className="min-w-0">
-                  <AgentThinkingTraceLive events={stageEvents} ticker={m.ticker} />
+                  <AgentThinkingTraceLive events={stageEvents} liveNote={m.liveNote} />
                   {m.streamText ? (
                     /* Live streamed answer (general questions): the text
                        grows in place; the final event replaces the bubble. */

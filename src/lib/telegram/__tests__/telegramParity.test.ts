@@ -157,10 +157,13 @@ describe("the surface shares the platform's brain", () => {
     assert.equal(parseTelegramStart("مرحبا"), null);
   });
 
-  it("classifies a hello before the engine so the phone is not a dump", () => {
-    assert.match(agentSource, /classifyTelegramTurn/);
-    assert.match(agentSource, /telegramGreeting/);
+  it("resolves explicit commands and hands EVERYTHING else to the agent", () => {
+    // The phrase classifier and its canned paragraphs are gone: a greeting,
+    // an identity question, a session question — all generated live by the
+    // same brain. Only explicit commands stay mechanical (/chart's photo).
+    assert.match(agentSource, /resolveTelegramCommand/);
     assert.match(agentSource, /sendPhotoBuffer/);
+    assert.doesNotMatch(agentSource, /classifyTelegramTurn|telegramGreeting|telegramMenu|telegramSessionStatus/);
   });
 
   it("never answers an unlinked chat with an analysis", () => {
@@ -236,6 +239,9 @@ describe("the professional turn: progress, memory, and the right theatre", () =>
     // no-op and the bubble froze for the whole run. The reporter is the wire.
     assert.match(agentSource, /emitStage: \(event\) => reporter\.onStage\(event\)/);
     assert.match(agentSource, /TelegramProgressReporter\.forLiveTurn/);
+    // The narration channel too: the specialist's own sentences reach the
+    // bubble, filtered to visible events exactly like the web stream.
+    assert.match(agentSource, /event\.visible !== false/);
     // finish() must run before the answer replaces the bubble — a trailing
     // progress edit landing after finalize would overwrite the result.
     const finish = agentSource.indexOf("reporter.finish()");
@@ -248,18 +254,28 @@ describe("the professional turn: progress, memory, and the right theatre", () =>
     assert.match(agentSource, /renderToolsBlock/);
   });
 
-  it("gives a conversational turn a conversation's shape", () => {
-    // "من انت" used to get the wake/think theatre, a gold chartContext, an
-    // extra suggestions LLM call and trading chips. The general branch now
-    // answers with the summary alone.
-    const general = agentSource.indexOf('turn.kind === "general"');
-    assert.ok(general > 0, "the general branch must exist");
-    const analysis = agentSource.indexOf("TelegramProgressReporter.forLiveTurn");
-    assert.ok(general < analysis, "general returns before the analysis ceremony");
-    const generalBlock = agentSource.slice(general, analysis);
-    assert.doesNotMatch(generalBlock, /generateAgentSuggestions/);
-    assert.doesNotMatch(generalBlock, /chartContext: \{/);
-    assert.doesNotMatch(generalBlock, /reportLinkButtons/);
+  it("gives a conversational RESULT a conversation's shape — decided after, not guessed before", () => {
+    // No pre-classification: one agent path, and the delivery splits on what
+    // the run RETURNED. An informational result ships as the generated reply
+    // alone — no cards, no suggestion chips, no report button, no tools block.
+    const informational = agentSource.indexOf('result.decision === "informational"');
+    assert.ok(informational > 0, "the informational delivery must exist");
+    const cards = agentSource.indexOf("renderCardsForTelegram(deriveCards(result))");
+    assert.ok(informational < cards, "the conversational delivery returns before the card path");
+    const informationalBlock = agentSource.slice(informational, cards);
+    assert.doesNotMatch(informationalBlock, /generateAgentSuggestions/);
+    assert.doesNotMatch(informationalBlock, /reportLinkButtons/);
+    assert.doesNotMatch(informationalBlock, /renderToolsBlock/);
+  });
+
+  it("shows no pre-printed status: the bubble is born from real events", () => {
+    // wake()/think() fired two fixed strings at every user before any work
+    // happened. The reporter now starts with typing only; the first REAL
+    // stage or activity event creates the bubble, and a run that emits
+    // nothing (a conversational answer) never shows one.
+    assert.doesNotMatch(agentSource, /\.wake\(\)|\.think\(\)/);
+    assert.match(agentSource, /emitActivity: \(event\) => \{/);
+    assert.match(agentSource, /reporter\.onActivity\(event\.message\)/);
   });
 
   it("remembers the conversation like the web chat does", () => {
