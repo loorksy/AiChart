@@ -3,7 +3,7 @@
  * crawlers. Every string here is a product fact. The platform issues gold
  * recommendations and never places a trade; this module must not claim otherwise.
  */
-import type { Metadata } from "next";
+import type { Metadata, MetadataRoute } from "next";
 import { BRAND_DOMAIN, BRAND_NAME, BRAND_URL } from "./brand";
 import { DATA_SYMBOL, DISPLAY_NAME_AR, DISPLAY_NAME_EN } from "./gold";
 
@@ -382,7 +382,7 @@ export function llmsTxt(): string {
   ].join("\n");
 }
 
-export function webManifest() {
+export function webManifest(): MetadataRoute.Manifest {
   return {
     name: BRAND_NAME,
     short_name: BRAND_NAME,
