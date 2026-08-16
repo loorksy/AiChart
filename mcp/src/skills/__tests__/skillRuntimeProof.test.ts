@@ -42,12 +42,8 @@ describe("MCP skill runtime proof", () => {
       `expected lexicon/strategies, got ${JSON.stringify(analysis.selected.map((s) => s.name))}`,
     );
     assert.ok(
-      analysis.rejected.some(
-        (r) =>
-          r.name === "aichart-trading" &&
-          r.reason === "execution_skill_not_authorized",
-      ),
-      "execution skill must be rejected without authorization",
+      !analysis.selected.some((s) => s.riskLevel === "execution"),
+      "catalogue must not load an execution-risk skill",
     );
 
     const greeting = selectMcpSkills(skills, {

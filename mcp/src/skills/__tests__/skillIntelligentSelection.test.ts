@@ -52,10 +52,6 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
       `expected analysis skill, got ${JSON.stringify(names(r))} candidates=${JSON.stringify(r.candidates)}`,
     );
     assert.ok(!r.selected.some((s) => s.riskLevel === "execution"));
-    assert.ok(
-      r.rejected.some((x) => x.name === "aichart-trading"),
-      "execution must stay rejected without authorization",
-    );
     // Capability scores: top candidate must outrank rejected-as-irrelevant ones.
     const top = r.candidates[0]!;
     assert.ok(top.score > 0);
@@ -71,8 +67,8 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
       availableTools: ["render_cards"],
       maxSkills: 2,
     });
-    // Risk tags live on trading-strategies / aichart-trading; execution blocked.
-    assert.ok(!r.selected.some((s) => s.name === "aichart-trading"));
+    // aichart-trading needs chart tools; this prompt is a risk explanation.
+    assert.ok(!r.selected.some((s) => s.riskLevel === "execution"));
     assert.ok(
       r.selected.length === 0 ||
         r.selected.every((s) =>
@@ -83,37 +79,20 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
     assert.ok(r.selected.length <= 2);
   });
 
-  it("Execution request → execution selectable only when authorized; still no auto-approve", () => {
+  it("Execution request → catalogue has no execution skill to authorize", () => {
     const { skills } = discoverSkills();
+    assert.ok(!skills.some(({ metadata }) => metadata.riskLevel === "execution"));
     const blocked = selectMcpSkills(skills, {
-      request: "open a trade on EURUSD with technical execution safety",
+      request: "open a trade on gold with technical execution safety",
       intents: ["execution", "trade"],
       market: "forex",
-      availableTools: ["get_trade_readiness", "open_trade", "render_cards"],
+      availableTools: ["render_cards"],
       allowExecutionSkills: false,
     });
+    assert.ok(!blocked.selected.some((s) => s.riskLevel === "execution"));
     assert.ok(
-      blocked.rejected.some(
-        (x) =>
-          x.name === "aichart-trading" &&
-          x.reason === "execution_skill_not_authorized",
-      ),
-    );
-
-    const allowed = selectMcpSkills(skills, {
-      request: "open a trade on EURUSD with explicit approval",
-      intents: ["execution", "trade"],
-      market: "forex",
-      availableTools: ["get_trade_readiness", "open_trade", "render_cards"],
-      allowExecutionSkills: true,
-      maxSkills: 2,
-    });
-    // Selection may include execution skill — loading ≠ executing.
-    // Tool permissions (open_trade) remain separate from skill load.
-    assert.ok(
-      allowed.selected.some((s) => s.name === "aichart-trading") ||
-        allowed.candidates.some((c) => c.name === "aichart-trading" && c.score > 0),
-      JSON.stringify(allowed),
+      !blocked.selected.some((s) => s.name === "aichart-trading") ||
+        blocked.rejected.some((x) => x.name === "aichart-trading"),
     );
   });
 

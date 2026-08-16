@@ -43,11 +43,14 @@ describe("MCP canonical skill catalogue", () => {
     assert.throws(() => loadSkill("trading-lexicon", "99.0.0"), /Skill not found/);
   });
 
-  it("execution-risk skills stay marked so hosts cannot treat them as harmless", () => {
+  it("aichart-trading is recommendation-only — no execution-risk skill in the catalogue", () => {
     const { skills } = discoverSkills();
     const trading = skills.find(({ metadata }) => metadata.name === "aichart-trading");
     assert.ok(trading);
-    assert.equal(trading.metadata.riskLevel, "execution");
+    assert.equal(trading.metadata.riskLevel, "recommendation");
+    assert.ok(!skills.some(({ metadata }) => metadata.riskLevel === "execution"));
+    const loaded = loadSkill("aichart-trading");
+    assert.doesNotMatch(loaded.content, /\b(open_trade|get_trade_readiness|request_approval)\b/);
   });
 });
 

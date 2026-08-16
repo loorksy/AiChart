@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createDefaultAgentSkillRegistry } from "../defaultRegistry";
 import { AgentSkillRegistry } from "../skillRegistry";
 import {
   buildAgentSkillContext,
@@ -53,18 +54,36 @@ test("irrelevant requests load no skills", () => {
   assert.equal(context.block, "");
 });
 
+test("aichart-trading is a recommendation skill and the catalogue has no execution skill", () => {
+  const registry = createDefaultAgentSkillRegistry();
+  const discovered = registry.discover();
+  const trading = discovered.find(({ metadata }) => metadata.name === "aichart-trading");
+  assert.ok(trading);
+  assert.equal(trading.metadata.riskLevel, "recommendation");
+  assert.equal(trading.metadata.category, "recommendation");
+  assert.ok(
+    !discovered.some(({ metadata }) => metadata.riskLevel === "execution"),
+    "canonical catalogue must not ship an execution-risk skill",
+  );
+});
+
 test("execution skills never load without explicit execution authorization", () => {
-  setSkillContextRegistry(null);
+  const root = mkdtempSync(join(tmpdir(), "skill-exec-"));
+  addSkill(
+    root,
+    "exec",
+    "name: leftover-execution\nversion: 1.0.0\ndescription: Leftover execution skill\ncategory: execution\nriskLevel: execution\nrequiredTools: [\"open_trade\"]\ntags: [\"execution\"]",
+  );
+  setSkillContextRegistry(new AgentSkillRegistry([{ path: root, trust: "reviewed" }]));
   const context = buildAgentSkillContext({
-    request: "aichart trading execution open trade now",
+    request: "open trade now with execution safety",
     intent: ["trade_execution"],
     locale: "en",
     market: "forex",
-    // Even if execution tools were visible, allowExecutionSkills stays false.
-    availableTools: ["get_account_overview", "open_trade"],
+    availableTools: ["open_trade"],
   });
   assert.ok(
-    !context.loaded.some(({ name }) => name === "aichart-trading"),
+    !context.loaded.some(({ name }) => name === "leftover-execution"),
     "execution-risk skill must not load in the chart-agent context",
   );
 });
