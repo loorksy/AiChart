@@ -2,13 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import type { AnimationItem } from "lottie-web";
-import { useTheme } from "@/components/ThemeProvider";
 import { BRAND_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 const LOTTIE_PATH = "/brand/lonora-logo-loop.json";
-/** Settled lockup in the 150-frame assemble/reverse loop (op exclusive). */
-const LOCKUP_FRAME = 75;
+/** Frame 0 is the complete owl-face lockup; the 8s loop returns here. */
+const LOCKUP_FRAME = 0;
 
 type LonoraLottieLogoProps = {
   className?: string;
@@ -25,7 +24,6 @@ export function LonoraLottieLogo({
   decorative = true,
 }: LonoraLottieLogoProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const { resolved } = useTheme();
 
   useEffect(() => {
     const host = hostRef.current;
@@ -74,8 +72,7 @@ export function LonoraLottieLogo({
       aria-hidden={decorative ? true : undefined}
       aria-label={decorative ? undefined : BRAND_NAME}
       className={cn(
-        "relative aspect-[960/720] w-full max-w-md",
-        resolved === "light" && "invert",
+        "relative aspect-square w-full max-w-md overflow-hidden bg-black",
         className,
       )}
     >

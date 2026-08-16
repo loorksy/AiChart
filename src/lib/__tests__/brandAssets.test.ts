@@ -63,16 +63,22 @@ describe("brand face-mark assets", () => {
       op: number;
       fr: number;
       nm: string;
+      w: number;
+      h: number;
       layers: Array<{
+        ty?: number;
         nm: string;
         ks: { o: { k: Array<{ t: number; s: number[] }> | number } };
       }>;
     };
     assert.equal(lottie.ip, 0);
-    assert.equal(lottie.op, 150);
-    assert.equal(lottie.fr, 60);
+    assert.equal(lottie.op, 240);
+    assert.equal(lottie.fr, 30);
+    assert.equal(lottie.w, 1080);
+    assert.equal(lottie.h, 1080);
     assert.match(lottie.nm, /Lonora/i);
     assert.ok(lottie.layers.length >= 3);
+    assert.ok(lottie.layers.every((layer) => layer.ty !== 5));
     for (const layer of lottie.layers) {
       const opacity = layer.ks.o;
       if (typeof opacity.k === "number") continue;
