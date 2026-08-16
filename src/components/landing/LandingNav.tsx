@@ -9,6 +9,8 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useLocale } from "@/components/LocaleProvider";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
 import { Button, buttonVariants } from "@/components/squareui/button";
+import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
+import { MetalIconButton } from "@/components/ui/metal-icon-button";
 import { SkipLink } from "@/components/foundation";
 import { cn } from "@/lib/utils";
 
@@ -269,30 +271,26 @@ export function LandingNav({
           </nav>
 
           <div className="ms-auto flex items-center gap-1.5 md:ms-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              data-testid="landing-theme-toggle"
-              onClick={() => setTheme(isDark ? "light" : "dark")}
-              className="hidden text-muted-foreground tap-target hover:text-foreground sm:inline-flex"
-              aria-label={c.nav.theme}
-              title={c.nav.theme}
-            >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              data-testid="landing-locale-toggle"
-              onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
-              className="hidden text-muted-foreground tap-target hover:text-foreground sm:inline-flex"
-              aria-label={c.nav.language}
-              title={c.nav.language}
-            >
-              <Globe className="h-4 w-4" />
-            </Button>
+            <span className="hidden sm:inline-flex">
+              <MetalIconButton
+                data-testid="landing-theme-toggle"
+                onClick={() => setTheme(isDark ? "light" : "dark")}
+                aria-label={c.nav.theme}
+                title={c.nav.theme}
+              >
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </MetalIconButton>
+            </span>
+            <span className="hidden sm:inline-flex">
+              <MetalIconButton
+                data-testid="landing-locale-toggle"
+                onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
+                aria-label={c.nav.language}
+                title={c.nav.language}
+              >
+                <Globe className="h-4 w-4" />
+              </MetalIconButton>
+            </span>
             {actions}
             <Link
               href={LANDING_ROUTES.login}
@@ -304,26 +302,22 @@ export function LandingNav({
             >
               {c.nav.signIn}
             </Link>
-            <Link
+            <LiquidMetalButton
               href={LANDING_ROUTES.signup}
+              label={c.nav.primaryCta}
               data-testid="landing-primary-cta"
-              className={buttonVariants({ className: "px-3.5" })}
-            >
-              {c.nav.primaryCta}
-            </Link>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-lg"
-              data-testid="landing-menu-trigger"
-              className="text-foreground tap-target md:hidden"
-              aria-expanded={open}
-              aria-controls={titleId}
-              aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
-              onClick={() => setOpen((v) => !v)}
-            >
-              {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
+            />
+            <span className="md:hidden">
+              <MetalIconButton
+                data-testid="landing-menu-trigger"
+                aria-expanded={open}
+                aria-controls={titleId}
+                aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
+                onClick={() => setOpen((v) => !v)}
+              >
+                {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </MetalIconButton>
+            </span>
           </div>
         </div>
         {mobileMenu}

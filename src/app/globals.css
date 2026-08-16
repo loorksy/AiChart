@@ -435,12 +435,193 @@ label {
 }
 
 .chat-gpt-input {
-  background: var(--chat-input);
-  border: 1px solid var(--border);
-  border-radius: 1.5rem;
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  border: 1px solid transparent;
+  border-radius: 20px;
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+.metal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.25rem;
+  border-radius: 999px;
+  padding-inline: 0.875rem 0.625rem;
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 14px;
+  font-weight: 500;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--foreground) 5%, transparent),
+    inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.metal-chip:hover,
+.metal-chip[aria-expanded="true"] {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+.metal-icon-face {
+  display: flex;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.liquid-metal {
+  position: relative;
+  display: inline-block;
+}
+.liquid-metal-scene {
+  perspective: 1000px;
+  perspective-origin: 50% 50%;
+}
+.liquid-metal-stack {
+  position: relative;
+  display: inline-flex;
+  transform-style: preserve-3d;
+  transition:
+    transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1),
+    width 0.4s ease,
+    height 0.4s ease;
+}
+.liquid-metal-label {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+  transform: translateZ(20px);
+}
+.liquid-metal-text {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--background) 50%, transparent);
+  white-space: nowrap;
+  padding-inline: 1.25rem;
+}
+.liquid-metal-glyph {
+  color: var(--muted-foreground);
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--background) 50%, transparent));
+}
+.liquid-metal-face-layer,
+.liquid-metal-ring-layer {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition:
+    transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.liquid-metal-face-layer {
+  z-index: 20;
+}
+.liquid-metal-ring-layer {
+  z-index: 10;
+}
+.liquid-metal-face {
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  margin: 2px;
+  border-radius: 100px;
+  background: linear-gradient(180deg, var(--card) 0%, var(--background) 100%);
+}
+.liquid-metal-stack:has(.liquid-metal-hit:active) .liquid-metal-face {
+  box-shadow:
+    inset 0 2px 4px color-mix(in srgb, var(--background) 40%, transparent),
+    inset 0 1px 2px color-mix(in srgb, var(--background) 30%, transparent);
+}
+.liquid-metal-ring {
+  height: 100%;
+  width: 100%;
+  border-radius: 100px;
+  background: transparent;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--background) 30%, transparent),
+    0 36px 14px 0 color-mix(in srgb, var(--background) 2%, transparent),
+    0 20px 12px 0 color-mix(in srgb, var(--background) 8%, transparent),
+    0 9px 9px 0 color-mix(in srgb, var(--background) 12%, transparent),
+    0 2px 5px 0 color-mix(in srgb, var(--background) 15%, transparent);
+}
+.liquid-metal-ring.is-hovered {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--background) 40%, transparent),
+    0 12px 6px 0 color-mix(in srgb, var(--background) 5%, transparent),
+    0 8px 5px 0 color-mix(in srgb, var(--background) 10%, transparent),
+    0 4px 4px 0 color-mix(in srgb, var(--background) 15%, transparent),
+    0 1px 2px 0 color-mix(in srgb, var(--background) 20%, transparent);
+}
+.liquid-metal-ring.is-pressed {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--background) 50%, transparent),
+    0 1px 2px 0 color-mix(in srgb, var(--background) 30%, transparent);
+}
+.liquid-metal-shader {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  border-radius: 100px;
+}
+.liquid-metal-shader canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 100px !important;
+}
+.liquid-metal-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  border: none;
+  border-radius: 100px;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  transform: translateZ(25px);
+}
+.liquid-metal-hit:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.liquid-metal-ripple {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 40%, transparent) 0%,
+    transparent 70%
+  );
+  animation: liquid-metal-ripple 0.6s ease-out;
+}
+@keyframes liquid-metal-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(4);
+    opacity: 0;
+  }
 }
 
 .text-buy {
@@ -548,8 +729,8 @@ label {
 }
 
 .chat-gpt-input:focus-within {
-  border-color: color-mix(in srgb, var(--foreground) 28%, var(--border));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent);
+  border-color: color-mix(in srgb, var(--foreground) 16%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 
 /* TradingView legend: keep OHLC / change / volume, hide the pair + exchange title. */
@@ -660,27 +841,27 @@ label {
 
 @keyframes composer-send-launch {
   0% {
-    transform: translate(0, 0) rotate(0) scale(1);
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
   55% {
-    transform: translate(0.35rem, -0.55rem) rotate(-18deg) scale(0.8);
+    transform: translateY(-0.45rem) scale(0.85);
     opacity: 0;
   }
   56% {
-    transform: translate(-0.15rem, 0.25rem) scale(0.6);
+    transform: translateY(0.2rem) scale(0.6);
     opacity: 0;
   }
   100% {
-    transform: translate(0, 0) rotate(0) scale(1);
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
 .composer-send-ready:hover .composer-send-glyph {
-  transform: translate(0.1rem, -0.15rem) rotate(-12deg);
+  transform: translateY(-0.12rem);
 }
 .chat-composer-shell[dir="rtl"] .composer-send-ready:hover .composer-send-glyph {
-  transform: translate(-0.1rem, -0.15rem) rotate(12deg);
+  transform: translateY(-0.12rem);
 }
 .composer-send-launch .composer-send-glyph {
   animation: composer-send-launch 0.45s cubic-bezier(0.22, 1, 0.36, 1);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useLocale } from "@/components/LocaleProvider";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
 import { buttonVariants } from "@/components/squareui/button";
+import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
 
 export function LandingCta() {
   const { locale } = useLocale();
@@ -17,15 +18,7 @@ export function LandingCta() {
         </h2>
         <p className="mt-3 text-muted-foreground">{c.subtitle}</p>
         <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-          <Link
-            href={LANDING_ROUTES.signup}
-            className={buttonVariants({
-              size: "xl",
-              className: "w-full px-6 sm:w-auto",
-            })}
-          >
-            {c.primary}
-          </Link>
+          <LiquidMetalButton href={LANDING_ROUTES.signup} label={c.primary} />
           <Link
             href={LANDING_ROUTES.login}
             className={buttonVariants({

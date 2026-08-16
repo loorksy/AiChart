@@ -76,9 +76,8 @@ export function RiskPerTradeControl() {
         title={t("settings.trading.risk_label")}
         data-testid="composer-risk"
         className={cn(
-          "flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold tabular-nums transition-colors duration-150 ease-out sm:min-h-9",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          open ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          "metal-chip shrink-0 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          open && "text-foreground",
         )}
       >
         <span dir="ltr">{value.toFixed(1)}%</span>

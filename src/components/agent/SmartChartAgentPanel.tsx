@@ -13,6 +13,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTraceLive } from "./AgentThinkingTrace";
 import { AgentChatInput } from "./AgentChatInput";
+import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
 import { AgentModeBadge, AgentFaultCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
 import { AgentCards } from "./cards/AgentCards";
 import { isOperationalBlocker } from "@/lib/agent/envelopeBadge";
@@ -243,14 +244,11 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {emptyState.suggestions.length ? (
                 <div className="flex flex-wrap justify-center gap-2 px-4">
                   {emptyState.suggestions.map((suggestion) => (
-                    <button
+                    <LiquidMetalButton
                       key={suggestion.id}
-                      type="button"
+                      label={suggestion.label}
                       onClick={() => void sendAndFollow(suggestion.prompt)}
-                      className="min-h-11 rounded-full border border-border bg-background px-3.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9"
-                    >
-                      {suggestion.label}
-                    </button>
+                    />
                   ))}
                 </div>
               ) : null}

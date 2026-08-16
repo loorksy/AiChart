@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ChevronDown, Send, Square } from "lucide-react";
+import { ArrowUp, ChevronDown, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
@@ -18,6 +18,7 @@ import {
   useAgentModels,
 } from "@/components/agent/AgentModelPicker";
 import { ProviderIcon } from "@/components/agent/ProviderIcon";
+import { MetalFx } from "@/components/ui/metal-fx";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
 const MAX_COMPOSER_HEIGHT = 148;
@@ -59,18 +60,15 @@ function ComposerModelChip() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label={activeLabel ?? "model"}
-        className={cn(
-          "flex min-h-9 max-w-40 items-center gap-1 rounded-full px-2 py-1 text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground sm:min-h-7",
-          open && "bg-muted text-foreground",
-        )}
+        className={cn("metal-chip max-w-40", open && "text-foreground")}
       >
         <ProviderIcon provider={provider} size={13} className="shrink-0 opacity-80" />
-        <span className="truncate text-xs font-semibold" dir="ltr">
+        <span className="truncate text-xs font-medium" dir="ltr">
           {activeLabel}
         </span>
         <ChevronDown
           className={cn(
-            "h-3 w-3 shrink-0 transition-transform duration-300",
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300",
             open && "rotate-180",
           )}
           aria-hidden
@@ -127,6 +125,7 @@ export function AgentChatInput({
   const [value, setValue] = useState("");
   const [launching, setLaunching] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const chipRowRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-grow: reset to auto first so the box can also shrink back down.
   useLayoutEffect(() => {
@@ -163,7 +162,7 @@ export function AgentChatInput({
         a chart toggle and a send button into the same line as the caret left
         the message itself the narrowest thing in the composer.
       */}
-      <div className="chat-gpt-input mx-auto flex w-full max-w-3xl flex-col gap-1 px-2 py-1.5">
+      <div className="chat-gpt-input mx-auto flex w-full max-w-3xl flex-col px-4 pb-4 pt-5">
         <textarea
           ref={textareaRef}
           value={value}
@@ -179,10 +178,10 @@ export function AgentChatInput({
           placeholder={t("agent.input_placeholder")}
           aria-label={t("agent.input_placeholder")}
           disabled={running}
-          className="max-h-[148px] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:text-sm"
+          className="mb-4 max-h-[148px] min-h-4 w-full resize-none bg-transparent p-0 text-sm leading-4 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
 
-        <div className="flex items-center gap-0.5">
+        <div ref={chipRowRef} className="mt-auto flex items-center gap-3">
           {/*
             One row for what governs the next turn: which model answers and
             which timeframe is up. There is no instrument picker — the
@@ -200,51 +199,56 @@ export function AgentChatInput({
             swapping DOM, so the button never jumps under the pointer.
             Model pick lives on ComposerModelChip; a second plus was a duplicate.
           */}
-          <div className="ms-auto flex items-center gap-0.5">
-            <button
-              type={running ? "button" : "submit"}
-              onClick={running ? onCancel : undefined}
-              disabled={!running && !canSend}
-              aria-label={running ? t("agent.cancel") : t("agent.send")}
-              title={running ? t("agent.cancel") : t("agent.send")}
-              className={cn(
-                "group relative flex size-11 shrink-0 items-center justify-center rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9",
-                running
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : "bg-foreground text-background hover:opacity-90",
-                !running && canSend && "composer-send-ready",
-                !running && !canSend && "opacity-40",
-              )}
+          <div className="ms-auto flex items-center">
+            <MetalFx
+              preset="chromatic"
+              variant="circle"
+              strength={1}
+              reflectionTargets={[chipRowRef]}
             >
-              <span
+              <button
+                type={running ? "button" : "submit"}
+                onClick={running ? onCancel : undefined}
+                disabled={!running && !canSend}
+                aria-label={running ? t("agent.cancel") : t("agent.send")}
+                title={running ? t("agent.cancel") : t("agent.send")}
                 className={cn(
-                  "absolute inset-0 flex items-center justify-center transition-all duration-300",
-                  running
-                    ? "pointer-events-none rotate-45 scale-50 opacity-0 blur-[1px]"
-                    : "rotate-0 scale-100 opacity-100 blur-none",
-                  launching && !running && "composer-send-launch",
+                  "metal-icon-face group relative transition-opacity duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  running && "bg-destructive text-destructive-foreground",
+                  !running && canSend && "composer-send-ready",
+                  !running && !canSend && "opacity-40",
                 )}
-                style={{ transitionTimingFunction: SPRING }}
-                aria-hidden
               >
-                <Send
-                  className="composer-send-glyph h-4 w-4 transition-transform duration-300 rtl:-scale-x-100"
-                  strokeWidth={2.25}
-                />
-              </span>
-              <span
-                className={cn(
-                  "absolute inset-0 flex items-center justify-center transition-all duration-300",
-                  running
-                    ? "rotate-0 scale-100 opacity-100 blur-none"
-                    : "pointer-events-none -rotate-45 scale-50 opacity-0 blur-[1px]",
-                )}
-                style={{ transitionTimingFunction: SPRING }}
-                aria-hidden
-              >
-                <Square className="h-3 w-3 fill-current" />
-              </span>
-            </button>
+                <span
+                  className={cn(
+                    "absolute inset-0 flex items-center justify-center transition-all duration-300",
+                    running
+                      ? "pointer-events-none rotate-45 scale-50 opacity-0 blur-[1px]"
+                      : "rotate-0 scale-100 opacity-100 blur-none",
+                    launching && !running && "composer-send-launch",
+                  )}
+                  style={{ transitionTimingFunction: SPRING }}
+                  aria-hidden
+                >
+                  <ArrowUp
+                    className="composer-send-glyph size-4"
+                    strokeWidth={2.25}
+                  />
+                </span>
+                <span
+                  className={cn(
+                    "absolute inset-0 flex items-center justify-center transition-all duration-300",
+                    running
+                      ? "rotate-0 scale-100 opacity-100 blur-none"
+                      : "pointer-events-none -rotate-45 scale-50 opacity-0 blur-[1px]",
+                  )}
+                  style={{ transitionTimingFunction: SPRING }}
+                  aria-hidden
+                >
+                  <Square className="h-3 w-3 fill-current" />
+                </span>
+              </button>
+            </MetalFx>
           </div>
         </div>
       </div>

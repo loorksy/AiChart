@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Check } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 // Sanctioned data-only import (spec §3): tiers.ts is a leaf module — the
@@ -11,6 +10,7 @@ import { TIER_ORDER, TIERS } from "@/lib/billing/tiers";
 import { AICHART_PLAN } from "@/lib/subscription/plan";
 import { Surface } from "@/components/foundation";
 import { buttonVariants } from "@/components/squareui/button";
+import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
 import { cn } from "@/lib/utils";
 
@@ -120,16 +120,11 @@ export function LandingPricing() {
 
         <div className="mt-8 flex flex-col items-center gap-3">
           <div className="flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row sm:justify-center">
-            <Link
+            <LiquidMetalButton
               href={LANDING_ROUTES.pricing}
+              label={c.cta}
               data-testid="landing-subscribe-cta"
-              className={buttonVariants({
-                size: "xl",
-                className: "w-full px-6 sm:w-auto",
-              })}
-            >
-              {c.cta}
-            </Link>
+            />
             <a
               href={AICHART_PLAN.telegramUrl}
               target="_blank"

@@ -5,6 +5,7 @@ import { useLocale } from "@/components/LocaleProvider";
 import { ProductPreview } from "@/components/landing/ProductPreview";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
 import { buttonVariants } from "@/components/squareui/button";
+import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
 import { BRAND_NAME } from "@/lib/brand";
 
 /** Brand-first hero: Lonora dominates the first viewport; one headline, one line, CTAs. */
@@ -30,12 +31,7 @@ export function LandingHero() {
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Link
-              href={LANDING_ROUTES.signup}
-              className={buttonVariants({ size: "xl", className: "px-6" })}
-            >
-              {c.primaryCta}
-            </Link>
+            <LiquidMetalButton href={LANDING_ROUTES.signup} label={c.primaryCta} />
             <Link
               href={LANDING_ROUTES.console}
               className={buttonVariants({
