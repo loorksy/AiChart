@@ -47,6 +47,16 @@ export function deriveCards(result: AgentFinalResult): AgentCard[] {
   const cards: AgentCard[] = [];
   const rec = result.recommendation;
 
+  // Leads the reading order: every card below is a scenario for the next
+  // open, and the operator must know that before the plan, not after.
+  if (result.marketClosedScenario) {
+    cards.push({
+      kind: "scenario_notice",
+      nextOpenAt: result.marketClosedScenario.nextOpenAt,
+      reasonAr: result.marketClosedScenario.reasonAr,
+    });
+  }
+
   cards.push({
     kind: "decision",
     decision: result.decision,

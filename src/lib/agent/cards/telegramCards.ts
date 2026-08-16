@@ -60,6 +60,18 @@ export function renderCardForTelegram(card: AgentCard): string | null {
   if (COLLAPSED_BY_DEFAULT.has(card.kind)) return null;
 
   switch (card.kind) {
+    case "scenario_notice": {
+      // Leads the message. The next-open time renders in Riyadh time — the
+      // operator's clock — matching the deterministic summary notice.
+      const opens = new Intl.DateTimeFormat("ar", {
+        timeZone: "Asia/Riyadh",
+        weekday: "long",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(card.nextOpenAt);
+      return `🕒 <b>السوق مغلق — سيناريو للافتتاح القادم</b>\n${card.reasonAr} يفتح ${opens} بتوقيت الرياض، والتوصية أدناه شرطية تنتظر التفعيل.`;
+    }
+
     case "decision": {
       // A greeting or a closed-market note is a sentence, not a trade badge.
       if (card.decision === "informational" || card.decision === "action_required") {

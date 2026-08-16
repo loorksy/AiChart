@@ -4,6 +4,7 @@ import {
   isDirectionalOpinionOnly,
   trackedRecommendationFromResult,
 } from "@/lib/recommendations/fromAgentResult";
+import { recommendationClockAnchor } from "@/lib/agent/recommendationExpiry";
 import type { AgentFinalResult } from "@/lib/agent/types";
 
 function baseResult(
@@ -103,10 +104,15 @@ describe("trackedRecommendationFromResult", () => {
     assert.equal(tracked!.priceAtCreation, 3999.5);
     assert.equal(tracked!.entryLow, 3980);
     assert.equal(tracked!.entryHigh, 3983);
+    // The validity clock starts at the ANCHOR — now mid-session, the next
+    // open on a weekend. Measuring from createdAt described the bug this
+    // replaced: a Saturday plan born already expired. These assertions hold
+    // under a live clock in both regimes.
+    const anchor = recommendationClockAnchor("XAUUSD", tracked!.createdAt);
     // 12 one-minute candles of validity — not born expired.
-    assert.ok(tracked!.expiresAt >= tracked!.createdAt + 11 * 60_000);
+    assert.ok(tracked!.expiresAt >= anchor + 11 * 60_000);
     // Scalp ceiling is 30m — candle window must not outlive it.
-    assert.ok(tracked!.expiresAt <= tracked!.createdAt + 30 * 60_000);
+    assert.ok(tracked!.expiresAt <= anchor + 30 * 60_000);
     assert.equal(tracked!.status, "pending_entry");
   });
 
@@ -132,8 +138,10 @@ describe("trackedRecommendationFromResult", () => {
       }),
     );
     assert.ok(tracked);
-    // 96×1h would be 4 days; 1h ceiling is 36h.
-    assert.ok(tracked!.expiresAt <= tracked!.createdAt + 36 * 60 * 60_000);
+    // 96×1h would be 4 days; 1h ceiling is 36h — measured from the session
+    // anchor, not the wall clock (see the scalp test above).
+    const anchor = recommendationClockAnchor("EURUSD", tracked!.createdAt);
+    assert.ok(tracked!.expiresAt <= anchor + 36 * 60 * 60_000);
     assert.ok(tracked!.expiresAt > tracked!.createdAt);
   });
 
@@ -180,5 +188,21 @@ describe("trackedRecommendationFromResult", () => {
     assert.equal(tracked!.priceAtCreation, 1.093);
     assert.equal(tracked!.planType, "immediate");
     assert.ok(tracked!.expiresAt > tracked!.createdAt);
+  });
+});
+
+describe("recommendationClockAnchor", () => {
+  it("is the identity mid-session", () => {
+    const tuesdayOpen = Date.parse("2026-07-21T22:30:00Z"); // Tue 18:30 NY
+    assert.equal(recommendationClockAnchor("XAUUSD", tuesdayOpen), tuesdayOpen);
+  });
+
+  it("moves a Saturday clock to Sunday's open, so a weekend plan is not born expired", () => {
+    const saturday = Date.parse("2026-07-25T12:00:00Z");
+    const anchor = recommendationClockAnchor("XAUUSD", saturday);
+    assert.equal(anchor, Date.parse("2026-07-26T22:00:00Z"));
+    // The point of the whole exercise: validity counted from the anchor ends
+    // AFTER the market has actually traded, not 46 hours before it opens.
+    assert.ok(anchor > saturday);
   });
 });

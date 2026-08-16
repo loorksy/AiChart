@@ -83,11 +83,6 @@ const RECOVERY_BY_CODE: Record<string, RecoveryInfo> = {
     recovery_reason:
       "The spread was too wide to price the plan honestly. get_market_price reports the current book — call it to see whether it has narrowed before retrying.",
   },
-  MARKET_CLOSED: {
-    recovery_tool: "get_market_snapshot",
-    recovery_reason:
-      "Unrecoverable right now: the trading session is closed. get_market_snapshot reports session state — call it to confirm, then wait for the session to reopen.",
-  },
 };
 
 /** Named fix for a BridgeErrorCode, or null for an unmapped/unknown code. */

@@ -22,7 +22,6 @@ import { checkSpendAllowed } from "@/lib/billing/gate";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
-import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
 import {
   deriveRecommendationReason,
@@ -89,27 +88,11 @@ export async function POST(req: NextRequest) {
     const dataSource = "oanda" as const;
     symbol = forexCanonicalKey(symbol);
 
-    // A closed pair is refused BEFORE the spend gate, not after: there is no
-    // analysis to be had from a market that is not printing, and the operator
-    // must not be charged to be told so. This answers for the symbol that was
-    // ASKED for — an agent asked about gold during its maintenance hour gets
-    // gold's session, even mid-conversation about a pair that is still open.
-    const session = getSessionStatus(symbol);
-    if (!session.isOpen) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "market_closed",
-          failure_code: "market_closed",
-          symbol,
-          market_open: false,
-          session_reason: session.reason,
-          message: `${symbol}: ${session.reason} لا يمكن تحليل زوج مغلق — لا توجد حركة سعر تُقرأ.`,
-          message_en: `${symbol}: the market is closed. A closed pair cannot be analysed — there is no price action to read.`,
-        },
-        { status: 409 },
-      );
-    }
+    // A closed market no longer refuses (this was a 409 twin of the
+    // orchestrator's deleted early return). The orchestrator now runs in
+    // scenario mode on the last close and answers with a conditional
+    // next-open plan — a real, billable analysis the caller asked for, so it
+    // proceeds through the spend gate like any other.
 
     // V2-A2: refuse NEW paid work when the balance is gone (flag-gated; a
     // disabled flag means the gate always allows). Browsing routes never ask.

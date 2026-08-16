@@ -379,6 +379,8 @@ export const en = {
 
 
   // --- Agent artifact cards ---
+  "agent.card.scenario": "Market closed — next-open scenario",
+  "agent.card.scenario_body": "The recommendation below is conditional, awaiting activation after the open at",
   "agent.card.plan": "The plan",
   "agent.card.entry": "Entry",
   "agent.card.stop": "Stop",

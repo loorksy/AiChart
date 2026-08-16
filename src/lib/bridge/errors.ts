@@ -10,7 +10,6 @@ export enum BridgeErrorCode {
   VALIDATION_ERROR = "VALIDATION_ERROR",
   UPSTREAM_TIMEOUT = "UPSTREAM_TIMEOUT",
   SPREAD_TOO_WIDE = "SPREAD_TOO_WIDE",
-  MARKET_CLOSED = "MARKET_CLOSED",
 }
 
 export interface BridgeErrorBody {
@@ -44,7 +43,6 @@ const DEFAULT_RETRIABLE: Partial<Record<BridgeErrorCode, boolean>> = {
   [BridgeErrorCode.SPREAD_TOO_WIDE]: true,
   [BridgeErrorCode.EXECUTION_UNAUTHORIZED]: false,
   [BridgeErrorCode.VALIDATION_ERROR]: false,
-  [BridgeErrorCode.MARKET_CLOSED]: false,
 };
 
 const HTTP_STATUS: Partial<Record<BridgeErrorCode, number>> = {
@@ -55,7 +53,6 @@ const HTTP_STATUS: Partial<Record<BridgeErrorCode, number>> = {
   [BridgeErrorCode.VALIDATION_ERROR]: 400,
   [BridgeErrorCode.UPSTREAM_TIMEOUT]: 504,
   [BridgeErrorCode.SPREAD_TOO_WIDE]: 409,
-  [BridgeErrorCode.MARKET_CLOSED]: 409,
 };
 
 export function bridgeError(

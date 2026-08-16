@@ -2,6 +2,23 @@
  * Pure recommendation lifetime helpers — safe for client bundles.
  * Keep this file free of store/DB imports.
  */
+import { isMarketOpenAt, nextMarketOpenAt } from "@/lib/markets/tradingCalendar";
+
+/**
+ * The instant a recommendation's validity clock starts.
+ *
+ * Mid-session that is now. On a CLOSED market it is the next open: a plan
+ * issued Saturday is a scenario for Monday, and counting its 6 candles of
+ * validity from Saturday afternoon meant every weekend plan was already
+ * expired ~46 hours before the first candle it could possibly be judged on
+ * had printed — the cron sweep then dutifully marked it expired on Saturday
+ * night. Anchoring here, at creation, is the whole fix: the sweeps stay
+ * untouched, so a plan whose clock genuinely ran out on Friday still expires
+ * on Saturday's tick exactly as it should.
+ */
+export function recommendationClockAnchor(symbol: string, nowMs: number): number {
+  return isMarketOpenAt(symbol, nowMs) ? nowMs : nextMarketOpenAt(symbol, nowMs);
+}
 
 /**
  * Recommendation lifetime by timeframe/style. Scalps expire fast; higher

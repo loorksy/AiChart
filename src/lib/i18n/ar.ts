@@ -378,6 +378,8 @@ export const ar: Record<TranslationKey, string> = {
 
 
   // --- بطاقات نتيجة الوكيل ---
+  "agent.card.scenario": "السوق مغلق — سيناريو للافتتاح",
+  "agent.card.scenario_body": "التوصية أدناه شرطية وتنتظر التفعيل بعد فتح السوق",
   "agent.card.plan": "الخطة",
   "agent.card.entry": "الدخول",
   "agent.card.stop": "الوقف",

@@ -55,6 +55,7 @@ import type { AgentDecision, AgentNewsRisk, AgentOption, DecisionTrace } from ".
  * sequence.
  */
 export const CARD_ORDER = [
+  "scenario_notice",
   "decision",
   "plan_levels",
   "activation",
@@ -82,7 +83,23 @@ export const CARD_ORDER = [
 export type CardKind = (typeof CARD_ORDER)[number];
 
 /** What the plan asks for, pinned so a silent drop is a test failure. */
-export const EXPECTED_CARD_TYPES = 22;
+export const EXPECTED_CARD_TYPES = 23;
+
+/**
+ * The market is closed and this answer is a next-open scenario.
+ *
+ * First in the reading order on purpose: everything below it — the plan, the
+ * gates, the reasons — is framed by this one fact, and an operator who reads
+ * the plan before learning the market is closed has been misled for exactly
+ * that long.
+ */
+export interface ScenarioNoticeCard {
+  kind: "scenario_notice";
+  /** Epoch ms of the next session open. */
+  nextOpenAt: number;
+  /** The calendar's Arabic reason (Saturday / Friday close / Sunday…). */
+  reasonAr: string;
+}
 
 /** The decision itself, with its confidence expressed the one honest way. */
 export interface DecisionCard {
@@ -249,6 +266,7 @@ export interface FollowUpOptionsCard {
 }
 
 export type AgentCard =
+  | ScenarioNoticeCard
   | DecisionCard
   | PlanLevelsCard
   | ActivationCard

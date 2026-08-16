@@ -173,3 +173,35 @@ describe("evaluateRecommendation", () => {
     assert.equal(r.changed, false);
   });
 });
+
+describe("the weekend sweep, with creation-anchored expiry", () => {
+  // Jan 1 2026 is a Thursday; Jan 3 12:00 UTC is a Saturday tick with the
+  // market closed and no new candles. The sweeps are deliberately UNCHANGED —
+  // the weekend fix lives at creation (recommendationClockAnchor), so these
+  // pin the division of labour: an anchored plan survives the weekend, a
+  // Friday-expired plan does not.
+  const SATURDAY = Date.UTC(2026, 0, 3, 12, 0, 0);
+
+  it("does not expire a plan whose anchored deadline is beyond the weekend", () => {
+    // Created Friday, clock anchored at Monday's open + validity.
+    const mondayOpenPlusValidity = Date.UTC(2026, 0, 4, 23, 0, 0) + 3 * 60 * 60_000;
+    const r = evaluateRecommendation({
+      recommendation: rec({ expiresAt: mondayOpenPlusValidity }),
+      candles: [],
+      now: SATURDAY,
+    });
+    assert.equal(r.status, "pending_entry");
+    assert.equal(r.outcome, "pending");
+  });
+
+  it("still expires a plan whose clock genuinely ran out on Friday", () => {
+    const fridayDeadline = Date.UTC(2026, 0, 2, 15, 0, 0);
+    const r = evaluateRecommendation({
+      recommendation: rec({ expiresAt: fridayDeadline }),
+      candles: [],
+      now: SATURDAY,
+    });
+    assert.equal(r.status, "expired");
+    assert.equal(r.outcome, "expired");
+  });
+});

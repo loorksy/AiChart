@@ -128,9 +128,25 @@ function CardView({
   onOption?: (prompt: string) => void;
   disabled?: boolean;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
 
   switch (card.kind) {
+    case "scenario_notice": {
+      const opens = new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en", {
+        timeZone: "Asia/Riyadh",
+        weekday: "long",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(card.nextOpenAt);
+      return (
+        <Shell icon={<Clock className={ICON} />} title={t("agent.card.scenario")} tone="warn">
+          <p className="leading-relaxed">
+            {card.reasonAr} {t("agent.card.scenario_body")} {opens}
+          </p>
+        </Shell>
+      );
+    }
+
     case "decision":
       // Renders nothing HERE, on purpose, and this is the one case worth
       // spelling out: the panel already puts the decision and its confidence

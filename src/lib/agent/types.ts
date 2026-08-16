@@ -331,6 +331,13 @@ export interface AgentFinalResult {
    * appears when it blocks reads as bad news rather than as due process.
    */
   gateVerdicts?: import("./gates/types").GateVerdict[];
+  /**
+   * Set when this answer was produced on a CLOSED market: the run proceeded
+   * on the last close and the plan (if any) is a conditional scenario for
+   * the next open. Carries the next-open instant so surfaces render the
+   * closed-market card from data instead of re-deriving the session.
+   */
+  marketClosedScenario?: import("./closedMarketScenario").ClosedMarketScenario;
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM,
    *  ticker state, candle counts, and the drawing-plan
    *  decision. Never carries secrets or raw reasoning. */

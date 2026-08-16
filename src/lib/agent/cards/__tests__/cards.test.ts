@@ -69,6 +69,10 @@ function fullResult(over: Partial<AgentFinalResult> = {}): AgentFinalResult {
       invalidationRule: "إغلاق تحت 3975",
       alternativeScenario: "كسر 3975 يقلب التحيّز إلى البيع",
     } as AgentFinalResult["recommendation"],
+    marketClosedScenario: {
+      nextOpenAt: Date.parse("2026-07-26T22:00:00Z"),
+      reasonAr: "عطلة نهاية الأسبوع — السوق مغلق (السبت).",
+    },
     gateVerdicts: [
       { id: "G1", name: "news", status: "pass", startedAt: 1, finishedAt: 2 },
       { id: "G2", name: "liquidity", status: "pass", startedAt: 2, finishedAt: 3 },
@@ -259,8 +263,16 @@ describe("the phone gets the same answer", () => {
   });
 
   it("leads with the decision and carries the plan's real numbers", () => {
+    // The full fixture carries a closed-market scenario, so THAT leads — an
+    // operator must learn the market is closed before reading the plan. The
+    // decision follows immediately.
     const text = renderCardsForTelegram(deriveCards(fullResult()));
-    assert.ok(text.startsWith("<b>شراء</b>"), "the decision is the first thing read");
+    assert.ok(text.startsWith("🕒 <b>السوق مغلق"), "the scenario frames everything below it");
+    assert.ok(text.includes("<b>شراء</b>"), "the decision follows the frame");
+    const openText = renderCardsForTelegram(
+      deriveCards(fullResult({ marketClosedScenario: undefined })),
+    );
+    assert.ok(openText.startsWith("<b>شراء</b>"), "mid-session the decision leads");
     assert.ok(text.includes("3980"), "the stop must survive to the phone");
     assert.ok(text.includes("4040"), "so must the targets");
     // The four things the deleted `analysisCard` builder silently dropped.

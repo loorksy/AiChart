@@ -56,3 +56,66 @@ still names MetaTrader, to say it is not needed) and pins that `mt5Link` /
 
 Drive-by: `seo.test.ts` had three type errors on main (the team's SEO round);
 `tsc --noEmit` was red at baseline. Fixed so the per-step gate means something.
+
+## Round 2, Phase B — a closed market is a scenario, not a refusal
+
+The owner's report: on weekends the agent apologizes ("السوق مغلق... عد عند
+فتح السوق") instead of giving the expected scenario for the open with a
+recommendation. The exploration found the promise ALREADY in the product —
+the Telegram greeting says "والتوصية تنتظر الافتتاح" — with no code path
+behind it: one early return in the orchestrator refused every weekend
+request before a byte of data or model spend.
+
+Deleting the early return was the easy fifth of the work. Four other things
+each independently killed a weekend plan:
+
+1. **No next-open existed.** `MarketSessionStatus.nextOpenTime` was declared
+   and never assigned anywhere. `nextMarketOpenAt` now walks forward UTC-hour
+   boundaries through the same memoized NY wall clock the open/closed answer
+   uses — Sunday's open is 22:00 UTC in summer and 23:00 UTC in winter, and
+   both regimes are pinned by tests as the REASON it walks instead of adding
+   offsets.
+2. **Wall-clock validity was born expired.** A Friday 15m plan expired in
+   ≤3h against a Monday open ~49h away, and the Saturday cron sweep actively
+   marked pending plans expired with zero new candles. The fix anchors the
+   clock ONCE, at creation (`recommendationClockAnchor`): on a closed market
+   validity counts from the next open. The sweeps are deliberately untouched
+   — a plan whose clock genuinely ran out Friday still dies on Saturday's
+   tick, and a test pins that division of labour from both sides.
+3. **G7 would block or lie.** OANDA answers weekend pricing with Friday's
+   number and `tradeable: false` — a flag that was parsed and never read, so
+   the stale quote could masquerade as live. `usableQuote` now refuses a
+   halted instrument; in scenario mode G7 revalidates geometry against the
+   last CLOSE — the only honest price of a paused tape, and the same number
+   every other part of the scenario was built from.
+4. **The model's trigger deadlines died before Monday.** Activation-rule
+   leaves carry `expiresAt` relative to the model's now — a Saturday. Without
+   shifting, a "expires in 6 hours" trigger is dead ~40 hours before the
+   first candle that could satisfy it, and the plan sits awaiting_activation
+   until it expires unmet. `shiftActivationRuleExpiries` moves every stated
+   deadline (composites included) forward by the closed gap.
+
+The mode itself: `resolveClosedMarketScenario` — pure and clock-injectable,
+with the three standing exemptions (reevaluation / replay / educational) as
+ARGUMENTS a test calls rather than source strings the old test regexed for.
+When active, the run proceeds on Friday's candles; the plan is FORCED
+conditional/awaiting_activation before the gates read it (the synthesizer is
+also told, via a prompt block — but prose from a prompt is a hope, and the
+guarantee is the post-normalization force); the summary opens with a
+deterministic Arabic notice naming the next open in Riyadh time; and the
+result carries `marketClosedScenario` so both surfaces render a new
+`scenario_notice` card — FIRST in the reading order, because an operator who
+reads the plan before learning the market is closed has been misled for
+exactly that long. The closed-union card contract did its job: adding the
+kind refused to compile until both renderers handled it.
+
+Also deleted, because nothing can produce them any more: the `market_closed`
+failure code (taxonomy strings in both languages), the bridge error enum
+entry, the MCP steering recovery entry, and the analyze route's 409 twin.
+The MCP analyze path now bills a weekend scenario like any other analysis —
+it IS an analysis.
+
+Deliberate non-changes: holidays stay unmodelled (the calendar's own stated
+stance — a missed holiday reads as a small gap the ratio policy tolerates,
+and takes the stale-data path, not this one); plans created shortly BEFORE
+Friday's close keep today's wall-clock expiry.

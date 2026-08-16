@@ -4,6 +4,7 @@ import {
   getSessionStatus,
   isExpectedDailyBarOpen,
   isMarketOpenAt,
+  nextMarketOpenAt,
   nyWallHourForTest,
   resolveTradingClass,
 } from "@/lib/markets/tradingCalendar";
@@ -134,3 +135,35 @@ describe("session status reasons", () => {
 });
 
 
+
+describe("nextMarketOpenAt", () => {
+  it("is the identity inside an open session", () => {
+    const open = ms("2026-07-21T22:30:00Z"); // Tuesday 18:30 NY, post-break
+    assert.equal(nextMarketOpenAt(GOLD, open), open);
+  });
+
+  it("walks a summer weekend to Sunday 18:00 NY = 22:00 UTC (EDT)", () => {
+    // Friday July 24 2026 closes 17:00 NY (21:00 UTC). From Saturday noon the
+    // next open is Sunday July 26 18:00 NY.
+    const saturdayNoon = ms("2026-07-25T12:00:00Z");
+    assert.equal(nextMarketOpenAt(GOLD, saturdayNoon), ms("2026-07-26T22:00:00Z"));
+  });
+
+  it("walks a winter weekend to Sunday 18:00 NY = 23:00 UTC (EST)", () => {
+    // Same wall-clock open, DIFFERENT UTC hour — the reason this walks the NY
+    // wall clock instead of adding a fixed offset. Jan 2026: EST.
+    const saturdayNoon = ms("2026-01-24T12:00:00Z");
+    assert.equal(nextMarketOpenAt(GOLD, saturdayNoon), ms("2026-01-25T23:00:00Z"));
+  });
+
+  it("resumes after the weekday maintenance break within the hour", () => {
+    // Tuesday 17:30 NY (21:30 UTC in July) is the break; open is 18:00 NY.
+    const inBreak = ms("2026-07-21T21:30:00Z");
+    assert.equal(nextMarketOpenAt(GOLD, inBreak), ms("2026-07-21T22:00:00Z"));
+  });
+
+  it("from Friday one minute after the close, waits the whole weekend", () => {
+    const justClosed = ms("2026-07-24T21:01:00Z");
+    assert.equal(nextMarketOpenAt(GOLD, justClosed), ms("2026-07-26T22:00:00Z"));
+  });
+});

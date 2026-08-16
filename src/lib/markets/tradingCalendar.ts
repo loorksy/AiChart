@@ -153,6 +153,37 @@ export function getSessionStatus(
   };
 }
 
+/**
+ * The next instant the market is (or will be) open.
+ *
+ * Returns `nowMs` itself when the market is already open — "next open" from
+ * inside a session is this very moment, which is what every caller anchoring
+ * a validity clock wants.
+ *
+ * Implementation walks forward UTC-HOUR boundaries rather than adding fixed
+ * offsets, for the same reason the whole file uses `nyWallHour`: every
+ * session edge (Sun 18:00 NY, Fri 17:00 NY, the daily break) lands exactly
+ * on a UTC hour, but WHICH UTC hour depends on DST. Sunday's open is 22:00
+ * UTC in summer and 23:00 UTC in winter; an offset table would encode that
+ * twice and drift, the hour-walk reads it from the same memoized clock the
+ * open/closed answer comes from. A weekend is ~49 closed hours, the
+ * maintenance break is one — the walk is at most ~50 iterations, capped at
+ * 14 days as an invariant, not a behavior.
+ */
+export function nextMarketOpenAt(symbol: string, nowMs: number): number {
+  if (isMarketOpenAt(symbol, nowMs)) return nowMs;
+  const HOUR = 3_600_000;
+  let boundary = Math.ceil(nowMs / HOUR) * HOUR;
+  const limit = nowMs + 14 * 24 * HOUR;
+  while (boundary <= limit) {
+    if (isMarketOpenAt(symbol, boundary)) return boundary;
+    boundary += HOUR;
+  }
+  // Unreachable with the session rules above; refusing loudly beats
+  // returning a made-up instant a validity clock would then trust.
+  throw new Error("nextMarketOpenAt: no open instant within 14 days");
+}
+
 /** Test hook: NY weekday/hour for a timestamp (exact, DST-aware). */
 export function nyWallHourForTest(ms: number): NyWallHour {
   return nyWallHour(ms);

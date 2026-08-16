@@ -8,7 +8,10 @@
  * recommendation card — callers should render a lighter market-view instead.
  */
 import type { AgentFinalResult } from "@/lib/agent/types";
-import { computeRecommendationExpiry } from "@/lib/agent/recommendationExpiry";
+import {
+  computeRecommendationExpiry,
+  recommendationClockAnchor,
+} from "@/lib/agent/recommendationExpiry";
 import { resolveValidity } from "@/lib/agent/trading/tradePlan";
 import { spanStyleForInterval } from "@/lib/agent/trading/scalpGeometry";
 import type { TrackedRecommendation } from "./types";
@@ -89,16 +92,22 @@ export function trackedRecommendationFromResult(
   const interval = active?.interval || snapshot.interval || "";
   // Same ceiling as storeFinalRecommendation: candle validity capped by
   // timeframe/style expiry — never a raw candles×interval that outlives the
-  // server plan (or a silent 30m scalp ceiling for every frame).
+  // server plan (or a silent 30m scalp ceiling for every frame). Same anchor
+  // too: on a closed market the clock starts at the next open, so the two
+  // paths cannot disagree about when a weekend plan dies.
+  const clockAnchor = recommendationClockAnchor(
+    active?.symbol || snapshot.symbol || "",
+    createdAt,
+  );
   const expiresAt = resolveValidity({
     validityCandles: rec.validityCandles ?? 6,
     interval,
     maxExpiresAt: computeRecommendationExpiry({
       interval,
       scalp: spanStyleForInterval(interval) === "scalp",
-      from: createdAt,
+      from: clockAnchor,
     }),
-    now: createdAt,
+    now: clockAnchor,
   }).expiresAt;
 
   return {

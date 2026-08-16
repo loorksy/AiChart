@@ -12,7 +12,6 @@ import { getSessionStatus, isMarketOpenAt } from "@/lib/markets/tradingCalendar"
 export interface MarketSessionStatus {
   isOpen: boolean;
   reason: string;
-  nextOpenTime?: string;
 }
 
 /**

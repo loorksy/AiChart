@@ -9,6 +9,27 @@ export interface LiveForexQuote {
 }
 
 /**
+ * Is this OANDA quote usable as a LIVE price?
+ *
+ * `tradeable: false` is OANDA saying "this is the last price I remember, the
+ * instrument is halted" — which is exactly what it returns all weekend. The
+ * flag was parsed into `OandaQuote` and then never read, so Friday's close
+ * masqueraded as a live quote everywhere a live quote mattered (G7's
+ * revalidation above all). A halted quote is not a price; it is a memory.
+ */
+export function usableQuote(quote: {
+  bid?: number | null;
+  ask?: number | null;
+  tradeable?: boolean;
+}): boolean {
+  if (quote.tradeable === false) return false;
+  const bid = quote.bid;
+  const ask = quote.ask;
+  if (bid == null || ask == null) return false;
+  return Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask >= bid;
+}
+
+/**
  * Live bid/ask from the platform's OANDA feed — the same call the
  * forex-price ticker route makes, so the analysis pipeline and the UI strip
  * read the identical book. Bounded by `timeoutMs` and null on ANY failure
@@ -28,13 +49,8 @@ export async function getForexLiveQuote(
       if (!oandaConfigured()) return null;
       const canonical = forexCanonicalKey(symbol) || symbol;
       const [quote] = await fetchOandaPricing([canonical]);
-      if (!quote || quote.bid == null || quote.ask == null) return null;
-      const bid = quote.bid;
-      const ask = quote.ask;
-      if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask < bid) {
-        return null;
-      }
-      return { bid, ask, observedAt: Date.now() };
+      if (!quote || !usableQuote(quote)) return null;
+      return { bid: quote.bid!, ask: quote.ask!, observedAt: Date.now() };
     })();
     const expired = new Promise<null>((resolve) => {
       timer = setTimeout(() => resolve(null), timeoutMs);

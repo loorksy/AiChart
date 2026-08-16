@@ -16,7 +16,12 @@ import type { AppLocale } from "@/lib/i18n";
 import type { AgentConversationContext } from "./context";
 import { contextualizeIntentMessage } from "./context";
 import { newId } from "./activity";
-import { getSessionStatus } from "@/lib/markets/tradingCalendar";
+import {
+  resolveClosedMarketScenario,
+  scenarioNoticeAr,
+  scenarioPromptBlock,
+  shiftActivationRuleExpiries,
+} from "./closedMarketScenario";
 import {
   isGeneralOnly,
   isDrawingOnly,
@@ -96,6 +101,7 @@ import {
 } from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { resolveValidity } from "./trading/tradePlan";
+import { recommendationClockAnchor } from "./recommendationExpiry";
 import { spanStyleForInterval } from "./trading/scalpGeometry";
 import { collectVisualEvidence, visualCoverageNote } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
@@ -580,62 +586,38 @@ async function runUnifiedChartAgentInner(
   const educationalOnly = Boolean(ctx.session?.preferences.educationalOnly);
 
   /**
-   * A closed market is an operational blocker, and it is named as one before a
-   * single byte of market data or model spend is committed.
+   * A closed market used to be an operational blocker: an early return here,
+   * `market_closed`, "come back when the session opens". That answered a
+   * weekend question about gold with an apology while the Telegram greeting
+   * promised "والتوصية تنتظر الافتتاح" — a promise nothing implemented.
    *
-   * The check is per SYMBOL, not per session: metals halt for their daily
-   * maintenance hour while FX is still trading, and an operator asking about
-   * gold in the middle of a EURUSD conversation must be told about gold's
-   * session, not the one the chart happens to be on. There is no reading of
-   * structure to be had from a market that is not printing — answering anyway
-   * would be inventing a plan from a frozen tape.
+   * Scenario mode is that implementation. Nothing is broken on a weekend —
+   * the tape is paused at Friday's close, which is complete, real data — so
+   * the run PROCEEDS on it, and what changes is the contract of the answer:
+   * the plan is forced conditional (awaiting activation at the open), its
+   * validity clock anchors at the next open (recommendationClockAnchor), G7
+   * revalidates geometry against the last close instead of a live quote, and
+   * the summary opens with a deterministic closed-market notice. The three
+   * standing exemptions (reevaluation / replay / educational) live inside
+   * `resolveClosedMarketScenario`, as calls a test can make rather than
+   * strings one greps for.
    */
   const analysisSymbol = chartContext?.symbol;
-  if (
-    wantMarket &&
-    !educationalOnly &&
-    analysisSymbol &&
-    (input.timeBasis ?? "live") === "live" &&
-    // A re-evaluation revisits a plan that already exists against the latest
-    // data there is — including Friday's close over a weekend. Refusing it
-    // would strand open plans exactly when they most need reviewing. The rule
-    // here is about a FRESH read the operator asked for.
-    input.purpose !== "reevaluation"
-  ) {
-    const session = getSessionStatus(analysisSymbol);
-    if (!session.isOpen) {
-      trackedCtx.emitActivity({
-        type: "data",
-        status: "failed",
-        message: `${analysisSymbol}: ${session.reason}`,
-        metadata: { stage: "market_data", code: "market_closed" },
-      });
-      return {
-        decision: "action_required",
-        envelope: operationalBlockerEnvelope({
-          failureStage: "market_data",
-          failureCode: "market_closed",
-          // It reopens on its own; the operator only has to come back.
-          retryable: true,
-          traceId: ctx.requestId,
-        }),
-        confidence: 0,
-        summary: bilingual(
-          locale,
-          `${analysisSymbol}: ${session.reason} لا يمكن تحليل زوج مغلق — لا توجد حركة سعر تُقرأ. عد عند فتح السوق.`,
-          `${analysisSymbol}: the market is closed. A closed pair cannot be analysed — there is no price action to read. Come back when the session opens.`,
-        ),
-        keyReasons: [`Market closed for ${analysisSymbol} (${session.reason}).`],
-        riskWarnings: [
-          bilingual(
-            locale,
-            "لم تصدر أي توصية لأن السوق مغلق.",
-            "No recommendation was issued because the market is closed.",
-          ),
-        ],
-        activityEvents: collected,
-      };
-    }
+  const marketClosedScenario = resolveClosedMarketScenario({
+    symbol: analysisSymbol,
+    wantMarket,
+    educationalOnly,
+    timeBasis: input.timeBasis,
+    purpose: input.purpose,
+    nowMs: Date.now(),
+  });
+  if (marketClosedScenario) {
+    trackedCtx.emitActivity({
+      type: "data",
+      status: "completed",
+      message: `${marketClosedScenario.reasonAr} أبني سيناريو الافتتاح القادم من آخر إغلاق.`,
+      metadata: { stage: "market_data", code: "market_closed_scenario" },
+    });
   }
 
   const analysisKind = "scalp" as const;
@@ -1276,7 +1258,17 @@ async function runUnifiedChartAgentInner(
           narrative,
           geometry,
           locale,
-          skillContextBlock: skillContextFinal.block || null,
+          // Scenario mode rides the skill-context seam: an instruction block
+          // the prompt already knows how to carry. The deterministic half of
+          // the guarantee (forced conditional plan, shifted deadlines, the
+          // prepended notice) never depends on the model honoring it.
+          skillContextBlock:
+            [
+              skillContextFinal.block || null,
+              marketClosedScenario ? scenarioPromptBlock(marketClosedScenario) : null,
+            ]
+              .filter(Boolean)
+              .join("\n\n") || null,
           // Realised-outcome lessons (item 14): evidence the model weighs.
           lessonsBlock,
           // Phase C4: continuity aid so the summary can reference prior turns
@@ -1437,6 +1429,30 @@ async function runUnifiedChartAgentInner(
   // chartSnapshotHash was computed before the fleet (it also keys the stage
   // checkpoint) — the market window cannot change mid-run, so it is reused.
 
+  // ── Scenario mode: the plan is conditional, deterministically ───────────
+  //
+  // The synthesizer was TOLD it is writing a next-open scenario, but the
+  // guarantee cannot live in a prompt. Before the gates read the plan, force
+  // what a closed market makes true: nothing is executable now, so the plan
+  // type is conditional and the state awaits activation; and every deadline
+  // the model wrote relative to ITS now (a Saturday) shifts to the open —
+  // otherwise the trigger expires ~40 hours before the first candle that
+  // could satisfy it prints, and the plan dies unmet on Monday.
+  if (marketClosedScenario && finalDecision.recommendation) {
+    const rec = finalDecision.recommendation;
+    if (rec.action === "buy" || rec.action === "sell") {
+      const shiftMs = marketClosedScenario.nextOpenAt - Date.now();
+      finalDecision.planType = "conditional";
+      finalDecision.executionState = "awaiting_activation";
+      rec.planType = "conditional";
+      rec.executionState = "awaiting_activation";
+      if (rec.activationClass === "immediate") rec.activationClass = "conditional";
+      if (rec.activationRule) {
+        rec.activationRule = shiftActivationRuleExpiries(rec.activationRule, shiftMs);
+      }
+    }
+  }
+
   // ── The mandatory gate chain (G1–G7) ────────────────────────────────────
   //
   // Runs here, BEFORE drawings and before storage, because a refused plan must
@@ -1491,10 +1507,19 @@ async function runUnifiedChartAgentInner(
       // A FRESH quote on purpose. The analysis takes tens of seconds and gold
       // does not stand still; a plan revalidated against the price the run
       // STARTED with has been validated against the past.
-      fetchLivePrice: () =>
-        getForexLiveQuote(ctx.userId ?? 0, market.symbol, { timeoutMs: 3_000 })
-          .then((quote) => (quote ? (quote.bid + quote.ask) / 2 : null))
-          .catch(() => null),
+      //
+      // In scenario mode there IS no live quote — OANDA marks the instrument
+      // untradeable and `usableQuote` now refuses its stale Friday number, so
+      // the live fetch would return null and a required G7 would block every
+      // weekend answer. The last CLOSE is the honest price of a paused tape:
+      // the geometry gate grades the plan against the exact number every
+      // other part of the scenario was built from.
+      fetchLivePrice: marketClosedScenario
+        ? () => Promise.resolve(market.currentTfCandles.at(-1)?.close ?? null)
+        : () =>
+            getForexLiveQuote(ctx.userId ?? 0, market.symbol, { timeoutMs: 3_000 })
+              .then((quote) => (quote ? (quote.bid + quote.ask) / 2 : null))
+              .catch(() => null),
     });
     gateChain = await runGateChain(gates);
 
@@ -1829,8 +1854,16 @@ async function runUnifiedChartAgentInner(
         ? drawingLevels
         : marketLevels;
 
+  // The closed-market notice leads the summary DETERMINISTICALLY — before
+  // presentation, so leak-scans and length trims see the final text. The
+  // model was asked to frame the scenario too, but "the market is closed"
+  // must come from code that cannot forget to say it.
+  const summaryWithScenario = marketClosedScenario
+    ? `${scenarioNoticeAr(marketClosedScenario)}\n\n${finalDecision.summary}`
+    : finalDecision.summary;
+
   const presented = attachMandatoryPresentation({
-    summary: finalDecision.summary,
+    summary: summaryWithScenario,
     envelope,
     source: chartContext?.dataSource ?? "oanda",
     levels,
@@ -1907,6 +1940,9 @@ async function runUnifiedChartAgentInner(
     decisionTrace: finalDecision.decisionTrace,
     evidenceDimensions: finalDecision.evidenceDimensions,
     evidenceCard: evidenceCard ?? undefined,
+    // The scenario rides the result so both surfaces can render the
+    // closed-market card from data rather than re-deriving the session.
+    marketClosedScenario: marketClosedScenario ?? undefined,
     // The checklist reaches the operator, not just the audit row. A refusal
     // that names no gate teaches nothing, and a pass that shows no gates
     // teaches that the gates are only there on bad days.
@@ -2388,17 +2424,21 @@ async function storeFinalRecommendation(input: {
     createdCandleTime,
     // The agent states how many candles its plan stays meaningful; the
     // timeframe default remains the ceiling so a bad number cannot pin a plan
-    // open for days.
-    expiresAt: resolveValidity({
-      validityCandles: rec.validityCandles ?? 6,
-      interval: input.market.interval,
-      maxExpiresAt: computeRecommendationExpiry({
+    // open for days. The clock is anchored at the NEXT OPEN when the market
+    // is closed — a weekend plan's candles start counting Monday, not now.
+    expiresAt: (() => {
+      const anchor = recommendationClockAnchor(input.market.symbol, Date.now());
+      return resolveValidity({
+        validityCandles: rec.validityCandles ?? 6,
         interval: input.market.interval,
-        scalp: input.scalp,
-        from: Date.now(),
-      }),
-      now: Date.now(),
-    }).expiresAt,
+        maxExpiresAt: computeRecommendationExpiry({
+          interval: input.market.interval,
+          scalp: input.scalp,
+          from: anchor,
+        }),
+        now: anchor,
+      }).expiresAt;
+    })(),
     direction: rec.action,
     planType: rec.planType,
     executionState: rec.executionState,

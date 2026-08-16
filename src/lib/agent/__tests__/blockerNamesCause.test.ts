@@ -40,12 +40,14 @@ test("with no stage information it falls back to the generic sentence", () => {
 });
 
 test("codes that are already specific are left alone", () => {
-  // market_closed already states its own cause; naming stages would only add
-  // noise to a message that is not about a stalled pipeline.
-  const closed = userMessageForFailure("market_closed", "ar", {
+  // stale_data already states its own cause; naming stages would only add
+  // noise to a message that is not about a stalled pipeline. (market_closed
+  // used to be the example here — it stopped being a failure code when the
+  // closed market became a scenario instead of a refusal.)
+  const stale = userMessageForFailure("stale_data", "ar", {
     stages: ["market_data"],
   });
-  assert.match(closed, /سوق هذا الزوج مغلق/);
+  assert.equal(stale, userMessageForFailure("stale_data", "ar"));
 });
 
 test("insufficient_data with stages is not phrased as a timeout", () => {
