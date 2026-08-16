@@ -680,13 +680,6 @@ label {
 .composer-send-launch .composer-send-glyph {
   animation: composer-send-launch 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
-@media (prefers-reduced-motion: reduce) {
-  .composer-send-ready:hover .composer-send-glyph,
-  .composer-send-launch .composer-send-glyph {
-    animation: none;
-    transform: none;
-  }
-}
 
 .sidebar-nav-item {
   display: flex;
