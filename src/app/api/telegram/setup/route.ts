@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, handleError } from "@/lib/api";
 import { getPublicAppUrl } from "@/lib/appUrl";
-import { isTelegramConfigured, deleteWebhook, setWebhook } from "@/lib/telegram";
+import {
+  isTelegramConfiguredAsync,
+  deleteWebhook,
+  setWebhook,
+} from "@/lib/telegram";
 
 /**
  * Admin-only: register or release this deployment's Telegram webhook.
@@ -14,7 +18,7 @@ import { isTelegramConfigured, deleteWebhook, setWebhook } from "@/lib/telegram"
 export async function POST() {
   try {
     await requireAdmin();
-    if (!isTelegramConfigured()) {
+    if (!(await isTelegramConfiguredAsync())) {
       return NextResponse.json(
         { error: "بوت تليجرام غير مُعدّ (TELEGRAM_BOT_TOKEN مفقود)." },
         { status: 503 },
@@ -45,7 +49,7 @@ export async function POST() {
 export async function DELETE() {
   try {
     await requireAdmin();
-    if (!isTelegramConfigured()) {
+    if (!(await isTelegramConfiguredAsync())) {
       return NextResponse.json(
         { error: "بوت تليجرام غير مُعدّ (TELEGRAM_BOT_TOKEN مفقود)." },
         { status: 503 },

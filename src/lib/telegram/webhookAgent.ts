@@ -109,6 +109,19 @@ const LINK_PROMPT =
   "لتحصل على رابط الربط، ثم عد إلى هنا.";
 
 /**
+ * `/start`, `/start@bot`, `/start CODE`, `/start@bot CODE`, or a bare
+ * 12-char hex link code (what people paste when the deep link fails).
+ */
+export function parseTelegramStart(
+  text: string,
+): { code: string | null } | null {
+  const start = /^\/start(?:@[A-Za-z0-9_]+)?(?:\s+([A-Za-z0-9]+))?$/.exec(text);
+  if (start) return { code: start[1] ?? null };
+  if (/^[A-Fa-f0-9]{12}$/.test(text)) return { code: text };
+  return null;
+}
+
+/**
  * Handle one message.
  *
  * Returns a short outcome label for the caller's log. Never throws: an update
@@ -120,9 +133,9 @@ export async function handleTelegramMessage(
   try {
     // `/start CODE` — the deep link the platform mints. This is the caller
     // `consumeLinkCode` never had.
-    const startMatch = /^\/start(?:\s+([A-Za-z0-9]+))?$/.exec(message.text);
+    const startMatch = parseTelegramStart(message.text);
     if (startMatch) {
-      const code = startMatch[1];
+      const code = startMatch.code;
       if (!code) {
         await sendMessage(message.chatId, LINK_PROMPT);
         return "unlinked";

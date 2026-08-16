@@ -3,12 +3,22 @@
  * (TELEGRAM_BOT_TOKEN). Degrades gracefully when not configured.
  */
 
+import dns from "node:dns";
 import { getTelegramChatId } from "./store";
+import { getPublicAppUrl } from "./appUrl";
+import { createLogger } from "./logger";
 import {
   getPlatformValue,
   getPlatformValueAsync,
   refreshPlatformConfigCache,
 } from "./platformConfig";
+
+// api.telegram.org publishes AAAA records that this VPS cannot reach;
+// without IPv4-first, getMe/setWebhook/sendMessage time out and the bot
+// looks dead even when the token is valid.
+dns.setDefaultResultOrder("ipv4first");
+
+const log = createLogger("telegram");
 
 const API = "https://api.telegram.org";
 
@@ -348,6 +358,35 @@ export async function setWebhook(url: string, secretToken: string): Promise<void
     allowed_updates: ["message"],
     drop_pending_updates: false,
   });
+}
+
+/**
+ * Register the inbound webhook when token + secret + public URL are present.
+ * Idempotent — Telegram treats a repeat setWebhook as a no-op.
+ * Called from instrumentation so a deploy cannot leave the bot deaf again.
+ */
+export async function ensureTelegramWebhook(): Promise<boolean> {
+  const secret = (process.env.TELEGRAM_WEBHOOK_SECRET ?? "").trim();
+  if (!secret) {
+    log.warn("telegram.webhook.skip_no_secret");
+    return false;
+  }
+  if (!(await isTelegramConfiguredAsync())) {
+    log.warn("telegram.webhook.skip_no_token");
+    return false;
+  }
+  const url = `${getPublicAppUrl()}/api/telegram/webhook`;
+  try {
+    await setWebhook(url, secret);
+    log.info("telegram.webhook.ensured", { url });
+    return true;
+  } catch (error) {
+    log.error("telegram.webhook.ensure_failed", {
+      url,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 const sideBilingual = (s: string) =>

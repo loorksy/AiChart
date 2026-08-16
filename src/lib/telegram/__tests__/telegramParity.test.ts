@@ -25,6 +25,7 @@ import { describe, it } from "node:test";
 import path from "node:path";
 import {
   alreadyHandled,
+  parseTelegramStart,
   parseTelegramUpdate,
   resetTelegramDedupe,
 } from "@/lib/telegram/webhookAgent";
@@ -112,6 +113,21 @@ describe("the surface shares the platform's brain", () => {
     assert.match(agentSource, /setTelegramChatId/);
   });
 
+  it("reads /start, /start@bot, and a bare 12-char hex code", () => {
+    assert.deepEqual(parseTelegramStart("/start"), { code: null });
+    assert.deepEqual(parseTelegramStart("/start@lonora_bot"), { code: null });
+    assert.deepEqual(parseTelegramStart("/start 957deb00f11c"), {
+      code: "957deb00f11c",
+    });
+    assert.deepEqual(parseTelegramStart("/start@lonora_bot 957deb00f11c"), {
+      code: "957deb00f11c",
+    });
+    assert.deepEqual(parseTelegramStart("957deb00f11c"), {
+      code: "957deb00f11c",
+    });
+    assert.equal(parseTelegramStart("مرحبا"), null);
+  });
+
   it("never answers an unlinked chat with an analysis", () => {
     const unlinkedBranch = agentSource.indexOf("if (userId == null)");
     const analysisCall = agentSource.indexOf("runUnifiedChartAgent(");
@@ -130,6 +146,16 @@ describe("cards carry links, never actions", () => {
     const telegram = readFileSync(path.join(SRC, "lib", "telegram.ts"), "utf8");
     assert.match(telegram, /allowed_updates: \["message"\]/);
     assert.doesNotMatch(telegram, /callback_query/);
+  });
+
+  it("re-registers the webhook on process boot so a deploy cannot leave the bot deaf", () => {
+    const instrumentation = readFileSync(
+      path.join(SRC, "instrumentation.ts"),
+      "utf8",
+    );
+    assert.match(instrumentation, /ensureTelegramWebhook/);
+    const telegram = readFileSync(path.join(SRC, "lib", "telegram.ts"), "utf8");
+    assert.match(telegram, /ipv4first/);
   });
 });
 
