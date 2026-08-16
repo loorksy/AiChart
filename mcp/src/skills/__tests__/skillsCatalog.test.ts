@@ -52,6 +52,16 @@ describe("MCP canonical skill catalogue", () => {
     const loaded = loadSkill("aichart-trading");
     assert.doesNotMatch(loaded.content, /\b(open_trade|get_trade_readiness|request_approval)\b/);
   });
+
+  it("cards skill presents derived recommendation cards, not order controls", () => {
+    const loaded = loadSkill("cards");
+    assert.equal(loaded.metadata.version, "2.0.0");
+    assert.match(loaded.content, /deriveCards|derived cards/);
+    assert.doesNotMatch(
+      loaded.content,
+      /\b(execute_trade|order_ticket|quick_trade|close_position|get_open_trades|trade_confirm|reject_trade)\b/,
+    );
+  });
 });
 
 describe("MCP skill tools are part of the canonical tool catalog", async () => {
