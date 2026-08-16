@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { t } from "@/lib/i18n";
 import { describe, it } from "node:test";
 import {
+  KNOWN_STAGES,
   aggregateStageEvents,
   type AgentStageEvent,
 } from "@/lib/agent/stageEvents";
@@ -62,5 +64,17 @@ describe("stage event aggregation", () => {
     ]);
     assert.equal(rows.length, 1);
     assert.equal(rows[0]!.status, "resumed");
+  });
+});
+
+describe("stage labels", () => {
+  it("every known stage has an Arabic label — both surfaces read this list", () => {
+    // The web trace and the Telegram progress bubble label stages through
+    // `agent.stage.<name>`; a stage in the set without a dictionary entry
+    // renders as its raw machine name on an operator's phone.
+    for (const stage of KNOWN_STAGES) {
+      const label = t("ar", `agent.stage.${stage}`);
+      assert.notEqual(label, `agent.stage.${stage}`, `${stage} has no Arabic label`);
+    }
   });
 });

@@ -117,6 +117,43 @@ function toMessage(row: MessageRow): AgentChatMessageRecord {
   };
 }
 
+/**
+ * Ensure a chat row exists under a CALLER-CHOSEN id, idempotently.
+ *
+ * The Telegram surface keys its one conversation per chat as `tg:<chatId>` —
+ * a stable id that survives restarts, which `createChat`'s minted uuid cannot
+ * be. ON CONFLICT DO NOTHING makes the call safe on every message; the first
+ * one creates the row, the rest are no-ops.
+ */
+export async function ensureChat(input: {
+  id: string;
+  userId: number;
+  symbol?: string;
+  interval?: string;
+  language?: AgentChatLanguage;
+  title?: string;
+}): Promise<void> {
+  const now = monotonicNow();
+  const language: AgentChatLanguage = input.language === "en" ? "en" : "ar";
+  await execute(
+    `INSERT INTO agent_chats
+       (id, user_id, title, symbol, interval, language, created_at, updated_at, last_message_preview)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      input.id,
+      input.userId,
+      input.title?.trim() || defaultChatTitle(language),
+      input.symbol ?? null,
+      input.interval ?? null,
+      language,
+      now,
+      now,
+      null,
+    ],
+  );
+}
+
 export async function createChat(input: {
   userId: number;
   symbol?: string;

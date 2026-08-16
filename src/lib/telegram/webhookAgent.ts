@@ -27,6 +27,7 @@ import {
 import {
   answerCallbackQuery,
   dismissPersistentKeyboardOnce,
+  sendChatAction,
   editMessageCaption,
   editMessageReplyMarkup,
   editMessageText,
@@ -35,6 +36,20 @@ import {
   type InlineButton,
 } from "@/lib/telegram";
 import { TelegramLiveTurn } from "@/lib/telegram/liveReply";
+import {
+  stageLabelAr,
+  TelegramProgressReporter,
+} from "@/lib/telegram/liveProgress";
+import { escapeTelegramHtml, TELEGRAM_TEXT_LIMIT } from "@/lib/telegram/html";
+import { updateSessionFromMessage } from "@/lib/agent/sessionMemory";
+import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
+import {
+  adaptAuthorizedChatHistory,
+  buildAgentConversationContext,
+  type AgentConversationContext,
+} from "@/lib/agent/context";
+import { appendMessage, ensureChat, getMessages } from "@/lib/agent/chatHistory/chatStore";
+import type { AgentFinalResult } from "@/lib/agent/types";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
 import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
@@ -180,6 +195,25 @@ function reportLinkButtons(): InlineButton[][] {
   return [[{ text: "📊 افتح التقرير", url: `${getPublicAppUrl()}/chat` }]];
 }
 
+/**
+ * The "Called N tools" block from the owner's screenshots, Telegram-native.
+ *
+ * `<blockquote expandable>` collapses to its first line — "استخدمت N فحوصات"
+ * — and expands on tap to the per-stage checklist with the same ✓/✗ marks
+ * the live bubble showed. Rendered from the stages the reporter actually
+ * observed, never from a list someone maintains by hand.
+ */
+export function renderToolsBlock(
+  stages: readonly { stage: string; status: "running" | "done" | "failed" }[],
+): string {
+  const finished = stages.filter((row) => row.status !== "running");
+  if (!finished.length) return "";
+  const lines = finished.map(
+    (row) => `${row.status === "failed" ? "✗" : "✓"} ${stageLabelAr(row.stage)}`,
+  );
+  return `<blockquote expandable>🛠 استخدمت ${finished.length} فحوصات وأدوات\n${lines.join("\n")}</blockquote>`;
+}
+
 async function deliverReply(input: {
   chatId: string;
   text: string;
@@ -196,10 +230,14 @@ async function deliverReply(input: {
     rememberOptions(telegramSessionId(input.chatId), input.options);
   }
   const buttons = [...optionRows, ...(input.extraButtons ?? [])];
-  if (input.live) {
+  // A bubble is EDITED into the answer, and edits cannot split. When the
+  // answer exceeds one message, drop the bubble and send chunks instead —
+  // sendMessage owns the splitting and puts the buttons on the last chunk.
+  if (input.live && input.text.length <= TELEGRAM_TEXT_LIMIT) {
     await input.live.finalize(input.text, buttons.length ? buttons : undefined);
     return;
   }
+  if (input.live) await input.live.discard();
   await sendMessage(
     input.chatId,
     input.text,
@@ -366,19 +404,140 @@ export async function handleTelegramMessage(
       return "answered";
     }
 
+    // ── Shared turn context: per-chat memory and session ─────────────────
+    //
+    // The bot was stateless between turns: no sessionId (the orchestrator
+    // fell back to "default" while the option store keyed on tg:<chatId>),
+    // and no conversationContext while the web chat builds one from 160
+    // persisted messages. Same store, same builder, same token budget now —
+    // one memory, two transports. A context failure never blocks the answer.
+    const sessionId = telegramSessionId(message.chatId);
+    const session = updateSessionFromMessage(sessionId, turn.message);
+    let conversationContext: AgentConversationContext | undefined;
+    try {
+      await ensureChat({
+        id: sessionId,
+        userId,
+        symbol: DATA_SYMBOL,
+        interval: "15m",
+        title: "محادثة تليجرام",
+      });
+      const [persisted, recalled] = await Promise.all([
+        getMessages(userId, sessionId, 160),
+        recallAgentMemoryForContext({
+          userId,
+          query: turn.message,
+          symbol: DATA_SYMBOL,
+          timeframe: "15m",
+          locale: "ar",
+          memoryLimit: 5,
+          lessonLimit: 3,
+        }),
+      ]);
+      conversationContext = buildAgentConversationContext({
+        userId,
+        chatId: sessionId,
+        sessionId,
+        userMessage: turn.message,
+        locale: "ar",
+        chartContext: { symbol: DATA_SYMBOL, interval: "15m" },
+        persistedMessages: adaptAuthorizedChatHistory({
+          authenticatedUserId: userId,
+          ownerUserId: userId,
+          authorizedChatId: sessionId,
+          messages: persisted,
+        }),
+        recalledMemories: recalled.memories,
+        tradeLessons: recalled.tradeLessons,
+        tokenBudget: 2_400,
+      });
+    } catch (error) {
+      log.warn("telegram.context.failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const persistTurns = async (answer: string, result?: AgentFinalResult) => {
+      try {
+        await appendMessage(userId, sessionId, {
+          role: "user",
+          content: turn.message,
+          symbol: DATA_SYMBOL,
+          interval: "15m",
+        });
+        await appendMessage(userId, sessionId, {
+          role: "assistant",
+          content: answer,
+          result,
+          recommendationId: result?.recommendationId,
+          symbol: DATA_SYMBOL,
+          interval: "15m",
+        });
+      } catch (error) {
+        log.warn("telegram.persist.failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+
+    // ── Conversational turns: the right theatre ──────────────────────────
+    //
+    // "من انت" used to get the full ceremony — the wake/think bubble, a gold
+    // chartContext handed to the engine for chit-chat, an EXTRA suggestions
+    // LLM round-trip, and four trading chips on an identity answer. Same
+    // brain (the orchestrator short-circuits general questions itself), but
+    // a conversation deserves a conversation's shape: one typing indicator,
+    // the summary as the whole reply, no cards, no chips.
+    if (turn.kind === "general") {
+      await sendChatAction(message.chatId).catch(() => {});
+      const result = await runUnifiedChartAgent({
+        surface: "platform",
+        userMessage: turn.message,
+        requestContext: { requestId: newId(), userId, emitActivity: () => {}, sessionId, session },
+        conversationContext,
+        account: null,
+        canExecute: false,
+        locale: "ar",
+      });
+      const answer = escapeTelegramHtml(result.summary);
+      await deliverReply({
+        chatId: message.chatId,
+        text: answer,
+        replyToMessageId: message.messageId,
+      });
+      await persistTurns(result.summary, result);
+      await logAudit(userId, "telegram_chat", "general");
+      return "answered";
+    }
+
+    // ── Analysis turns: live progress, then the full answer ──────────────
     const live = new TelegramLiveTurn(message.chatId, message.messageId);
-    await live.wake().catch(() => {});
-    await live.think().catch(() => {});
+    const reporter = TelegramProgressReporter.forLiveTurn(live, () =>
+      sendChatAction(message.chatId),
+    );
+    await reporter.start();
 
     const result = await runUnifiedChartAgent({
       surface: "platform",
       userMessage: turn.message,
       chartContext: { symbol: DATA_SYMBOL, interval: "15m", dataSource: "oanda" },
-      requestContext: { requestId: newId(), userId, emitActivity: () => {} },
+      requestContext: {
+        requestId: newId(),
+        userId,
+        emitActivity: () => {},
+        // The engine has been narrating itself all along; the bubble finally
+        // listens. Stage events tick the checklist the operator watches.
+        emitStage: (event) => reporter.onStage(event),
+        sessionId,
+      },
+      conversationContext,
       account: null,
       canExecute: false,
       locale: "ar",
     });
+    // Stop the clocks BEFORE finalize: a trailing progress edit landing after
+    // the answer would overwrite it.
+    reporter.finish();
 
     // Parity, structurally. The bespoke `analysisCard` builder that used to
     // compose this message carried a side, three levels and three reasons —
@@ -392,7 +551,15 @@ export async function handleTelegramMessage(
     // refusal and the gate checklist names which gate refused, so a refusal is
     // never dressed in a plan card — there is no plan card to dress it in when
     // the levels are absent.
-    const text = renderCardsForTelegram(deriveCards(result));
+    //
+    // The collapsed tools block is Telegram-native (<blockquote expandable>):
+    // the checks that produced the answer, one tap away, never a wall.
+    const text = [
+      renderCardsForTelegram(deriveCards(result)),
+      renderToolsBlock(reporter.snapshot()),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     const generated = await generateAgentSuggestions({
       locale: "ar",
       userMessage: turn.message,
@@ -411,9 +578,13 @@ export async function handleTelegramMessage(
       chatId: message.chatId,
       text,
       live,
+      // Carried for the long-answer path: when the bubble is discarded in
+      // favour of split sends, the first chunk still quotes the question.
+      replyToMessageId: message.messageId,
       options: generated.length ? generated : undefined,
       extraButtons,
     });
+    await persistTurns(result.summary, result);
     await logAudit(userId, "telegram_analysis", `decision=${result.decision}`);
     return "answered";
   } catch (error) {

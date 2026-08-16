@@ -7,6 +7,8 @@ import dns from "node:dns";
 import { getTelegramChatId } from "./store";
 import { getPublicAppUrl } from "./appUrl";
 import { createLogger } from "./logger";
+import { splitTelegramMessage } from "./telegram/html";
+import { arabicBotCommands } from "./telegramCommands";
 import {
   getPlatformValue,
   getPlatformValueAsync,
@@ -92,6 +94,24 @@ function token(): string {
 }
 
 async function call(method: string, body: Record<string, unknown>): Promise<unknown> {
+  return callOnce(method, body, true);
+}
+
+/**
+ * One Bot API request, with exactly one retry on 429.
+ *
+ * Telegram rate-limits per chat (~1 edit/sec) and answers 429 with
+ * `parameters.retry_after` seconds. The live-progress reporter throttles
+ * itself well under the limit, but a burst (final answer + buttons + photo)
+ * can still trip it — honoring retry_after once turns a dropped message into
+ * a slightly late one. Capped at 15s so a hostile retry_after cannot pin the
+ * webhook handler; a second 429 propagates like any other failure.
+ */
+async function callOnce(
+  method: string,
+  body: Record<string, unknown>,
+  allowRetry: boolean,
+): Promise<unknown> {
   const res = await fetch(`${API}/bot${token()}/${method}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -102,7 +122,13 @@ async function call(method: string, body: Record<string, unknown>): Promise<unkn
     ok: boolean;
     description?: string;
     result?: unknown;
+    parameters?: { retry_after?: number };
   };
+  if (!data.ok && res.status === 429 && allowRetry) {
+    const waitSec = Math.min(Math.max(data.parameters?.retry_after ?? 1, 1), 15);
+    await new Promise((resolve) => setTimeout(resolve, waitSec * 1_000));
+    return callOnce(method, body, false);
+  }
   if (!data.ok) {
     // #region agent log
     const { debugSessionLog } = await import("./debugSessionLog");
@@ -144,17 +170,28 @@ export async function sendMessage(
   buttons?: InlineButton[][],
   opts?: { replyToMessageId?: number },
 ): Promise<number> {
-  const result = (await call("sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-    ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
-    ...(opts?.replyToMessageId != null
-      ? { reply_to_message_id: opts.replyToMessageId }
-      : {}),
-  })) as { message_id: number };
-  return result.message_id;
+  // Telegram caps text at 4096; a longer answer 400s the whole send. Chunks
+  // go sequentially, buttons attach to the LAST chunk (they belong to the
+  // answer's end, and duplicating them per chunk would double every option),
+  // and the returned id is the last message — the one the buttons live on.
+  const chunks = splitTelegramMessage(text);
+  let messageId = 0;
+  for (let index = 0; index < chunks.length; index += 1) {
+    const last = index === chunks.length - 1;
+    const result = (await call("sendMessage", {
+      chat_id: chatId,
+      text: chunks[index]!,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      ...(last && buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+      // Only the first chunk quotes the user; a chain of self-quotes is noise.
+      ...(index === 0 && opts?.replyToMessageId != null
+        ? { reply_to_message_id: opts.replyToMessageId }
+        : {}),
+    })) as { message_id: number };
+    messageId = result.message_id;
+  }
+  return messageId;
 }
 
 export async function sendChatAction(
@@ -270,6 +307,9 @@ export async function editMessageCaption(
     chat_id: chatId,
     message_id: messageId,
     caption,
+    // Captions are SENT with parse_mode HTML (sendPhotoBuffer); editing one
+    // without it rendered the markup literally after a button tap.
+    parse_mode: "HTML",
     reply_markup: { inline_keyboard: [] },
   });
 }
@@ -482,6 +522,16 @@ export async function ensureTelegramWebhook(): Promise<boolean> {
   const url = `${getPublicAppUrl()}/api/telegram/webhook`;
   try {
     await setWebhook(url, secret);
+    // The command menu registers alongside the webhook — one boot, one
+    // truth. `arabicBotCommands()` existed for exactly this and had no
+    // caller, so whatever menu users saw was registered out of band
+    // (BotFather) and drifted from the JSON the classifier actually answers.
+    await call("setMyCommands", { commands: arabicBotCommands() }).catch(
+      (error: unknown) =>
+        log.warn("telegram.commands.ensure_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+    );
     log.info("telegram.webhook.ensured", { url });
     return true;
   } catch (error) {

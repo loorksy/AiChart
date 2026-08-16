@@ -20,26 +20,12 @@ import { Check, ChevronDown, History, Sparkles, TriangleAlert } from "lucide-rea
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import {
+  KNOWN_STAGES,
   aggregateStageEvents,
   type AgentStageEvent,
 } from "@/lib/agent/stageEvents";
 import type { AgentTickerItem } from "@/lib/agent/ticker/types";
 
-/** Stage names with a translated label; unknown names render as-is. */
-const KNOWN_STAGES = new Set([
-  "market_data",
-  "structure",
-  "liquidity",
-  "supply_demand",
-  "multi_timeframe",
-  "news",
-  "risk",
-  "final_decision",
-  "drawing",
-  "execution_guard",
-  "general",
-  "research",
-]);
 
 interface TraceRow {
   stage: string;

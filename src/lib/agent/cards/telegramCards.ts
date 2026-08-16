@@ -23,6 +23,7 @@
  * decision path, and a bilingual card would mean two strings drifting apart.
  */
 import { GATE_LABELS_AR } from "../gates/chain";
+import { escapeTelegramHtml as esc } from "@/lib/telegram/html";
 import {
   assertNeverCard,
   COLLAPSED_BY_DEFAULT,
@@ -69,7 +70,7 @@ export function renderCardForTelegram(card: AgentCard): string | null {
         hour: "numeric",
         minute: "2-digit",
       }).format(card.nextOpenAt);
-      return `🕒 <b>السوق مغلق — سيناريو للافتتاح القادم</b>\n${card.reasonAr} يفتح ${opens} بتوقيت الرياض، والتوصية أدناه شرطية تنتظر التفعيل.`;
+      return `🕒 <b>السوق مغلق — سيناريو للافتتاح القادم</b>\n${esc(card.reasonAr)} يفتح ${opens} بتوقيت الرياض، والتوصية أدناه شرطية تنتظر التفعيل.`;
     }
 
     case "decision": {
@@ -87,7 +88,7 @@ export function renderCardForTelegram(card: AgentCard): string | null {
           : "";
       const confidence =
         raw && !INTERNAL_LABEL.test(raw) ? ` · ${raw}` : "";
-      return `${head}${confidence}\n${card.summary}`;
+      return `${head}${confidence}\n${esc(card.summary)}`;
     }
 
     case "plan_levels": {
@@ -108,7 +109,7 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
     case "activation":
       return card.triggerCondition
-        ? `<b>التفعيل</b>\n${card.triggerCondition}${
+        ? `<b>التفعيل</b>\n${esc(card.triggerCondition)}${
             card.validityCandles ? `\nصالحة ${card.validityCandles} شمعة` : ""
           }`
         : card.activationClass === "immediate"
@@ -117,7 +118,7 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
     case "invalidation": {
       const parts = [
-        card.rule,
+        card.rule ? esc(card.rule) : card.rule,
         card.level != null ? `المستوى: ${price(card.level)}` : null,
       ].filter(Boolean);
       return parts.length ? `<b>ما يُبطل الخطة</b>\n${parts.join("\n")}` : null;
@@ -125,22 +126,22 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
 
     case "alternative_scenario":
-      return `<b>السيناريو البديل</b>\n${card.scenario}`;
+      return `<b>السيناريو البديل</b>\n${esc(card.scenario)}`;
 
     case "gate_checklist": {
       const lines = card.verdicts.map((v) => {
         const mark = v.status === "pass" ? "✅" : v.status === "veto" ? "⛔" : "⚠️";
         const label = GATE_LABELS_AR[v.id] ?? v.id;
-        return v.reasonAr ? `${mark} ${label} — ${v.reasonAr}` : `${mark} ${label}`;
+        return v.reasonAr ? `${mark} ${label} — ${esc(v.reasonAr)}` : `${mark} ${label}`;
       });
       return `<b>الفحوصات</b>\n${lines.join("\n")}`;
     }
 
     case "key_reasons":
-      return `<b>الأسباب</b>\n${bullets(card.reasons)}`;
+      return `<b>الأسباب</b>\n${bullets(card.reasons.map(esc))}`;
 
     case "public_reasoning":
-      return bullets(card.points);
+      return bullets(card.points.map(esc));
 
     case "evidence_strategy": {
       const c = card.card;
@@ -160,16 +161,16 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
     case "evidence_dimensions":
       return `<b>الأدلة</b>\n${bullets(
-        card.dimensions.map((d) => `${d.key}: ${d.detail}`),
+        card.dimensions.map((d) => `${esc(d.key)}: ${esc(d.detail)}`),
       )}`;
 
     case "risk_warnings":
-      return `<b>تنبيهات</b>\n${bullets(card.warnings, "⚠️")}`;
+      return `<b>تنبيهات</b>\n${bullets(card.warnings.map(esc), "⚠️")}`;
 
     case "news_risk":
       return card.risk.level === "low"
         ? null
-        : `<b>مخاطر الأخبار: ${card.risk.level}</b>\n${card.risk.reason}`;
+        : `<b>مخاطر الأخبار: ${card.risk.level}</b>\n${esc(card.risk.reason)}`;
 
     case "cost_evidence":
       return `التكلفة المتوقعة: ${card.spreadPips?.toFixed(1)} نقطة${
@@ -179,7 +180,7 @@ export function renderCardForTelegram(card: AgentCard): string | null {
     case "candle_coverage":
       // Reached only if this card leaves COLLAPSED_BY_DEFAULT; kept honest
       // rather than left to fall through to the never-guard.
-      return card.report.sufficientForTrade ? null : card.report.summaryAr;
+      return card.report.sufficientForTrade ? null : esc(card.report.summaryAr);
 
     case "tracked_recommendation":
       return `<b>قيد المتابعة</b>\n${card.symbol} ${card.interval} · ${

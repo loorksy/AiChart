@@ -229,3 +229,62 @@ describe("the webhook route survives Telegram's retry contract", () => {
     assert.match(routeSource, /ignored: "unsupported_update"/);
   });
 });
+
+describe("the professional turn: progress, memory, and the right theatre", () => {
+  it("wires the engine's stage narration into the live bubble", () => {
+    // The engine narrated itself all along (emitStage); the surface passed a
+    // no-op and the bubble froze for the whole run. The reporter is the wire.
+    assert.match(agentSource, /emitStage: \(event\) => reporter\.onStage\(event\)/);
+    assert.match(agentSource, /TelegramProgressReporter\.forLiveTurn/);
+    // finish() must run before the answer replaces the bubble — a trailing
+    // progress edit landing after finalize would overwrite the result.
+    const finish = agentSource.indexOf("reporter.finish()");
+    const deliver = agentSource.indexOf("renderToolsBlock(reporter.snapshot())");
+    assert.ok(finish > 0 && deliver > 0 && finish < deliver);
+  });
+
+  it("appends the collapsed tools block, Telegram-native", () => {
+    assert.match(agentSource, /<blockquote expandable>/);
+    assert.match(agentSource, /renderToolsBlock/);
+  });
+
+  it("gives a conversational turn a conversation's shape", () => {
+    // "من انت" used to get the wake/think theatre, a gold chartContext, an
+    // extra suggestions LLM call and trading chips. The general branch now
+    // answers with the summary alone.
+    const general = agentSource.indexOf('turn.kind === "general"');
+    assert.ok(general > 0, "the general branch must exist");
+    const analysis = agentSource.indexOf("TelegramProgressReporter.forLiveTurn");
+    assert.ok(general < analysis, "general returns before the analysis ceremony");
+    const generalBlock = agentSource.slice(general, analysis);
+    assert.doesNotMatch(generalBlock, /generateAgentSuggestions/);
+    assert.doesNotMatch(generalBlock, /chartContext: \{/);
+    assert.doesNotMatch(generalBlock, /reportLinkButtons/);
+  });
+
+  it("remembers the conversation like the web chat does", () => {
+    // Same store, same builder, same token budget — one memory, two
+    // transports. The session key is the chat's own stable id.
+    assert.match(agentSource, /telegramSessionId\(message\.chatId\)/);
+    assert.match(agentSource, /buildAgentConversationContext/);
+    assert.match(agentSource, /tokenBudget: 2_400/);
+    assert.match(agentSource, /appendMessage/);
+    assert.match(agentSource, /ensureChat/);
+  });
+
+  it("escapes model text everywhere HTML is assembled", () => {
+    const cards = readFileSync(
+      path.join(SRC, "lib", "agent", "cards", "telegramCards.ts"),
+      "utf8",
+    );
+    assert.match(cards, /escapeTelegramHtml/);
+    assert.match(cards, /esc\(card\.summary\)/);
+    assert.match(agentSource, /escapeTelegramHtml\(result\.summary\)/);
+  });
+
+  it("registers the command menu at boot, beside the webhook", () => {
+    const telegram = readFileSync(path.join(SRC, "lib", "telegram.ts"), "utf8");
+    assert.match(telegram, /setMyCommands/);
+    assert.match(telegram, /arabicBotCommands\(\)/);
+  });
+});

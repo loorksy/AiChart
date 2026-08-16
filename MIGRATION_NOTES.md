@@ -119,3 +119,62 @@ Deliberate non-changes: holidays stay unmodelled (the calendar's own stated
 stance — a missed holiday reads as a small gap the ratio policy tolerates,
 and takes the stale-data path, not this one); plans created shortly BEFORE
 Friday's close keep today's wall-clock expiry.
+
+## Round 2, Phase C — the Telegram turn became professional
+
+The owner screenshotted a competitor bot: a status bubble that updates while
+the agent works, a collapsed "Called 2 Tools" block with per-tool checkmarks,
+the answer quoting the question. The team had already built the skeleton
+(`TelegramLiveTurn`, the turn classifier, opaque inline options); what was
+missing was every wire between the engine and the phone.
+
+**Live progress.** The engine has narrated itself all along — `emitStage`
+fires for market data, structure, liquidity, news, the decision — and the
+Telegram surface passed a no-op, so the bubble changed twice and froze for
+the tens of seconds the run actually takes. `TelegramProgressReporter` is the
+missing wire: an Arabic checklist that ticks forward in the bubble, throttled
+to one edit per 2.5s with a trailing flush (Telegram tolerates ~1 edit/sec),
+typing kept alive every 4s (the native indicator dies in ~5), every send
+best-effort, and `finish()` called BEFORE finalize so a trailing progress
+edit can never overwrite the answer.
+
+**The tools block.** The final answer appends `<blockquote expandable>` —
+Telegram's native collapse — listing the checks that actually ran, from the
+reporter's own snapshot, never a hand-maintained list. `KNOWN_STAGES` moved
+from the web trace component into `stageEvents.ts` so both surfaces read one
+list, labelled through the same `agent.stage.*` i18n entries (coverage now
+asserted per stage).
+
+**The right theatre for a conversation.** "من انت" got the wake/think
+ceremony, a gold chartContext, an EXTRA suggestions-LLM round-trip, and four
+trading chips on an identity answer — because `classifyTelegramTurn` returned
+`kind:"general"` and the handler had no branch for it. It does now: one
+typing indicator, the same brain (the orchestrator short-circuits general
+questions itself), the summary as the whole reply.
+
+**Memory.** The bot was stateless between turns: no sessionId (the
+orchestrator fell back to "default" while the option store keyed on
+`tg:<chatId>`), no conversation context while the web chat builds one from
+160 persisted messages. Now: the same chat store (`ensureChat` added — an
+idempotent caller-chosen id, because the Telegram chat's one conversation
+needs a stable key a minted uuid cannot be), the same context builder, the
+same 2,400-token budget, both turns persisted after answering. One memory,
+two transports. A context failure logs and never blocks the answer.
+
+**Transport hardening — production bugs, not polish:**
+- Model text was interpolated raw into `parse_mode:"HTML"` messages. The
+  first summary containing `<` would 400 the send and surface as the generic
+  error — for an analysis that succeeded. `escapeTelegramHtml` now wraps
+  every model-authored value on the card path (the markup stays literal).
+- Nothing split messages at Telegram's 4096 cap; a long answer 400'd the
+  send AND its fallback. `sendMessage` now chunks on block boundaries with
+  buttons on the last chunk; a long answer discards the bubble (edits cannot
+  split) and sends chunks that still quote the question.
+- `call()` honors 429 `retry_after` once (capped 15s).
+- `editMessageCaption` gains the `parse_mode` its sends always had.
+- `setMyCommands(arabicBotCommands())` registers at boot beside the webhook —
+  the function existed for exactly this and had no caller, so whatever menu
+  users saw was registered out of band and drifted from the classifier.
+
+grammY stays out (the team tried and reverted it in five minutes); everything
+here is the raw-fetch client.

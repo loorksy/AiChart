@@ -16,6 +16,27 @@ export type AgentStageEventStatus =
   /** Served from the stage checkpoint — real evidence, no re-computation. */
   | "resumed";
 
+/**
+ * Stage names both surfaces know how to label (`agent.stage.<name>` in the
+ * i18n dictionaries). Lived inside the web trace component until Telegram
+ * needed the same list for its progress bubble — a second copy would drift
+ * exactly the way two nav definitions did.
+ */
+export const KNOWN_STAGES = new Set([
+  "market_data",
+  "structure",
+  "liquidity",
+  "supply_demand",
+  "multi_timeframe",
+  "news",
+  "risk",
+  "final_decision",
+  "drawing",
+  "execution_guard",
+  "general",
+  "research",
+]);
+
 export interface AgentStageEvent {
   /** AgentStage name from errorTaxonomy (kept as string for wire tolerance). */
   stage: string;
