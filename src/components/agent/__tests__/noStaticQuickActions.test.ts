@@ -47,7 +47,7 @@ describe("no static quick-action toolbar", () => {
       "the panel must mount the card layer that renders the suggestions",
     );
     assert.ok(
-      panelSrc.includes("onOption={(prompt) => void sendMessage(prompt)}"),
+      panelSrc.includes("onOption={(prompt) => void sendAndFollow(prompt)}"),
       "a suggestion must still send its prompt as a chat message",
     );
 

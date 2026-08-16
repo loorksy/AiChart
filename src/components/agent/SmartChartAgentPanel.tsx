@@ -1,7 +1,8 @@
 "use client";
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
-import { useEffect, useImperativeHandle, useState, forwardRef, type ReactNode } from "react";
+import { useCallback, useEffect, useImperativeHandle, useState, forwardRef, type ReactNode } from "react";
+import { useChatStickToBottom } from "@/hooks/useChatStickToBottom";
 import type { AgentChartContext, AgentFinalResult } from "@/lib/agent/types";
 import {
   useSmartChartAgent,
@@ -160,16 +161,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       return () => controller.abort();
     }, [chatId, drawingsCount, interval, locale, messages.length, running, symbol]);
 
-    useImperativeHandle(
-      ref,
-      () => ({
-        quickAnalyze: () => void sendMessage(ANALYZE_QUICK_PROMPT),
-        sendMessage: (m: string, o?: { inputMode?: "text" | "voice" }) =>
-          void sendMessage(m, o),
-      }),
-      [sendMessage],
-    );
-
     /**
      * One composer element for two placements. Empty conversation: it sits
      * mid-screen under the greeting — the question IS the page, nothing else
@@ -178,10 +169,39 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
      * the skeleton keeps the landing and the conversation strictly separate.
      */
     const isHero = messages.length === 0 && !running && !hydrating;
+    const last = messages[messages.length - 1];
+    const followKey = [
+      messages.length,
+      last?.id ?? "",
+      last?.pending ? "p" : "d",
+      last?.streamText?.length ?? 0,
+      last?.content.length ?? 0,
+      stageEvents.length,
+      running ? "1" : "0",
+      hydrating ? "h" : "r",
+    ].join(":");
+    const { scrollerRef, pin } = useChatStickToBottom(!isHero, followKey, chatId ?? "");
+    const sendAndFollow = useCallback(
+      (message: string, opts?: { inputMode?: "text" | "voice" }) => {
+        pin();
+        return sendMessage(message, opts);
+      },
+      [pin, sendMessage],
+    );
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        quickAnalyze: () => void sendAndFollow(ANALYZE_QUICK_PROMPT),
+        sendMessage: (m: string, o?: { inputMode?: "text" | "voice" }) =>
+          void sendAndFollow(m, o),
+      }),
+      [sendAndFollow],
+    );
     const composer = (
       <AgentChatInput
         running={running}
-        onSend={sendMessage}
+        onSend={sendAndFollow}
         onCancel={cancel}
         symbol={symbol}
         interval={interval}
@@ -200,7 +220,12 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             chat panel is clean. All follow-up prompts are dynamic, model-
             generated suggestions rendered per turn (never hardcoded buttons).
             Analysis is reachable from the chart's Analyze control and by typing. */}
-        <div className="chat-scroll-region aichart-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        <div
+          ref={scrollerRef}
+          data-testid="chat-scroll-region"
+          className="chat-scroll-region aichart-scroll min-h-0 flex-1 overflow-y-auto p-3"
+        >
+          <div className="flex min-h-full flex-col space-y-3">
           {hydrating && messages.length === 0 && (
             <div
               data-testid="chat-hydrating"
@@ -237,7 +262,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                     <button
                       key={suggestion.id}
                       type="button"
-                      onClick={() => void sendMessage(suggestion.prompt)}
+                      onClick={() => void sendAndFollow(suggestion.prompt)}
                       className="min-h-11 rounded-full border border-border bg-background px-3.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9"
                     >
                       {suggestion.label}
@@ -384,7 +409,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {m.result ? (
                 <AgentCards
                   result={m.result}
-                  onOption={(prompt) => void sendMessage(prompt)}
+                  onOption={(prompt) => void sendAndFollow(prompt)}
                   disabled={running}
                 />
               ) : null}
@@ -415,6 +440,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {error}
             </p>
           )}
+          </div>
         </div>
 
         {!isHero && (
