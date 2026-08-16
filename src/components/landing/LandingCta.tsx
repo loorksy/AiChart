@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LonoraLottieLogo } from "@/components/LonoraLottieLogo";
 import { useLocale } from "@/components/LocaleProvider";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
 import { buttonVariants } from "@/components/squareui/button";
@@ -12,6 +13,7 @@ export function LandingCta() {
   return (
     <section data-testid="landing-cta" className="border-b border-border">
       <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6 sm:py-20">
+        <LonoraLottieLogo className="mx-auto mb-6 max-w-[20rem] sm:max-w-[24rem]" />
         <h2 className="text-balance text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           {c.title}
         </h2>

@@ -24,6 +24,9 @@ describe("brand face-mark assets", () => {
     "aichart-avatar-64.png",
     "aichart-avatar-light-32.png",
     "aichart-avatar-light-64.png",
+    "lonora-logo-loop.json",
+    "InterDisplay-SemiBold.ttf",
+    "Inter-OFL.txt",
       ];
 
   it("ships all production brand files", () => {
@@ -51,5 +54,33 @@ describe("brand face-mark assets", () => {
     const light = readFileSync(resolve(brand, "aichart-mark-light.svg"), "utf8");
     assert.match(dark, /fill="#FFFFFF"/i);
     assert.match(light, /fill="#(?:0A0A0A|000000)"/i);
+  });
+
+  it("ships a seamless looping Lonora Lottie sting", () => {
+    const raw = readFileSync(resolve(brand, "lonora-logo-loop.json"), "utf8");
+    const lottie = JSON.parse(raw) as {
+      ip: number;
+      op: number;
+      fr: number;
+      nm: string;
+      layers: Array<{
+        nm: string;
+        ks: { o: { k: Array<{ t: number; s: number[] }> | number } };
+      }>;
+    };
+    assert.equal(lottie.ip, 0);
+    assert.equal(lottie.op, 150);
+    assert.equal(lottie.fr, 60);
+    assert.match(lottie.nm, /Lonora/i);
+    assert.ok(lottie.layers.length >= 3);
+    for (const layer of lottie.layers) {
+      const opacity = layer.ks.o;
+      if (typeof opacity.k === "number") continue;
+      const first = opacity.k[0];
+      const last = opacity.k[opacity.k.length - 1];
+      assert.deepEqual(first.s, last.s, `${layer.nm} loop seam`);
+      assert.equal(first.t, 0);
+      assert.equal(last.t, lottie.op);
+    }
   });
 });

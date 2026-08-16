@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LonoraLottieLogo } from "@/components/LonoraLottieLogo";
 import { useLocale } from "@/components/LocaleProvider";
 import { ProductPreview } from "@/components/landing/ProductPreview";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
@@ -19,6 +20,7 @@ export function LandingHero() {
     >
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-16 lg:grid-cols-[1fr_1.05fr] lg:items-center lg:gap-12 lg:py-20">
         <div className="max-w-xl">
+          <LonoraLottieLogo className="mb-2 max-w-[16rem] sm:max-w-[18rem]" />
           <h1 className="font-serif text-5xl font-semibold tracking-tight text-foreground sm:text-6xl lg:text-[4.25rem] lg:leading-[1.05]">
             {BRAND_NAME}
           </h1>

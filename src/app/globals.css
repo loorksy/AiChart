@@ -197,6 +197,22 @@ body {
   }
 }
 
+@font-face {
+  font-family: "Inter Display SemiBold";
+  src: url("/brand/InterDisplay-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "InterDisplaySemiBold";
+  src: url("/brand/InterDisplay-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 .font-serif {
   font-family: var(--font-fraunces), "Playfair Display", Georgia, serif;
 }

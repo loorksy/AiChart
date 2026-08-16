@@ -136,6 +136,17 @@ describe("landing redesign", () => {
     assert.ok(!existsSync(resolve(root, "components/landing/LandingAccess.tsx")));
   });
 
+  test("hero and finale play the looping Lonora Lottie", () => {
+    const hero = read("components/landing/LandingHero.tsx");
+    const cta = read("components/landing/LandingCta.tsx");
+    const player = read("components/LonoraLottieLogo.tsx");
+    assert.match(hero, /LonoraLottieLogo/);
+    assert.match(cta, /LonoraLottieLogo/);
+    assert.match(player, /lonora-logo-loop\.json/);
+    assert.match(player, /prefers-reduced-motion/);
+    assert.match(player, /loop: !reduceMotion/);
+  });
+
   test("brand mark assets keep the unclipped viewBox", () => {
     const logo = read("components/AiChartLogo.tsx");
     assert.match(logo, /aichart-mark\.svg|aichart-mark-light\.svg/);
