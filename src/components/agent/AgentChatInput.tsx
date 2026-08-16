@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowUp, ChevronDown, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
@@ -43,7 +43,7 @@ function ComposerModelChip() {
   const provider = activeRef?.split("/")[0] ?? "openai";
 
   return (
-    <div className="relative min-w-0">
+    <div className="relative shrink-0">
       <button
         ref={triggerRef}
         type="button"
@@ -57,13 +57,6 @@ function ComposerModelChip() {
         <span className="truncate text-xs font-medium" dir="ltr">
           {activeLabel}
         </span>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300",
-            open && "rotate-180",
-          )}
-          aria-hidden
-        />
       </button>
 
       <ComposerPopover
@@ -171,7 +164,7 @@ export function AgentChatInput({
           className="mb-4 max-h-[148px] min-h-4 w-full resize-none bg-transparent p-0 text-sm leading-4 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
 
-        <div className="mt-auto flex items-center gap-3">
+        <div className="composer-chip-row">
           {/*
             One row for what governs the next turn: which model answers and
             which timeframe is up. There is no instrument picker — the

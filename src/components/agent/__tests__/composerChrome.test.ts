@@ -40,9 +40,11 @@ describe("composer chrome", () => {
     assert.match(popover, /TUCK/);
     assert.match(css, /\.composer-sheet/);
     assert.match(css, /--composer-sheet-tuck/);
-    assert.match(css, /backdrop-filter:\s*blur/);
+    assert.match(css, /backdrop-filter:\s*blur\(72px\)/);
+    assert.match(css, /saturate\(180%\)/);
     assert.match(css, /composer-menu-scroll/);
     assert.match(css, /\.composer-sheet-item/);
+    assert.match(css, /\.composer-chip-row/);
     const interval = readFileSync(
       join(__dirname, "../ComposerMarketPickers.tsx"),
       "utf8",
@@ -63,6 +65,21 @@ describe("composer chrome", () => {
     assert.match(input, /composer-send-launch/);
     assert.doesNotMatch(input, /<Send\b/);
     assert.doesNotMatch(input, /MetalFx/);
+  });
+
+  it("keeps composer chips chevron-free and spaced", () => {
+    assert.match(input, /composer-chip-row/);
+    assert.doesNotMatch(input, /ChevronDown/);
+    const interval = readFileSync(
+      join(__dirname, "../ComposerMarketPickers.tsx"),
+      "utf8",
+    );
+    const risk = readFileSync(
+      join(__dirname, "../RiskPerTradeControl.tsx"),
+      "utf8",
+    );
+    assert.doesNotMatch(interval, /ChevronDown/);
+    assert.doesNotMatch(risk, /ChevronDown/);
   });
 
   it("wraps the writing field in the same liquid-metal frame as suggestions", () => {

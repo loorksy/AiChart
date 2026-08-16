@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, ChevronDown, Clock3 } from "lucide-react";
+import { Check, Clock3 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { cn } from "@/lib/utils";
@@ -36,13 +36,6 @@ export function ComposerIntervalPicker({
       >
         <Clock3 className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span dir="ltr">{interval}</span>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300",
-            open && "rotate-180",
-          )}
-          aria-hidden
-        />
       </button>
 
       <ComposerPopover

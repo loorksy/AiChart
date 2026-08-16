@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { RISK_PER_TRADE } from "@/lib/productModel";
@@ -82,13 +81,6 @@ export function RiskPerTradeControl() {
         )}
       >
         <span dir="ltr">{value.toFixed(1)}%</span>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300",
-            open && "rotate-180",
-          )}
-          aria-hidden
-        />
       </button>
 
       <ComposerPopover
