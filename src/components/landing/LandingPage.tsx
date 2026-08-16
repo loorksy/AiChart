@@ -1,3 +1,5 @@
+import { JsonLd } from "@/components/seo/JsonLd";
+import { faqJsonLd } from "@/lib/seo";
 import { LandingNav } from "@/components/landing/LandingNav";
 import { LandingHero } from "@/components/landing/LandingHero";
 import { LandingBenefits } from "@/components/landing/LandingBenefits";
@@ -22,6 +24,7 @@ export default function LandingPage() {
       data-testid="landing-page"
       className="min-h-dvh bg-background text-foreground"
     >
+      <JsonLd data={faqJsonLd()} />
       <LandingNav />
       {/* Spec §3 order: hero (single preview) → features → workspace
           (preview-free) → capability strip → testimonials → pricing summary

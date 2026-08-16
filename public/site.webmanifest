@@ -1,9 +1,12 @@
 {
-  "name": "AiChart",
-  "short_name": "AiChart",
-  "description": "Chat-first Forex scalping assistant",
-  "start_url": "/console",
+  "name": "Lonora",
+  "short_name": "Lonora",
+  "description": "Lonora is a Gold-only recommendations workspace: live chart, AI conversation, and review cards with entry, stop, and targets. It never places trades. Arabic and English.",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "dir": "rtl",
+  "lang": "ar",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
   "icons": [
@@ -11,13 +14,13 @@
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

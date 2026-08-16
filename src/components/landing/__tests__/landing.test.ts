@@ -20,8 +20,9 @@ describe("landing redesign", () => {
     assert.match(page, /redirect\("\/chat"\)/);
     assert.match(page, /awaiting-approval/);
     assert.match(page, /export const metadata/);
-    assert.match(page, /openGraph/);
+    assert.match(page, /pageMetadata\("home"\)/);
     assert.match(page, /LandingPage/);
+    assert.doesNotMatch(page, /MetaTrader execution|Execute with clarity/);
   });
 
   test("canonical structure mounts redesigned sections without candlestick backdrop", () => {

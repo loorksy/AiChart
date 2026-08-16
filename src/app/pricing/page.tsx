@@ -11,12 +11,9 @@ import { LandingFooter } from "@/components/landing/LandingFooter";
 import { BRAND_NAME } from "@/lib/brand";
 import { redirect } from "next/navigation";
 import { FEATURES } from "@/lib/agent/featureFlags";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata = {
-  title: `الباقات والأسعار — ${BRAND_NAME}`,
-  description:
-    "باقة واحدة 180$ شهرياً بكل الميزات: تحليل ذكي، ربط MT5، تنفيذ حي، ووكيل صوتي — وتجربة مجانية لساعة.",
-};
+export const metadata = pageMetadata("pricing");
 
 /**
  * V2-A5 (#94): the public pricing page. Tier data comes from the same

@@ -6,12 +6,12 @@ import { needsMcpCredentials } from "@/lib/userCredentials";
 import { displayNameForUser } from "@/lib/displayName";
 import { AppConsoleShell } from "@/components/shell/AppConsoleShell";
 
-import { BRAND_NAME, BRAND_TAGLINE_AR } from "@/lib/brand";
+import { BRAND_NAME } from "@/lib/brand";
+import { privateSurfaceMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: `${BRAND_NAME} — لوحة التحكم`,
-  description: `${BRAND_NAME} — ${BRAND_TAGLINE_AR} · MetaTrader 5`,
-};
+export const metadata: Metadata = privateSurfaceMetadata(
+  `${BRAND_NAME} — لوحة التحكم`,
+);
 
 /**
  * The chat surface's shell — sidebar navigation, conversations list and the

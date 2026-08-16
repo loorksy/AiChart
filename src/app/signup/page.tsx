@@ -6,6 +6,9 @@ import { isSingleUserMode } from "@/lib/agentAuth";
 import { detectCountryFromHeaders } from "@/lib/geoCountry";
 import { googleAuthConfig } from "@/lib/auth/googleOidc";
 import { initDb } from "@/lib/db";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("signup");
 
 export default async function SignupPage() {
   if (isSingleUserMode()) redirect("/login");

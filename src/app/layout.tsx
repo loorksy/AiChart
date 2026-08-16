@@ -26,14 +26,13 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
-import { BRAND_NAME, BRAND_TAGLINE_AR, BRAND_URL } from "@/lib/brand";
+import { BRAND_URL } from "@/lib/brand";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { rootMetadata, siteJsonLd } from "@/lib/seo";
 
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND_URL),
-  title: `${BRAND_NAME} — ${BRAND_TAGLINE_AR}`,
-  description:
-    "منصة تداول ذكية، يتحدث فيها كل متداول مع وكيل خبير يراقب السوق ويتحرك عند الفرصة المناسبة فقط.",
-  applicationName: BRAND_NAME,
+  ...rootMetadata(),
   manifest: "/site.webmanifest",
   icons: {
     icon: [
@@ -72,6 +71,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col bg-background">
+        <JsonLd data={siteJsonLd()} />
         <LocaleProvider>
           <ThemeProvider>
             <SkipLink />

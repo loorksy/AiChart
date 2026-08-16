@@ -2,6 +2,9 @@ import AuthForm from "@/components/AuthForm";
 import { getTelegramLoginConfig } from "@/lib/telegram";
 import { googleAuthConfig } from "@/lib/auth/googleOidc";
 import { initDb } from "@/lib/db";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("login");
 
 export default async function LoginPage({
   searchParams,
