@@ -33,6 +33,10 @@ describe("i18n core", () => {
     assert.equal(t("en", "agent.processing"), "Processing");
     assert.equal(t("ar", "agent.error"), "حدث خطأ");
     assert.equal(t("en", "agent.error"), "Something went wrong");
+    assert.equal(t("ar", "agent.copy"), "نسخ الرسالة");
+    assert.equal(t("en", "agent.copy"), "Copy message");
+    assert.equal(t("ar", "agent.copied"), "تم نسخ الرسالة");
+    assert.equal(t("en", "agent.copied"), "Message copied");
   });
 
   it("has the Parts 10-13/19 layout labels in both dictionaries", () => {

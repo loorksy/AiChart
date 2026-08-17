@@ -355,6 +355,8 @@ export const en = {
   "agent.stage.resumed": "(from a previous run)",
   "agent.run_details": "Run details",
   "agent.error": "Something went wrong",
+  "agent.copy": "Copy message",
+  "agent.copied": "Message copied",
 
   // --- Gate chain (G1–G7): labels, refusals, per-gate reasons ---
   "gate.label.G1": "News & economic events",
