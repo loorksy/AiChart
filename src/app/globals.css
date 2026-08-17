@@ -860,7 +860,7 @@ label {
   display: none !important;
 }
 
-/* Docked composer floats over the thread — no footer panel or fade wall. */
+/* Docked composer sits on a fade wall sized to its live height. */
 .chat-panel-shell {
   position: relative;
   display: flex;
@@ -883,16 +883,31 @@ label {
   z-index: 20;
   background: transparent;
 }
+.chat-composer-fade {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 10;
+  height: var(--composer-height, 7.5rem);
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--background) 0%,
+    color-mix(in srgb, var(--background) 92%, transparent) 22%,
+    color-mix(in srgb, var(--background) 62%, transparent) 48%,
+    color-mix(in srgb, var(--background) 28%, transparent) 72%,
+    transparent 100%
+  );
+}
 .chat-scroll-region {
   position: relative;
   z-index: 0;
 }
-/* Docked thread stops above the writing field. The scroller's box ends at
-   the dock — cards cannot paint through the transparent gap under the input.
-   --composer-height is the live dock size (ResizeObserver). Hero stays in-flow. */
+/* Live composer height so the last turn sits above the input. Hero stays in-flow. */
 .chat-scroll-region:not([data-hero]) {
-  margin-bottom: var(--composer-height, 7.5rem);
-  padding-bottom: 1.5rem;
+  padding-bottom: calc(
+    var(--composer-height, 7.5rem) + env(safe-area-inset-bottom, 0px) + 1.5rem
+  );
 }
 /* Upper chat fade intentionally removed — content scrolls cleanly under the header. */
 

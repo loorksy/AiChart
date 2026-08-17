@@ -62,7 +62,9 @@ describe("chat stick-to-bottom", () => {
     assert.match(panel, /--composer-height/);
     assert.match(panel, /chat-composer-dock/);
     assert.match(css, /var\(--composer-height/);
-    assert.match(css, /margin-bottom:\s*var\(--composer-height/);
+    assert.match(css, /padding-bottom:\s*calc\(/);
+    assert.match(css, /\.chat-composer-fade/);
+    assert.doesNotMatch(css, /margin-bottom:\s*var\(--composer-height/);
     assert.doesNotMatch(css, /padding-bottom:\s*calc\(5\.75rem/);
   });
 
