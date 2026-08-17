@@ -34,6 +34,8 @@ import {
 } from "@/lib/recommendations/fromAgentResult";
 import { ChevronDown } from "lucide-react";
 import type { AgentSuggestion } from "@/lib/agent/suggestions/types";
+import { MessageCopyMeta } from "./MessageCopyMeta";
+import { messageCopyText } from "./messageCopy";
 
 export interface SmartChartAgentHandle {
   /** Fire the Analyze quick prompt into the chat (used by the header button). */
@@ -322,8 +324,15 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               }
             >
               {m.role === "user" ? (
-                <div className="ms-auto w-fit max-w-[min(85%,36rem)] rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm leading-6 text-foreground">
-                  <p className="whitespace-pre-wrap">{m.content}</p>
+                <div className="ms-auto flex w-fit max-w-[min(85%,36rem)] flex-col items-end">
+                  <div className="rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm leading-6 text-foreground">
+                    <p className="whitespace-pre-wrap">{m.content}</p>
+                  </div>
+                  <MessageCopyMeta
+                    createdAt={m.createdAt}
+                    text={messageCopyText(m)}
+                    align="end"
+                  />
                 </div>
               ) : (
               <div className="min-w-0">
@@ -464,6 +473,11 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               )}
                 </>
               )}
+              <MessageCopyMeta
+                createdAt={m.createdAt}
+                text={messageCopyText(m)}
+                align="start"
+              />
               </div>
               )}
             </div>
