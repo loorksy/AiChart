@@ -1,7 +1,16 @@
 "use client";
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
-import { useCallback, useEffect, useImperativeHandle, useState, forwardRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  forwardRef,
+  type ReactNode,
+} from "react";
 import { useChatStickToBottom } from "@/hooks/useChatStickToBottom";
 import type { AgentChartContext, AgentFinalResult } from "@/lib/agent/types";
 import {
@@ -13,6 +22,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTraceLive } from "./AgentThinkingTrace";
 import { AgentChatInput } from "./AgentChatInput";
+import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
 import { AgentModeBadge, AgentFaultCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
 import { AgentCards } from "./cards/AgentCards";
 import { isOperationalBlocker } from "@/lib/agent/envelopeBadge";
@@ -24,6 +34,8 @@ import {
 } from "@/lib/recommendations/fromAgentResult";
 import { ChevronDown } from "lucide-react";
 import type { AgentSuggestion } from "@/lib/agent/suggestions/types";
+import { MessageCopyMeta } from "./MessageCopyMeta";
+import { messageCopyText } from "./messageCopy";
 
 export interface SmartChartAgentHandle {
   /** Fire the Analyze quick prompt into the chat (used by the header button). */
@@ -181,6 +193,27 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       hydrating ? "h" : "r",
     ].join(":");
     const { scrollerRef, pin } = useChatStickToBottom(!isHero, followKey, chatId ?? "");
+    const panelRef = useRef<HTMLDivElement>(null);
+    const composerDockRef = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+      if (isHero) return;
+      const dock = composerDockRef.current;
+      const panel = panelRef.current;
+      if (!dock || !panel) return;
+      const apply = () => {
+        panel.style.setProperty("--composer-height", `${dock.offsetHeight}px`);
+      };
+      apply();
+      if (typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(apply);
+      observer.observe(dock);
+      return () => {
+        observer.disconnect();
+        panel.style.removeProperty("--composer-height");
+      };
+    }, [isHero]);
+
     const sendAndFollow = useCallback(
       (message: string, opts?: { inputMode?: "text" | "voice" }) => {
         pin();
@@ -213,6 +246,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
 
     return (
       <div
+        ref={panelRef}
         className="chat-panel-shell h-full w-full bg-transparent"
         dir={dir}
       >
@@ -243,14 +277,11 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {emptyState.suggestions.length ? (
                 <div className="flex flex-wrap justify-center gap-2 px-4">
                   {emptyState.suggestions.map((suggestion) => (
-                    <button
+                    <LiquidMetalButton
                       key={suggestion.id}
-                      type="button"
+                      label={suggestion.label}
                       onClick={() => void sendAndFollow(suggestion.prompt)}
-                      className="min-h-11 rounded-full border border-border bg-background px-3.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9"
-                    >
-                      {suggestion.label}
-                    </button>
+                    />
                   ))}
                 </div>
               ) : null}
@@ -293,8 +324,15 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               }
             >
               {m.role === "user" ? (
-                <div className="ms-auto w-fit max-w-[min(85%,36rem)] rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm leading-6 text-foreground">
-                  <p className="whitespace-pre-wrap">{m.content}</p>
+                <div className="ms-auto flex w-fit max-w-[min(85%,36rem)] flex-col items-end">
+                  <div className="rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm leading-6 text-foreground">
+                    <p className="whitespace-pre-wrap">{m.content}</p>
+                  </div>
+                  <MessageCopyMeta
+                    createdAt={m.createdAt}
+                    text={messageCopyText(m)}
+                    align="end"
+                  />
                 </div>
               ) : (
               <div className="min-w-0">
@@ -435,6 +473,11 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               )}
                 </>
               )}
+              <MessageCopyMeta
+                createdAt={m.createdAt}
+                text={messageCopyText(m)}
+                align="start"
+              />
               </div>
               )}
             </div>
@@ -452,7 +495,11 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         {!isHero && (
           <div className="chat-composer-fade" aria-hidden data-testid="composer-fade" />
         )}
-        {!isHero && composer}
+        {!isHero && (
+          <div ref={composerDockRef} className="chat-composer-dock">
+            {composer}
+          </div>
+        )}
       </div>
     );
   },

@@ -354,6 +354,8 @@ export const ar: Record<TranslationKey, string> = {
   "agent.stage.resumed": "(من تشغيل سابق)",
   "agent.run_details": "تفاصيل التنفيذ",
   "agent.error": "حدث خطأ",
+  "agent.copy": "نسخ الرسالة",
+  "agent.copied": "تم نسخ الرسالة",
 
   // --- سلسلة الفحوصات (G1–G7): التسميات والرفض وأسباب كل فحص ---
   "gate.label.G1": "الأخبار والأحداث الاقتصادية",

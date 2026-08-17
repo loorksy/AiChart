@@ -19,6 +19,8 @@ describe("agentChatReducer (pending narration bubble)", () => {
     assert.equal(next[1].role, "assistant");
     assert.equal(next[1].pending, true);
     assert.equal(next[1].liveNote, null);
+    assert.equal(typeof next[0].createdAt, "number");
+    assert.equal(next[0].createdAt, next[1].createdAt);
   });
 
   it("an activity narration line updates the pending assistant message", () => {
@@ -43,6 +45,7 @@ describe("agentChatReducer (pending narration bubble)", () => {
     assert.equal(assistants[0].pending, false);
     assert.equal(assistants[0].liveNote, null);
     assert.equal(assistants[0].content, "التحليل جاهز.");
+    assert.equal(assistants[0].createdAt, base[1].createdAt);
   });
 
   it("cancel/error drops the pending bubble and leaves no stuck note", () => {

@@ -11,10 +11,18 @@ export function appendUserAndPending(
   user: { id: string; content: string },
   pendingId: string,
 ): AgentChatMessage[] {
+  const createdAt = Date.now();
   return [
     ...messages,
-    { id: user.id, role: "user", content: user.content },
-    { id: pendingId, role: "assistant", content: "", pending: true, liveNote: null },
+    { id: user.id, role: "user", content: user.content, createdAt },
+    {
+      id: pendingId,
+      role: "assistant",
+      content: "",
+      pending: true,
+      liveNote: null,
+      createdAt,
+    },
   ];
 }
 
@@ -61,12 +69,15 @@ export function applyFinal(
   pendingId: string,
   final: Omit<AgentChatMessage, "id" | "role" | "pending" | "liveNote">,
 ): AgentChatMessage[] {
+  const existing = messages.find((m) => m.id === pendingId);
   const finalMessage: AgentChatMessage = {
     id: pendingId,
     role: "assistant",
     pending: false,
     liveNote: null,
     ...final,
+    // Keep the original turn clock unless the replacement brought its own.
+    createdAt: final.createdAt ?? existing?.createdAt ?? Date.now(),
   };
   const exists = messages.some((m) => m.id === pendingId);
   if (!exists) return [...messages, finalMessage];

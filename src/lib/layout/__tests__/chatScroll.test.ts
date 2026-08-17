@@ -47,7 +47,25 @@ describe("chat stick-to-bottom", () => {
       /className="[^"]*\bh-full\b/,
     );
     assert.match(css, /chat-scroll-region:not\(\[data-hero\]\)/);
+    assert.match(css, /--composer-height/);
     assert.match(workspace, /flex h-full min-h-0 w-full flex-col/);
+  });
+
+  it("the docked thread reserves the live composer height above the input", () => {
+    const panel = readFileSync(
+      resolve(process.cwd(), "src/components/agent/SmartChartAgentPanel.tsx"),
+      "utf8",
+    );
+    const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
+    assert.match(panel, /composerDockRef/);
+    assert.match(panel, /ResizeObserver/);
+    assert.match(panel, /--composer-height/);
+    assert.match(panel, /chat-composer-dock/);
+    assert.match(css, /var\(--composer-height/);
+    assert.match(css, /padding-bottom:\s*calc\(/);
+    assert.match(css, /\.chat-composer-fade/);
+    assert.doesNotMatch(css, /margin-bottom:\s*var\(--composer-height/);
+    assert.doesNotMatch(css, /padding-bottom:\s*calc\(5\.75rem/);
   });
 
   it("the live thread pins on send and follows the growing reply", () => {

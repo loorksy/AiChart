@@ -180,10 +180,11 @@ test("collapsed rail brand expands the sidebar and does not navigate", () => {
 });
 
 
-test("composer has bottom fade; upper chat shadow removed", () => {
+test("docked composer keeps a fade wall and live thread padding", () => {
   const css = read("app/globals.css");
   assert.match(css, /\.chat-composer-fade/);
-  assert.match(css, /var\(--background\)/);
+  assert.match(css, /\.chat-panel-shell\s*>\s*\.chat-composer-dock/);
+  assert.match(css, /--composer-height/);
   assert.doesNotMatch(css, /#7c3aed|#8b5cf6|#bc00ff/);
   assert.doesNotMatch(css, /\.chat-scroll-region::before/);
   const input = read("components/agent/AgentChatInput.tsx");

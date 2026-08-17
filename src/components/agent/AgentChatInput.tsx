@@ -3,12 +3,11 @@
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { ChevronDown, Send, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
@@ -18,6 +17,9 @@ import {
   useAgentModels,
 } from "@/components/agent/AgentModelPicker";
 import { ProviderIcon } from "@/components/agent/ProviderIcon";
+import { ComposerChromeProvider } from "@/components/agent/ComposerChrome";
+import { ComposerPopover } from "@/components/agent/ComposerPopover";
+import { LiquidMetalFrame } from "@/components/ui/liquid-metal-button";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
 const MAX_COMPOSER_HEIGHT = 148;
@@ -33,18 +35,7 @@ const SPRING = "cubic-bezier(0.175, 0.885, 0.32, 1.275)";
 function ComposerModelChip() {
   const [open, setOpen] = useState(false);
   const { data, saving, choose, activeLabel, available } = useAgentModels(true);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   if (!available || !data) return null;
 
@@ -52,53 +43,39 @@ function ComposerModelChip() {
   const provider = activeRef?.split("/")[0] ?? "openai";
 
   return (
-    <div ref={wrapRef} className="relative min-w-0">
+    <div className="relative shrink-0">
       <button
+        ref={triggerRef}
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label={activeLabel ?? "model"}
-        className={cn(
-          "flex min-h-9 max-w-40 items-center gap-1 rounded-full px-2 py-1 text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground sm:min-h-7",
-          open && "bg-muted text-foreground",
-        )}
+        className={cn("metal-chip max-w-40", open && "text-foreground")}
       >
         <ProviderIcon provider={provider} size={13} className="shrink-0 opacity-80" />
-        <span className="truncate text-xs font-semibold" dir="ltr">
+        <span className="truncate text-xs font-medium" dir="ltr">
           {activeLabel}
         </span>
-        <ChevronDown
-          className={cn(
-            "h-3 w-3 shrink-0 transition-transform duration-300",
-            open && "rotate-180",
-          )}
-          aria-hidden
-        />
       </button>
 
-      <div
-        data-testid="composer-model-menu"
-        style={{ transformOrigin: "bottom", transitionTimingFunction: SPRING }}
-        className={cn(
-          "absolute bottom-full start-0 z-50 mb-2 w-64 overflow-hidden rounded-2xl border border-border bg-card/95 shadow-xl backdrop-blur-md transition-all duration-300",
-          open
-            ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
-            : "pointer-events-none translate-y-2 scale-95 opacity-0",
-        )}
+      <ComposerPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={triggerRef}
+        title={activeLabel ?? "model"}
+        testId="composer-model-menu"
       >
-        <div className="composer-menu-scroll max-h-72 p-1">
-          <ModelChoiceList
-            models={data.models}
-            selected={data.selected}
-            saving={saving}
-            onChoose={(ref) => {
-              void choose(ref);
-              setOpen(false);
-            }}
-          />
-        </div>
-      </div>
+        <ModelChoiceList
+          models={data.models}
+          selected={data.selected}
+          saving={saving}
+          onChoose={(ref) => {
+            void choose(ref);
+            setOpen(false);
+          }}
+        />
+      </ComposerPopover>
     </div>
   );
 }
@@ -127,6 +104,8 @@ export function AgentChatInput({
   const [value, setValue] = useState("");
   const [launching, setLaunching] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const shellRef = useRef<HTMLFormElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-grow: reset to auto first so the box can also shrink back down.
   useLayoutEffect(() => {
@@ -149,21 +128,24 @@ export function AgentChatInput({
 
   return (
     <form
+      ref={shellRef}
       data-testid="chat-composer"
-      className="chat-composer-shell relative px-3 pt-1 pb-[max(.5rem,env(safe-area-inset-bottom))]"
+      className="chat-composer-shell relative overflow-visible px-3 pt-1 pb-[max(.5rem,env(safe-area-inset-bottom))]"
       dir={dir}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
     >
+      <ComposerChromeProvider value={{ hostRef: frameRef, rootRef: shellRef }}>
       {/*
         Two tiers, not one row: the text gets the full width to grow into, and
         the controls sit on their own line underneath. Crowding a model picker,
         a chart toggle and a send button into the same line as the caret left
         the message itself the narrowest thing in the composer.
       */}
-      <div className="chat-gpt-input mx-auto flex w-full max-w-3xl flex-col gap-1 px-2 py-1.5">
+      <LiquidMetalFrame ref={frameRef} className="chat-gpt-input mx-auto w-full max-w-3xl">
+        <div className="flex flex-col px-4 pb-4 pt-5">
         <textarea
           ref={textareaRef}
           value={value}
@@ -179,10 +161,10 @@ export function AgentChatInput({
           placeholder={t("agent.input_placeholder")}
           aria-label={t("agent.input_placeholder")}
           disabled={running}
-          className="max-h-[148px] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:text-sm"
+          className="mb-4 max-h-[148px] min-h-4 w-full resize-none bg-transparent p-0 text-sm leading-4 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
 
-        <div className="flex items-center gap-0.5">
+        <div className="composer-chip-row">
           {/*
             One row for what governs the next turn: which model answers and
             which timeframe is up. There is no instrument picker — the
@@ -198,9 +180,9 @@ export function AgentChatInput({
             End of the row: ONE morphing action slot — the send arrow and the
             stop square crossfade in place (rotate + scale) instead of
             swapping DOM, so the button never jumps under the pointer.
-            Model pick lives on ComposerModelChip; a second plus was a duplicate.
+            Same chip chrome as the model / risk controls.
           */}
-          <div className="ms-auto flex items-center gap-0.5">
+          <div className="ms-auto flex items-center">
             <button
               type={running ? "button" : "submit"}
               onClick={running ? onCancel : undefined}
@@ -208,10 +190,8 @@ export function AgentChatInput({
               aria-label={running ? t("agent.cancel") : t("agent.send")}
               title={running ? t("agent.cancel") : t("agent.send")}
               className={cn(
-                "group relative flex size-11 shrink-0 items-center justify-center rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9",
-                running
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : "bg-foreground text-background hover:opacity-90",
+                "metal-chip metal-chip-icon group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                running && "text-destructive",
                 !running && canSend && "composer-send-ready",
                 !running && !canSend && "opacity-40",
               )}
@@ -227,8 +207,8 @@ export function AgentChatInput({
                 style={{ transitionTimingFunction: SPRING }}
                 aria-hidden
               >
-                <Send
-                  className="composer-send-glyph h-4 w-4 transition-transform duration-300 rtl:-scale-x-100"
+                <ArrowUp
+                  className="composer-send-glyph size-4"
                   strokeWidth={2.25}
                 />
               </span>
@@ -247,7 +227,9 @@ export function AgentChatInput({
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      </LiquidMetalFrame>
+      </ComposerChromeProvider>
     </form>
   );
 }

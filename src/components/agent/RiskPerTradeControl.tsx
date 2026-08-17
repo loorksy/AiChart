@@ -76,9 +76,8 @@ export function RiskPerTradeControl() {
         title={t("settings.trading.risk_label")}
         data-testid="composer-risk"
         className={cn(
-          "flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold tabular-nums transition-colors duration-150 ease-out sm:min-h-9",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          open ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          "metal-chip shrink-0 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          open && "text-foreground",
         )}
       >
         <span dir="ltr">{value.toFixed(1)}%</span>
@@ -90,18 +89,21 @@ export function RiskPerTradeControl() {
         anchorRef={triggerRef}
         title={t("settings.trading.risk_label")}
         labelledBy={labelId}
+        testId="composer-risk-menu"
       >
-        <div className="p-3">
+        <div className="px-2.5 py-2">
           <p id={labelId} className="sr-only">
             {t("settings.trading.risk_label")}
           </p>
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            <output className="text-3xl font-semibold tabular-nums" dir="ltr">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <output className="text-xl font-semibold tabular-nums" dir="ltr">
               {draft.toFixed(1)}%
             </output>
-            <span className="text-[11px] text-muted-foreground">
-              {saving ? t("settings.saving") : t("settings.trading.only_setting")}
-            </span>
+            {saving ? (
+              <span className="text-[11px] text-muted-foreground">
+                {t("settings.saving")}
+              </span>
+            ) : null}
           </div>
           <input
             type="range"

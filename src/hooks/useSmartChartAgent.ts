@@ -42,6 +42,8 @@ export interface AgentChatMessage {
   /** Live streamed answer text (cumulative, sanitized) for general answers.
    *  UI-only — the final event replaces the whole bubble. */
   streamText?: string | null;
+  /** Wall-clock of this turn (ms). Shown next to the copy control. */
+  createdAt?: number;
 }
 
 /** Persisted-message payload handed to the chat-history store on each turn. */

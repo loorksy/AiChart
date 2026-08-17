@@ -21,6 +21,7 @@ function recordToMessage(rec: AgentChatMessageRecord): AgentChatMessage {
     content: rec.content,
     result: rec.role === "assistant" ? result : undefined,
     options: result?.options,
+    createdAt: rec.createdAt,
   };
 }
 

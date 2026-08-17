@@ -9,18 +9,18 @@ import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
+/**
+ * Bare icons, no metal ring. Chromatic glow on the header competed with
+ * the composer and the suggestion pills.
+ */
+const ICON_BUTTON =
+  "flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
 /** Fired at the workspace so the chart re-requests its bars in place. */
 export const CHART_RELOAD_EVENT = "aichart:reload-chart";
 
 /** Fired at the workspace to raise/lower the chart surface. */
 export const CHART_TOGGLE_EVENT = "aichart:toggle-chart";
-
-/**
- * Bare icons, no boxes. A row of outlined buttons reads as four competing
- * controls; the glyph alone with a hover wash is enough at this size.
- */
-const ICON_BUTTON =
-  "flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 /**
  * The console header, identical for traders and admins.
