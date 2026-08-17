@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AdminLimits, PublicUser } from "@/lib/types";
 import { displayNameFromEmail } from "@/lib/displayName";
 import { APP_WAKE_EVENT } from "@/lib/appWake";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 export interface QuotaInfo {
   used: number;
@@ -38,7 +39,7 @@ export function useMe(refreshKey = 0) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/me");
+      const res = await fetchWithTimeout("/api/me", { timeoutMs: 8_000 });
       if (res.status === 401) {
         setData(null);
         return;

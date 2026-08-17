@@ -630,6 +630,7 @@ export const en = {
   "layout.account_balance": "Account balance",
   "layout.mt_setup": "MetaTrader disconnected — open connection settings",
   "layout.agent_unavailable": "AI is not enabled on the server — analysis is unavailable.",
+  "layout.server_reconnecting": "Lost the server — reconnecting…",
 
   // Settings
   "settings.title": "Settings",

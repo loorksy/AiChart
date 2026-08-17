@@ -616,6 +616,7 @@ export const ar: Record<TranslationKey, string> = {
   "layout.account_balance": "رصيد الحساب",
   "layout.mt_setup": "MetaTrader غير متصل — افتح إعدادات الاتصال",
   "layout.agent_unavailable": "الذكاء الاصطناعي غير مُفعّل على الخادم — التحليل غير متاح.",
+  "layout.server_reconnecting": "انقطع الاتصال بالخادم — نعيد الربط…",
 
   // Settings
   "settings.title": "الإعدادات",

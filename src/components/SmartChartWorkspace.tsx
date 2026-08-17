@@ -60,6 +60,7 @@ import {
 } from "@/lib/layout/chatLayout";
 import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { normalizeInterval } from "@/lib/intervals";
 import { clearAgentDrawings } from "@/lib/agent/drawings/drawingOwnership";
 import {
@@ -401,8 +402,9 @@ function SmartChartWorkspaceInner({
       if (document.visibilityState !== "visible") return;
       if (savePendingRef.current || isAnalyzing) return;
       try {
-        const res = await fetch(`/api/chart/layout?id=${layoutId}`, {
+        const res = await fetchWithTimeout(`/api/chart/layout?id=${layoutId}`, {
           cache: "no-store",
+          timeoutMs: 6_000,
         });
         if (!res.ok) return;
         const d = (await res.json()) as {

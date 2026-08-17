@@ -30,10 +30,26 @@ describe("app wake + live reconnect", () => {
     assert.match(src, /tickReconnectDelayMs/);
     assert.match(src, /APP_WAKE_EVENT/);
     assert.match(src, /addEventListener\("online"/);
+    assert.match(src, /openStream\(true\)/);
+    assert.match(src, /TICK_STALE_MS = 12_000/);
+    assert.match(src, /fetchWithTimeout/);
     assert.doesNotMatch(
       src,
       /source\.onerror = \(\) => \{\s*streamAlive = false;\s*source\.close\(\);\s*sub\.source = undefined;\s*\}/,
     );
+  });
+
+  it("probes the origin on a timer and times out hung fetches", () => {
+    const watch = read("lib/connectionWatchdog.ts");
+    const fetchSrc = read("lib/fetchWithTimeout.ts");
+    const bridge = read("components/AppWakeBridge.tsx");
+    const oanda = read("lib/markets/oandaStream.ts");
+    assert.match(watch, /startConnectionWatchdog/);
+    assert.match(watch, /\/api\/healthz/);
+    assert.match(fetchSrc, /controller.abort/);
+    assert.match(bridge, /startConnectionWatchdog/);
+    assert.match(oanda, /controller.abort/);
+    assert.match(oanda, /20_000/);
   });
 
   it("a failed /api/me no longer wipes the signed-in session", () => {

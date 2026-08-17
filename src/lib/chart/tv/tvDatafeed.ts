@@ -18,6 +18,10 @@ import {
   klinesClientKey,
 } from "@/lib/ohlc/klinesClientCache";
 import { APP_WAKE_EVENT, tickReconnectDelayMs } from "@/lib/appWake";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+
+/** No PRICE/tick for this long → treat the SSE as a zombie and poll again. */
+export const TICK_STALE_MS = 12_000;
 
 /** Upstream history pulls reject ranges over ~5000 candles — stay safely under. */
 const MAX_BARS_PER_REQUEST = 4000;
@@ -128,6 +132,7 @@ const CLOUD_EXCHANGE = "MT5 CLOUD";
 
 type BarSubscription = {
   timer?: ReturnType<typeof setInterval>;
+  staleTimer?: ReturnType<typeof setInterval>;
   source?: EventSource;
   reconnectTimer?: ReturnType<typeof setTimeout>;
   onVisibility?: () => void;
@@ -176,8 +181,9 @@ export function createAiChartDatafeed(
     // badge for a one-off hiccup.
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
           cache: "no-store",
+          timeoutMs: 8_000,
         });
         if (res.ok) {
           const data = (await res.json()) as {
@@ -389,6 +395,7 @@ export function createAiChartDatafeed(
       const barMs = barDurationMs(interval) || 60_000;
       let forming: Bar | null = null;
       let streamAlive = false;
+      let lastTickAt = 0;
 
       const emit = (bar: Bar) => {
         forming = bar;
@@ -407,8 +414,9 @@ export function createAiChartDatafeed(
 
       const poll = async () => {
         // Fallback / bootstrap: fresh=1 bypasses cache so the forming bar is
-        // current. Kept forever for the platform feed and when the stream dies.
-        if (streamAlive) return;
+        // current. A "ready" SSE with no ticks is a zombie — still poll.
+        const stale = lastTickAt === 0 || Date.now() - lastTickAt > TICK_STALE_MS;
+        if (streamAlive && !stale) return;
         const { candles: rows } = await fetchCandles(ticker, interval, {
           limit: 2,
           fresh: true,
@@ -486,6 +494,7 @@ export function createAiChartDatafeed(
               if (!Number.isFinite(mid)) return;
               streamAlive = true;
               reconnectAttempt = 0;
+              lastTickAt = Date.now();
               applyTickPrice(mid, time);
             } catch {
               /* malformed frame — keep listening */
@@ -499,11 +508,15 @@ export function createAiChartDatafeed(
           };
         };
 
-        const openStream = () => {
+        const openStream = (force = false) => {
           if (typeof document !== "undefined" && document.visibilityState === "hidden") {
             return;
           }
-          if (sub.source && sub.source.readyState !== EventSource.CLOSED) {
+          if (
+            !force &&
+            sub.source &&
+            sub.source.readyState !== EventSource.CLOSED
+          ) {
             return;
           }
           sub.source?.close();
@@ -536,9 +549,20 @@ export function createAiChartDatafeed(
           }
           reconnectAttempt = 0;
           clearReconnect();
-          openStream();
+          streamAlive = false;
+          openStream(true);
           void poll();
         };
+
+        sub.staleTimer = setInterval(() => {
+          if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+            return;
+          }
+          if (lastTickAt === 0 || Date.now() - lastTickAt <= TICK_STALE_MS) return;
+          streamAlive = false;
+          openStream(true);
+          void poll();
+        }, 4_000);
 
         openStream();
         document.addEventListener("visibilitychange", onVisibility);
@@ -555,6 +579,7 @@ export function createAiChartDatafeed(
       const sub = subscribers.get(listenerGuid);
       if (!sub) return;
       if (sub.timer) clearInterval(sub.timer);
+      if (sub.staleTimer) clearInterval(sub.staleTimer);
       if (sub.reconnectTimer) clearTimeout(sub.reconnectTimer);
       sub.source?.close();
       if (sub.onVisibility) {
