@@ -33,6 +33,8 @@ describe("i18n core", () => {
     assert.equal(t("en", "agent.processing"), "Processing");
     assert.equal(t("ar", "agent.error"), "حدث خطأ");
     assert.equal(t("en", "agent.error"), "Something went wrong");
+    assert.equal(t("ar", "agent.reconnecting"), "انقطع الاتصال — نعيد المحاولة…");
+    assert.equal(t("en", "agent.reconnecting"), "Connection lost — reconnecting…");
     assert.equal(t("ar", "agent.copy"), "نسخ الرسالة");
     assert.equal(t("en", "agent.copy"), "Copy message");
     assert.equal(t("ar", "agent.copied"), "تم نسخ الرسالة");

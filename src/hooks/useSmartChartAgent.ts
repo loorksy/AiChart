@@ -24,6 +24,12 @@ import {
   subscribeLiveRun,
   updateLiveRun,
 } from "@/lib/agent/liveRunStore";
+import { APP_WAKE_EVENT, tickReconnectDelayMs } from "@/lib/appWake";
+import {
+  pickRecoveredAssistant,
+  type RecoverableChatMessage,
+} from "@/lib/agent/recoverPendingTurn";
+import { t } from "@/lib/i18n";
 
 export interface AgentChatMessage {
   id: string;
@@ -115,20 +121,150 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   const [stageEvents, setStageEvents] = useState<AgentStageEvent[]>([]);
   const [liveNote, setLiveNote] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string>(opts.chatId ?? uuid());
   // Idempotency: a mutationId is applied to the chart at most once, ever.
   const appliedMutationsRef = useRef<Set<string>>(new Set());
+  const recoverRef = useRef<{
+    chatId: string;
+    pendingId: string;
+    userContent: string;
+    inputMode: "text" | "voice";
+  } | null>(null);
+  const recoverInFlightRef = useRef(false);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    recoverRef.current = null;
     setLiveNote(null);
     setRunning(false);
+    setReconnecting(false);
     // An explicit cancel forgets the live run — nothing to re-attach to.
     endLiveRun(sessionIdRef.current);
   }, []);
+
+  const recoverLoopRef = useRef<() => Promise<void>>(async () => {});
+
+  const claimRecovered = useCallback(
+    async (job: {
+      chatId: string;
+      pendingId: string;
+      userContent: string;
+      inputMode: "text" | "voice";
+    }): Promise<boolean> => {
+      const res = await fetch(
+        `/api/agent/chats/${encodeURIComponent(job.chatId)}/messages`,
+      );
+      if (!res.ok) return false;
+      const json = (await res.json()) as { messages?: RecoverableChatMessage[] };
+      const found = pickRecoveredAssistant(json.messages ?? [], job.userContent);
+      if (!found) return false;
+
+      const result = found.result;
+      if (result) {
+        const turnActivity = result.activityEvents ?? [];
+        updateLiveRun(job.chatId, job.pendingId, {
+          running: false,
+          final: {
+            result,
+            content: found.content,
+            activityEvents: turnActivity.filter(
+              (e) => e.visible !== false && e.message.trim().length > 0,
+            ),
+            options: result.options ?? found.options ?? [],
+          },
+        });
+        setMessages((prev) =>
+          applyFinal(prev, job.pendingId, {
+            content: found.content,
+            result,
+            activityEvents: turnActivity.filter(
+              (e) => e.visible !== false && e.message.trim().length > 0,
+            ),
+            options: result.options ?? found.options ?? [],
+            createdAt: found.createdAt,
+          }),
+        );
+        opts.onResult?.(result);
+        const mutations = result.drawingMutations ?? [];
+        const fresh = mutations.filter(
+          (m) => !appliedMutationsRef.current.has(m.mutationId),
+        );
+        if (fresh.length) {
+          for (const m of fresh) appliedMutationsRef.current.add(m.mutationId);
+          opts.applyDrawingMutations?.(fresh);
+        }
+        if (job.inputMode === "voice") opts.onVoiceFinal?.(result);
+      } else {
+        setMessages((prev) =>
+          applyFinal(prev, job.pendingId, {
+            content: found.content,
+            createdAt: found.createdAt,
+          }),
+        );
+      }
+
+      recoverRef.current = null;
+      setReconnecting(false);
+      setRunning(false);
+      setLiveNote(null);
+      setActivityEvents([]);
+      setStageEvents([]);
+      setError(null);
+      endLiveRun(job.chatId, job.pendingId);
+      return true;
+    },
+    [opts],
+  );
+
+  const recoverLoop = useCallback(async () => {
+    const job = recoverRef.current;
+    if (!job || recoverInFlightRef.current) return;
+    recoverInFlightRef.current = true;
+    try {
+      const deadline = Date.now() + 4 * 60_000;
+      let attempt = 0;
+      while (Date.now() < deadline) {
+        if (recoverRef.current !== job) return;
+        try {
+          if (await claimRecovered(job)) return;
+        } catch {
+          /* still down — wait and try again */
+        }
+        await new Promise((r) =>
+          setTimeout(r, tickReconnectDelayMs(attempt) + 800),
+        );
+        attempt += 1;
+      }
+      if (recoverRef.current !== job) return;
+      recoverRef.current = null;
+      setReconnecting(false);
+      setRunning(false);
+      setLiveNote(null);
+      setError(t(opts.locale ?? "ar", "agent.error"));
+      setMessages((prev) => dropPending(prev, job.pendingId));
+      updateLiveRun(job.chatId, job.pendingId, { running: false });
+    } finally {
+      recoverInFlightRef.current = false;
+    }
+  }, [claimRecovered, opts.locale]);
+
+  recoverLoopRef.current = recoverLoop;
+
+  useEffect(() => {
+    const onWake = () => {
+      if (recoverRef.current) void recoverLoop();
+    };
+    window.addEventListener(APP_WAKE_EVENT, onWake);
+    window.addEventListener("online", onWake);
+    return () => {
+      window.removeEventListener(APP_WAKE_EVENT, onWake);
+      window.removeEventListener("online", onWake);
+    };
+  }, [recoverLoop]);
 
   // Navigation persistence (Phase 3): the stream is NOT aborted on unmount.
   // The loop keeps running (state setters on an unmounted hook are no-ops),
@@ -231,6 +367,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       // flight; the final event replaces it in place (same id → no duplicate).
       const pendingId = uuid();
       let finalized = false;
+      let httpFailed = false;
 
       setMessages((prev) =>
         appendUserAndPending(prev, { id: uuid(), content: text }, pendingId),
@@ -282,10 +419,11 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         });
 
         if (!response.ok || !response.body) {
+          httpFailed = true;
           const data = (await response.json().catch(() => null)) as
             | { error?: string }
             | null;
-          throw new Error(data?.error ?? "تعذّر بدء الوكيل.");
+          throw new Error(data?.error ?? t(opts.locale ?? "ar", "agent.error"));
         }
 
         const reader = response.body.getReader();
@@ -420,26 +558,46 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               // showing the banner too would surface the same failure twice.
               if (finalized) continue;
               const msg =
-                (data as { error?: string }).error ?? "حدث خطأ في الوكيل.";
+                (data as { error?: string }).error ?? t(opts.locale ?? "ar", "agent.error");
               setError(msg);
             }
           }
         }
+        if (!finalized && !controller.signal.aborted) {
+          recoverRef.current = { chatId, pendingId, userContent: text, inputMode };
+          setReconnecting(true);
+          setError(null);
+          setRunning(true);
+          updateLiveRun(chatId, pendingId, { running: true });
+        }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           // user cancelled — no error surfaced
-        } else {
+        } else if (httpFailed) {
           setError(
-            err instanceof Error ? err.message : "حدث خطأ أثناء تشغيل الوكيل.",
+            err instanceof Error ? err.message : t(opts.locale ?? "ar", "agent.error"),
           );
+        } else {
+          // Stream / network dropped after the run started (or the POST may
+          // have reached the server). Keep the pending bubble and claim the
+          // persisted final once the socket is back.
+          recoverRef.current = { chatId, pendingId, userContent: text, inputMode };
+          setReconnecting(true);
+          setError(null);
+          setRunning(true);
+          updateLiveRun(chatId, pendingId, { running: true });
         }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
-        setLiveNote(null);
-        setRunning(false);
-        // No final arrived (error / cancel / dropped stream) → drop the pending
-        // bubble so it never gets stuck showing a ticker.
-        if (!finalized) {
+        if (finalized) {
+          setLiveNote(null);
+          setRunning(false);
+        } else if (recoverRef.current?.pendingId === pendingId) {
+          void recoverLoopRef.current();
+        } else {
+          setLiveNote(null);
+          setRunning(false);
+          setReconnecting(false);
           setMessages((prev) => dropPending(prev, pendingId));
           updateLiveRun(chatId, pendingId, { running: false });
         }
@@ -455,10 +613,21 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       stageEvents,
       liveNote,
       running,
+      reconnecting,
       error,
       sendMessage,
       cancel,
     }),
-    [messages, activityEvents, stageEvents, liveNote, running, error, sendMessage, cancel],
+    [
+      messages,
+      activityEvents,
+      stageEvents,
+      liveNote,
+      running,
+      reconnecting,
+      error,
+      sendMessage,
+      cancel,
+    ],
   );
 }

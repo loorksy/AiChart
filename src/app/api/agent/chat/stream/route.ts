@@ -40,12 +40,13 @@ import { recordRequestWithoutFinal } from "@/lib/metrics";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { buildAgentFallbackResult } from "@/lib/agent/fallback";
 import { classifyAgentError, userMessageForFailure } from "@/lib/agent/errorTaxonomy";
-import type { AgentActivityEvent } from "@/lib/agent/types";
+import type { AgentActivityEvent, AgentFinalResult } from "@/lib/agent/types";
 import { unfinishedStages, type AgentStageEvent } from "@/lib/agent/stageEvents";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
-import { getMessages } from "@/lib/agent/chatHistory/chatStore";
+import { appendMessage, getMessages } from "@/lib/agent/chatHistory/chatStore";
+import { refreshChatMetaAfterAssistantTurn } from "@/lib/agent/chatHistory/refreshChatMeta";
 import { stripInternalFieldsFromClientResult } from "@/lib/agent/userSafeOutbound";
 import {
   adaptAuthorizedChatHistory,
@@ -578,8 +579,15 @@ export async function POST(req: NextRequest) {
             await commitTrialInteraction(user.id, requestId);
           }
 
+          const safeResult = stripInternalFieldsFromClientResult(result);
+          // Persist even if the browser dropped — a reconnecting client
+          // polls history and claims this turn instead of dying mid-run.
+          await persistStreamAssistant(user.id, sessionId, safeResult, {
+            symbol: body.chartContext?.symbol,
+            interval: body.chartContext?.interval,
+          });
           send("final", {
-            ...stripInternalFieldsFromClientResult(result),
+            ...safeResult,
             sessionId,
             activityEvents,
             // The run's stage checklist, persisted with the message so a
@@ -662,8 +670,13 @@ export async function POST(req: NextRequest) {
                 degradedStages: unfinishedStages(stageEvents),
               },
             );
+            const safeFallback = stripInternalFieldsFromClientResult(fallbackResult);
+            await persistStreamAssistant(user.id, sessionId, safeFallback, {
+              symbol: body.chartContext?.symbol,
+              interval: body.chartContext?.interval,
+            });
             send("final", {
-              ...stripInternalFieldsFromClientResult(fallbackResult),
+              ...safeFallback,
               sessionId,
               activityEvents,
               stages: stageEvents,
@@ -729,6 +742,30 @@ export async function POST(req: NextRequest) {
       );
     }
     return handleError(err);
+  }
+}
+
+async function persistStreamAssistant(
+  userId: number,
+  chatId: string,
+  result: AgentFinalResult,
+  refs: { symbol?: string; interval?: string },
+): Promise<void> {
+  try {
+    await appendMessage(userId, chatId, {
+      role: "assistant",
+      content: result.summary,
+      result,
+      recommendationId: result.recommendationId ?? result.activeRecommendation?.id,
+      analysisId: result.analysisId,
+      symbol: refs.symbol,
+      interval: refs.interval,
+    });
+    void refreshChatMetaAfterAssistantTurn(userId, chatId);
+  } catch (error) {
+    log.warn("agent.stream.persist_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

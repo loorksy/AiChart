@@ -64,6 +64,13 @@ test("agent chat history store persists, loads, titles, and scopes chats", async
   });
   assert.ok(assistantMsg, "assistant message stored");
 
+  const duplicate = await store.appendMessage(owner, chat.id, {
+    role: "assistant",
+    content: "توصية شراء على الذهب.",
+    result: { decision: "buy", summary: "توصية شراء على الذهب." },
+  });
+  assert.equal(duplicate?.id, assistantMsg?.id, "identical assistant is not stored twice");
+
   // --- Old chat loads its messages in order, with references + result ---
   const messages = await store.getMessages(owner, chat.id);
   assert.equal(messages.length, 2);

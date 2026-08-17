@@ -355,6 +355,7 @@ export const en = {
   "agent.stage.resumed": "(from a previous run)",
   "agent.run_details": "Run details",
   "agent.error": "Something went wrong",
+  "agent.reconnecting": "Connection lost — reconnecting…",
   "agent.copy": "Copy message",
   "agent.copied": "Message copied",
 

@@ -33,6 +33,8 @@ describe("metal chrome", () => {
     assert.match(src, /href\?:/);
     assert.match(src, /dispose/);
     assert.match(src, /export const LiquidMetalFrame/);
+    assert.match(src, /APP_WAKE_EVENT/);
+    assert.match(src, /webglcontextlost/);
   });
 
   it("composer frame fills with metal so the inset face reveals all four sides", () => {

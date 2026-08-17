@@ -17,6 +17,7 @@ import {
   setKlinesClientCache,
   klinesClientKey,
 } from "@/lib/ohlc/klinesClientCache";
+import { APP_WAKE_EVENT, tickReconnectDelayMs } from "@/lib/appWake";
 
 /** Upstream history pulls reject ranges over ~5000 candles — stay safely under. */
 const MAX_BARS_PER_REQUEST = 4000;
@@ -128,7 +129,9 @@ const CLOUD_EXCHANGE = "MT5 CLOUD";
 type BarSubscription = {
   timer?: ReturnType<typeof setInterval>;
   source?: EventSource;
+  reconnectTimer?: ReturnType<typeof setTimeout>;
   onVisibility?: () => void;
+  onWake?: () => void;
 };
 
 /** Datafeed backed by AiChart's own /api/market/klines + /api/instruments. */
@@ -450,68 +453,99 @@ export function createAiChartDatafeed(
       const timer = setInterval(() => void poll(), pollMsForResolution(resolution));
       const sub: BarSubscription = { timer };
 
-      // Cloud charts: MetaApi streaming via SSE. One subscription per open
-      // chart; closing the EventSource (unsubscribe / tab hidden) tears it down.
+      // Live ticks via SSE. A dropped socket used to stay closed for the
+      // rest of the visible session — the chart looked frozen even though
+      // open/close still worked. Reopen with backoff; poll covers the gap.
       if (typeof EventSource !== "undefined") {
-        const source = new EventSource(
-          `/api/market/ticks?symbol=${encodeURIComponent(ticker)}`,
-        );
-        sub.source = source;
-        source.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data) as {
-              type?: string;
-              mid?: number;
-              time?: number;
-            };
-            if (data.type === "ready") {
-              streamAlive = true;
-              return;
-            }
-            if (data.type !== "tick") return;
-            const mid = Number(data.mid);
-            const time = Number(data.time) || Date.now();
-            if (!Number.isFinite(mid)) return;
-            streamAlive = true;
-            applyTickPrice(mid, time);
-          } catch {
-            /* malformed frame — keep listening */
+        let reconnectAttempt = 0;
+
+        const clearReconnect = () => {
+          if (sub.reconnectTimer) {
+            clearTimeout(sub.reconnectTimer);
+            sub.reconnectTimer = undefined;
           }
         };
-        source.onerror = () => {
-          // 204 / auth / network: fall back to the timer without killing the chart.
-          streamAlive = false;
-          source.close();
-          sub.source = undefined;
-        };
 
-        const reopenStream = () => {
-          if (sub.source) return;
-          const next = new EventSource(
-            `/api/market/ticks?symbol=${encodeURIComponent(ticker)}`,
-          );
-          sub.source = next;
-          next.onmessage = source.onmessage;
-          next.onerror = () => {
+        const bindSource = (source: EventSource) => {
+          sub.source = source;
+          source.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data) as {
+                type?: string;
+                mid?: number;
+                time?: number;
+              };
+              if (data.type === "ready") {
+                streamAlive = true;
+                reconnectAttempt = 0;
+                return;
+              }
+              if (data.type !== "tick") return;
+              const mid = Number(data.mid);
+              const time = Number(data.time) || Date.now();
+              if (!Number.isFinite(mid)) return;
+              streamAlive = true;
+              reconnectAttempt = 0;
+              applyTickPrice(mid, time);
+            } catch {
+              /* malformed frame — keep listening */
+            }
+          };
+          source.onerror = () => {
             streamAlive = false;
-            next.close();
-            sub.source = undefined;
+            source.close();
+            if (sub.source === source) sub.source = undefined;
+            scheduleReconnect();
           };
         };
+
+        const openStream = () => {
+          if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+            return;
+          }
+          if (sub.source && sub.source.readyState !== EventSource.CLOSED) {
+            return;
+          }
+          sub.source?.close();
+          sub.source = undefined;
+          bindSource(
+            new EventSource(`/api/market/ticks?symbol=${encodeURIComponent(ticker)}`),
+          );
+        };
+
+        const scheduleReconnect = () => {
+          if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+            return;
+          }
+          if (sub.reconnectTimer) return;
+          const delay = tickReconnectDelayMs(reconnectAttempt);
+          reconnectAttempt += 1;
+          sub.reconnectTimer = setTimeout(() => {
+            sub.reconnectTimer = undefined;
+            openStream();
+          }, delay);
+        };
+
         const onVisibility = () => {
           if (document.visibilityState === "hidden") {
             streamAlive = false;
-            source.close();
+            clearReconnect();
+            sub.source?.close();
             sub.source = undefined;
             return;
           }
-          // Wake: reopen the stream; poll covers the gap until ready.
-          reopenStream();
+          reconnectAttempt = 0;
+          clearReconnect();
+          openStream();
           void poll();
         };
+
+        openStream();
         document.addEventListener("visibilitychange", onVisibility);
-        window.addEventListener("aichart:app-wake", onVisibility);
+        window.addEventListener(APP_WAKE_EVENT, onVisibility);
+        window.addEventListener("online", onVisibility);
         sub.onVisibility = onVisibility;
+        sub.onWake = onVisibility;
       }
 
       subscribers.set(listenerGuid, sub);
@@ -521,10 +555,12 @@ export function createAiChartDatafeed(
       const sub = subscribers.get(listenerGuid);
       if (!sub) return;
       if (sub.timer) clearInterval(sub.timer);
+      if (sub.reconnectTimer) clearTimeout(sub.reconnectTimer);
       sub.source?.close();
       if (sub.onVisibility) {
         document.removeEventListener("visibilitychange", sub.onVisibility);
-        window.removeEventListener("aichart:app-wake", sub.onVisibility);
+        window.removeEventListener(APP_WAKE_EVENT, sub.onVisibility);
+        window.removeEventListener("online", sub.onVisibility);
       }
       subscribers.delete(listenerGuid);
     },

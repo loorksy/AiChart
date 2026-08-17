@@ -354,6 +354,7 @@ export const ar: Record<TranslationKey, string> = {
   "agent.stage.resumed": "(من تشغيل سابق)",
   "agent.run_details": "تفاصيل التنفيذ",
   "agent.error": "حدث خطأ",
+  "agent.reconnecting": "انقطع الاتصال — نعيد المحاولة…",
   "agent.copy": "نسخ الرسالة",
   "agent.copied": "تم نسخ الرسالة",
 

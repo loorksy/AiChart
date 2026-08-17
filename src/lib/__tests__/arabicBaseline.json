@@ -100,7 +100,6 @@
   "src/components/settings/UserSkillsPanel.tsx": 4,
   "src/components/subscription/SubscribeClient.tsx": 8,
   "src/hooks/livePriceTypes.ts": 1,
-  "src/hooks/useSmartChartAgent.ts": 3,
   "src/lib/accountProfile.ts": 1,
   "src/lib/admin/overviewQueries.ts": 1,
   "src/lib/adminRoles.ts": 1,

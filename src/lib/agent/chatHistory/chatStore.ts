@@ -253,6 +253,17 @@ export async function appendMessage(
   const chat = await getChat(userId, chatId);
   if (!chat) return null;
 
+  // A dropped stream and the still-connected client can both try to persist
+  // the same assistant turn. Consecutive identical assistants are the same
+  // answer, not a new one.
+  if (input.role === "assistant") {
+    const recent = await getMessages(userId, chatId, 2);
+    const last = recent[recent.length - 1];
+    if (last?.role === "assistant" && last.content === input.content) {
+      return last;
+    }
+  }
+
   const now = monotonicNow();
   const id = uuid();
   const resultJson =

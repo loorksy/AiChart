@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { SkipLink } from "@/components/SkipLink";
 import { CookieConsent } from "@/components/CookieConsent";
+import { AppWakeBridge } from "@/components/AppWakeBridge";
 import "./globals.css";
 
 const cairo = Cairo({
@@ -82,6 +83,7 @@ export default function RootLayout({
             >
               {children}
             </div>
+            <AppWakeBridge />
             <CookieConsent />
           </ThemeProvider>
         </LocaleProvider>

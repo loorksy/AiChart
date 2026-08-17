@@ -19,6 +19,7 @@ import {
 } from "react";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { APP_WAKE_EVENT } from "@/lib/appWake";
 
 export interface LiquidMetalButtonProps {
   label?: string;
@@ -104,13 +105,30 @@ export const LiquidMetalFrame = forwardRef<
   { children: ReactNode; className?: string }
 >(function LiquidMetalFrame({ children, className }, ref) {
   const shaderRef = useRef<HTMLDivElement>(null);
+  const [shaderEpoch, setShaderEpoch] = useState(0);
+
+  useEffect(() => {
+    const host = shaderRef.current;
+    if (!host) return;
+    const bump = () => setShaderEpoch((n) => n + 1);
+    const onLost = (event: Event) => {
+      event.preventDefault();
+      bump();
+    };
+    window.addEventListener(APP_WAKE_EVENT, bump);
+    host.addEventListener("webglcontextlost", onLost);
+    return () => {
+      window.removeEventListener(APP_WAKE_EVENT, bump);
+      host.removeEventListener("webglcontextlost", onLost);
+    };
+  }, []);
 
   useEffect(() => {
     const host = shaderRef.current;
     if (!host) return;
     const mount = mountLiquidMetal(host, FRAME_UNIFORMS);
     return () => mount?.dispose();
-  }, []);
+  }, [shaderEpoch]);
 
   return (
     <div ref={ref} className={cn("liquid-metal-frame", className)}>
@@ -146,11 +164,28 @@ export function LiquidMetalButton({
   );
   const shaderRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<ShaderMount | null>(null);
+  const [shaderEpoch, setShaderEpoch] = useState(0);
   const hitRef = useRef<HTMLElement>(null);
   const rippleId = useRef(0);
   const styleId = useId().replace(/:/g, "");
 
   const isIcon = viewMode === "icon";
+
+  useEffect(() => {
+    const host = shaderRef.current;
+    if (!host) return;
+    const bump = () => setShaderEpoch((n) => n + 1);
+    const onLost = (event: Event) => {
+      event.preventDefault();
+      bump();
+    };
+    window.addEventListener(APP_WAKE_EVENT, bump);
+    host.addEventListener("webglcontextlost", onLost);
+    return () => {
+      window.removeEventListener(APP_WAKE_EVENT, bump);
+      host.removeEventListener("webglcontextlost", onLost);
+    };
+  }, []);
 
   useEffect(() => {
     const host = shaderRef.current;
@@ -163,7 +198,7 @@ export function LiquidMetalButton({
       mount?.dispose();
       mountRef.current = null;
     };
-  }, []);
+  }, [shaderEpoch]);
 
   const setSpeed = (speed: number) => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
