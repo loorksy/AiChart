@@ -56,6 +56,7 @@ describe("composer chrome", () => {
     assert.match(interval, /composer-interval-menu/);
     assert.match(interval, /composer-sheet-item/);
     assert.match(risk, /composer-risk-menu/);
+    assert.doesNotMatch(risk, /only_setting/);
   });
 
   it("uses a chip-styled send control with a live ArrowUp glyph", () => {

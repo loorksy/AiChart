@@ -99,9 +99,11 @@ export function RiskPerTradeControl() {
             <output className="text-xl font-semibold tabular-nums" dir="ltr">
               {draft.toFixed(1)}%
             </output>
-            <span className="text-[11px] text-muted-foreground">
-              {saving ? t("settings.saving") : t("settings.trading.only_setting")}
-            </span>
+            {saving ? (
+              <span className="text-[11px] text-muted-foreground">
+                {t("settings.saving")}
+              </span>
+            ) : null}
           </div>
           <input
             type="range"
