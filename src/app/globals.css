@@ -876,20 +876,25 @@ label {
   border: none !important;
   box-shadow: none !important;
 }
-.chat-panel-shell > .chat-composer-shell {
+.chat-panel-shell > .chat-composer-dock {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
+  z-index: 20;
+  background: transparent;
 }
 .chat-scroll-region {
   position: relative;
   z-index: 0;
 }
-/* Docked composer sits on top of the thread — reserve its height.
-   The empty hero keeps the composer in-flow, so this padding would
-   shove the greeting toward the top and leave a black void below. */
+/* Docked composer overlays the thread. Reserve its live height so the last
+   turn sits fully above it — measured via --composer-height (ResizeObserver).
+   The empty hero keeps the composer in-flow, so this padding would shove
+   the greeting toward the top and leave a void below. */
 .chat-scroll-region:not([data-hero]) {
-  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(
+    var(--composer-height, 7.5rem) + env(safe-area-inset-bottom, 0px) + 1.5rem
+  );
 }
 /* Upper chat fade intentionally removed — content scrolls cleanly under the header. */
 

@@ -1,7 +1,16 @@
 "use client";
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
-import { useCallback, useEffect, useImperativeHandle, useState, forwardRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  forwardRef,
+  type ReactNode,
+} from "react";
 import { useChatStickToBottom } from "@/hooks/useChatStickToBottom";
 import type { AgentChartContext, AgentFinalResult } from "@/lib/agent/types";
 import {
@@ -182,6 +191,26 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       hydrating ? "h" : "r",
     ].join(":");
     const { scrollerRef, pin } = useChatStickToBottom(!isHero, followKey, chatId ?? "");
+    const composerDockRef = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+      if (isHero) return;
+      const dock = composerDockRef.current;
+      const scroller = scrollerRef.current;
+      if (!dock || !scroller) return;
+      const apply = () => {
+        scroller.style.setProperty("--composer-height", `${dock.offsetHeight}px`);
+      };
+      apply();
+      if (typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(apply);
+      observer.observe(dock);
+      return () => {
+        observer.disconnect();
+        scroller.style.removeProperty("--composer-height");
+      };
+    }, [isHero, scrollerRef]);
+
     const sendAndFollow = useCallback(
       (message: string, opts?: { inputMode?: "text" | "voice" }) => {
         pin();
@@ -447,7 +476,11 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
           )}
         </div>
 
-        {!isHero && composer}
+        {!isHero && (
+          <div ref={composerDockRef} className="chat-composer-dock">
+            {composer}
+          </div>
+        )}
       </div>
     );
   },
