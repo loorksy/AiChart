@@ -191,15 +191,16 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       hydrating ? "h" : "r",
     ].join(":");
     const { scrollerRef, pin } = useChatStickToBottom(!isHero, followKey, chatId ?? "");
+    const panelRef = useRef<HTMLDivElement>(null);
     const composerDockRef = useRef<HTMLDivElement>(null);
 
     useLayoutEffect(() => {
       if (isHero) return;
       const dock = composerDockRef.current;
-      const scroller = scrollerRef.current;
-      if (!dock || !scroller) return;
+      const panel = panelRef.current;
+      if (!dock || !panel) return;
       const apply = () => {
-        scroller.style.setProperty("--composer-height", `${dock.offsetHeight}px`);
+        panel.style.setProperty("--composer-height", `${dock.offsetHeight}px`);
       };
       apply();
       if (typeof ResizeObserver === "undefined") return;
@@ -207,9 +208,9 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       observer.observe(dock);
       return () => {
         observer.disconnect();
-        scroller.style.removeProperty("--composer-height");
+        panel.style.removeProperty("--composer-height");
       };
-    }, [isHero, scrollerRef]);
+    }, [isHero]);
 
     const sendAndFollow = useCallback(
       (message: string, opts?: { inputMode?: "text" | "voice" }) => {
@@ -243,6 +244,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
 
     return (
       <div
+        ref={panelRef}
         className="chat-panel-shell h-full w-full bg-transparent"
         dir={dir}
       >
