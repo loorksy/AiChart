@@ -180,16 +180,16 @@ test("collapsed rail brand expands the sidebar and does not navigate", () => {
 });
 
 
-test("composer has bottom fade; upper chat shadow removed", () => {
+test("docked composer floats over the thread with no fade wall", () => {
   const css = read("app/globals.css");
-  assert.match(css, /\.chat-composer-fade/);
-  assert.match(css, /var\(--background\)/);
+  assert.doesNotMatch(css, /\.chat-composer-fade/);
+  assert.match(css, /\.chat-panel-shell\s*>\s*\.chat-composer-shell/);
   assert.doesNotMatch(css, /#7c3aed|#8b5cf6|#bc00ff/);
   assert.doesNotMatch(css, /\.chat-scroll-region::before/);
   const input = read("components/agent/AgentChatInput.tsx");
   assert.match(input, /chat-composer-shell/);
   const panel = read("components/agent/SmartChartAgentPanel.tsx");
-  assert.match(panel, /composer-fade|chat-composer-fade/);
+  assert.doesNotMatch(panel, /composer-fade|chat-composer-fade/);
   assert.match(panel, /chat-panel-shell/);
   assert.match(panel, /data-hero=\{isHero/);
 });

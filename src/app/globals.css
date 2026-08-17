@@ -860,7 +860,7 @@ label {
   display: none !important;
 }
 
-/* Floating composer — no outer footer card; theme-aware bottom fade behind it */
+/* Docked composer floats over the thread — no footer panel or fade wall. */
 .chat-panel-shell {
   position: relative;
   display: flex;
@@ -876,21 +876,10 @@ label {
   border: none !important;
   box-shadow: none !important;
 }
-.chat-composer-fade {
+.chat-panel-shell > .chat-composer-shell {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
-  z-index: 10;
-  height: calc(6.5rem + env(safe-area-inset-bottom, 0px));
-  pointer-events: none;
-  background: linear-gradient(
-    to top,
-    var(--background) 0%,
-    color-mix(in srgb, var(--background) 92%, transparent) 22%,
-    color-mix(in srgb, var(--background) 62%, transparent) 48%,
-    color-mix(in srgb, var(--background) 28%, transparent) 72%,
-    transparent 100%
-  );
 }
 .chat-scroll-region {
   position: relative;

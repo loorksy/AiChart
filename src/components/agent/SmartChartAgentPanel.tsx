@@ -447,9 +447,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
           )}
         </div>
 
-        {!isHero && (
-          <div className="chat-composer-fade" aria-hidden data-testid="composer-fade" />
-        )}
         {!isHero && composer}
       </div>
     );
