@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import {
   SETTINGS_ROOT,
   isSettingsSectionSlug,
+  isSettingsPath,
   settingsPath,
   settingsTabFromLegacyQuery,
   settingsTabFromPathname,
@@ -49,5 +50,16 @@ describe("settings paths", () => {
     assert.match(client, /data-testid="settings-modal"/);
     assert.match(client, /embedMode/);
     assert.doesNotMatch(client, /\?tab=/);
+    assert.match(client, /replace/);
+    assert.match(client, /takeSettingsReturn/);
+    assert.doesNotMatch(client, /router\.back\(/);
+  });
+
+  it("treats console and legacy settings URLs as settings paths", () => {
+    assert.equal(isSettingsPath("/console/settings"), true);
+    assert.equal(isSettingsPath("/console/settings/connections"), true);
+    assert.equal(isSettingsPath("/settings/account"), true);
+    assert.equal(isSettingsPath("/chat"), false);
+    assert.equal(isSettingsPath("/recommendations"), false);
   });
 });

@@ -19,6 +19,7 @@ import {
   SETTINGS_SECTIONS,
   settingsPath,
   settingsTabFromPathname,
+  takeSettingsReturn,
   type SettingsSectionId,
 } from "@/lib/settings/paths";
 import { cn } from "@/lib/utils";
@@ -111,11 +112,7 @@ export default function SettingsClient({
   }, [dirty, onDirtyChange]);
 
   const leave = useCallback(() => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-      return;
-    }
-    router.push("/chat");
+    router.replace(takeSettingsReturn());
   }, [router]);
 
   const requestClose = useCallback(() => {
@@ -177,7 +174,7 @@ export default function SettingsClient({
       setTab(next.id);
       onTabChange?.(next.id);
     } else {
-      router.push(settingsPath(next.id));
+      router.replace(settingsPath(next.id));
     }
     tabListRef.current
       ?.querySelector<HTMLElement>(`[data-tab-id="${next.id}"]`)
@@ -214,6 +211,7 @@ export default function SettingsClient({
           </dl>
           <Link
             href={settingsPath("profile")}
+            replace
             className={cn(buttonVariants({ variant: "outline", size: "xl" }))}
           >
             {t("settings.manage_account")}
@@ -396,6 +394,8 @@ export default function SettingsClient({
                 <Link
                   key={item.id}
                   href={settingsPath(item.id)}
+                  replace
+                  scroll={false}
                   data-tab-id={item.id}
                   aria-current={active ? "page" : undefined}
                   className={sectionClass(active)}

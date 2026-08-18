@@ -172,11 +172,15 @@ test("settings from the account menu is a real path with the overlay chrome", ()
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /settingsPath/);
   assert.match(shell, /router\.push\(settingsPath/);
+  assert.match(shell, /rememberSettingsReturn/);
   assert.doesNotMatch(shell, /SettingsModal/);
   assert.equal(existsSync(resolve(root, "components/SettingsModal.tsx")), false);
   const client = read("components/SettingsClient.tsx");
   assert.match(client, /data-testid="settings-modal"/);
   assert.match(client, /href=\{settingsPath\(item\.id\)\}/);
+  assert.match(client, /\breplace\b/);
+  assert.match(client, /takeSettingsReturn/);
+  assert.doesNotMatch(client, /router\.back\(/);
   assert.match(client, /settings\.unsaved_title/);
 });
 

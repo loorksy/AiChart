@@ -57,3 +57,31 @@ export function settingsTabFromPathname(pathname: string): SettingsSectionId | n
 export function settingsLabelKey(id: SettingsSectionId): TranslationKey {
   return SETTINGS_SECTIONS.find((item) => item.id === id)?.labelKey ?? "settings.tab.account";
 }
+
+export function isSettingsPath(pathname: string): boolean {
+  const path = (pathname.split("?")[0] ?? pathname).replace(/\/$/, "") || "/";
+  return (
+    path === SETTINGS_ROOT ||
+    path.startsWith(`${SETTINGS_ROOT}/`) ||
+    path === "/settings" ||
+    path.startsWith("/settings/")
+  );
+}
+
+const SETTINGS_RETURN_KEY = "aichart:settings-return";
+
+/** Remember where settings was opened from, so close can leave in one step. */
+export function rememberSettingsReturn(from: string): void {
+  if (typeof window === "undefined") return;
+  if (isSettingsPath(from)) return;
+  window.sessionStorage.setItem(SETTINGS_RETURN_KEY, from);
+}
+
+/** Consume the remembered return path. Falls back to the workspace. */
+export function takeSettingsReturn(): string {
+  if (typeof window === "undefined") return "/chat";
+  const stored = window.sessionStorage.getItem(SETTINGS_RETURN_KEY);
+  window.sessionStorage.removeItem(SETTINGS_RETURN_KEY);
+  if (!stored || isSettingsPath(stored)) return "/chat";
+  return stored;
+}

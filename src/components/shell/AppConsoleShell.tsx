@@ -9,7 +9,7 @@ import { AiChartLogo } from "@/components/AiChartLogo";
 import { ProfileAccountSheet } from "@/components/agent/SidebarProfileMenu";
 import { ConsoleOverlaysProvider } from "@/components/shell/ConsoleOverlays";
 import type { SettingsTabId } from "@/components/SettingsClient";
-import { settingsPath } from "@/lib/settings/paths";
+import { settingsPath, rememberSettingsReturn } from "@/lib/settings/paths";
 import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
 import { SheetCoordinatorProvider, useSheetSlot } from "@/components/shell/SheetCoordinator";
@@ -198,10 +198,12 @@ function ConsoleShellBody({
     () => ({
       openSettings: (tab?: SettingsTabId) => {
         const id = !tab || tab === "subscription" ? "profile" : tab;
+        const search = searchParams.toString();
+        rememberSettingsReturn(search ? `${pathname}?${search}` : pathname);
         router.push(settingsPath(id));
       },
     }),
-    [router],
+    [pathname, router, searchParams],
   );
 
   const productLink = (item: NavItem, iconOnly: boolean, onNavigate?: () => void) => {
