@@ -5,7 +5,7 @@ import {
 import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { getJob, waitForJobs } from "./jobStore.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
-import { mcpToolConfig } from "./schemas/index.js";
+import { mcpToolConfig, TOOL_CATALOG } from "./schemas/index.js";
 import {
   createRecommendationInput,
   findSimilarCasesInput,
@@ -63,8 +63,8 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
                   mcpServerVersion: MCP_SERVER_VERSION,
                   mcpGitCommit: gitCommit(),
                   next_step: {
-                    tool: "get_account_overview",
-                    reason: "Fixed session-start sequence — load the account picture next.",
+                    tool: "get_agent_settings",
+                    reason: "Fixed session-start sequence — load product settings next.",
                     params: null,
                   },
                   skills: (() => {
@@ -153,7 +153,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           intents: effectiveIntents,
           locale,
           market: market ?? "forex",
-          availableTools: ["render_cards"],
+          availableTools: TOOL_CATALOG.map((t) => t.name),
           maxSkills: maxSkills ?? 3,
           allowExecutionSkills: allowExecutionSkills === true,
         });

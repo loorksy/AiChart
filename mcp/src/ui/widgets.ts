@@ -557,11 +557,17 @@ const recommendationCard = widgetHtml(
     }
     return out;
   }
+  function esc(s){
+    return String(s)
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/"/g,"&quot;");
+  }
   function copyIcon(){ return ${JSON.stringify(COPY_SVG)}; }
   function levelRow(label, value, tone){
     var txt = value == null ? "—" : String(value);
-    return '<div class="rec-level"><span class="k">'+label+'</span><strong class="v '+tone+'">'+txt+
-      '</strong><span class="rec-copy" data-copy="'+txt+'" title="copy">'+copyIcon()+'</span></div>';
+    return '<div class="rec-level"><span class="k">'+esc(label)+'</span><strong class="v '+tone+'">'+esc(txt)+
+      '</strong><span class="rec-copy" data-copy="'+esc(txt)+'" title="copy">'+copyIcon()+'</span></div>';
   }
   function fallbackCopy(text){
     var ta = document.createElement("textarea");

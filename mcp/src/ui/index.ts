@@ -8,10 +8,20 @@ import { createUIResource } from "@mcp-ui/server";
 import { loggedHtmlReadHandler, logResourceRead } from "./resourceLog.js";
 import { normalizeWidgetPublicPath } from "./publicPath.js";
 import { publicAssetOrigin } from "./runtime.js";
+import {
+  matchRetiredWidgetPath,
+  RETIRED_STUB_HTML,
+  retiredWidgetUris,
+} from "./retired.js";
 import { legacyWidgetUris, skybridgePath, skybridgeUri, widgetUri } from "./uris.js";
 import { WIDGETS } from "./widgets.js";
 
-const BORDERLESS_WIDGETS = new Set(["live-chart", "chart-drawn", "recommendation-card"]);
+const BORDERLESS_WIDGETS = new Set([
+  "live-chart",
+  "chart-drawn",
+  "recommendation-card",
+  "retired-stub",
+]);
 
 export type ResourceCsp = {
   connectDomains?: string[];
@@ -61,12 +71,7 @@ function asUiUri(path: string): `ui://${string}` {
   return `ui://${path}` as `ui://${string}`;
 }
 
-export {
-  APP_URI_ACCOUNT_OVERVIEW,
-  APP_URI_ANALYSIS,
-  widgetUri,
-  skybridgeUri,
-} from "./uris.js";
+export { widgetUri, skybridgeUri } from "./uris.js";
 export { getRecentResourceReads, logResourceRead } from "./resourceLog.js";
 
 export function appsUri(widget: string): string {
@@ -118,6 +123,26 @@ export function registerWidgets(server: McpServer): void {
       );
     }
   }
+
+  const stubGptResource = createUIResource({
+    uri: asUiUri("retired-stub-gpt"),
+    content: { type: "rawHtml", htmlString: RETIRED_STUB_HTML },
+    encoding: "text",
+    adapters: { appsSdk: { enabled: true } },
+  }).resource;
+  const stubGptHtml = stubGptResource.text ?? RETIRED_STUB_HTML;
+  const stubGptMime = stubGptResource.mimeType;
+  for (const uri of retiredWidgetUris()) {
+    const isGpt = uri.endsWith("-gpt");
+    registerWidgetResource(
+      server,
+      "Lonora retired card",
+      uri,
+      isGpt ? stubGptHtml : RETIRED_STUB_HTML,
+      isGpt ? stubGptMime : RESOURCE_MIME_TYPE,
+      "retired-stub",
+    );
+  }
 }
 
 /** Public template lookup for unauthenticated HTTP fallback (static markup only). */
@@ -153,6 +178,14 @@ export function widgetHtmlByPublicPath(path: string): {
       };
     }
     return { uri: widgetUri(name), html, mimeType: RESOURCE_MIME_TYPE };
+  }
+  const retired = matchRetiredWidgetPath(normalized);
+  if (retired) {
+    return {
+      uri: retired.uri,
+      html: RETIRED_STUB_HTML,
+      mimeType: retired.gpt ? "text/html+skybridge" : RESOURCE_MIME_TYPE,
+    };
   }
   return null;
 }

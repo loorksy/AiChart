@@ -328,7 +328,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_capabilities",
     domain: "core",
     description:
-      "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_account_overview -> get_agent_trade_mode), not a suggestion.",
+      "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_agent_settings -> resolve_agent_skills), not a suggestion.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -336,7 +336,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_lessons",
     domain: "core",
     description:
-      "Retrieves lessons learned from past trades as structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. Not a substitute for get_strategy_performance — lessons are past-trade outcomes, not a strategy's live-vs-backtest evidence. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=EURUSD&recent=true.",
+      "Retrieves past-trade lesson evidence as JSON for you to weigh in prose (result, strategy, market_context.regime, calibrated_confidence, summary_ar). When: optionally after a realized loss on the same symbol, or when the operator asks about past mistakes — not before every analysis. JSON only: never present this payload as an MCP card, never paste schema_version / empty arrays / raw fields. There is no lessons card. Summarize applicable lessons in 1–2 sentences or say there is no relevant history. Not a substitute for get_strategy_performance. Defaults: no symbol/pattern filter, limit unset (server default), recent=false. read-only. Example: symbol=XAUUSD&recent=true.",
     inputSchema: {
       symbol: z.string().optional(),
       pattern: z.string().optional(),
@@ -363,13 +363,13 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_jobs_by_ids",
     domain: "core",
     description:
-      "Renders a completed batch of bucket-C jobs (run_market_analysis and similar) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to show the operator the results together. Not before all_terminal — call jobs_wait again first, don't guess at a still-running job's outcome. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. read-only.",
+      "Returns completed bucket-C job results (run_market_analysis and similar) as JSON in one batch — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to read the results together. JSON only — do not present as an MCP card; summarize findings in prose, then issue the plan with create_recommendation (the only path that shows recommendation-card). Not before all_terminal — call jobs_wait again first. Never call this once per job. read-only.",
     inputSchema: {
       jobs: z
         .array(z.string().min(1))
         .min(1)
         .max(12)
-        .describe("job_id values to render together, 1-12 per call"),
+        .describe("job_id values to fetch together, 1-12 per call"),
     },
     annotations: READ_ONLY,
   },
@@ -389,7 +389,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
+      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the host AUTOMATICALLY shows recommendation-card plus the live platform chart (inline image + display_markdown) — present that card and paste display_markdown verbatim. Do not also present lessons, jobs, scan, snapshot, or levels JSON as cards; those tools have no UI. The only MCP cards are recommendation-card (this tool) and live-chart (show_live_chart). When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
@@ -398,7 +398,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_settings",
     domain: "core",
     description:
-      "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live equity or exposure figures — that's get_account_overview/get_portfolio. read-only.",
+      "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live prices or analysis — use get_market_snapshot/get_ohlc for those. JSON only, no card. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },

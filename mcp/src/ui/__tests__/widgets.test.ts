@@ -196,10 +196,15 @@ describe("structured tool text fallback", () => {
       { snapshot: { symbol: "EURUSD", price: 1.08, rsi14: 55, trend: "bullish" } },
       { structured: true },
     );
-    assert.ok(out.structuredContent);
+    assert.equal(out.structuredContent, undefined);
     assert.ok(out.content[0]?.text.includes("EURUSD"));
     assert.ok(out.content[0]?.text.includes("Analysis EURUSD"));
     assert.ok(!out.content[0]?.text.startsWith("{"));
+    const carded = formatBridgeResult(
+      { snapshot: { symbol: "EURUSD", price: 1.08, rsi14: 55, trend: "bullish" } },
+      { structured: true, card: true },
+    );
+    assert.ok(carded.structuredContent);
   });
 });
 
@@ -286,5 +291,25 @@ describe("catalog card-linked tools", () => {
     for (const tool of linked) {
       assert.ok(WIDGETS[tool.ui!.widget], `${tool.name} → missing widget ${tool.ui!.widget}`);
     }
+  });
+
+  it("evidence tools never advertise a card", () => {
+    for (const name of [
+      "get_trade_lessons",
+      "show_jobs_by_ids",
+      "jobs_wait",
+      "scan_market",
+      "get_market_snapshot",
+      "detect_levels",
+      "run_market_analysis",
+    ]) {
+      const def = TOOL_CATALOG.find((t: ToolDefinition) => t.name === name);
+      assert.ok(def, name);
+      assert.equal(def!.ui, undefined, `${name} must not advertise a card`);
+    }
+    const jobs = TOOL_CATALOG.find((t: ToolDefinition) => t.name === "show_jobs_by_ids")!;
+    assert.equal(/as ONE card/i.test(jobs.description), false);
+    const lessons = TOOL_CATALOG.find((t: ToolDefinition) => t.name === "get_trade_lessons")!;
+    assert.match(lessons.description, /never present this payload as an MCP card/i);
   });
 });

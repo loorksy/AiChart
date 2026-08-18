@@ -2,15 +2,7 @@
 
 export const UI_HOST = "aichart";
 
-/** Versioned flagship MCP App templates (bump path when markup changes).
- *  v5: locale-aware cards (EN/AR via runtime i18n, 2026-07-05). */
-export const APP_URI_ACCOUNT_OVERVIEW = `ui://${UI_HOST}/account-overview/v5` as const;
-export const APP_URI_ANALYSIS = `ui://${UI_HOST}/analysis/v5` as const;
-
 const VERSIONED_WIDGET_PATHS: Record<string, string> = {
-  "account-overview": "account-overview/v5",
-  analysis: "analysis/v5",
-  portfolio: "portfolio/v3",
   "live-chart": "live-chart/v11",
   "chart-drawn": "chart-drawn/v11",
   "recommendation-card": "recommendation-card/v6",

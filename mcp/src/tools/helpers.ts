@@ -67,11 +67,17 @@ export function bridgeWrap(
  * on success, `recovery_tool`/`recovery_reason` on a recognised bridge error
  * — looked up once here from `toolName`/`args`, not re-derived per call site.
  */
+const CARD_STRUCTURED_TOOLS = new Set([
+  "show_live_chart",
+  "get_chart_state",
+  "draw_on_chart",
+]);
+
 export async function bridgeCall<T>(
   toolName: string,
   args: Record<string, unknown> | undefined,
   fn: () => Promise<T>,
-  opts?: { structured?: boolean },
+  opts?: { structured?: boolean; card?: boolean },
 ): Promise<ReturnType<typeof formatBridgeResult>> {
   const a = args ?? {};
   try {
@@ -81,7 +87,10 @@ export async function bridgeCall<T>(
     if (adjustments.length) extra.adjustments = adjustments;
     const next = nextStepFor(toolName, a, true, data);
     if (next) extra.next_step = next;
-    return formatBridgeResult(withSteering(data, extra), opts);
+    return formatBridgeResult(withSteering(data, extra), {
+      ...opts,
+      card: opts?.card ?? CARD_STRUCTURED_TOOLS.has(toolName),
+    });
   } catch (e) {
     if (e instanceof BridgeError && isBridgeFailureBody(e.body)) {
       const recovery = recoveryFor(e.body.error?.code);
