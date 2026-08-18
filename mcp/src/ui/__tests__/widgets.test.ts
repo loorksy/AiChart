@@ -37,8 +37,8 @@ describe("MCP UI resources", () => {
   it("paints the live chart in-document so Claude CSP cannot block a nested iframe", () => {
     const origin = publicAssetOrigin();
     const meta = uiMetaFor("live-chart");
-    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v9");
-    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v9");
+    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v10");
+    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v10");
     assert.deepEqual(meta["openai/widgetCSP"], {
       connect_domains: [origin],
       resource_domains: [origin],
@@ -70,6 +70,9 @@ describe("MCP UI resources", () => {
     assert.ok(html.includes('name="color-scheme"'));
     assert.ok(html.includes("host-context-changed"));
     assert.ok(html.includes("aic:theme"));
+    assert.ok(html.includes("function inkOn"));
+    assert.ok(html.includes("function paintChip"));
+    assert.ok(html.includes("isLightTheme"));
   });
 
   it("registry uiMeta matches ui index helper", () => {

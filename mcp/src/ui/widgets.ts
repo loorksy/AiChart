@@ -248,23 +248,56 @@ const liveChart = widgetHtml(
   }
   function nnum(v){ v = Number(v); return isFinite(v) ? v : null; }
   function toMs(t){ t = Number(t); if (!isFinite(t) || t <= 0) return null; return t < 20000000000 ? t * 1000 : t; }
-  function cssVar(name, fallback){
+  function isLightTheme(){
     try {
-      var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-      return v || fallback;
-    } catch (e) { return fallback; }
+      var t = document.documentElement.getAttribute("data-theme");
+      if (t === "light" || t === "dark") return t === "light";
+      return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
+    } catch (e) { return false; }
   }
+  /* Canvas cannot paint CSS var()/light-dark() — use resolved hex palettes. */
   function theme(){
+    if (isLightTheme()) {
+      return {
+        up: "#0f766e", down: "#be123c", gold: "#b45309", info: "#1d4ed8",
+        muted: "#57534e", line: "rgba(28,25,23,.18)",
+        surface: "#f4f3ee", txt: "#141413"
+      };
+    }
     return {
-      up: cssVar("--up", "#2dd4bf"),
-      down: cssVar("--down", "#fb7185"),
-      gold: cssVar("--amber", "#f5c26b"),
-      info: cssVar("--info", "#60a5fa"),
-      muted: cssVar("--muted", "#9aa6b2"),
-      line: cssVar("--line", "rgba(148,163,184,.2)"),
-      surface: cssVar("--surface", "#131922"),
-      txt: cssVar("--txt", "#f8fafc")
+      up: "#5eead4", down: "#fb7185", gold: "#fbbf24", info: "#7dd3fc",
+      muted: "#e2e8f0", line: "rgba(226,232,240,.28)",
+      surface: "#0b1220", txt: "#f8fafc"
     };
+  }
+  function parseRgb(c){
+    c = String(c || "").trim();
+    var hx = c.match(/^#([0-9a-f]{3,8})$/i);
+    if (hx) {
+      var h = hx[1];
+      if (h.length === 3 || h.length === 4)
+        return [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)];
+      return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+    }
+    var rgb = c.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+    return null;
+  }
+  function inkOn(bg){
+    var rgb = parseRgb(bg);
+    if (!rgb) return "#f8fafc";
+    var r = rgb[0]/255, gv = rgb[1]/255, b = rgb[2]/255;
+    var lin = function (x){ return x <= 0.04045 ? x/12.92 : Math.pow((x+0.055)/1.055, 2.4); };
+    var L = 0.2126*lin(r) + 0.7152*lin(gv) + 0.0722*lin(b);
+    return L > 0.45 ? "#141413" : "#f8fafc";
+  }
+  function paintChip(g, x, y, w, h, fill, label){
+    g.globalAlpha = 1;
+    g.fillStyle = fill;
+    g.fillRect(x, y, w, h);
+    g.fillStyle = inkOn(fill);
+    g.textAlign = "left";
+    g.fillText(label, x + 4, y + h / 2);
   }
   function normCandles(o){
     o = o || {};
@@ -312,11 +345,11 @@ const liveChart = widgetHtml(
   }
 
   function roleColor(th, dr){
+    var r = String(dr.semanticRole || dr.type || dr.label || "").toLowerCase();
+    if (/support|demand|take_profit|target|هدف/.test(r)) return th.up;
+    if (/resistance|supply|stop|وقف/.test(r)) return th.down;
+    if (/entry|fib|forecast|دخول/.test(r)) return th.gold;
     if (dr.color && /^#[0-9a-fA-F]{3,8}$/.test(dr.color)) return dr.color;
-    var r = String(dr.semanticRole || dr.type || "").toLowerCase();
-    if (/support|demand|take_profit|target/.test(r)) return th.up;
-    if (/resistance|supply|stop/.test(r)) return th.down;
-    if (/entry|fib|forecast/.test(r)) return th.gold;
     return th.info;
   }
   function decimalsFor(span){
@@ -344,7 +377,7 @@ const liveChart = widgetHtml(
     if (!cs.length) return;
     var th = theme();
     var UP = th.up, DOWN = th.down, GOLD = th.gold, INFO = th.info;
-    var MUTED = th.muted, LINE = th.line, SURFACE = th.surface, TXT = th.txt;
+    var MUTED = th.muted, LINE = th.line;
 
     var padL = 6, padR = 56, padT = 36, padB = 20;
     var plotW = W - padL - padR, plotH = H - padT - padB;
@@ -395,16 +428,13 @@ const liveChart = widgetHtml(
     function hline(p, color, dash, label){
       var y = yFor(p);
       if (y < padT - 4 || y > padT + plotH + 4) return;
-      g.strokeStyle = color; g.lineWidth = 1;
+      g.strokeStyle = color; g.lineWidth = 1.25;
       g.setLineDash(dash === "dashed" ? [5,4] : dash === "dotted" ? [2,3] : []);
       g.beginPath(); g.moveTo(padL, y); g.lineTo(W - padR, y); g.stroke(); g.setLineDash([]);
       if (label) {
-        g.font = "9px system-ui, sans-serif";
-        var tw = g.measureText(label).width + 8;
-        g.fillStyle = SURFACE; g.strokeStyle = color; g.globalAlpha = 0.95;
-        g.fillRect(padL + 2, y - 8, tw, 15); g.strokeRect(padL + 2, y - 8, tw, 15);
-        g.globalAlpha = 1; g.fillStyle = color; g.textAlign = "left";
-        g.fillText(label, padL + 6, y);
+        g.font = "bold 10px system-ui, sans-serif";
+        var tw = g.measureText(label).width + 10;
+        paintChip(g, padL + 2, y - 8, tw, 16, color, label);
         g.font = "10px system-ui, sans-serif";
       }
     }
@@ -426,7 +456,12 @@ const liveChart = widgetHtml(
       g.fillStyle = zc; g.globalAlpha = 0.10; g.fillRect(rx, y1, rw, y2 - y1);
       g.globalAlpha = 0.5; g.strokeStyle = zc; g.strokeRect(rx, y1, rw, y2 - y1);
       g.globalAlpha = 1;
-      if (dz.label) { g.fillStyle = zc; g.textAlign = "left"; g.fillText(String(dz.label), rx + 4, y1 + 8); }
+      if (dz.label) {
+        g.font = "bold 10px system-ui, sans-serif";
+        var zlbl = String(dz.label);
+        paintChip(g, rx + 4, y1 + 2, g.measureText(zlbl).width + 10, 16, zc, zlbl);
+        g.font = "10px system-ui, sans-serif";
+      }
     }
 
     var cw = Math.max(1.5, step * 0.62);
@@ -469,7 +504,12 @@ const liveChart = widgetHtml(
           var mx = ptX(mp), my = yFor(nnum(mp.price));
           if (mx != null) {
             g.fillStyle = col; g.beginPath(); g.arc(mx, my, 3.5, 0, 7); g.fill();
-            if (dr.label) { g.textAlign = "center"; g.fillText(String(dr.label), mx, my - 10); }
+            if (dr.label) {
+              var ml = String(dr.label);
+              g.font = "bold 10px system-ui, sans-serif";
+              paintChip(g, mx - 2, my - 18, g.measureText(ml).width + 10, 16, col, ml);
+              g.font = "10px system-ui, sans-serif";
+            }
           }
         }
         continue;
@@ -498,7 +538,12 @@ const liveChart = widgetHtml(
         g.setLineDash([]); g.lineWidth = 1;
         if (dr.label && ps[0] && ps[0].price != null) {
           var lbx = ptX(ps[0]);
-          if (lbx != null) { g.fillStyle = col; g.textAlign = "left"; g.fillText(String(dr.label), lbx + 4, yFor(nnum(ps[0].price)) - 8); }
+          if (lbx != null) {
+            var pl = String(dr.label);
+            g.font = "bold 10px system-ui, sans-serif";
+            paintChip(g, lbx + 4, yFor(nnum(ps[0].price)) - 16, g.measureText(pl).width + 10, 16, col, pl);
+            g.font = "10px system-ui, sans-serif";
+          }
         }
       }
     }
@@ -516,12 +561,11 @@ const liveChart = widgetHtml(
 
     var last = cs[cs.length - 1];
     var lpY = yFor(last.c);
-    g.strokeStyle = last.c >= last.o ? UP : DOWN;
+    var lastFill = last.c >= last.o ? UP : DOWN;
+    g.strokeStyle = lastFill;
     g.setLineDash([2,3]); g.beginPath(); g.moveTo(padL, lpY); g.lineTo(W - padR, lpY); g.stroke(); g.setLineDash([]);
-    g.fillStyle = last.c >= last.o ? UP : DOWN;
-    g.fillRect(W - padR + 1, lpY - 8, padR - 3, 16);
-    g.fillStyle = TXT; g.textAlign = "left"; g.font = "bold 10px system-ui, sans-serif";
-    g.fillText(fmtP(last.c, dec), W - padR + 5, lpY);
+    g.font = "bold 10px system-ui, sans-serif";
+    paintChip(g, W - padR + 1, lpY - 8, padR - 3, 16, lastFill, fmtP(last.c, dec));
   }
 
   function setTitle(){
