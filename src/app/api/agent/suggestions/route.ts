@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { getMtAccountMeta } from "@/lib/store";
 import { getActiveRecommendation } from "@/lib/agent/sessionRecommendation";
 import { generateEmptyChatState } from "@/lib/agent/suggestions/generateEmptyChatState";
+import { oandaConfigured } from "@/lib/markets/oanda";
 
 const querySchema = z.object({
   symbol: z.string().trim().min(1).max(32),
@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requirePlatformAccess();
     const input = querySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
-    const [connection, activeRecommendation] = await Promise.all([
-      getMtAccountMeta(user.id),
+    const [marketAvailable, activeRecommendation] = await Promise.all([
+      Promise.resolve(oandaConfigured()),
       input.chatId
         ? getActiveRecommendation(input.chatId, input.symbol, user.id)
         : Promise.resolve(null),
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       interval: input.interval,
       drawingsCount: input.drawings,
       hasActiveRecommendation: Boolean(activeRecommendation),
-      accountConnected: Boolean(connection?.online),
+      accountConnected: marketAvailable,
     });
     return NextResponse.json(state ?? { greeting: null, suggestions: [] });
   } catch (error) {

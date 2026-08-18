@@ -74,7 +74,7 @@ const DEFAULT_SYMBOL = "XAUUSD";
 /** Persisted layout state (drawings + recommendation) for refresh survival. */
 export interface ChartLayoutState extends ChartHydrateSnapshot {
   targets?: number[];
-  /** Candle source for the active symbol: the user's linked broker account. */
+  /** Candle source for the active symbol: the platform OANDA feed. */
   dataSource?: MarketDataSource;
 }
 
@@ -219,10 +219,10 @@ function SmartChartWorkspaceInner({
      * cached before the case-preservation fix — or written by any future path
      * that still folds case — sits in localStorage forever otherwise: this is
      * the one read every returning browser hits before any picker interaction
-     * corrects it, and the broker quote for the wrong-case spelling simply
+     * corrects it, and the quote for the wrong-case spelling simply
      * fails silently (cloudQuote's catch surfaced no error). That is what an
      * uppercased "XAUUSDM" leftover from an earlier session looked like: a
-     * blank spread badge because MetaApi never recognised the spelling.
+     * blank spread badge because the feed never recognised the spelling.
      */
     return normalizeSymbolCase(localStorage.getItem(LS_SYMBOL) ?? DEFAULT_SYMBOL);
   });
@@ -233,10 +233,8 @@ function SmartChartWorkspaceInner({
     return localStorage.getItem(LS_INTERVAL) ?? "15m";
   });
 
-  // The user's own linked MetaTrader account is the only market-data pipe.
   const [dataSource, setDataSource] = useState<MarketDataSource>("oanda");
 
-  const [forexOnline, setForexOnline] = useState(false);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
 
 
@@ -289,17 +287,6 @@ function SmartChartWorkspaceInner({
     if (guest) return;
     void refreshCredits();
   }, [refreshCredits, guest]);
-
-  useEffect(() => {
-    if (guest) return;
-    void fetch("/api/console/status", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!d) return;
-        setForexOnline(Boolean(d.mt5?.online));
-      })
-      .catch(() => {});
-  }, [guest]);
 
   // The open-trades badge polled /api/console/trades-active every 30 seconds.
   // The route is gone with the execution layer and the platform holds no
@@ -974,7 +961,6 @@ function SmartChartWorkspaceInner({
                     }
                   : undefined
               }
-              brokerConnected={forexOnline}
               onSymbolChange={handleSymbolChange}
               onIntervalChange={handleIntervalChange}
               onResult={handleAgentResult}

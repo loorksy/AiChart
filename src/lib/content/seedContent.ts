@@ -1,10 +1,5 @@
 import { execute, queryOne } from "@/lib/db";
 import { BRAND_NAME } from "@/lib/brand";
-import {
-  DOCS_MT5_LINKING_CONTENT_AR,
-  DOCS_MT5_LINKING_CONTENT_EN,
-  DOCS_MT5_LINKING_STALE_MARKERS,
-} from "@/lib/content/docsMt5LinkingCopy";
 
 /**
  * V2-C (#97): idempotent seeding of docs and first blog posts into
@@ -26,7 +21,6 @@ export const DOC_SLUGS = [
   "docs-getting-started",
   "docs-smart-chart",
   "docs-recommendations",
-  "docs-mt5-linking",
   "docs-billing-credits",
   "docs-support",
 ] as const;
@@ -57,20 +51,12 @@ const PAGES: SeedPage[] = [
     content_en: `## Recommendations\n\nEvery successful analysis ends in a buy or sell with a complete plan: type (immediate / anticipatory / conditional), activation condition, invalidation rule and the alternative scenario.\n\n- The platform tracks every recommendation automatically (activated, target hit, stopped, expired).\n- The **Performance** page gathers everything: recommendations, trades, statistics and visual backtests.\n- Statistical support: when a recommendation matches a strategy validated over 100+ historical trades, calibrated confidence is shown; otherwise it is honestly labeled direct analysis.`,
   },
   {
-    slug: "docs-mt5-linking",
-    kind: "doc",
-    title_ar: "ربط حساب MetaTrader 5",
-    title_en: "Linking MetaTrader 5",
-    content_ar: DOCS_MT5_LINKING_CONTENT_AR,
-    content_en: DOCS_MT5_LINKING_CONTENT_EN,
-  },
-  {
     slug: "docs-billing-credits",
     kind: "doc",
     title_ar: "الباقات والرصيد",
     title_en: "Plans & Credits",
-    content_ar: `## كيف تعمل الفوترة\n\n- باقة واحدة: **الوصول الكامل 180$ شهرياً** بكل الميزات، مع تجربة مجانية (ساعة واحدة وثلاث توصيات من لحظة ربط حسابك).\n- **الاستهلاك حقيقي**: كل تحليل يُخصم حسب المودل وعدد التوكنات الفعلي؛ ساعات اتصال MT5 تُخصم بالدقيقة.\n- الرصيد الشهري يتجدد كل دورة ولا يترحّل؛ رصيد الشحن الإضافي (20$/50$/100$) لا تنتهي صلاحيته.\n- عند نفاد الرصيد يتوقف التحليل الجديد فقط برسالة واضحة — التصفح وكل بياناتك تبقى متاحة.\n- كشف حركة مفصَّل لكل عملية في **الفوترة والرصيد**، والإلغاء متاح في أي وقت من بوابة الفوترة.`,
-    content_en: `## How billing works\n\n- Four monthly tiers: LITE $79, PLUS $149, PRO $249, PRO MAX $399 — each includes a monthly usage credit.\n- **Real metering**: every analysis burns by model and actual tokens; MT5 connection hours burn by the minute.\n- Monthly credit resets each cycle without rollover; top-up credit ($20/$50/$100) never expires.\n- At zero balance only NEW analysis stops, with a clear message — browsing and all your data stay available.\n- A detailed statement lives in **Billing**, and you can cancel anytime from the billing portal.`,
+    content_ar: `## كيف تعمل الفوترة\n\n- باقة واحدة: **الوصول الكامل 180$ شهرياً** بكل الميزات، مع تجربة مجانية (ساعة واحدة وثلاث توصيات).\n- **الاستهلاك حقيقي**: كل تحليل يُخصم حسب المودل وعدد التوكنات الفعلي.\n- الرصيد الشهري يتجدد كل دورة ولا يترحّل؛ رصيد الشحن الإضافي (20$/50$/100$) لا تنتهي صلاحيته.\n- عند نفاد الرصيد يتوقف التحليل الجديد فقط برسالة واضحة — التصفح وكل بياناتك تبقى متاحة.\n- كشف حركة مفصَّل لكل عملية في **الفوترة والرصيد**، والإلغاء متاح في أي وقت من بوابة الفوترة.`,
+    content_en: `## How billing works\n\n- Four monthly tiers: LITE $79, PLUS $149, PRO $249, PRO MAX $399 — each includes a monthly usage credit.\n- **Real metering**: every analysis burns by model and actual tokens.\n- Monthly credit resets each cycle without rollover; top-up credit ($20/$50/$100) never expires.\n- At zero balance only NEW analysis stops, with a clear message — browsing and all your data stay available.\n- A detailed statement lives in **Billing**, and you can cancel anytime from the billing portal.`,
   },
   {
     slug: "docs-support",
@@ -85,46 +71,24 @@ const PAGES: SeedPage[] = [
     kind: "blog",
     title_ar: "الإصدار الثاني: منصة تداول ذكية متكاملة",
     title_en: "V2: A Complete AI Trading Platform",
-    content_ar: `أطلقنا الإصدار الثاني من ${BRAND_NAME}: باقات اشتراك برصيد استخدام حقيقي، تسجيل دخول عبر Google، ربط MT5 سحابي شفاف مع توفير تكلفة تلقائي، توصيات تصل مع صورة الشارت الحية فور صدورها، ولوحة أدمن بأدوار متعددة. كل استهلاك مُقاس بدقة وكل توصية مُتتبعة بصدق — لا وعود، أرقام.`,
-    content_en: `We shipped ${BRAND_NAME} V2: subscription tiers with real usage credits, Google sign-in, transparent cloud MT5 linking with automatic cost saving, recommendations that arrive with their live chart image, and a multi-role admin panel. Every unit of usage is metered and every recommendation is honestly tracked — numbers, not promises.`,
+    content_ar: `أطلقنا الإصدار الثاني من ${BRAND_NAME}: باقات اشتراك برصيد استخدام حقيقي، تسجيل دخول عبر Google، توصيات تصل مع صورة الشارت الحية فور صدورها، ولوحة أدمن بأدوار متعددة. كل استهلاك مُقاس بدقة وكل توصية مُتتبعة بصدق — لا وعود، أرقام.`,
+    content_en: `We shipped ${BRAND_NAME} V2: subscription tiers with real usage credits, Google sign-in, recommendations that arrive with their live chart image, and a multi-role admin panel. Every unit of usage is metered and every recommendation is honestly tracked — numbers, not promises.`,
   },
   {
     slug: "blog-how-credits-work",
     kind: "blog",
     title_ar: "لماذا الرصيد حسب الاستخدام أعدل من الحدود الثابتة؟",
     title_en: "Why Usage Credits Beat Fixed Limits",
-    content_ar: `الحدود الثابتة («50 تحليلاً شهرياً») تظلم الجميع: المقتصد يدفع عن استهلاك لم يستخدمه، والمكثف يصطدم بجدار مفاجئ. الرصيد حسب الاستخدام يعكس التكلفة الحقيقية: تحليل عميق بمودل قوي يستهلك أكثر من سؤال سريع، وساعة اتصال MT5 تُحسب بالدقيقة. النتيجة: تدفع مقابل ما تستخدمه فعلاً، وترى كل عملية في كشفك.`,
-    content_en: `Fixed limits ("50 analyses per month") are unfair to everyone: light users pay for capacity they never use, heavy users hit a sudden wall. Usage credits mirror true cost: a deep analysis on a strong model burns more than a quick question, and an MT5 connection hour is counted by the minute. You pay for what you actually use — and see every movement in your statement.`,
+    content_ar: `الحدود الثابتة («50 تحليلاً شهرياً») تظلم الجميع: المقتصد يدفع عن استهلاك لم يستخدمه، والمكثف يصطدم بجدار مفاجئ. الرصيد حسب الاستخدام يعكس التكلفة الحقيقية: تحليل عميق بمودل قوي يستهلك أكثر من سؤال سريع. النتيجة: تدفع مقابل ما تستخدمه فعلاً، وترى كل عملية في كشفك.`,
+    content_en: `Fixed limits ("50 analyses per month") are unfair to everyone: light users pay for capacity they never use, heavy users hit a sudden wall. Usage credits mirror true cost: a deep analysis on a strong model burns more than a quick question. You pay for what you actually use — and see every movement in your statement.`,
   },
 ];
 
 let seeded = false;
 
-/** Repair docs seeded before the warehouse backfill promise was removed (#14). */
-export async function patchDocsMt5LinkingIfStale(): Promise<void> {
-  try {
-    const row = await queryOne<{ content_ar: string; content_en: string }>(
-      "SELECT content_ar, content_en FROM dynamic_pages WHERE slug = ?",
-      ["docs-mt5-linking"],
-    );
-    if (!row) return;
-    const stale = DOCS_MT5_LINKING_STALE_MARKERS.some(
-      (m) => row.content_ar.includes(m) || row.content_en.includes(m),
-    );
-    if (!stale) return;
-    await execute(
-      `UPDATE dynamic_pages SET content_ar = ?, content_en = ? WHERE slug = ?`,
-      [DOCS_MT5_LINKING_CONTENT_AR, DOCS_MT5_LINKING_CONTENT_EN, "docs-mt5-linking"],
-    );
-  } catch {
-    /* best-effort — CMS remains source of truth once edited */
-  }
-}
-
 export async function seedContentPages(): Promise<void> {
   if (seeded) return;
   seeded = true;
-  await patchDocsMt5LinkingIfStale();
   for (const page of PAGES) {
     try {
       const existing = await queryOne(

@@ -3,10 +3,9 @@
  *
  * A single platform-owned OANDA account/token (see markets/oanda.ts) serves
  * quotes, candles and the instrument universe to every user — no end user
- * links anything to see data, charts, or recommendations. Linking a broker
- * account (MetaApi/MT5) is a separate, later step required only for actual
- * order execution (src/lib/execution.ts); it plays no role in what market
- * data is available. The decision object survives so every endpoint can
+ * links anything to see data, charts, or recommendations. A later broker
+ * account link is a separate step and plays no role in what market data is
+ * available. The decision object survives so every endpoint can
  * keep reporting what it served and whether OANDA itself is configured —
  * an unconfigured platform is GATED to that, never handed a substitute feed.
  */

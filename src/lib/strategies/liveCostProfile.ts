@@ -4,10 +4,9 @@
  * The static multipliers said what Asian-session spread USUALLY does; this
  * was designed to measure what this operator's broker actually charges,
  * session by session, from samples accumulated into `cost_samples` and
- * aggregated on read. The MetaApi streaming listener now throttle-writes one
- * sample per symbol per minute (lib/metaapi/streaming.ts), so the live rungs
- * fill for any account with an open chart; until a session clears MIN_SAMPLES
- * this resolves through the labelled fallbacks below.
+ * aggregated on read. Live rungs fill from the platform OANDA quote
+ * (one sample per symbol per minute into `cost_samples`); until a session
+ * clears MIN_SAMPLES this resolves through the labelled fallbacks below.
  *
  * The honesty rules are the point of the module:
  *

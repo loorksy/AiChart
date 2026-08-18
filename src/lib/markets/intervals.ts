@@ -3,9 +3,8 @@
  *
  * `@/lib/intervals` stays the broad UI/agent interval registry (incl. derived
  * resampled intervals like 3m/45m). This module is the strict subset the
- * user's MetaTrader account serves natively via MetaApi — the Candle
- * Warehouse and backfill pipeline key on these, so every non-native request
- * resolves to a native base first.
+ * platform OANDA feed serves natively — every non-native request resolves
+ * to a native base first.
  */
 import { barDurationMs, DERIVED_INTERVALS } from "@/lib/intervals";
 

@@ -3,9 +3,8 @@
  *
  * The platform feed uses canonical uppercase keys (EURUSD, XAUUSD). A broker
  * uses its OWN spelling, and that spelling is case-sensitive: Exness serves
- * XAUUSDm, EURUSDm, AAPLm. Folding those to uppercase asks MetaApi for an
- * instrument that does not exist, and the request comes back "Symbol XAUUSDM
- * does not exist" after a long retry.
+ * XAUUSDm, EURUSDm, AAPLm. Folding those to uppercase asks the feed for an
+ * instrument that does not exist.
  *
  * A lowercase letter is the tell. Canonical keys never carry one, so keeping a
  * symbol that has one is safe for the platform feed and necessary for a broker.

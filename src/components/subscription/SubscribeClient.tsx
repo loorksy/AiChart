@@ -27,8 +27,8 @@ export function SubscribeClient({
         </h1>
         <p className="text-sm text-muted-foreground">
           {isAr
-            ? "وصول كامل إلى مساحة التداول والمحادثة والتنفيذ عبر MetaTrader."
-            : "Full access to the trading workspace, conversation, and MetaTrader execution."}
+            ? "وصول كامل إلى مساحة التداول والمحادثة وتحليل الذهب عبر OANDA."
+            : "Full access to the trading workspace, conversation, and gold analysis."}
         </p>
       </div>
 
@@ -49,8 +49,8 @@ export function SubscribeClient({
         {mode === "trial" && trialRemaining > 0 ? (
           <p className="mt-3 text-sm text-foreground">
             {isAr
-              ? `تجربتك المجانية: متبقي ${trialRemaining} من ${AICHART_PLAN.trialRecommendations} توصيات، ولمدة ساعة من ربط حسابك.`
-              : `Free trial: ${trialRemaining} of ${AICHART_PLAN.trialRecommendations} recommendations left, within one hour of linking your account.`}
+              ? `تجربتك المجانية: متبقي ${trialRemaining} من ${AICHART_PLAN.trialRecommendations} توصيات، ولمدة ساعة.`
+              : `Free trial: ${trialRemaining} of ${AICHART_PLAN.trialRecommendations} recommendations left, within a one-hour window.`}
           </p>
         ) : null}
         {mode === "blocked" ? (

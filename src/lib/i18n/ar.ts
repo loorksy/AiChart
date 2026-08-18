@@ -19,7 +19,7 @@ export const ar: Record<TranslationKey, string> = {
 
   // Welcoming Phase
   "welcome.title": "مرحباً {name} 👋",
-  "welcome.subtitle": "اكتب رسالتك لتبدأ — فوركس عبر MetaTrader.",
+  "welcome.subtitle": "اكتب رسالتك لتبدأ — تحليل الذهب عبر OANDA.",
   "welcome.session_settings": "إعدادات الجلسة",
   "welcome.response_mode": "نوع الرد",
   "welcome.market": "السوق",
@@ -97,22 +97,22 @@ export const ar: Record<TranslationKey, string> = {
 
   // مصدر بيانات السوق (قناة واحدة: تغذية OANDA على مستوى المنصة)
   "data_source.title": "مصدر بيانات السوق",
-  "data_source.metaapi": "تغذية OANDA",
-  "data_source.metaapi_hint": "شموع وأسعار حية عبر OANDA — لا حاجة لربط حساب.",
+  "data_source.oanda": "تغذية OANDA",
+  "data_source.oanda_hint": "شموع وأسعار حية عبر OANDA — لا حاجة لربط حساب.",
   "data_source.needs_link": "بيانات السوق غير متاحة حاليًا.",
   "data_source.link_cta": "غير متاح",
-  "data_source.short.metaapi": "OANDA",
+  "data_source.short.oanda": "OANDA",
 
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
   "composer.more": "خيارات إضافية",
   "composer.more_title": "خيارات المحادثة",
   "composer.more_empty":
-    "لا خيارات هنا بعد — اربط حسابك لدى الوسيط لاختيار وضع التنفيذ.",
+    "لا خيارات إضافية هنا بعد.",
 
   // كتالوج الأزواج
   "symbol.picker.title": "اختر الزوج",
   "symbol.picker.search": "ابحث عن زوج أو عملة",
-  "symbol.picker.source_cloud": "حساب MetaTrader السحابي لديك",
+  "symbol.picker.source_cloud": "تغذية OANDA للمنصة",
   "symbol.picker.none": "لا يوجد زوج يطابق هذا البحث.",
   "symbol.picker.favourites": "المفضلة",
   "symbol.picker.all": "كل الأزواج",
@@ -213,7 +213,7 @@ export const ar: Record<TranslationKey, string> = {
 
   // Connections / MCP
   "connect.title": "الاتصالات",
-  "connect.subtitle": "MetaTrader · MCP · تنبيهات Telegram",
+  "connect.subtitle": "MCP · تنبيهات Telegram",
   "connect.mcp.title": "Claude MCP",
   "connect.mcp.subtitle": "اربط عميلاً مصرّحاً بأدوات Lonora",
   "connect.mcp.step1": "افتح Claude Connectors",
@@ -227,72 +227,6 @@ export const ar: Record<TranslationKey, string> = {
     "أكمل البريد وكلمة المرور من إكمال الملف قبل تسجيل الدخول من Claude.",
   "connect.mcp.complete_profile": "إكمال الملف",
   "connect.mcp.paid_only": "ربط MCP يتطلب اشتراكًا مدفوعًا نشطًا.",
-  "connect.mt5.title": "MetaTrader 5",
-  "connect.mt5.subtitle": "اربط حسابك لدى الوسيط — بحث عن السيرفر، ثم بيانات الدخول.",
-  "connect.mt5.body": "ربط سحابي: لا حاجة لتثبيت شيء على جهازك، ويبقى الحساب موصولاً وإن أُغلق المتصفح.",
-  "connect.mt5.cta": "ربط حساب MetaTrader 5",
-  "connect.mt5.manage": "إدارة الربط",
-  "connect.mt5.linked": "موصول",
-
-  // معالج ربط MT5 (بحث عن الوسيط ← تسجيل الدخول ← الربط)
-  "mt5link.page_title": "ربط حساب MetaTrader",
-  "mt5link.page_desc":
-    "ربط شفاف عبر سحابة MetaApi — أنت تسجّل الدخول إلى حسابك الحقيقي لدى وسيطك.",
-  "mt5link.disabled":
-    "الربط السحابي غير مفعَّل بعد على هذه المنصة. سيتاح فور اكتمال إعداده.",
-  "mt5link.steps_label": "خطوات الربط",
-  "mt5link.step_broker": "الوسيط",
-  "mt5link.step_login": "تسجيل الدخول",
-  "mt5link.step_link": "الربط",
-  "mt5link.linked_title": "الحساب المرتبط",
-  "mt5link.linked_replace_note": "ربط حساب جديد يستبدل هذا الحساب.",
-  "mt5link.state_online": "متصل",
-  "mt5link.state_offline": "غير متصل",
-  "mt5link.link_new": "ربط حساب آخر",
-  "mt5link.unlink": "إلغاء ربط الحساب",
-  "mt5link.unlink_confirm":
-    "إلغاء ربط هذا الحساب؟ تتوقف الأسعار الحية والتحليل والتنفيذ حتى تربط حساباً من جديد.",
-  "mt5link.unlink_yes": "نعم، ألغِ الربط",
-  "mt5link.unlink_cancel": "إبقاء الحساب",
-  "mt5link.unlink_failed": "تعذّر إلغاء الربط — حاول مجدداً.",
-  "mt5link.search_title": "ابحث عن وسيطك",
-  "mt5link.search_label": "اسم الوسيط",
-  "mt5link.search_placeholder": "مثال: Exness, IC Markets…",
-  "mt5link.search_hint":
-    "ابحث باسم وسيطك تماماً كما يظهر في تطبيق MT5، ثم اختر السيرفر في الشاشة التالية.",
-  "mt5link.searching": "جارٍ البحث…",
-  "mt5link.search_empty": "لا يوجد وسيط يطابق «{query}».",
-  "mt5link.search_unavailable":
-    "البحث اللحظي غير متاح الآن — أدخل اسم السيرفر يدوياً كما يظهر في منصة MT5 لديك (مثال: Exness-MT5Real8).",
-  "mt5link.servers_count": "{count} سيرفر",
-  "mt5link.manual_toggle": "أدخل اسم السيرفر يدوياً",
-  "mt5link.manual_label": "اسم السيرفر",
-  "mt5link.continue": "متابعة",
-  "mt5link.login_title": "سجّل الدخول إلى {broker}",
-  "mt5link.login_note":
-    "أنت تسجّل الدخول إلى حساب MetaTrader الحقيقي الخاص بك عبر سحابة MetaApi المرخّصة. تُخزَّن بيانات الدخول مشفَّرة (AES-256) وتُستخدم فقط لتشغيل نسخة الطرفية السحابية الخاصة بك. لخفض التكلفة، يُوقَف الاتصال تلقائياً عند مغادرتك المنصة ويعود وحده عند عودتك.",
-  "mt5link.platform": "المنصة",
-  "mt5link.login": "رقم الحساب (Login)",
-  "mt5link.password": "كلمة المرور (Investor أو Master)",
-  "mt5link.server": "السيرفر",
-  "mt5link.back_to_brokers": "اختيار وسيط آخر",
-  "mt5link.connect": "ربط الحساب",
-  "mt5link.connecting": "جارٍ الربط…",
-  "mt5link.status_provisioning":
-    "جارٍ إنشاء الطرفية السحابية وتسجيل الدخول لدى وسيطك…",
-  "mt5link.done_title": "تم الربط بنجاح",
-  "mt5link.done_status":
-    "حسابك السحابي جاهز — الوكيل يمكنه التنفيذ والمراقبة عند طلبك.",
-  "mt5link.go_workspace": "الانتقال إلى الشارت",
-  "mt5link.error_generic": "تعذّر الربط — تحقق من البيانات وحاول مجدداً.",
-  "mt5link.error_network": "تعذّر الاتصال بالخادم.",
-  "connect.method.title": "طريقة ربط حساب الفوركس",
-  "connect.method.subtitle": "اختر كيف يتصل حسابك — كلاهما مدعوم بالكامل.",
-  "connect.method.platform": "عبر المنصّة (بدون تنزيل)",
-  "connect.method.platform_body": "تنفيذ سيرفر-سايد على مدار الساعة. تكتب بيانات حسابك فقط — لا تثبيت ولا إبقاء جهازك مفتوحاً.",
-  "connect.method.platform_off": "غير متاح — لم يُضَف مفتاح MetaApi بعد من لوحة المنصّة.",
-  "connect.method.saved": "حُفظت الطريقة.",
-  "connect.method.failed": "تعذّر حفظ الطريقة — أعد المحاولة.",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",
@@ -415,12 +349,12 @@ export const ar: Record<TranslationKey, string> = {
   "orch.market_data_failed_activity":
     "تعذّر تجهيز بيانات السوق — لا يمكن إكمال تحليل الشارت الآن.",
   "orch.market_data_failed_summary":
-    "تعذّر تجهيز بيانات السوق من المخزن/حساب MetaTrader. حاول مرة أخرى بعد قليل.",
+    "تعذّر تجهيز بيانات السوق من تغذية OANDA. حاول مرة أخرى بعد قليل.",
   "orch.no_rec_missing_data": "لم تصدر توصية بسبب نقص البيانات.",
   "orch.tail_age_seconds": " آخر شمعة متوفرة عمرها {age} ثانية.",
   "orch.tail_age_minutes": " آخر شمعة متوفرة عمرها {age} دقيقة.",
   "orch.sync_stale_summary":
-    "{reason}{age} بدأ تحديث تلقائي من حساب MetaTrader — أعد طلبك خلال لحظات وسيكتمل التحليل.",
+    "{reason}{age} بدأ تحديث تلقائي من تغذية OANDA — أعد طلبك خلال لحظات وسيكتمل التحليل.",
   "orch.prices_unconfirmed": "تعذّر تأكيد أحدث الأسعار — لم تُصدر توصية.",
   "orch.analysis_stopped_gaps":
     "أُوقف التحليل لأن سلسلة الأسعار تفتقد جزءاً كبيراً من البيانات — بدأ الإصلاح التلقائي.",
@@ -444,7 +378,7 @@ export const ar: Record<TranslationKey, string> = {
     "التوصية النشطة موجودة لكن لا توجد رسومات محفوظة لها لإعادة عرضها.",
   "orch.reviewing_rec": "أراجع التوصية السابقة وحالتها الحالية.",
   "orch.broker_prices_unconfirmed":
-    "تعذّر تأكيد أحدث الأسعار من حساب MetaTrader الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
+    "تعذّر تأكيد أحدث الأسعار من تغذية OANDA الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
   "orch.rec_update_stopped_gaps":
     "أُوقف تحديث التوصية لأن سلسلة الأسعار تفتقد جزءاً كبيراً من البيانات — بدأ الإصلاح التلقائي.",
   "orch.rec_status_updated": "حدّثت حالة التوصية المحفوظة.",
@@ -590,8 +524,6 @@ export const ar: Record<TranslationKey, string> = {
   "layout.resize_chat": "تغيير حجم الشات",
   "layout.close_chart": "إغلاق الشارت",
   "layout.screenshot": "لقطة شاشة",
-  "layout.mt_connected": "MT متصل",
-  "layout.mt_disconnected": "MT غير متصل",
   "layout.timeframe": "الإطار الزمني",
   "layout.loading_chart": "جاري تحميل الشارت…",
   "chart.trade.buy": "شراء",
@@ -616,7 +548,6 @@ export const ar: Record<TranslationKey, string> = {
   "layout.trades_count": "صفقات ({count})",
   "layout.open_trades": "الصفقات المفتوحة",
   "layout.account_balance": "رصيد الحساب",
-  "layout.mt_setup": "MetaTrader غير متصل — افتح إعدادات الاتصال",
   "layout.agent_unavailable": "الذكاء الاصطناعي غير مُفعّل على الخادم — التحليل غير متاح.",
   "layout.server_reconnecting": "انقطع الاتصال بالخادم — نعيد الربط…",
 
@@ -736,7 +667,7 @@ export const ar: Record<TranslationKey, string> = {
   "auth.network_error": "تعذّر الاتصال بالخادم.",
   "auth.telegram_error": "فشل تسجيل الدخول عبر Telegram.",
   "auth.telegram_busy": "جارٍ تسجيل الدخول وربط Telegram…",
-  "auth.preview_subtitle": "محادثة ذكية · شارت · MetaTrader 5",
+  "auth.preview_subtitle": "محادثة ذكية · شارت · تحليل الذهب",
   "auth.switch_language": "تبديل اللغة",
   "auth.country_code": "رمز الدولة",
   "auth.phone_number": "رقم الهاتف",

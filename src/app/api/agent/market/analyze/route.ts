@@ -83,8 +83,8 @@ export async function POST(req: NextRequest) {
     if (marketError) return NextResponse.json({ error: marketError }, { status: 400 });
     resolveActiveMarket(body.market ?? DEFAULT_MARKET);
 
-    // The user's own linked MetaTrader account is the only data pipe; the
-    // canonical chart key is resolved to the broker's spelling downstream.
+    // Candles come from the platform OANDA feed; the canonical chart key
+    // is resolved to the feed's spelling downstream.
     const dataSource = "oanda" as const;
     symbol = forexCanonicalKey(symbol);
 

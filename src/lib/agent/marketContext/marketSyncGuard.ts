@@ -53,7 +53,7 @@ function warehouseRecentEnough(candle: AgentCandle, interval: string): boolean {
 
 /**
  * Validates agent OHLC readiness from warehouse + live fetches over the
- * user's own linked MetaTrader account.
+ * platform OANDA feed.
  * The TradingView chart tail is informational only — it must never block
  * analysis or force the operator to refresh the page.
  */
@@ -108,7 +108,7 @@ export function evaluateMarketSync(input: {
     }
     return fail(
       input.liveError
-        ? "تعذّر جلب أحدث الأسعار من حساب MetaTrader الآن."
+        ? "تعذّر جلب أحدث الأسعار من OANDA الآن."
         : "لا توجد شمعة حية للمقارنة مع بيانات الوكيل.",
     );
   }
@@ -125,7 +125,7 @@ export function evaluateMarketSync(input: {
         reason: "warehouse tail accepted; live window slightly ahead",
       };
     }
-    return fail("آخر شمعة في المخزن أقدم من آخر شمعة حية من حساب MetaTrader.");
+    return fail("آخر شمعة في المخزن أقدم من آخر شمعة حية من OANDA.");
   }
 
   if (
@@ -144,7 +144,7 @@ export function evaluateMarketSync(input: {
         reason: "forming bar close drift accepted",
       };
     }
-    return fail("إغلاق المخزن يختلف عن الإغلاق الحي من حساب MetaTrader.");
+    return fail("إغلاق المخزن يختلف عن الإغلاق الحي من OANDA.");
   }
 
   return status;

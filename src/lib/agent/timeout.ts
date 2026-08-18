@@ -86,7 +86,7 @@ const DEADLINE_HIT = Symbol("deadline");
 
 /** Suggested per-agent deadlines (ms). If Risk times out → decision must be wait. */
 export const AGENT_TIMEOUTS = {
-  // Must stay ABOVE MetaApi's HISTORY_TIMEOUT_MS (12s). The old 10s budget
+  // Must stay ABOVE the OHLC provider's per-request timeout. The old 10s budget
   // made every cold/live history pull a structural timeout — a single page
   // race already outlived the whole market-data stage, so operators saw
   // "بيانات السوق لم تنتهِ ضمن المهلة" on first analysis after restart and

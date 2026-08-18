@@ -32,7 +32,6 @@ const requiredSettingsColumns = [
   "user_id",
   "per_trade_pct",
   "allowed_assets",
-  "forex_backend",
   "send_screenshot",
   "telegram_chat_id",
   "onboarding_done",

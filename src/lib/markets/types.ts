@@ -1,9 +1,6 @@
 export type MarketType = "forex";
 
-/** MetaTrader platform variant. */
-export type MtPlatform = "mt4" | "mt5";
-
-/** Maps forex orders to the user's configured execution backend. */
+/** Canonical forex instrument identity. */
 export interface ResolvedSymbol {
   raw: string;
   symbol: string;

@@ -49,7 +49,7 @@ const GROUPS: { id: ConfigField["group"]; title: string; description: string }[]
   {
     id: "markets",
     title: "بيانات السوق والوسطاء",
-    description: "مفاتيح الأنابيب التي تصل الأسعار والحسابات — MetaApi.",
+    description: "مفاتيح الأنابيب التي تصل الأسعار — OANDA.",
   },
   { id: "telegram", title: "تليجرام", description: "البوت وقنوات الإشعار." },
   {
@@ -463,8 +463,8 @@ export function AdminKeysPanel() {
         saveLabel="حفظ المفاتيح"
         pendingLabel={(n) => `${n} تعديل غير محفوظ`}
       >
-        تحذير: تغيير <span dir="ltr">ENCRYPTION_KEY</span> بعد ربط حسابات
-        MetaTrader يمنع فك تشفير المفاتيح القديمة.
+        تحذير: تغيير <span dir="ltr">ENCRYPTION_KEY</span> بعد حفظ المفاتيح
+        يمنع فك تشفير القيم القديمة.
       </StickySaveBar>
     </AdminPage>
   );

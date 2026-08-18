@@ -6,9 +6,9 @@ import { mcpToolConfig } from "./schemas/index.js";
 /**
  * Pass the symbol through as the caller spelled it.
  *
- * The web bridge serves every user from their own linked MetaTrader
- * cloud account). Folding every symbol through toCanonicalForexSymbol here forced
- * XAUUSDm → XAUUSD and then asked MetaApi for an instrument that does not
+ * The web bridge serves every user from the platform OANDA feed.
+ * Folding every symbol through toCanonicalForexSymbol here forced
+ * XAUUSDm → XAUUSD and then asked the feed for an instrument that does not
  * exist — and hid which book the numbers came from.
  */
 function bridgeSymbol(symbol: string): string {
@@ -157,7 +157,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         limit?: number;
         cursor?: number;
       };
-      // No source override — the bridge reads the user's own linked account
+      // No source override — the bridge reads the platform OANDA feed
       // and returns `source`/`book` on the result.
       return bridgeCall("get_ohlc", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/ohlc", {

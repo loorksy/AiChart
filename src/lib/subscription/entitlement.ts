@@ -129,9 +129,9 @@ export function resolveEntitlement(
   }
 
   // The trial carries EVERY feature but dies on whichever cap hits first:
-  // the one-hour clock (started by the first successful MT link) or the third
-  // recommendation. Before the first link the clock has not started — the
-  // user can sign in, link, and browse; the hour begins at link time.
+  // the one-hour clock (once started) or the third recommendation. Before
+  // the clock starts the user can sign in and browse; the hour begins when
+  // startTrialClock runs.
   const used = Math.max(0, row.trial_recommendations_used | 0);
   const remaining = Math.max(0, AICHART_PLAN.trialRecommendations - used);
   const startedMs = row.trial_started_at ? new Date(row.trial_started_at).getTime() : null;
@@ -156,9 +156,8 @@ export function resolveEntitlement(
 }
 
 /**
- * Start the trial clock — called exactly once, from the first SUCCESSFUL
- * MetaTrader link. Idempotent: a second link, a re-link, or a paid account
- * never move the clock.
+ * Start the trial clock — called exactly once. Idempotent: a second call,
+ * or a paid account, never move the clock.
  */
 export async function startTrialClock(userId: number): Promise<void> {
   await ensureEntitlementRow(userId);

@@ -14,7 +14,7 @@
     },
     "data_source": {
       "type": "string",
-      "const": "metaapi"
+      "const": "oanda"
     },
     "layout_id": {
       "description": "User chart layout id (from list_chart_layouts) — defaults to primary chart",

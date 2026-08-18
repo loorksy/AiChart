@@ -26,16 +26,11 @@ import {
   migrateLegacyDynamicPageBranding,
   type DynamicPageBrandFields,
 } from "./dynamicPageBranding";
-import {
-  DOCS_MT5_LINKING_CONTENT_AR,
-  DOCS_MT5_LINKING_CONTENT_EN,
-  DOCS_MT5_LINKING_STALE_MARKERS,
-} from "../content/docsMt5LinkingCopy";
 import { adaptSql, normalizeRow } from "./sql";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _pool: Pool | null = null;
-export const SCHEMA_VERSION = "2026-08-04-symbol-catalogue-v1";
+export const SCHEMA_VERSION = "2026-08-18-drop-cloud-broker-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -57,10 +52,6 @@ const SCHEMA = `
         AND ABS(per_trade_pct * 10 - ROUND(per_trade_pct * 10)) < 0.000000001
       ),
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
-    -- 'metaapi' | 'mt5local' | NULL (operator's global default). Migration
-    -- below rewrites any leftover legacy 'ea' value to NULL.
-    forex_backend            TEXT,
-    market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
@@ -80,21 +71,6 @@ const SCHEMA = `
     favourite_symbols        TEXT NOT NULL DEFAULT '[]',
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
-
-  -- Shared instrument seed from connected cloud accounts (N7).
-  CREATE TABLE IF NOT EXISTS symbol_catalogue (
-    id                   BIGSERIAL PRIMARY KEY,
-    broker_symbol        TEXT NOT NULL,
-    canonical            TEXT NOT NULL,
-    origin               TEXT NOT NULL CHECK (origin IN ('oanda', 'broker')),
-    seeded_by_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    metaapi_account_id   TEXT,
-    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (origin, broker_symbol)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_symbol_catalogue_canonical
-    ON symbol_catalogue (canonical);
 
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -240,25 +216,6 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages(ticket_id, created_at);
 
-  -- V2-B: MetaApi deploy-hour metering (billed only while deployed).
-  CREATE TABLE IF NOT EXISTS metaapi_deploy_sessions (
-    id            BIGSERIAL PRIMARY KEY,
-    user_id       INTEGER NOT NULL,
-    account_id    TEXT NOT NULL,
-    deployed_at   BIGINT NOT NULL,
-    undeployed_at BIGINT,
-    hours         DOUBLE PRECISION,
-    retail_usd    DOUBLE PRECISION,
-    reason        TEXT
-  );
-  CREATE INDEX IF NOT EXISTS idx_metaapi_sessions_user ON metaapi_deploy_sessions(user_id, deployed_at);
-
-  -- V2-B: presence heartbeat driving deploy/undeploy.
-  CREATE TABLE IF NOT EXISTS mt_presence (
-    user_id   INTEGER PRIMARY KEY,
-    last_seen BIGINT NOT NULL
-  );
-
   -- V2-A6: fine-grained admin roles (role='admin' users are implicit owners).
   CREATE TABLE IF NOT EXISTS admin_roles (
     user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -288,30 +245,6 @@ const SCHEMA = `
     PRIMARY KEY (provider, subject)
   );
   CREATE INDEX IF NOT EXISTS idx_oauth_identities_user ON oauth_identities(user_id);
-
-
-
-  CREATE TABLE IF NOT EXISTS mt_accounts (
-    id                  SERIAL PRIMARY KEY,
-    user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    platform            TEXT NOT NULL DEFAULT 'mt5',
-    server              TEXT NOT NULL,
-    login               TEXT NOT NULL,
-    password_enc        TEXT NOT NULL,
-    metaapi_account_id  TEXT NOT NULL,
-    region              TEXT,
-    state               TEXT NOT NULL DEFAULT 'CREATED',
-    connection_status   TEXT,
-    balance             DOUBLE PRECISION NOT NULL DEFAULT 0,
-    equity              DOUBLE PRECISION NOT NULL DEFAULT 0,
-    currency            TEXT,
-    account_trade_mode  TEXT,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
-    ON mt_accounts (user_id);
 
   CREATE TABLE IF NOT EXISTS system_flags (
     key   TEXT PRIMARY KEY,
@@ -649,26 +582,7 @@ const SCHEMA = `
   -- honest reading of rows written before scoping existed. The unique moment
   -- index is what makes re-analysis inside one candle an UPDATE, not a
   -- duplicate comparison row.
-  -- The broker's own account type for cloud/bridge connections; without it the
-  -- live-money dual-enablement gate cannot tell a real MetaApi account from a
-  -- demo one.
-  ALTER TABLE mt_accounts ADD COLUMN IF NOT EXISTS account_trade_mode TEXT;
-  -- Which pipe charts and quotes are read from: platform data, or the
-  -- user's own cloud account.
-  ALTER TABLE trading_settings ADD COLUMN IF NOT EXISTS market_data_source TEXT;
   ALTER TABLE trading_settings ADD COLUMN IF NOT EXISTS favourite_symbols TEXT NOT NULL DEFAULT '[]';
-  CREATE TABLE IF NOT EXISTS symbol_catalogue (
-    id                   BIGSERIAL PRIMARY KEY,
-    broker_symbol        TEXT NOT NULL,
-    canonical            TEXT NOT NULL,
-    origin               TEXT NOT NULL CHECK (origin IN ('oanda', 'broker')),
-    seeded_by_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    metaapi_account_id   TEXT,
-    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (origin, broker_symbol)
-  );
-  CREATE INDEX IF NOT EXISTS idx_symbol_catalogue_canonical
-    ON symbol_catalogue (canonical);
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS parity_key TEXT;
@@ -677,8 +591,7 @@ const SCHEMA = `
     WHERE user_id IS NOT NULL AND parity_key IS NOT NULL;
 
   -- Live spread samples per symbol×session (plan §13 H.1), aggregated on
-  -- read. Written by the MetaApi streaming listener (lib/metaapi/streaming.ts)
-  -- at most once per symbol per minute from ticks it already receives.
+  -- read from the platform OANDA quote.
   CREATE TABLE IF NOT EXISTS cost_samples (
     id          BIGSERIAL PRIMARY KEY,
     symbol      TEXT NOT NULL,
@@ -1125,8 +1038,8 @@ async function migratePg(client: PoolClient) {
       slug: "privacy-policy",
       title_ar: "سياسة الخصوصية",
       title_en: "Privacy Policy",
-      content_ar: "# سياسة الخصوصية\n\nنحن في **Lonora** نلتزم بحماية خصوصيتك وأمان بياناتك المالية والشخصية.\n\n### 1. جمع المعلومات\nنقوم بجمع المعلومات اللازمة فقط لربط حسابات التداول الخاصة بك وتنفيذ صفقاتك بأمان. لا نقوم بمشاركة أي بيانات سرية مع أي طرف ثالث.\n\n### 2. حماية البيانات\nيتم تشفير جميع مفاتيح API وكلمات المرور الخاصة بك باستخدام خوارزميات تشفير متقدمة على مستوى الخادم.",
-      content_en: "# Privacy Policy\n\nAt **Lonora**, we are committed to protecting your privacy and the security of your financial and personal data.\n\n### 1. Data Collection\nWe collect only the information necessary to connect your trading accounts and execute trades securely. We never share sensitive data with third parties.\n\n### 2. Data Protection\nAll API keys and passwords are encrypted using state-of-the-art server-side encryption algorithms."
+      content_ar: "# سياسة الخصوصية\n\nنحن في **Lonora** نلتزم بحماية خصوصيتك وأمان بياناتك الشخصية.\n\n### 1. جمع المعلومات\nنقوم بجمع المعلومات اللازمة فقط لتشغيل الحساب وتقديم التحليل. لا نقوم بمشاركة أي بيانات سرية مع أي طرف ثالث.\n\n### 2. حماية البيانات\nيتم تشفير جميع مفاتيح API باستخدام خوارزميات تشفير متقدمة على مستوى الخادم.",
+      content_en: "# Privacy Policy\n\nAt **Lonora**, we are committed to protecting your privacy and the security of your personal data.\n\n### 1. Data Collection\nWe collect only the information necessary to run your account and provide analysis. We never share sensitive data with third parties.\n\n### 2. Data Protection\nAll API keys are encrypted using state-of-the-art server-side encryption algorithms."
     },
     {
       slug: "terms-of-service",
@@ -1308,8 +1221,7 @@ async function migratePg(client: PoolClient) {
       AND key IN (
         'ANTHROPIC_MODEL',
         'TELEGRAM_BOT_USERNAME',
-        'APP_URL',
-        'METAAPI_REGION'
+        'APP_URL'
       )
   `).catch(() => {
     /* table may be empty on first boot */
@@ -1329,11 +1241,6 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {
     /* table may not exist yet on first boot */
   });
-
-  await client.query(`
-    ALTER TABLE trading_settings
-      ADD COLUMN IF NOT EXISTS forex_backend TEXT
-  `).catch(() => {});
 
   await client.query(`
     ALTER TABLE trading_settings
@@ -1436,31 +1343,6 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
-    CREATE TABLE IF NOT EXISTS mt_accounts (
-      id                  SERIAL PRIMARY KEY,
-      user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      platform            TEXT NOT NULL DEFAULT 'mt5',
-      server              TEXT NOT NULL,
-      login               TEXT NOT NULL,
-      password_enc        TEXT NOT NULL,
-      metaapi_account_id  TEXT NOT NULL,
-      region              TEXT,
-      state               TEXT NOT NULL DEFAULT 'CREATED',
-      connection_status   TEXT,
-      balance             DOUBLE PRECISION NOT NULL DEFAULT 0,
-      equity              DOUBLE PRECISION NOT NULL DEFAULT 0,
-      currency            TEXT,
-      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `).catch(() => {});
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
-      ON mt_accounts (user_id)
-  `).catch(() => {});
-
-  await client.query(`
     ALTER TABLE recommendations
       ADD COLUMN IF NOT EXISTS memory_refs_json TEXT,
       DROP COLUMN IF EXISTS committee_json
@@ -1470,10 +1352,8 @@ async function migratePg(client: PoolClient) {
     ALTER TABLE agent_runs DROP COLUMN IF EXISTS risk_veto
   `).catch(() => {});
 
-  // Forward-only removal of the candle warehouse. The agent now reads every
-  // candle live from the user's own MetaTrader account, every call, with no
-  // server-side store or cache in between — this table's data is dropped,
-  // not just stopped-growing.
+  // Forward-only removal of the candle warehouse. Candles now come from
+  // the platform OANDA feed, every call, with no MetaTrader store in between.
   await client.query(`DROP TABLE IF EXISTS market_candles`).catch(() => {});
 
   // Forward-only removal of the configurable decision-policy era. Historical
@@ -1506,7 +1386,9 @@ async function migratePg(client: PoolClient) {
       DROP COLUMN IF EXISTS scan_poll_minutes,
       DROP COLUMN IF EXISTS analysis_interval,
       DROP COLUMN IF EXISTS execution_env_preference,
-      DROP COLUMN IF EXISTS active_market
+      DROP COLUMN IF EXISTS active_market,
+      DROP COLUMN IF EXISTS forex_backend,
+      DROP COLUMN IF EXISTS market_data_source
   `).catch((err) => {
     console.warn("[db] obsolete trading settings cleanup skipped:", err.message);
   });
@@ -1836,39 +1718,18 @@ async function migratePg(client: PoolClient) {
       ON deep_analysis_runs (status, updated_at)
   `).catch(() => {});
 
-  // EA bridge retired. A stored 'ea' preference named a backend that no
-  // longer exists — NULL defers to the deployment default (getForexBackend),
-  // the same outcome resolveForexBackendFromPref already gives an
-  // unrecognised value, so no one silently keeps routing through a backend
-  // that isn't there.
-  await client.query(
-    `UPDATE trading_settings SET forex_backend = NULL WHERE forex_backend = 'ea'`,
-  ).catch(() => {});
-
-  // Its tables carried nothing but hashed device tokens and heartbeat/candle
-  // cache, none of which any code reads anymore.
   await client.query(`DROP TABLE IF EXISTS ea_commands CASCADE`).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS ea_market_cache CASCADE`).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS ea_connections CASCADE`).catch(() => {});
 
-  const mt5Doc = await client
-    .query<{ content_ar: string; content_en: string }>(
-      "SELECT content_ar, content_en FROM dynamic_pages WHERE slug = $1",
-      ["docs-mt5-linking"],
-    )
-    .catch(() => ({ rows: [] as { content_ar: string; content_en: string }[] }));
-  const row = mt5Doc.rows[0];
-  if (row) {
-    const stale = DOCS_MT5_LINKING_STALE_MARKERS.some(
-      (m) => row.content_ar.includes(m) || row.content_en.includes(m),
-    );
-    if (stale) {
-      await client.query(
-        "UPDATE dynamic_pages SET content_ar = $1, content_en = $2 WHERE slug = $3",
-        [DOCS_MT5_LINKING_CONTENT_AR, DOCS_MT5_LINKING_CONTENT_EN, "docs-mt5-linking"],
-      );
-    }
-  }
+  await client.query(`DROP TABLE IF EXISTS mt_accounts CASCADE`).catch(() => {});
+  await client.query(`DROP TABLE IF EXISTS metaapi_deploy_sessions CASCADE`).catch(() => {});
+  await client.query(`DROP TABLE IF EXISTS mt_presence CASCADE`).catch(() => {});
+  await client.query(`DROP TABLE IF EXISTS symbol_catalogue CASCADE`).catch(() => {});
+  await client.query(`DELETE FROM dynamic_pages WHERE slug = 'docs-mt5-linking'`).catch(() => {});
+  await client.query(
+    `DELETE FROM platform_config WHERE key IN ('METAAPI_TOKEN', 'METAAPI_REGION', 'METAAPI_ACCOUNT_ID')`,
+  ).catch(() => {});
 }
 
 async function seedAdminPg(client: PoolClient) {

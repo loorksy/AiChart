@@ -129,8 +129,8 @@ function priceScale(symbol: string): number {
   return 100000; // forex majors, 5 decimals
 }
 
-/** Bars served by the trader's cloud MetaTrader account, via MetaApi. */
-const CLOUD_EXCHANGE = "MT5 CLOUD";
+/** Bars served by the platform OANDA feed. */
+const CLOUD_EXCHANGE = "OANDA";
 
 type BarSubscription = {
   timer?: ReturnType<typeof setInterval>;
@@ -146,7 +146,7 @@ export function createAiChartDatafeed(
   market: MarketType = "forex",
   opts: { onLatestCandle?: (candle: TvLatestCandle) => void } = {},
 ): IBasicDataFeed {
-  // Every bar is served by the trader's own MetaTrader account.
+  // Every bar is served by the platform OANDA feed.
   const exchange = CLOUD_EXCHANGE;
   const symbolType = "forex";
   const subscribers = new Map<string, BarSubscription>();
@@ -245,12 +245,11 @@ export function createAiChartDatafeed(
       /*
        * Case is only folded for canonical chart keys. A broker symbol arrives
        * already spelled the way its catalogue spells it — XAUUSDm, AAPLm —
-       * and uppercasing it here is what reached MetaApi as a symbol that does
+       * and uppercasing it here is what reached the feed as a symbol that does
        * not exist. A lowercase letter is the tell: canonical keys never carry
        * one.
        */
       const sym = /[a-z]/.test(bare) ? bare : bare.toUpperCase();
-      // Every bar comes over the trader's own MetaTrader account.
       const exch = exchange;
       const info: LibrarySymbolInfo = {
         name: sym,

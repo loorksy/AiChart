@@ -25,7 +25,6 @@ const settingsPatchSchema = z
         z.object({ forex: assetList.optional(), watchlist: assetList.optional() }).strict(),
       ])
       .optional(),
-    forex_backend: z.enum(["mt5local", "metaapi"]).nullable().optional(),
     // "provider/model" the user picked in the chat composer; null = default.
     preferred_model_ref: z
       .string()
@@ -73,7 +72,6 @@ export async function PUT(request: NextRequest) {
     const patch: Record<string, unknown> = {};
 
     if (input.per_trade_pct !== undefined) patch.per_trade_pct = input.per_trade_pct;
-    if (input.forex_backend !== undefined) patch.forex_backend = input.forex_backend;
     if (input.preferred_model_ref !== undefined) {
       // Only the curated catalogue (plus the admin's configured default) may be
       // saved — the regex alone would accept any well-formed id the provider's

@@ -49,7 +49,7 @@ export async function getUnifiedSnapshot(
   }
   const decision = await resolveMarketDataSource(userId, null);
   // Preserve broker spelling — resolveSymbol already keeps suffixes; folding
-  // here would break MetaApi lookups.
+  // here would break feed lookups.
   const symbolForPipe = query.trim() || resolved.symbol;
   const snap = await buildForexSnapshot(
     userId,

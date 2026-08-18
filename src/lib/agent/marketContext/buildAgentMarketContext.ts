@@ -1,7 +1,7 @@
 /**
  * Builds the multi-timeframe market context the specialist agents reason on.
  * Every series — current TF, higher TF, daily, and the chart's visible range
- * — is pulled live off the user's linked MetaTrader account, every call.
+ * — is pulled live off the platform OANDA feed, every call.
  * There is no persistent warehouse behind any of it and no synchronous
  * refill: `fetchOhlc` either returns what the broker has, or it doesn't, and
  * the coverage report below says exactly which.
@@ -111,7 +111,7 @@ export async function buildAgentMarketContext(input: {
   const interval = normalizeCanonicalInterval(input.interval);
   const higherInterval = getHigherInterval(interval);
   const analysisKind = input.analysisKind ?? "intraday";
-  const source = "metaapi";
+  const source = "oanda";
   const userId = input.userId ?? 0;
 
   // Rung 1 of the cost ladder needs a real bid/ask, and no production entry

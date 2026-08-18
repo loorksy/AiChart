@@ -1,8 +1,8 @@
 /**
  * The single-pipe reality: the platform's OANDA feed is the ONLY market-data
  * source, configured once at the platform level. There is no per-user
- * account link involved in data availability at all — a user's MT5/MetaApi
- * link only matters for execution (see src/lib/execution.ts), never for
+ * account link involved in data availability at all — a user's broker
+ * link only matters for later execution, never for
  * whether quotes/candles/recommendations are available.
  */
 import assert from "node:assert/strict";

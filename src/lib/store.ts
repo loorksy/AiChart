@@ -8,7 +8,6 @@ import {
   queryOne,
   getDbBackend,
 } from "./db";
-import { encryptSecret, decryptSecret } from "./crypto";
 import type { ActivationRule } from "./recommendations/activationRule";
 import { deriveExecutionState, type PlanType } from "./agent/trading/tradePlan";
 import { hashPassword } from "./auth";
@@ -16,8 +15,6 @@ import type { TelegramLoginPayload } from "./telegramAuth";
 import { telegramDisplayEmail } from "./telegramAuth";
 import type {
   AdminLimits,
-  MtAccount,
-  MtAccountMeta,
   PublicUser,
   Recommendation,
   RecommendationSource,
@@ -31,7 +28,7 @@ import {
   computeAccessExpiresAt,
   DEFAULT_ACCESS_DAYS,
 } from "./platformAccess";
-import type { MarketType, MtPlatform } from "./markets/types";
+import type { MarketType } from "./markets/types";
 import {
   appendRecommendationHistory,
   createCanonicalRecommendation,
@@ -149,7 +146,7 @@ export async function getSettings(userId: number): Promise<TradingSettings> {
   await ensureUserDefaults(userId);
   const row = (await queryOne<TradingSettings>(
     `SELECT user_id, per_trade_pct, allowed_assets,
-            forex_backend, market_data_source, preferred_model_ref, send_screenshot, telegram_chat_id,
+            preferred_model_ref, send_screenshot, telegram_chat_id,
             onboarding_done, alerts_enabled, alert_trades, alert_signals, updated_at
        FROM trading_settings
       WHERE user_id = ?`,
@@ -171,8 +168,6 @@ export async function getLimits(userId: number): Promise<AdminLimits> {
 const SETTABLE_FIELDS = [
   "per_trade_pct",
   "allowed_assets",
-  "forex_backend",
-  "market_data_source",
   "preferred_model_ref",
   "send_screenshot",
   "telegram_chat_id",
@@ -213,159 +208,6 @@ export async function updateSettings(
     `UPDATE trading_settings SET ${assignments}, updated_at = datetime('now') WHERE user_id = ?`,
     params,
   );
-}
-
-export async function saveMtAccount(
-  userId: number,
-  data: {
-    platform: MtPlatform;
-    server: string;
-    login: string;
-    password: string;
-    metaapiAccountId: string;
-    region?: string | null;
-    state?: string;
-    connectionStatus?: string | null;
-    balance?: number;
-    equity?: number;
-    currency?: string | null;
-    /** The broker's own account type, as reported by MetaApi / the MT5 bridge. */
-    accountTradeMode?: string | null;
-  },
-) {
-  await execute(
-    `INSERT INTO mt_accounts (
-       user_id, platform, server, login, password_enc, metaapi_account_id,
-       region, state, connection_status, balance, equity, currency,
-       account_trade_mode, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(user_id) DO UPDATE SET
-       platform = excluded.platform,
-       server = excluded.server,
-       login = excluded.login,
-       password_enc = excluded.password_enc,
-       metaapi_account_id = excluded.metaapi_account_id,
-       region = excluded.region,
-       state = excluded.state,
-       connection_status = excluded.connection_status,
-       balance = excluded.balance,
-       equity = excluded.equity,
-       currency = excluded.currency,
-       -- A NULL from a status poll that could not read the type must not erase
-       -- a type already established at connect time.
-       account_trade_mode = COALESCE(excluded.account_trade_mode, mt_accounts.account_trade_mode),
-       updated_at = datetime('now')`,
-    [
-      userId,
-      data.platform,
-      data.server.trim(),
-      data.login.replace(/\D/g, ""),
-      encryptSecret(data.password),
-      data.metaapiAccountId,
-      data.region ?? null,
-      data.state ?? "CREATED",
-      data.connectionStatus ?? null,
-      data.balance ?? 0,
-      data.equity ?? 0,
-      data.currency ?? null,
-      data.accountTradeMode ?? null,
-    ],
-  );
-}
-
-export async function getMtAccount(userId: number): Promise<MtAccount | null> {
-  return queryOne<MtAccount>("SELECT * FROM mt_accounts WHERE user_id = ?", [
-    userId,
-  ]);
-}
-
-export async function getMtAccountMeta(
-  userId: number,
-): Promise<MtAccountMeta | null> {
-  const row = await queryOne<MtAccount>(
-    "SELECT * FROM mt_accounts WHERE user_id = ?",
-    [userId],
-  );
-  if (!row) return null;
-  const online =
-    row.state === "DEPLOYED" && row.connection_status === "CONNECTED";
-  return {
-    id: row.id,
-    platform: row.platform,
-    server: row.server,
-    login: row.login,
-    balance: row.balance,
-    equity: row.equity,
-    currency: row.currency,
-    state: row.state,
-    connection_status: row.connection_status,
-    account_trade_mode: row.account_trade_mode ?? null,
-    online,
-    updated_at: row.updated_at,
-  };
-}
-
-export async function getMtAccountPassword(
-  userId: number,
-): Promise<string | null> {
-  const row = await queryOne<{ password_enc: string }>(
-    "SELECT password_enc FROM mt_accounts WHERE user_id = ?",
-    [userId],
-  );
-  if (!row) return null;
-  return decryptSecret(row.password_enc);
-}
-
-export async function updateMtAccountStatus(
-  userId: number,
-  patch: {
-    state?: string;
-    connectionStatus?: string | null;
-    balance?: number;
-    equity?: number;
-    currency?: string | null;
-    accountTradeMode?: string | null;
-  },
-) {
-  const fields: string[] = [];
-  const params: unknown[] = [];
-  if (patch.state != null) {
-    fields.push("state = ?");
-    params.push(patch.state);
-  }
-  if (patch.connectionStatus !== undefined) {
-    fields.push("connection_status = ?");
-    params.push(patch.connectionStatus);
-  }
-  if (patch.balance != null) {
-    fields.push("balance = ?");
-    params.push(patch.balance);
-  }
-  if (patch.equity != null) {
-    fields.push("equity = ?");
-    params.push(patch.equity);
-  }
-  if (patch.currency !== undefined) {
-    fields.push("currency = ?");
-    params.push(patch.currency);
-  }
-  // Only written when the broker actually reported a type — a poll that could
-  // not read it leaves the established value alone rather than blanking it.
-  if (patch.accountTradeMode != null) {
-    fields.push("account_trade_mode = ?");
-    params.push(patch.accountTradeMode);
-  }
-  if (fields.length === 0) return;
-  fields.push("updated_at = datetime('now')");
-  params.push(userId);
-  await execute(
-    `UPDATE mt_accounts SET ${fields.join(", ")} WHERE user_id = ?`,
-    params,
-  );
-}
-
-export async function deleteMtAccount(userId: number) {
-  await execute("DELETE FROM mt_accounts WHERE user_id = ?", [userId]);
 }
 
 export async function getUserByTelegramId(
@@ -459,7 +301,6 @@ export async function updateUserCredentials(
 }
 
 export interface AdminUserView extends PublicUser {
-  has_mt5: number;
   can_execute: number;
   claude_quota: number;
   signup_via: "telegram" | "email";
@@ -470,10 +311,6 @@ export async function listUsersForAdmin(): Promise<AdminUserView[]> {
     `SELECT u.id, u.email, u.role, u.status, u.username, u.whatsapp_e164,
             u.telegram_id, u.access_expires_at, u.created_at,
             CASE WHEN u.telegram_id IS NOT NULL THEN 'telegram' ELSE 'email' END AS signup_via,
-            EXISTS (
-              SELECT 1 FROM mt_accounts m
-              WHERE m.user_id = u.id
-            ) AS has_mt5,
             COALESCE(a.can_execute, FALSE) AS can_execute,
             COALESCE(a.claude_quota, 1000) AS claude_quota
      FROM users u
@@ -1182,7 +1019,6 @@ export interface AdminPlatformStats {
   users_active: number;
   users_pending: number;
   users_suspended: number;
-  users_with_mt5: number;
   trades_total: number;
   trades_open: number;
   intents_pending: number;

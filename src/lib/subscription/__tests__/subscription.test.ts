@@ -47,7 +47,7 @@ test("admin bypasses subscription gate", () => {
   assert.equal(snap.hasPaidAccess, true);
 });
 
-test("trial before the first MT link: full access, clock not started", () => {
+test("trial before the clock starts: full access, clock not started", () => {
   const snap = resolveEntitlement({ id: 2, role: "user", status: "active" }, row({}));
   assert.equal(snap.access, "trial");
   assert.equal(snap.trialStartedAt, null);

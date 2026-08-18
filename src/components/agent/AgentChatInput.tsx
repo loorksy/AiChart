@@ -86,7 +86,6 @@ export function AgentChatInput({
   onCancel,
   symbol,
   interval,
-  brokerConnected = false,
   onSymbolChange,
   onIntervalChange,
 }: {
@@ -96,7 +95,6 @@ export function AgentChatInput({
   /** Market context row: the pair and frame the next question is about. */
   symbol?: string;
   interval?: string;
-  brokerConnected?: boolean;
   onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
 }) {

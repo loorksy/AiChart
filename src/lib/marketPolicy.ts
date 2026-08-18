@@ -4,7 +4,7 @@ import type { MarketType } from "./markets/types";
 export const DEFAULT_MARKET: MarketType = "forex";
 
 export const NON_FOREX_MARKET_MESSAGE =
-  "المنصة تدعم الفوركس (MetaTrader) فقط.";
+  "المنصة تدعم الفوركس فقط.";
 
 /** Coerces legacy market values to forex for runtime behavior. */
 export function resolveActiveMarket(value?: MarketType | string | null): MarketType {

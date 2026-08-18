@@ -73,8 +73,7 @@ interface Props {
   ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
   ensureChatId?: () => Promise<string | null>;
-  /** Broker link state + market setters for the composer's pair/interval row. */
-  brokerConnected?: boolean;
+  /** Market setters for the composer's pair/interval row. */
   onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
   /**
@@ -106,7 +105,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       applyDrawingMutations,
       onPersistMessage,
       ensureChatId,
-      brokerConnected,
       onSymbolChange,
       onIntervalChange,
       hydrating = false,
@@ -239,7 +237,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         onCancel={cancel}
         symbol={symbol}
         interval={interval}
-        brokerConnected={brokerConnected}
         onSymbolChange={onSymbolChange}
         onIntervalChange={onIntervalChange}
       />

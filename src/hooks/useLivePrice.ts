@@ -6,7 +6,7 @@ import type { LivePriceTick } from "@/hooks/livePriceTypes";
 const POLL_MS = 1000;
 
 /**
- * Live forex price polled from the user's linked MetaTrader account via
+ * Live forex price polled from the platform OANDA feed via
  * `/api/market/forex-price`.
  */
 export function useLivePrice(symbol: string, enabled = true): LivePriceTick {
@@ -36,7 +36,7 @@ export function useLivePrice(symbol: string, enabled = true): LivePriceTick {
           ask?: number | null;
           spread_label?: string | null;
           spread_pips?: number | null;
-          source?: "metaapi" | null;
+          source?: "oanda" | null;
         };
         if (!alive) return;
         const price = Number(data.price) || 0;

@@ -11,8 +11,8 @@ export interface FreshAgentCandlesResult {
 }
 
 /**
- * Candles for the analysis's own timeframe, live off the user's linked
- * MetaTrader account. There is no warehouse tier and no bounded-rescue
+ * Candles for the analysis's own timeframe, live off the platform
+ * OANDA feed. There is no warehouse tier and no bounded-rescue
  * timeout anymore — the fetch runs to completion (or failure) and that is
  * the whole answer.
  */

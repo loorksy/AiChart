@@ -12,15 +12,10 @@ import {
   type DynamicPageBrandFields,
 } from "./dynamicPageBranding";
 import type { DbRow, ExecuteResult } from "./types";
-import {
-  DOCS_MT5_LINKING_CONTENT_AR,
-  DOCS_MT5_LINKING_CONTENT_EN,
-  DOCS_MT5_LINKING_STALE_MARKERS,
-} from "../content/docsMt5LinkingCopy";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
-const SCHEMA_VERSION = "2026-08-04-symbol-catalogue-v1";
+const SCHEMA_VERSION = "2026-08-18-drop-cloud-broker-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -41,15 +36,6 @@ const SCHEMA = `
         AND ABS(per_trade_pct * 10 - ROUND(per_trade_pct * 10)) < 0.000000001
       ),
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
-    -- User-chosen forex connection: 'metaapi' (cloud) or 'mt5local'
-    -- (server-side bridge, no download). NULL = operator's global default.
-    -- Migration below rewrites any leftover 'ea' value to NULL; resolution
-    -- also treats an unrecognised value as NULL, so this is belt and braces.
-    forex_backend            TEXT,
-    -- Kept for stored-settings compatibility: the user's own linked
-    -- MetaTrader account ('metaapi') is the only pipe now, so every value
-    -- resolves to it.
-    market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
@@ -72,23 +58,6 @@ const SCHEMA = `
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
-
-  -- Shared instrument seed from connected cloud accounts (N7). Origin is
-  -- recorded so a broker-sourced row is never labelled as the platform feed.
-  CREATE TABLE IF NOT EXISTS symbol_catalogue (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    broker_symbol        TEXT NOT NULL,
-    canonical            TEXT NOT NULL,
-    origin               TEXT NOT NULL CHECK (origin IN ('oanda', 'broker')),
-    seeded_by_user_id    INTEGER,
-    metaapi_account_id   TEXT,
-    updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE (origin, broker_symbol),
-    FOREIGN KEY (seeded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_symbol_catalogue_canonical
-    ON symbol_catalogue (canonical);
 
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY,
@@ -243,25 +212,6 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages(ticket_id, created_at);
 
-  -- V2-B: MetaApi deploy-hour metering (billed only while deployed).
-  CREATE TABLE IF NOT EXISTS metaapi_deploy_sessions (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id       INTEGER NOT NULL,
-    account_id    TEXT NOT NULL,
-    deployed_at   INTEGER NOT NULL,
-    undeployed_at INTEGER,
-    hours         REAL,
-    retail_usd    REAL,
-    reason        TEXT
-  );
-  CREATE INDEX IF NOT EXISTS idx_metaapi_sessions_user ON metaapi_deploy_sessions(user_id, deployed_at);
-
-  -- V2-B: presence heartbeat driving deploy/undeploy.
-  CREATE TABLE IF NOT EXISTS mt_presence (
-    user_id   INTEGER PRIMARY KEY,
-    last_seen INTEGER NOT NULL
-  );
-
   -- V2-A6: fine-grained admin roles (role='admin' users are implicit owners).
   CREATE TABLE IF NOT EXISTS admin_roles (
     user_id    INTEGER PRIMARY KEY,
@@ -293,31 +243,6 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_oauth_identities_user ON oauth_identities(user_id);
-
-
-
-  CREATE TABLE IF NOT EXISTS mt_accounts (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id             INTEGER NOT NULL,
-    platform            TEXT NOT NULL DEFAULT 'mt5',
-    server              TEXT NOT NULL,
-    login               TEXT NOT NULL,
-    password_enc        TEXT NOT NULL,
-    metaapi_account_id  TEXT NOT NULL,
-    region              TEXT,
-    state               TEXT NOT NULL DEFAULT 'CREATED',
-    connection_status   TEXT,
-    balance             REAL NOT NULL DEFAULT 0,
-    equity              REAL NOT NULL DEFAULT 0,
-    currency            TEXT,
-    account_trade_mode  TEXT,
-    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
-    ON mt_accounts (user_id);
 
   CREATE TABLE IF NOT EXISTS system_flags (
     key   TEXT PRIMARY KEY,
@@ -660,8 +585,7 @@ const SCHEMA = `
     ON decision_parity_comparisons(created_at DESC);
 
   -- Live spread samples per symbol×session (plan §13 H.1), aggregated on
-  -- read. Written by the MetaApi streaming listener (lib/metaapi/streaming.ts)
-  -- at most once per symbol per minute from ticks it already receives.
+  -- read from the platform OANDA quote.
   CREATE TABLE IF NOT EXISTS cost_samples (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol      TEXT NOT NULL,
@@ -1145,8 +1069,8 @@ function migrate(db: Database.Database) {
       slug: "privacy-policy",
       title_ar: "سياسة الخصوصية",
       title_en: "Privacy Policy",
-      content_ar: "# سياسة الخصوصية\n\nنحن في **Lonora** نلتزم بحماية خصوصيتك وأمان بياناتك المالية والشخصية.\n\n### 1. جمع المعلومات\nنقوم بجمع المعلومات اللازمة فقط لربط حسابات التداول الخاصة بك وتنفيذ صفقاتك بأمان. لا نقوم بمشاركة أي بيانات سرية مع أي طرف ثالث.\n\n### 2. حماية البيانات\nيتم تشفير جميع مفاتيح API وكلمات المرور الخاصة بك باستخدام خوارزميات تشفير متقدمة على مستوى الخادم.",
-      content_en: "# Privacy Policy\n\nAt **Lonora**, we are committed to protecting your privacy and the security of your financial and personal data.\n\n### 1. Data Collection\nWe collect only the information necessary to connect your trading accounts and execute trades securely. We never share sensitive data with third parties.\n\n### 2. Data Protection\nAll API keys and passwords are encrypted using state-of-the-art server-side encryption algorithms."
+      content_ar: "# سياسة الخصوصية\n\nنحن في **Lonora** نلتزم بحماية خصوصيتك وأمان بياناتك الشخصية.\n\n### 1. جمع المعلومات\nنقوم بجمع المعلومات اللازمة فقط لتشغيل الحساب وتقديم التحليل. لا نقوم بمشاركة أي بيانات سرية مع أي طرف ثالث.\n\n### 2. حماية البيانات\nيتم تشفير جميع مفاتيح API باستخدام خوارزميات تشفير متقدمة على مستوى الخادم.",
+      content_en: "# Privacy Policy\n\nAt **Lonora**, we are committed to protecting your privacy and the security of your personal data.\n\n### 1. Data Collection\nWe collect only the information necessary to run your account and provide analysis. We never share sensitive data with third parties.\n\n### 2. Data Protection\nAll API keys are encrypted using state-of-the-art server-side encryption algorithms."
     },
     {
       slug: "terms-of-service",
@@ -1451,9 +1375,6 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN alert_signals INTEGER NOT NULL DEFAULT 1",
     );
   }
-  if (!settingsCols.some((c) => c.name === "forex_backend")) {
-    db.exec("ALTER TABLE trading_settings ADD COLUMN forex_backend TEXT");
-  }
   if (!settingsCols.some((c) => c.name === "preferred_model_ref")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN preferred_model_ref TEXT");
   }
@@ -1468,7 +1389,7 @@ function migrate(db: Database.Database) {
     "min_confidence", "min_rr", "last_manual_scan_at", "scan_poll_minutes",
     "analysis_interval", "execution_env_preference", "futures_enabled",
     "default_leverage", "trading_style", "scalp_max_trades", "scalp_enabled",
-    "scalp_execution_mode", "active_market",
+    "scalp_execution_mode", "active_market", "forex_backend", "market_data_source",
   ];
   const currentSettingsColumns = db
     .prepare("PRAGMA table_info(trading_settings)")
@@ -1479,44 +1400,21 @@ function migrate(db: Database.Database) {
     }
   }
 
-  // The broker's own account type for cloud/bridge connections. Without it the
-  // live-money dual-enablement gate could not tell a real MetaApi account from
-  // a demo one, and defaulted to "not live" — the same protection failure
-  // already fixed on the self-hosted MT5 path.
-  const currentDataSourceColumns = db
+  const settingsAfterDrop = db
     .prepare("PRAGMA table_info(trading_settings)")
     .all() as { name: string }[];
-  if (!currentDataSourceColumns.some((column) => column.name === "market_data_source")) {
-    db.exec("ALTER TABLE trading_settings ADD COLUMN market_data_source TEXT");
-  }
-  if (!currentDataSourceColumns.some((column) => column.name === "favourite_symbols")) {
+  if (!settingsAfterDrop.some((column) => column.name === "favourite_symbols")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN favourite_symbols TEXT NOT NULL DEFAULT '[]'",
     );
   }
 
   db.exec(`
-    CREATE TABLE IF NOT EXISTS symbol_catalogue (
-      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-      broker_symbol        TEXT NOT NULL,
-      canonical            TEXT NOT NULL,
-      origin               TEXT NOT NULL CHECK (origin IN ('oanda', 'broker')),
-      seeded_by_user_id    INTEGER,
-      metaapi_account_id   TEXT,
-      updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (origin, broker_symbol),
-      FOREIGN KEY (seeded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_symbol_catalogue_canonical
-      ON symbol_catalogue (canonical);
+    DROP TABLE IF EXISTS mt_accounts;
+    DROP TABLE IF EXISTS metaapi_deploy_sessions;
+    DROP TABLE IF EXISTS mt_presence;
+    DROP TABLE IF EXISTS symbol_catalogue;
   `);
-
-  const currentMtColumns = db
-    .prepare("PRAGMA table_info(mt_accounts)")
-    .all() as { name: string }[];
-  if (!currentMtColumns.some((column) => column.name === "account_trade_mode")) {
-    db.exec("ALTER TABLE mt_accounts ADD COLUMN account_trade_mode TEXT");
-  }
 
   const currentAdminColumns = db
     .prepare("PRAGMA table_info(admin_limits)")
@@ -1588,8 +1486,7 @@ function migrate(db: Database.Database) {
       AND key IN (
         'ANTHROPIC_MODEL',
         'TELEGRAM_BOT_USERNAME',
-        'APP_URL',
-        'METAAPI_REGION'
+        'APP_URL'
       )
   `);
 
@@ -1614,7 +1511,7 @@ function migrate(db: Database.Database) {
   }
 
   // Forward-only removal of the candle warehouse. The agent now reads every
-  // candle live from the user's own MetaTrader account, every call, with no
+  // candle live from the platform OANDA feed, every call, with no
   // server-side store or cache in between — this table's data is dropped,
   // not just stopped-growing.
   db.exec("DROP TABLE IF EXISTS market_candles");
@@ -1643,29 +1540,6 @@ function migrate(db: Database.Database) {
       ON trade_lessons (user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_trade_lessons_symbol
       ON trade_lessons (user_id, symbol);
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS mt_accounts (
-      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id             INTEGER NOT NULL,
-      platform            TEXT NOT NULL DEFAULT 'mt5',
-      server              TEXT NOT NULL,
-      login               TEXT NOT NULL,
-      password_enc        TEXT NOT NULL,
-      metaapi_account_id  TEXT NOT NULL,
-      region              TEXT,
-      state               TEXT NOT NULL DEFAULT 'CREATED',
-      connection_status   TEXT,
-      balance             REAL NOT NULL DEFAULT 0,
-      equity              REAL NOT NULL DEFAULT 0,
-      currency            TEXT,
-      created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
-      ON mt_accounts (user_id);
   `);
 
   db.exec(`
@@ -1891,7 +1765,7 @@ function migrate(db: Database.Database) {
   `);
 
   // Timed-trial columns (additive; existing rows keep a null clock until the
-  // user's first MT link starts it).
+  // trial clock is started).
   const entCols = db
     .prepare("PRAGMA table_info(user_entitlements)")
     .all()
@@ -1950,40 +1824,18 @@ function migrate(db: Database.Database) {
     ).run();
   }
 
-  // EA bridge retired. A stored 'ea' preference named a backend that no
-  // longer exists — NULL defers to the deployment default (getForexBackend),
-  // the same outcome resolveForexBackendFromPref already gives an
-  // unrecognised value, so no one silently keeps routing through a backend
-  // that isn't there.
-  db.exec(`UPDATE trading_settings SET forex_backend = NULL WHERE forex_backend = 'ea'`);
-
-  // Its tables carried nothing but hashed device tokens and heartbeat/candle
-  // cache, none of which any code reads anymore.
   db.exec(`
     DROP TABLE IF EXISTS ea_commands;
     DROP TABLE IF EXISTS ea_market_cache;
     DROP TABLE IF EXISTS ea_connections;
   `);
 
-  const mt5Doc = db
-    .prepare("SELECT content_ar, content_en FROM dynamic_pages WHERE slug = ?")
-    .get("docs-mt5-linking") as
-    | { content_ar: string; content_en: string }
-    | undefined;
-  if (mt5Doc) {
-    const stale = DOCS_MT5_LINKING_STALE_MARKERS.some(
-      (m) => mt5Doc.content_ar.includes(m) || mt5Doc.content_en.includes(m),
+  db.exec(`
+    DELETE FROM dynamic_pages WHERE slug = 'docs-mt5-linking';
+    DELETE FROM platform_config WHERE key IN (
+      'METAAPI_TOKEN', 'METAAPI_REGION', 'METAAPI_ACCOUNT_ID'
     );
-    if (stale) {
-      db.prepare(
-        "UPDATE dynamic_pages SET content_ar = ?, content_en = ? WHERE slug = ?",
-      ).run(
-        DOCS_MT5_LINKING_CONTENT_AR,
-        DOCS_MT5_LINKING_CONTENT_EN,
-        "docs-mt5-linking",
-      );
-    }
-  }
+  `);
 }
 
 export function seedAdminSqlite(db: Database.Database) {

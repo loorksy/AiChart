@@ -14,7 +14,6 @@ void main() {
       'role': 'user',
       'status': 'active',
       'signup_via': 'email',
-      'has_mt5': 0,
       'can_execute': 'true',
       'claude_quota': '500',
     });

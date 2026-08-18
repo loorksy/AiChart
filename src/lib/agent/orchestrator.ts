@@ -737,7 +737,7 @@ async function runUnifiedChartAgentInner(
   };
 
   // Market Data Agent is CRITICAL: failure → stop, return action_required.
-  // It performs network I/O (warehouse + the linked MetaTrader account), so it uses withDeadline: a
+  // It performs network I/O (warehouse + the platform OANDA feed), so it uses withDeadline: a
   // cancelled run tears the fetch down immediately instead of holding the burst
   // slot for the remainder of the stage deadline (RELIABILITY_PLAN item 2).
   const market = await withDeadline(

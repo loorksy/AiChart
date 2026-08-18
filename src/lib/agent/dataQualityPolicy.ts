@@ -312,7 +312,7 @@ export function buildCandleCoverageReport(input: {
 }): CandleCoverageReport {
   const gate = input.gate ?? "trade";
   const required = resolveCoverageThresholds(input.analysisKind, gate);
-  const source = input.source ?? "warehouse+metaapi";
+  const source = input.source ?? "oanda";
   // Severity is window-relative: the same 5 missing bars are noise in a
   // 500-bar frame and a real problem in a 100-bar daily frame.
   const gapSummaries = {

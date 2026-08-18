@@ -20,7 +20,7 @@ export const en = {
 
   // Welcoming Phase
   "welcome.title": "Welcome, {name} 👋",
-  "welcome.subtitle": "Type your message to begin — forex via MetaTrader.",
+  "welcome.subtitle": "Type your message to begin — gold analysis via OANDA.",
   "welcome.session_settings": "Session Settings",
   "welcome.response_mode": "Response Type",
   "welcome.market": "Market",
@@ -98,22 +98,22 @@ export const en = {
 
   // Market data source (the one pipe: the platform's OANDA feed)
   "data_source.title": "Market data",
-  "data_source.metaapi": "OANDA feed",
-  "data_source.metaapi_hint": "Live candles and prices via OANDA — no account link needed.",
+  "data_source.oanda": "OANDA feed",
+  "data_source.oanda_hint": "Live candles and prices via OANDA — no account link needed.",
   "data_source.needs_link": "Market data is temporarily unavailable.",
   "data_source.link_cta": "Unavailable",
-  "data_source.short.metaapi": "OANDA",
+  "data_source.short.oanda": "OANDA",
 
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",
   "composer.more_title": "Conversation options",
   "composer.more_empty":
-    "Nothing to set here yet — connect your broker account to choose an execution mode.",
+    "Nothing extra to set here yet.",
 
   // Pair catalogue
   "symbol.picker.title": "Choose a pair",
   "symbol.picker.search": "Search a pair or a currency",
-  "symbol.picker.source_cloud": "Your cloud MetaTrader account",
+  "symbol.picker.source_cloud": "Platform OANDA feed",
   "symbol.picker.none": "No pair matches this search.",
   "symbol.picker.favourites": "Favourites",
   "symbol.picker.all": "All pairs",
@@ -214,7 +214,7 @@ export const en = {
 
   // Connections / MCP
   "connect.title": "Connections",
-  "connect.subtitle": "MetaTrader · MCP · Telegram alerts",
+  "connect.subtitle": "MCP · Telegram alerts",
   "connect.mcp.title": "Claude MCP",
   "connect.mcp.subtitle": "Connect an authorized AI client to Lonora tools",
   "connect.mcp.step1": "Open Claude Connectors",
@@ -228,72 +228,6 @@ export const en = {
     "Finish email and password on Complete profile before signing in from Claude.",
   "connect.mcp.complete_profile": "Complete profile",
   "connect.mcp.paid_only": "MCP connection requires an active paid subscription.",
-  "connect.mt5.title": "MetaTrader 5",
-  "connect.mt5.subtitle": "Link your broker account — find the server, then sign in.",
-  "connect.mt5.body": "Cloud linking: nothing to install, and the account stays connected after you close the browser.",
-  "connect.mt5.cta": "Link a MetaTrader 5 account",
-  "connect.mt5.manage": "Manage link",
-  "connect.mt5.linked": "Linked",
-
-  // MT5 linking wizard (broker search → sign-in → link)
-  "mt5link.page_title": "Link MetaTrader account",
-  "mt5link.page_desc":
-    "Transparent linking through the MetaApi cloud — you sign in to your real account at your broker.",
-  "mt5link.disabled":
-    "Cloud linking is not enabled on this platform yet. It will be available as soon as setup completes.",
-  "mt5link.steps_label": "Linking steps",
-  "mt5link.step_broker": "Broker",
-  "mt5link.step_login": "Sign in",
-  "mt5link.step_link": "Link",
-  "mt5link.linked_title": "Linked account",
-  "mt5link.linked_replace_note": "Linking a new account replaces this one.",
-  "mt5link.state_online": "Connected",
-  "mt5link.state_offline": "Not connected",
-  "mt5link.link_new": "Link another account",
-  "mt5link.unlink": "Unlink account",
-  "mt5link.unlink_confirm":
-    "Unlink this account? Live prices, analysis and execution stop until you link an account again.",
-  "mt5link.unlink_yes": "Yes, unlink",
-  "mt5link.unlink_cancel": "Keep the account",
-  "mt5link.unlink_failed": "Could not unlink — try again.",
-  "mt5link.search_title": "Find your broker",
-  "mt5link.search_label": "Broker name",
-  "mt5link.search_placeholder": "e.g. Exness, IC Markets…",
-  "mt5link.search_hint":
-    "Search by your broker's name exactly as it appears in the MT5 app, then pick your server on the next screen.",
-  "mt5link.searching": "Searching…",
-  "mt5link.search_empty": "No brokers matched “{query}”.",
-  "mt5link.search_unavailable":
-    "Live search is unavailable right now — type the server name manually as it appears in your MT5 terminal (e.g. Exness-MT5Real8).",
-  "mt5link.servers_count": "{count} servers",
-  "mt5link.manual_toggle": "Type the server name manually",
-  "mt5link.manual_label": "Server name",
-  "mt5link.continue": "Continue",
-  "mt5link.login_title": "Sign in to {broker}",
-  "mt5link.login_note":
-    "You are signing in to your REAL MetaTrader account through the licensed MetaApi cloud. Credentials are stored encrypted (AES-256) and used only to run your own cloud terminal. To save cost, the connection pauses when you leave the platform and resumes by itself when you return.",
-  "mt5link.platform": "Platform",
-  "mt5link.login": "Login (account number)",
-  "mt5link.password": "Password (investor or master)",
-  "mt5link.server": "Server",
-  "mt5link.back_to_brokers": "Choose another broker",
-  "mt5link.connect": "Link account",
-  "mt5link.connecting": "Linking…",
-  "mt5link.status_provisioning":
-    "Creating your cloud terminal and signing in to your broker…",
-  "mt5link.done_title": "Linked successfully",
-  "mt5link.done_status":
-    "Your cloud account is ready — the agent can execute and monitor when you ask.",
-  "mt5link.go_workspace": "Open the chart",
-  "mt5link.error_generic": "Linking failed — check your details and try again.",
-  "mt5link.error_network": "Could not reach the server.",
-  "connect.method.title": "How your forex account connects",
-  "connect.method.subtitle": "Pick one — both are fully supported.",
-  "connect.method.platform": "Through the platform (no download)",
-  "connect.method.platform_body": "Server-side execution around the clock. You enter your account details and nothing else — no install, no machine left running.",
-  "connect.method.platform_off": "Unavailable — no MetaApi key has been added from the platform panel yet.",
-  "connect.method.saved": "Method saved.",
-  "connect.method.failed": "Could not save the method — try again.",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",
@@ -417,12 +351,12 @@ export const en = {
   "orch.market_data_failed_activity":
     "Could not prepare market data — the chart analysis cannot be completed right now.",
   "orch.market_data_failed_summary":
-    "Could not prepare market data from the warehouse/your MetaTrader account. Try again shortly.",
+    "Could not prepare market data from the OANDA feed. Try again shortly.",
   "orch.no_rec_missing_data": "No recommendation was issued due to missing data.",
   "orch.tail_age_seconds": " Latest available candle is {age}s old.",
   "orch.tail_age_minutes": " Latest available candle is {age}m old.",
   "orch.sync_stale_summary":
-    "{reason}{age} An automatic refresh from your MetaTrader account is already running — ask again in a moment and the analysis will complete.",
+    "{reason}{age} An automatic refresh from the OANDA feed is already running — ask again in a moment and the analysis will complete.",
   "orch.prices_unconfirmed":
     "Latest prices could not be confirmed — no recommendation was issued.",
   "orch.analysis_stopped_gaps":
@@ -604,8 +538,6 @@ export const en = {
   "layout.resize_chat": "Resize chat",
   "layout.close_chart": "Close chart",
   "layout.screenshot": "Screenshot",
-  "layout.mt_connected": "MT connected",
-  "layout.mt_disconnected": "MT disconnected",
   "layout.timeframe": "Timeframe",
   "layout.loading_chart": "Loading chart…",
   "chart.trade.buy": "Buy",
@@ -630,7 +562,6 @@ export const en = {
   "layout.trades_count": "Trades ({count})",
   "layout.open_trades": "Open trades",
   "layout.account_balance": "Account balance",
-  "layout.mt_setup": "MetaTrader disconnected — open connection settings",
   "layout.agent_unavailable": "AI is not enabled on the server — analysis is unavailable.",
   "layout.server_reconnecting": "Lost the server — reconnecting…",
 
@@ -750,7 +681,7 @@ export const en = {
   "auth.network_error": "Could not connect to the server.",
   "auth.telegram_error": "Telegram sign-in failed.",
   "auth.telegram_busy": "Signing in and linking Telegram…",
-  "auth.preview_subtitle": "AI chat · chart · MetaTrader 5",
+  "auth.preview_subtitle": "AI chat · chart · gold analysis",
   "auth.switch_language": "Switch language",
   "auth.country_code": "Country code",
   "auth.phone_number": "Phone number",

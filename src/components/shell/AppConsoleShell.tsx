@@ -417,7 +417,7 @@ function ConsoleShellBody({
   return (
     <ShellMenuProvider value={menuApi}>
       <ConsoleOverlaysProvider value={overlaysApi}>
-      {/* V2-B: presence beat drives the MetaApi deploy/undeploy cost saver. */}
+      {/* Console chrome — chart and chat stay in the same shell. */}
       <div
         dir={dir}
         data-testid="app-console-shell"

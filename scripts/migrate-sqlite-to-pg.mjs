@@ -39,8 +39,6 @@ const PRIORITY_ORDER = [
   "trading_settings",
   "admin_limits",
   "claude_usage",
-  "mt_accounts",
-  "ea_connections",
   "ea_commands",
   "ea_market_cache",
   "recommendations",
@@ -181,7 +179,7 @@ async function ensureSchemaReady(client) {
   // The authoritative schema is created by the app itself (initPg + migratePg).
   // Requiring it here avoids the historical drift of a hand-maintained
   // pg-schema.sql that lagged behind the live schema.
-  const probes = ["users", "semantic_memories", "mt_accounts", "trade_lessons"];
+  const probes = ["users", "semantic_memories", "trade_lessons"];
   for (const t of probes) {
     const r = await client.query(`SELECT to_regclass($1) AS reg`, [
       `public.${t}`,

@@ -195,8 +195,7 @@ export function PricingCards({
               )}
               {i === 0 && (
                 <p className="type-caption mt-3 text-center">
-                  تجربة مجانية بكل المزايا — تبدأ ساعتها عند أول ربط ناجح
-                  لحساب MetaTrader، وتنتهي بانقضاء الساعة أو بعد{" "}
+                  تجربة مجانية بكل المزايا — تنتهي بانقضاء الساعة أو بعد{" "}
                   {AICHART_PLAN.trialRecommendations} توصيات، أيهما أسبق.
                 </p>
               )}

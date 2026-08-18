@@ -6,8 +6,8 @@
  * There is no more indexer here. Building a case required walking tens of
  * thousands of candles per symbol/timeframe in sliding windows — a bulk
  * historical scan only the deleted candle warehouse could serve cheaply; live
- * per-request MetaApi calls cannot replace it without hammering the broker on
- * every cron tick. The memory this module supports is therefore frozen at
+ * per-request live feed calls cannot replace it without hammering the provider
+ * on every cron tick. The memory this module supports is therefore frozen at
  * whatever `market_cases` already holds: still valid evidence, just no
  * longer growing. Both directions were indexed at every moment when the
  * indexer ran — "this is what the market looked like" was only half the

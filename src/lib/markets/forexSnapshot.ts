@@ -67,7 +67,7 @@ export async function buildForexSnapshot(
     const snap = emptyForexSnapshot(
       sym,
       tf,
-      "لا تتوفر بيانات شموع من حساب MetaTrader لهذا الرمز.",
+      "لا تتوفر بيانات شموع من OANDA لهذا الرمز.",
     );
     if (price > 0) {
       snap.price = price;
@@ -81,7 +81,7 @@ export async function buildForexSnapshot(
     const snap = emptyForexSnapshot(
       ohlc.symbol,
       tf,
-      "لا تتوفر بيانات شموع من حساب MetaTrader لهذا الرمز.",
+      "لا تتوفر بيانات شموع من OANDA لهذا الرمز.",
     );
     if (price > 0) snap.price = price;
     return snap;

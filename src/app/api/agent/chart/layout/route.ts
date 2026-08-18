@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
     const symbol = forexCanonicalKey(rawSymbol);
     const interval = normalizeInterval(body.interval ?? layout.interval);
     const state = parseState(layout.state_json);
-    // The user's own linked MetaTrader account is the only data pipe.
+    // The platform OANDA feed is the only data pipe.
     state.dataSource = "oanda";
 
     if (body.mode === "clear") {

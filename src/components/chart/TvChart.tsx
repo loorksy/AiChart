@@ -460,7 +460,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       if (!w || !readyRef.current) return normalizeSymbolCase(symbol);
       try {
         const s = w.activeChart().symbol();
-        // Strip any exchange namespace (e.g. MT5 CLOUD:) — analysis wants the bare pair.
+        // Strip any exchange namespace (e.g. OANDA:) — analysis wants the bare pair.
         const ticker = s.includes(":") ? s.split(":").pop()! : s;
         return normalizeSymbolCase(ticker);
       } catch {
@@ -579,7 +579,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
 
         // Live and capture both drop TradingView's own top/bottom chrome.
         // Interval stays in the composer; refresh lives in the console top bar.
-        // Legend keeps price/volume — only the series title (XAUUSD · MT5 CLOUD)
+        // Legend keeps price/volume — only the series title (XAUUSD · OANDA)
         // is hidden via overrides below.
         const disabled: ChartingLibraryWidgetOptions["disabled_features"] = [
           "use_localstorage_for_settings",
@@ -658,7 +658,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             clearLatestCandle();
             const s = chart.symbol();
             const ticker = (s.includes(":") ? s.split(":").pop()! : s);
-            // Every symbol is served by the user's own linked account.
+            // Every symbol is served by the platform OANDA feed.
             onSymbolChangeRef.current?.(ticker, "oanda");
           });
           chart.onIntervalChanged().subscribe(null, (res: ResolutionString) => {

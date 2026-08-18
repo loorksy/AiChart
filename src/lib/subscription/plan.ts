@@ -1,9 +1,8 @@
 /**
  * Canonical Lonora subscription product — ONE paid plan, billed monthly via
  * Stripe ($180/mo), plus a free trial that carries EVERY feature but is
- * bounded by two caps at once: a one-hour clock that starts at the user's
- * FIRST successful MetaTrader link, and three recommendations. Hitting either
- * cap ends the trial.
+ * bounded by two caps at once: a one-hour clock and three recommendations.
+ * Hitting either cap ends the trial.
  */
 
 export const AICHART_PLAN = {
@@ -15,7 +14,7 @@ export const AICHART_PLAN = {
   currency: "USD",
   telegramHandle: "aswadtr",
   telegramUrl: "https://t.me/aswadtr",
-  /** Trial wall-clock budget, measured from the first successful MT link. */
+  /** Trial wall-clock budget, measured from when the trial clock starts. */
   trialDurationMs: 60 * 60 * 1000,
   /** Recommendations the trial may create before it ends. */
   trialRecommendations: 3,
@@ -32,7 +31,7 @@ export type EntitlementSnapshot = {
   trialUsed: number;
   trialRemaining: number;
   trialLimit: number;
-  /** When the trial clock started (first MT link) and when it dies. */
+  /** When the trial clock started and when it dies. */
   trialStartedAt: string | null;
   trialExpiresAt: string | null;
   expiresAt: string | null;

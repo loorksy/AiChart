@@ -99,8 +99,8 @@ export async function handleDrawingCommand(input: {
       confidence: 0,
       summary: bilingual(
         locale,
-        "تعذّر تأكيد أحدث الأسعار من حساب MetaTrader للرسم الآن. انتظر بضع ثوانٍ ثم أعد الطلب — لا حاجة لتحديث الصفحة.",
-        "Could not confirm the latest broker prices for drawing right now. Wait a few seconds and ask again — no page refresh needed.",
+        "تعذّر تأكيد أحدث الأسعار من OANDA للرسم الآن. انتظر بضع ثوانٍ ثم أعد الطلب — لا حاجة لتحديث الصفحة.",
+        "Could not confirm the latest OANDA prices for drawing right now. Wait a few seconds and ask again — no page refresh needed.",
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [],

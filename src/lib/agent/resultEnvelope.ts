@@ -47,7 +47,7 @@ export interface ResultEnvelope {
   degraded_stages?: AgentStage[];
   /** Correlation id (request id) for support/observability. Not a secret. */
   trace_id?: string;
-  /** Operator-visible market book for this answer (the user's own MetaTrader account via MetaApi). */
+  /** Operator-visible market book for this answer (platform OANDA feed). */
   market_data_source?: string;
   /** Numeric levels cited in the visible answer (support/resistance, plan). */
   key_price_levels?: number[];

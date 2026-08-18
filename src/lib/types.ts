@@ -1,5 +1,5 @@
 import type { ChartDrawing } from "./chartDrawings";
-import type { MarketType, MtPlatform } from "./markets/types";
+import type { MarketType } from "./markets/types";
 
 export type Role = "user" | "admin";
 export type UserStatus = "pending" | "active" | "suspended";
@@ -35,18 +35,6 @@ export interface TradingSettings {
   per_trade_pct: number;
   /** Stored watchlist/scan assets. Never an analytical or execution gate. */
   allowed_assets: string;
-  /**
-   * User-chosen forex execution backend: "metaapi" (cloud) or "mt5local"
-   * (server-side, self-hosted). null/undefined = the operator's global
-   * default (FOREX_BACKEND / MT5_BRIDGE_URL / METAAPI_TOKEN).
-   */
-  forex_backend?: "mt5local" | "metaapi" | null;
-  /**
-   * Which pipe the CHARTS and quotes are read from — a different question from
-   * where orders go. Kept for stored-settings compatibility — the user's own
-   * linked MetaTrader account is the only pipe, so every value resolves to it.
-   */
-  market_data_source?: "auto" | "metaapi" | null;
   /**
    * "provider/model" the user chose for their own analyses (e.g.
    * "openai/gpt-5.6-sol", "anthropic/claude-opus-5",
@@ -257,51 +245,4 @@ export interface EaSymbolSpec {
   filling_mode?: string;
   /** Current spread in points. */
   spread_points?: number;
-}
-
-export type MtAccountState =
-  | "CREATED"
-  | "DEPLOYING"
-  | "DEPLOYED"
-  | "DEPLOY_FAILED"
-  | "UNDEPLOYING"
-  | "UNDEPLOYED"
-  | "DRAFT"
-  | "unknown";
-
-export interface MtAccount {
-  id: number;
-  user_id: number;
-  platform: MtPlatform;
-  server: string;
-  login: string;
-  password_enc: string;
-  metaapi_account_id: string;
-  region: string | null;
-  state: string;
-  connection_status: string | null;
-  balance: number;
-  equity: number;
-  currency: string | null;
-  /** ACCOUNT_TRADE_MODE reported by the broker: demo, real or contest. */
-  account_trade_mode: string | null;
-  updated_at: string;
-  created_at: string;
-}
-
-/** Non-secret MT account view for the UI (MetaApi bridge). */
-export interface MtAccountMeta {
-  id: number;
-  platform: MtPlatform;
-  server: string;
-  login: string;
-  balance: number;
-  equity: number;
-  currency: string | null;
-  state: string;
-  connection_status: string | null;
-  /** The broker's reported account type (demo/real/contest), when known. */
-  account_trade_mode: string | null;
-  online: boolean;
-  updated_at: string;
 }
