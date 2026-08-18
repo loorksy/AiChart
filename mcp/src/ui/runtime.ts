@@ -273,7 +273,11 @@ export const RUNTIME_JS = `
     api.getData = function () { return latest; };
     api.fmt = function (n, d) {
       if (n == null || isNaN(n)) return "—";
-      return Number(n).toLocaleString(undefined, { maximumFractionDigits: d == null ? 5 : d });
+      var abs = Math.abs(Number(n));
+      var max = d == null ? (abs >= 10 ? 2 : 5) : d;
+      var s = Number(n).toFixed(max);
+      if (s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
+      return s;
     };
     /* Strict numeric extraction: finite number out, or null. Objects yield
        their first finite price-like field — never NaN, never 0-for-missing. */
@@ -476,7 +480,8 @@ export const RUNTIME_JS = `
       if (/buy|long|bull|شراء|صاعد/.test(a)) return { cls: "buy", label: msg("buy"), dir: 1 };
       if (/sell|short|bear|بيع|هابط/.test(a)) return { cls: "sell", label: msg("sell"), dir: -1 };
       if (/opportunity|candidate|فرصة/.test(a)) return { cls: "wait", label: msg("opportunity"), dir: 0 };
-      return { cls: "wait", label: msg("wait"), dir: 0 };
+      if (/wait|انتظار/.test(a)) return { cls: "wait", label: msg("wait"), dir: 0 };
+      return { cls: "", label: a || "—", dir: 0 };
     };
     api.trendInfo = function (v) {
       v = String(v || "").toLowerCase();

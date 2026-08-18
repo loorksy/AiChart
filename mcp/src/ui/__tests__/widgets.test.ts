@@ -15,9 +15,9 @@ describe("MCP UI resources", () => {
   it("registers versioned canonical URIs for flagship cards", () => {
     assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v11");
     assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v11");
-    assert.equal(appsUri("recommendation-card"), "ui://aichart/recommendation-card/v6");
+    assert.equal(appsUri("recommendation-card"), "ui://aichart/recommendation-card/v7");
     assert.equal(skybridgeUri("live-chart"), "ui://aichart/live-chart/v11-gpt");
-    assert.equal(skybridgeUri("recommendation-card"), "ui://aichart/recommendation-card/v6-gpt");
+    assert.equal(skybridgeUri("recommendation-card"), "ui://aichart/recommendation-card/v7-gpt");
   });
 
   it("emits MCP Apps and OpenAI compatibility metadata", () => {
@@ -89,13 +89,13 @@ describe("MCP UI resources", () => {
     // and mime resolution, so it runs on a card that still exists.
     const native = widgetHtmlByPublicPath("recommendation-card/v1");
     assert.ok(native);
-    assert.equal(native.uri, "ui://aichart/recommendation-card/v6");
+    assert.equal(native.uri, "ui://aichart/recommendation-card/v7");
     assert.ok(native.html.length > 200);
     assert.equal(native.mimeType, "text/html;profile=mcp-app");
 
     const gpt = widgetHtmlByPublicPath("recommendation-card/v1-gpt");
     assert.ok(gpt);
-    assert.equal(gpt.uri, "ui://aichart/recommendation-card/v6-gpt");
+    assert.equal(gpt.uri, "ui://aichart/recommendation-card/v7-gpt");
     assert.equal(gpt.mimeType, "text/html+skybridge");
   });
 
@@ -268,8 +268,12 @@ describe("widget HTML safety", () => {
     assert.ok(html.includes("rec-copy"));
     assert.ok(html.includes('id="rec-card"'));
     assert.ok(html.includes('className = "card"'));
+    assert.ok(html.includes("border:none"));
+    assert.ok(html.includes("conf > 0 && conf <= 1"));
     assert.ok(!html.includes("<button"));
     assert.ok(!html.includes('class="card buy"'));
+    assert.ok(RUNTIME_JS.includes("toFixed"));
+    assert.ok(!/toLocaleString\(undefined/.test(RUNTIME_JS));
   });
 
   it("registers only the live-chart and recommendation surfaces", () => {

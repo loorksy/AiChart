@@ -216,7 +216,8 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
     market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
-    take_profit: z.number().positive(),
+    take_profit: z.number().positive().optional(),
+    take_profits: z.array(z.number().positive()).max(3).optional(),
   }),
   z.object({
     action: z.literal("sell"),
@@ -237,9 +238,20 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
     market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
-    take_profit: z.number().positive(),
+    take_profit: z.number().positive().optional(),
+    take_profits: z.array(z.number().positive()).max(3).optional(),
   }),
 ]).superRefine((body, ctx) => {
+  const hasTp =
+    typeof body.take_profit === "number" ||
+    (Array.isArray(body.take_profits) && body.take_profits.length > 0);
+  if (!hasTp) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["take_profit"],
+      message: "take_profit (or take_profits) is required for BUY/SELL recommendations",
+    });
+  }
   // A plan that waits must say what it waits for — in both forms. The sentence
   // is for the operator; only the rule can be machine-checked, and a stated
   // trigger nothing can check is how conditional plans filled on a bare touch.
@@ -318,6 +330,11 @@ const createRecommendationCatalogShape = {
   entry: z.number().positive().optional(),
   stop_loss: z.number().positive().optional(),
   take_profit: z.number().positive().optional(),
+  take_profits: z
+    .array(z.number().positive())
+    .max(3)
+    .optional()
+    .describe("Every profit target in order (TP1..TP3). The card shows one row per unique target. take_profit is TP1; include the rest here or repeat TP1 in this array."),
   visual_confirmation: zVisualConfirmation,
   timeframes_reviewed: zTimeframesReviewed,
   ...planContractFields,
@@ -389,7 +406,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the host AUTOMATICALLY shows recommendation-card plus the live platform chart (inline image + display_markdown) — present that card and paste display_markdown verbatim. Do not also present lessons, jobs, scan, snapshot, or levels JSON as cards; those tools have no UI. The only MCP cards are recommendation-card (this tool) and live-chart (show_live_chart). When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
+      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. Call this in the SAME turn as the analysis BEFORE any operator-facing reply — never describe entry/SL/targets in prose first and wait to be asked for the card. On success the host AUTOMATICALLY shows recommendation-card plus the live platform chart (inline image + display_markdown) — present that card and paste display_markdown verbatim. Pass EVERY target: take_profit is TP1 and take_profits is the full list (2–3 numbers). Do not also present lessons, jobs, scan, snapshot, or levels JSON as cards; those tools have no UI. The only MCP cards are recommendation-card (this tool) and live-chart (show_live_chart). When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },

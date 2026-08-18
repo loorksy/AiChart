@@ -57,9 +57,11 @@ describe("MCP canonical skill catalogue", () => {
 
   it("cards skill presents recommendation-card / live-chart, not order controls", () => {
     const loaded = loadSkill("cards");
-    assert.equal(loaded.metadata.version, "2.1.0");
+    assert.equal(loaded.metadata.version, "2.1.1");
     assert.match(loaded.content, /recommendation-card/);
     assert.match(loaded.content, /live-chart/);
+    assert.match(loaded.content, /take_profits/);
+    assert.match(loaded.content, /same turn/);
     assert.match(loaded.content, /deriveCards|derived cards/);
     assert.doesNotMatch(
       loaded.content,

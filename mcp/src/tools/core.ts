@@ -333,7 +333,24 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "create_recommendation",
     mcpToolConfig("create_recommendation"),
     async (body) => {
-      const parsed = createRecommendationInput.safeParse(body);
+      const raw: Record<string, unknown> = {
+        ...((body ?? {}) as Record<string, unknown>),
+      };
+      if (typeof raw.take_profits === "string") {
+        try {
+          raw.take_profits = JSON.parse(raw.take_profits);
+        } catch {
+          /* leave as-is; schema/API will 400 */
+        }
+      }
+      if (
+        (raw.take_profit == null || raw.take_profit === "") &&
+        Array.isArray(raw.take_profits) &&
+        raw.take_profits.length > 0
+      ) {
+        raw.take_profit = Number(raw.take_profits[0]);
+      }
+      const parsed = createRecommendationInput.safeParse(raw);
       if (!parsed.success) {
         // Agent-facing: a short, fixable list — never the full zod dump, whose
         // flattened union paths read as contradictions. Full detail to stderr
@@ -391,6 +408,8 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         return recommendationWithAutoChart(bridge, rec, {
           symbol: body2.symbol as string | undefined,
           timeframe: body2.timeframe as string | undefined,
+          action: body2.action as string | undefined,
+          take_profits: body2.take_profits,
         });
       } catch (e) {
         return formatBridgeError(e);

@@ -51,10 +51,15 @@ describe("recommendationWithAutoChart (V2-A0)", () => {
     assert.equal(meta.recommendation_card.symbol, "XAUUSD");
     assert.equal(meta.recommendation_card.side, "buy");
     assert.equal(meta.recommendation_card.stop_loss, 4034);
+    assert.equal(meta.recommendation_card.action, "buy");
+    assert.equal(meta.recommendation_card.confidence, 62);
+    assert.deepEqual(meta.recommendation_card.take_profits, [4086]);
     assert.match(meta.display_markdown, /^!\[XAUUSD 1h chart\]\(https:\/\//);
     // The original bridge payload survives untouched.
     assert.equal(meta.recommendation.id, 123);
     assert.equal(res.isError, undefined);
+    const sc = res.structuredContent as { recommendation_card?: { action?: string } };
+    assert.equal(sc?.recommendation_card?.action, "buy");
   });
 
   it("keeps the recommendation ok when capture fails — explicit no-image note", async () => {
@@ -102,5 +107,37 @@ describe("recommendationWithAutoChart (V2-A0)", () => {
       market: "forex",
       response_format: "json",
     });
+  });
+
+  it("puts every take-profit on the card and in structuredContent", async () => {
+    const bridge = bridgeStub((path) => {
+      assert.equal(path, "/api/agent/chart/snapshot");
+      return { ok: true, image_base64: TINY_PNG.toString("base64") };
+    });
+    const res = await recommendationWithAutoChart(
+      bridge,
+      {
+        ok: true,
+        recommendation: {
+          id: 9,
+          symbol: "XAUUSD",
+          action: "buy",
+          timeframe: "15m",
+          entry: 4396.5,
+          stop_loss: 4389.5,
+          take_profit: 4417.4,
+          take_profits: [4417.4, 4430.1, 4450],
+          confidence: 60,
+        },
+      },
+      { take_profits: [4417.4, 4430.1, 4450] },
+    );
+    const meta = JSON.parse((res.content[0] as { text: string }).text);
+    assert.deepEqual(meta.recommendation_card.take_profits, [4417.4, 4430.1, 4450]);
+    assert.equal(meta.recommendation_card.action, "buy");
+    const sc = res.structuredContent as {
+      recommendation_card?: { take_profits?: number[] };
+    };
+    assert.deepEqual(sc.recommendation_card?.take_profits, [4417.4, 4430.1, 4450]);
   });
 });

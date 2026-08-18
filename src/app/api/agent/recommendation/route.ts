@@ -10,6 +10,7 @@ import {
 import { profileForInterval } from "@/lib/analysisProfile";
 import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
 import { attachChartToRecommendation } from "@/lib/recommendationChart";
+import { collectTakeProfits } from "@/lib/recommendations/collectTakeProfits";
 import { agentChartUrls } from "@/lib/chartBridgeUrl";
 import {
   searchSimilarLessons,
@@ -98,6 +99,7 @@ const schema = z
     entry: z.number().positive().nullish(),
     stop_loss: z.number().positive().nullish(),
     take_profit: z.number().positive().nullish(),
+    take_profits: z.array(z.number().positive()).max(3).optional(),
     timeframe: z.string().default("1h"),
     rationale: z.string().min(1),
     factors: z.array(z.string()).min(1).max(8),
@@ -168,14 +170,27 @@ const schema = z
     // Strategy evidence is NOT: a recommendation with no matching backtest is
     // recorded as direct analysis and labelled as such, never refused
     // (docs/UNIFIED_AGENT_PLAN.md §11).
-    for (const field of ["entry", "stop_loss", "take_profit"] as const) {
-      if (body[field] == null) {
-        ctx.addIssue({
-          code: "custom",
-          path: [field],
-          message: `${field} is required for BUY/SELL recommendations`,
-        });
-      }
+    const takeProfits = collectTakeProfits(body.action, body.take_profit, body.take_profits);
+    if (body.entry == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["entry"],
+        message: "entry is required for BUY/SELL recommendations",
+      });
+    }
+    if (body.stop_loss == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["stop_loss"],
+        message: "stop_loss is required for BUY/SELL recommendations",
+      });
+    }
+    if (takeProfits.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["take_profit"],
+        message: "take_profit (or take_profits) is required for BUY/SELL recommendations",
+      });
     }
     // Claiming statistical backing without naming the strategy behind it is the
     // one thing that IS refused — an unbacked number is worse than none.
@@ -187,15 +202,14 @@ const schema = z
           "backtested_confidence requires the strategy_id it came from; omit both for a direct-analysis recommendation",
       });
     }
-    if (
-      body.entry != null &&
-      body.stop_loss != null &&
-      body.take_profit != null
-    ) {
+    if (body.entry != null && body.stop_loss != null && takeProfits.length > 0) {
+      const tp0 = takeProfits[0]!;
       const valid =
         body.action === "buy"
-          ? body.stop_loss < body.entry && body.entry < body.take_profit
-          : body.take_profit < body.entry && body.entry < body.stop_loss;
+          ? body.stop_loss < body.entry && takeProfits.every((tp) => tp > body.entry!)
+          : tp0 < body.entry &&
+            body.entry < body.stop_loss &&
+            takeProfits.every((tp) => tp < body.entry!);
       if (!valid) {
         ctx.addIssue({
           code: "custom",
@@ -229,7 +243,7 @@ const schema = z
       entryLow: body.entry_low ?? body.entry,
       entryHigh: body.entry_high ?? body.entry,
       stopLoss: body.stop_loss,
-      targets: body.take_profit != null ? [body.take_profit] : [],
+      targets: collectTakeProfits(body.action, body.take_profit, body.take_profits),
       activationCondition: body.activation_condition,
       activationRule: body.activation_rule,
       invalidationRule: body.invalidation_rule,
@@ -257,6 +271,8 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
+    const takeProfits = collectTakeProfits(body.action, body.take_profit, body.take_profits);
+    const takeProfit = takeProfits[0] ?? body.take_profit ?? null;
     // Matching keys are CANONICAL (XAUUSD, 1h) so deployment lookups, decay
     // tracking, and execution eligibility all join. Broker-suffixed raw
     // symbols stay in body.symbol for the MT5 capture path below.
@@ -379,9 +395,9 @@ export async function POST(req: NextRequest) {
       executionState = deriveExecutionState({
         planType: body.plan_type as PlanType,
         levels:
-          body.entry != null &&
-          body.stop_loss != null &&
           body.take_profit != null &&
+          body.stop_loss != null &&
+          takeProfit != null &&
           entryLow != null &&
           entryHigh != null
             ? {
@@ -389,7 +405,7 @@ export async function POST(req: NextRequest) {
                 entryHigh,
                 preferredEntry: body.entry,
                 stopLoss: body.stop_loss,
-                targets: [body.take_profit],
+                targets: takeProfits,
               }
             : null,
         currentPrice,
@@ -489,7 +505,8 @@ export async function POST(req: NextRequest) {
       confidence: displayedConfidence,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,
-      take_profit: body.take_profit ?? null,
+      take_profit: takeProfit,
+      targets: takeProfits,
       timeframe: storedTimeframe,
       rationale,
       factors: body.factors,
@@ -565,7 +582,7 @@ export async function POST(req: NextRequest) {
               entryLow,
               entryHigh,
               stopLoss: body.stop_loss ?? null,
-              targets: body.take_profit != null ? [body.take_profit] : [],
+              targets: takeProfits,
               executionState,
               blocked: false,
               imagesFor: [],
@@ -608,7 +625,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      recommendation: enriched,
+      recommendation: {
+        ...enriched,
+        take_profit: takeProfit,
+        take_profits: takeProfits,
+        targets: takeProfits,
+      },
       similar_lessons: similarLessons,
       ...agentChartUrls(chartUrl),
       visual_review: {

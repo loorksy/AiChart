@@ -453,22 +453,22 @@ const liveChart = widgetHtml(
 
 const MARK_SVG = `<svg class="rec-mark" viewBox="100 250 900 670" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M258.63 274.35C278.01 271.86 299.01 274.62 317.66 279.79C400.53 302.73 452.07 386.95 434.75 471.32C429.32 497.75 416.93 522.49 399.9 543.35C387.04 559.1 370.42 572.4 352.62 582.11C332.62 593.02 310.2 599.97 287.5 601.87C266.99 603.59 245.9 601.15 226.28 595.25C140.5 569.44 90.62 477.72 116.16 391.6C120.93 375.53 128.1 359.97 137.59 346.1C149.4 328.83 164.29 313.8 181.6 302.02C204.84 286.21 230.99 277.9 258.63 274.35ZM805.76 274.41C816.59 272.9 828.7 273.63 839.5 274.88C922.33 284.44 985.94 354.65 985.59 438.5C985.23 523.81 919.85 593.52 835.5 601.82C819.14 603.43 802.12 601.81 786.13 598.45C698.33 580 642.8 491.95 660.29 404.7C671.01 351.17 710.18 305.39 760.72 285.23C775.29 279.42 790.31 276.58 805.76 274.41ZM542.79 642.35C558.84 638.96 571.8 654.43 583.11 663.41C612.25 686.55 640.77 710.54 670.12 733.39C677.05 738.78 683.77 744.46 690.68 749.87C696 754.03 701.29 758.22 701.91 765.5C702.24 769.44 700.84 773.79 698.44 776.94C693.51 783.4 678.53 793.35 671.57 799.05C643.15 822.33 614.44 845.3 585.64 868.09C575.11 876.42 561.61 891.61 547.5 891.6C533.22 891.59 519.55 876.01 508.84 867.63C480.11 845.16 451.58 822.27 423.45 799.04C416.48 793.28 401.51 783.42 396.56 776.93C394.19 773.81 392.75 769.41 393.08 765.5C393.67 758.5 398.66 754.34 403.8 750.32C411.09 744.63 418.24 738.74 425.43 732.94C452.38 711.24 479.12 689.25 506.32 667.87C516.1 660.19 530.89 644.87 542.79 642.35Z"/></svg>`;
 
-const COPY_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="5.2" y="5.2" width="8" height="8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3.2 10.2V4A1.8 1.8 0 0 1 5 2.2h6.2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`;
+const COPY_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="14" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2"/></svg>`;
 
 const REC_CSS = `
   #rec-card{
-    border:1px solid var(--line)!important;box-shadow:none!important;
+    border:none!important;box-shadow:none!important;outline:none!important;
     background:transparent!important;min-height:0!important;
-    padding:12px 4px;max-width:100%;gap:0;outline:none
+    padding:4px 0;max-width:100%;gap:0
   }
-  #rec-card.buy,#rec-card.sell,#rec-card.wait{border-color:var(--line)!important}
+  #rec-card.buy,#rec-card.sell,#rec-card.wait{border:none!important}
   #rec-card .foot{border-top:0;padding-top:8px}
   #rec-card .foot:not(:has(.status:not(:empty))){display:none}
   .rec-head{display:flex;align-items:center;gap:10px}
-  .rec-mark{width:26px;height:26px;color:var(--txt);flex:none;display:block}
+  .rec-mark{width:28px;height:28px;color:var(--txt);flex:none;display:block}
   .rec-meta{flex:1;min-width:0}
-  .rec-sym{font-size:15px;font-weight:800;color:var(--txt);line-height:1.2}
-  .rec-side{font-size:13px;font-weight:800;margin-top:2px}
+  .rec-sym{font-size:12px;font-weight:700;color:var(--muted);line-height:1.2}
+  .rec-side{font-size:18px;font-weight:800;margin-top:2px;line-height:1.2}
   .rec-conf{font-size:12px;font-weight:800;color:var(--muted);margin-inline-start:auto;flex:none;font-variant-numeric:tabular-nums}
   .rec-levels{display:flex;flex-direction:column;gap:8px;margin-top:14px}
   .rec-level{
@@ -478,8 +478,8 @@ const REC_CSS = `
   .rec-level .k{flex:1;font-size:12px;font-weight:700;color:var(--muted)}
   .rec-level .v{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
   .rec-copy{
-    flex:none;width:28px;height:28px;display:grid;place-items:center;color:var(--muted);
-    cursor:pointer;-webkit-tap-highlight-color:transparent
+    flex:none;width:32px;height:32px;display:grid;place-items:center;color:var(--muted);
+    cursor:pointer;-webkit-tap-highlight-color:transparent;border-radius:8px
   }
   .rec-copy.ok{color:var(--up)}
 `
@@ -616,6 +616,7 @@ const recommendationCard = widgetHtml(
       sideEl.className = "rec-side " + sigCls;
       sideEl.textContent = act.label || "—";
       var conf = AIC.num(first(rec.confidence, rec.score, rec.probability, data.confidence, data.score));
+      if (conf != null && conf > 0 && conf <= 1) conf = conf * 100;
       document.getElementById("badge").textContent = conf != null ? Math.round(conf) + "%" : "—";
       var entry = AIC.num(first(rec.entry, rec.entry_price, rec.open, rec.price, rec.currentPrice));
       var sl = AIC.num(first(rec.stop_loss, rec.stopLoss, rec.stop, rec.sl));
@@ -624,6 +625,7 @@ const recommendationCard = widgetHtml(
         data.targets, data.take_profits,
         rec.take_profit, rec.takeProfit, rec.target, rec.tp, rec.tp1, rec.tp2, rec.tp3
       ]);
+      if (act.dir !== 0) tps.sort(function (a, b) { return act.dir > 0 ? a - b : b - a; });
       var rows = "";
       if (entry != null) rows += levelRow(AIC.t("entryLabel"), AIC.fmt(entry, 5), "blue");
       if (sl != null) rows += levelRow(AIC.t("stopLoss"), AIC.fmt(sl, 5), "red");

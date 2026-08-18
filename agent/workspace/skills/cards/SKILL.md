@@ -1,6 +1,6 @@
 ---
 name: cards
-version: 2.1.0
+version: 2.1.1
 description: Show only the Lonora recommendation card and live chart. Never present lessons, jobs, or analysis JSON as a card.
 category: presentation
 riskLevel: read_only
@@ -16,7 +16,7 @@ Gold (XAUUSD) is the only instrument. Cards carry data, never a control that pla
 
 The only interactive templates are:
 
-1. **recommendation-card** — the host shows this automatically after a successful `create_recommendation`. Present that card. Do not invent a second layout.
+1. **recommendation-card** — call `create_recommendation` in the **same turn** as the analysis, **before** any operator-facing plan. The host shows this card automatically; writing entry/SL/targets in prose does **not** produce a card. Pass every target: `take_profit` is TP1 and `take_profits` is the full list (2–3 numbers). Present that card. Do not invent a second layout.
 2. **live-chart** — call `show_live_chart` only when the operator asks to watch gold live in chat.
 
 There is **no** `render_cards` tool on MCP. Do not present `get_trade_lessons`, `show_jobs_by_ids`, `scan_market`, snapshots, or levels as cards. Weigh lessons in one or two sentences of prose, or skip them. Never paste `schema_version` or raw JSON.
