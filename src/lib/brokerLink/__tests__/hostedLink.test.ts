@@ -140,6 +140,17 @@ describe("in-app MetaTrader form never stores the password", () => {
     assert.match(card, /type=\{showPassword \? "text" : "password"\}/);
     assert.match(card, /connect\.broker\.server/);
     assert.match(card, /MetaTraderMark/);
+    assert.match(
+      readFileSync(
+        path.join(SRC, "components/settings/MetaTraderMark.tsx"),
+        "utf8",
+      ),
+      /\/brand\/metatrader-5\.svg/,
+    );
+    assert.equal(
+      existsSync(path.join(SRC, "..", "public/brand/metatrader-5.svg")),
+      true,
+    );
     assert.doesNotMatch(store, /password/);
     assert.doesNotMatch(sqlite, /password_enc/);
     assert.match(sqlite, /CREATE TABLE IF NOT EXISTS broker_links/);
