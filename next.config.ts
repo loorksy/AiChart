@@ -28,6 +28,19 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    return [
+      {
+        source: "/embed/chart",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors *",
+          },
+        ],
+      },
+    ];
+  },
   // better-sqlite3 is a native module and must not be bundled by Next.
   serverExternalPackages: ["better-sqlite3", "pg", "metaapi.cloud-sdk", "playwright"],
   // Vendored OpenAI realtime-voice-component ships TypeScript source.

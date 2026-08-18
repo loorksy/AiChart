@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { QUICKCHART_CANDLE_LIMIT } from "@/lib/chartSnapshot";
 import { canonicalizeInterval } from "@/lib/intervals";
 import {
   DEFAULT_MAX_IMAGES,
   MAX_IMAGES_LIMIT,
+  NUMERIC_CANDLE_LIMIT,
   resolveVisualTimeframes,
   VISUAL_EVIDENCE_GUARDRAILS,
 } from "@/lib/chart/multiTimeframeCapture";
@@ -152,5 +154,12 @@ describe("chart snapshot cache", () => {
     });
     assert.equal(chartSnapshotCacheSize(), 0);
     assert.equal(getCachedChartSnapshot(key), null);
+  });
+});
+
+describe("agent chart evidence depth", () => {
+  it("uses 200 QuickChart bars and 350 numeric bars", () => {
+    assert.equal(QUICKCHART_CANDLE_LIMIT, 200);
+    assert.equal(NUMERIC_CANDLE_LIMIT, 350);
   });
 });

@@ -34,6 +34,29 @@ describe("MCP UI resources", () => {
     });
   });
 
+  it("declares frameDomains and no host chrome for the live TradingView card", () => {
+    const origin = publicAssetOrigin();
+    const meta = uiMetaFor("live-chart");
+    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v6");
+    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v6");
+    assert.deepEqual(meta["openai/widgetCSP"], {
+      connect_domains: [origin],
+      resource_domains: [origin],
+      frame_domains: [origin],
+    });
+    const ui = meta.ui as {
+      prefersBorder?: boolean;
+      csp?: { frameDomains?: string[] };
+    };
+    assert.equal(ui.prefersBorder, false);
+    assert.deepEqual(ui.csp?.frameDomains, [origin]);
+    const html = WIDGETS["live-chart"];
+    assert.ok(html.includes("/embed/chart"));
+    assert.ok(html.includes("<iframe"));
+    assert.ok(!html.includes('id="cv"'));
+    assert.ok(!html.includes('class="card"'));
+  });
+
   it("registry uiMeta matches ui index helper", () => {
     assert.deepEqual(uiMeta("account-overview"), uiMetaFor("account-overview"));
   });

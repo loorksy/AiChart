@@ -39,6 +39,7 @@ export function loggedHtmlReadHandler(
   registeredUri: string,
   html: string,
   mimeType: string = RESOURCE_MIME_TYPE,
+  ui: Record<string, unknown> = { csp: {} },
 ): ReadResourceCallback {
   return async (uri) => {
     const started = Date.now();
@@ -75,14 +76,10 @@ export function loggedHtmlReadHandler(
             uri: requested,
             mimeType,
             text: html,
-            // Explicit, not omitted: every widget shell inlines its runtime and
-            // theme (runtime.ts's widgetHtml) and calls tools only through the
-            // host bridge (AIC.callTool) — never a raw fetch/XHR/WebSocket, not
-            // even to our own origin. An empty csp is therefore the accurate
-            // declaration, not just the secure default; the /mcp-ui HTTP
-            // endpoints some hosts fetch this same HTML from remain same-origin
-            // static files, not a network dependency of the rendered app.
-            _meta: { ui: { csp: {} } },
+            // Most cards are fully inline (empty csp). The live TradingView
+            // card iframes the platform embed page, so its ui meta declares
+            // frameDomains — see resourceUiFor() in ui/index.ts.
+            _meta: { ui },
           },
         ],
       };

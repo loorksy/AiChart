@@ -156,7 +156,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
             interval,
             market: a.market,
             source,
-            limit: 120,
+            limit: 200,
           })) as { data?: { candles?: unknown[] }; candles?: unknown[] };
           return res && typeof res.data === "object" && res.data
             ? res.data

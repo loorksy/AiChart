@@ -11,13 +11,32 @@ import { publicAssetOrigin } from "./runtime.js";
 import { legacyWidgetUris, skybridgePath, skybridgeUri, widgetUri } from "./uris.js";
 import { WIDGETS } from "./widgets.js";
 
+const LIVE_CHART_WIDGETS = new Set(["live-chart", "chart-drawn"]);
+
+/** MCP Apps resource `_meta.ui` — empty CSP for inline cards; frameDomains for TV embed. */
+export function resourceUiFor(widget: string): {
+  csp: { frameDomains?: string[] } | Record<string, never>;
+  prefersBorder?: boolean;
+} {
+  const origin = publicAssetOrigin();
+  if (LIVE_CHART_WIDGETS.has(widget)) {
+    return {
+      csp: { frameDomains: [origin] },
+      prefersBorder: false,
+    };
+  }
+  return { csp: {} };
+}
+
 function registerWidgetResource(
   server: McpServer,
   label: string,
   uri: string,
   html: string,
   mimeType: string,
+  widget: string,
 ): void {
+  const ui = resourceUiFor(widget);
   registerAppResource(
     server,
     label,
@@ -25,12 +44,9 @@ function registerWidgetResource(
     {
       description: label,
       ...(mimeType !== RESOURCE_MIME_TYPE ? { mimeType } : {}),
-      // Listing-level fallback for the same declaration the read callback
-      // returns per content item (loggedHtmlReadHandler) — see the comment
-      // there for why an explicit empty csp is correct, not just the default.
-      _meta: { ui: { csp: {} } },
+      _meta: { ui },
     },
-    loggedHtmlReadHandler(uri, html, mimeType),
+    loggedHtmlReadHandler(uri, html, mimeType, ui),
   );
 }
 
@@ -54,16 +70,23 @@ export function appsUri(widget: string): string {
 export function uiMetaFor(widget: string): Record<string, unknown> {
   const resourceUri = widgetUri(widget);
   const origin = publicAssetOrigin();
+  const live = LIVE_CHART_WIDGETS.has(widget);
   return {
-    ui: { resourceUri },
+    ui: { resourceUri, ...resourceUiFor(widget) },
     [RESOURCE_URI_META_KEY]: resourceUri,
     "openai/outputTemplate": skybridgeUri(widget),
     "openai/toolInvocation/invoking": "تشغيل Lonora...",
     "openai/toolInvocation/invoked": "اكتمل تحديث Lonora.",
-    "openai/widgetCSP": {
-      connect_domains: [origin],
-      resource_domains: [origin],
-    },
+    "openai/widgetCSP": live
+      ? {
+          connect_domains: [origin],
+          resource_domains: [origin],
+          frame_domains: [origin],
+        }
+      : {
+          connect_domains: [origin],
+          resource_domains: [origin],
+        },
   };
 }
 
@@ -80,8 +103,8 @@ export function registerWidgets(server: McpServer): void {
     const gptHtml = gptResource.text ?? html;
     const gptMime = gptResource.mimeType;
 
-    registerWidgetResource(server, `Lonora ${name} card`, nativeUri, html, RESOURCE_MIME_TYPE);
-    registerWidgetResource(server, `Lonora ${name} card (ChatGPT)`, gptUri, gptHtml, gptMime);
+    registerWidgetResource(server, `Lonora ${name} card`, nativeUri, html, RESOURCE_MIME_TYPE, name);
+    registerWidgetResource(server, `Lonora ${name} card (ChatGPT)`, gptUri, gptHtml, gptMime, name);
 
     for (const legacyUri of legacyWidgetUris(name)) {
       const isGpt = legacyUri.endsWith("-gpt");
@@ -91,6 +114,7 @@ export function registerWidgets(server: McpServer): void {
         legacyUri,
         isGpt ? gptHtml : html,
         isGpt ? gptMime : RESOURCE_MIME_TYPE,
+        name,
       );
     }
   }

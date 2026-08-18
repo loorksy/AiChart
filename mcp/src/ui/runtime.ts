@@ -712,14 +712,14 @@ export const STATIC_ASSETS = {
  *  sandboxes (Claude MCP Apps) block external assets, so nothing may be
  *  fetched at render time — the /mcp-ui endpoints remain only for legacy
  *  shells and manual inspection. */
-export function widgetHtml(title: string, body: string, script: string): string {
+export function widgetHtml(title: string, body: string, script: string, extraCss = ""): string {
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${title}</title>
-<style>${THEME_CSS}</style>
+<style>${THEME_CSS}${extraCss}</style>
 </head>
 <body>
 ${body}

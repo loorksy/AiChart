@@ -27,6 +27,9 @@ interface SnapshotCandle {
   close: number;
 }
 
+/** Default bars on the QuickChart fallback PNG when Playwright capture is unavailable. */
+export const QUICKCHART_CANDLE_LIMIT = 200;
+
 const FIB_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 
 function fibLevels(high: number, low: number): number[] {
@@ -464,7 +467,7 @@ export async function buildChartSnapshotUrl(
   input: ChartSnapshotInput,
 ): Promise<string | null> {
   try {
-    const limit = input.limit ?? 80;
+    const limit = input.limit ?? QUICKCHART_CANDLE_LIMIT;
     const candles = await fetchCandleSeries(
       undefined,
       input.symbol,
@@ -487,7 +490,7 @@ export async function buildChartSnapshotBuffer(
   input: ChartSnapshotInput,
 ): Promise<Buffer | null> {
   try {
-    const limit = input.limit ?? 80;
+    const limit = input.limit ?? QUICKCHART_CANDLE_LIMIT;
     const candles = await fetchCandleSeries(
       undefined,
       input.symbol,
@@ -513,7 +516,7 @@ export async function buildChartSnapshotBufferForMarket(
   extras: Partial<ChartSnapshotInput> = {},
 ): Promise<Buffer | null> {
   try {
-    const limit = extras.limit ?? 80;
+    const limit = extras.limit ?? QUICKCHART_CANDLE_LIMIT;
     const candles = await fetchCandleSeries(
       userId,
       symbol,

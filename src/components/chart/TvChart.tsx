@@ -168,6 +168,11 @@ interface Props {
   theme?: "light" | "dark";
   /** Headless screenshot render: drop every toolbar so the PNG is chart only. */
   capture?: boolean;
+  /**
+   * Chrome-free live pane for MCP / iframe hosts: same toolbar strip as capture,
+   * but the datafeed keeps streaming ticks and the pane background is transparent.
+   */
+  embed?: boolean;
   className?: string;
   onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
@@ -211,6 +216,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     direction = "rtl",
     theme = "dark",
     capture = false,
+    embed = false,
     className,
     onSymbolChange,
     onIntervalChange,
@@ -226,14 +232,16 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const [ready, setReady] = useState(false);
   const headerButtonsRef = useRef<Map<string, HTMLElement>>(new Map());
   const headerActionsRef = useRef<TvHeaderAction[] | undefined>(headerActions);
-  const live = useLivePrice(capture ? "" : symbol, !capture);
+  const live = useLivePrice(capture || embed ? "" : symbol, !(capture || embed));
   const directionRef = useRef<Direction>(direction);
   // Read inside the mount effect, which runs once and must not re-run when
   // unrelated props change.
   const captureRef = useRef(capture);
+  const embedRef = useRef(embed);
   headerActionsRef.current = headerActions;
   directionRef.current = direction;
   captureRef.current = capture;
+  embedRef.current = embed;
   // Stable indirection so the mount effect can call the latest applyDrawings.
   const applyDrawingsRef = useRef<(opts?: { force?: boolean }) => void>(() => {});
   const pushSyncRef = useRef(false);
@@ -387,6 +395,12 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         // Read from the prop (the server resolved it) rather than sniffing the
         // URL, which a client-side navigation can rewrite before this runs.
         const isCapture = captureRef.current;
+        const isEmbed = embedRef.current;
+        const paneBg = isEmbed
+          ? "rgba(0,0,0,0)"
+          : bootTheme === "dark"
+            ? "#050505"
+            : "#f4f5f7";
 
         // Live and capture both drop TradingView's own top/bottom chrome.
         // Interval stays in the composer; refresh lives in the console top bar.
@@ -403,7 +417,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           "header_indicators",
           "timeframes_toolbar",
           "control_bar",
-          ...(isCapture ? (["legend_context_menu"] as const) : []),
+          ...(isCapture || isEmbed ? (["legend_context_menu"] as const) : []),
         ];
 
         const options = {
@@ -422,7 +436,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           timezone: "Etc/UTC",
           custom_css_url: "aichart-hide-series-title.css",
           disabled_features: disabled,
-          enabled_features: isCapture
+          enabled_features: isCapture || isEmbed
             ? []
             : ([
                 "display_legend_on_all_charts",
@@ -430,7 +444,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
                 "hide_resolution_in_legend",
               ] as const),
           overrides: {
-            "paneProperties.background": bootTheme === "dark" ? "#050505" : "#f4f5f7",
+            "paneProperties.background": paneBg,
             "paneProperties.backgroundType": "solid",
             "paneProperties.legendProperties.showSeriesTitle": false,
             "paneProperties.legendProperties.showSeriesOHLC": true,
@@ -438,7 +452,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             "paneProperties.legendProperties.showVolume": true,
           },
           loading_screen: {
-            backgroundColor: bootTheme === "dark" ? "#050505" : "#f4f5f7",
+            backgroundColor: paneBg,
           },
         } as ChartingLibraryWidgetOptions;
 
@@ -625,7 +639,11 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     if (w && readyRef.current) {
       void w.changeTheme(theme).then(() => {
         w.applyOverrides({
-          "paneProperties.background": theme === "dark" ? "#050505" : "#f4f5f7",
+          "paneProperties.background": embedRef.current
+            ? "rgba(0,0,0,0)"
+            : theme === "dark"
+              ? "#050505"
+              : "#f4f5f7",
           "paneProperties.backgroundType": "solid",
           "paneProperties.legendProperties.showSeriesTitle": false,
         });

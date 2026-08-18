@@ -50,7 +50,7 @@ export const DEFAULT_IMAGE_TIMEOUT_MS = 8_000;
 const MIN_IMAGE_TIMEOUT_MS = 2_000;
 const MAX_IMAGE_TIMEOUT_MS = 20_000;
 /** Enough candles for the regime detector's 60-bar minimum plus its baseline. */
-const NUMERIC_CANDLE_LIMIT = 240;
+export const NUMERIC_CANDLE_LIMIT = 350;
 
 export type TimeframeSkipReason =
   | "unsupported_timeframe"
