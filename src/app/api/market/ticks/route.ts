@@ -1,5 +1,11 @@
 import { NextRequest } from "next/server";
-import { handleError, requirePlatformAccess } from "@/lib/api";
+import {
+  checkRateLimit,
+  clientKey,
+  getOptionalUser,
+  handleError,
+} from "@/lib/api";
+import { t } from "@/lib/i18n";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { subscribeOandaSymbolTicks } from "@/lib/markets/oandaStream";
 import { TRADABLE_SYMBOLS } from "@/lib/markets/forexInstruments";
@@ -12,13 +18,19 @@ const TRADABLE_SET = new Set(TRADABLE_SYMBOLS.map((s) => forexCanonicalKey(s)));
 
 /**
  * Server-Sent Events of live bid/ask from the platform's shared OANDA
- * stream. No per-user account or link is required — any authenticated user
- * can watch ticks for any of the fixed 20 instruments. Closing the
- * EventSource (chart unmount, tab backgrounded) tears the listener down.
+ * stream. No per-user account or link is required — guests (MCP embed, public
+ * chart) and signed-in operators share the same feed. Guest connects are
+ * rate-limited. Closing the EventSource tears the listener down.
  */
 export async function GET(req: NextRequest) {
   try {
-    await requirePlatformAccess();
+    const user = await getOptionalUser();
+    if (!user && !checkRateLimit(`ticks:${clientKey(req)}`, 30, 60_000)) {
+      return new Response(
+        JSON.stringify({ error: t("ar", "api.guest_rate_limit") }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      );
+    }
     const symbol = (req.nextUrl.searchParams.get("symbol") ?? "")
       .trim()
       .replace(/[^A-Za-z0-9._]/g, "");

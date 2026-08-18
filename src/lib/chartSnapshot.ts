@@ -28,6 +28,9 @@ interface SnapshotCandle {
   close: number;
 }
 
+/** Fallback QuickChart PNG uses the same window as live TradingView capture. */
+export const QUICKCHART_CANDLE_LIMIT = CHART_CAPTURE_CANDLES;
+
 const FIB_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 
 function fibLevels(high: number, low: number): number[] {

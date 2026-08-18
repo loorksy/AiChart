@@ -66,7 +66,7 @@
     {
       "name": "create_recommendation",
       "version": "1.1.1",
-      "description": "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. Confidence is the model's own judgement — never a statistically calibrated figure. Do not send backtested_confidence, statistical_support, strategy_id, or backtest_evidence; those fields no longer exist. Pass visual_confirmation + timeframes_reviewed after a live TradingView capture — confirmed is only valid when drawings_included=true; otherwise use not_checked.",
+      "description": "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server \u2014 do not send it. Call this in the SAME turn as the analysis BEFORE any operator-facing reply \u2014 never describe entry/SL/targets in prose first and wait to be asked for the card. On success the host AUTOMATICALLY shows recommendation-card plus the live platform chart (inline image + display_markdown) \u2014 present that card and paste display_markdown verbatim. Pass EVERY target: take_profit is TP1 and take_profits is the full list (2\u20133 numbers). Do not also present lessons, jobs, scan, snapshot, or levels JSON as cards; those tools have no UI. The only MCP cards are recommendation-card (this tool) and live-chart (show_live_chart). When: after the analysis settles on a direction \u2014 every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data \u2014 never looser than the sentence). side-effect: writes recommendation. activation_rule examples \u2014 timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} \u00b7 {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} \u00b7 {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} \u00b7 {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} \u00b7 composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. Confidence is the model's own judgement \u2014 never a statistically calibrated figure. Do not send backtested_confidence, statistical_support, strategy_id, or backtest_evidence; those fields no longer exist. Pass visual_confirmation + timeframes_reviewed after a live TradingView capture \u2014 confirmed is only valid when drawings_included=true; otherwise use not_checked.",
       "permission": "trade.recommend",
       "riskClass": "recommendation",
       "surfaces": [
@@ -89,7 +89,7 @@
     {
       "name": "detect_levels",
       "version": "1.1.1",
-      "description": "Detects support and resistance levels plus market structure, with volume-weighted strength scoring per level. When: before placing SL/TP — treat the levels as context, not a sole entry signal. Symbol is used as given, never canonicalized — unlike get_market_snapshot/get_ohlc/get_market_price/detect_market_regime, a broker-suffixed symbol is NOT stripped here. Default limit unset (server default, 20-500). read-only. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "description": "Detects support and resistance levels plus market structure, with volume-weighted strength scoring per level. When: before placing SL/TP — treat the levels as context, not a sole entry signal. JSON levels for plan construction — never present as a levels card; cite them in prose or draw them with draw_on_chart. Symbol is used as given, never canonicalized — unlike get_market_snapshot/get_ohlc/get_market_price/detect_market_regime, a broker-suffixed symbol is NOT stripped here. Default limit unset (server default, 20-500). read-only. Example: symbol=EURUSD&interval=4h&limit=120.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -169,7 +169,7 @@
     {
       "name": "get_agent_capabilities",
       "version": "1.1.1",
-      "description": "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_account_overview -> get_agent_trade_mode), not a suggestion.",
+      "description": "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_agent_settings -> resolve_agent_skills), not a suggestion.",
       "permission": "account.read",
       "riskClass": "read",
       "surfaces": [
@@ -189,7 +189,7 @@
     {
       "name": "get_agent_settings",
       "version": "1.1.1",
-      "description": "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live equity or exposure figures — that's get_account_overview/get_portfolio. read-only.",
+      "description": "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live prices or analysis — use get_market_snapshot/get_ohlc for those. JSON only, no card. read-only.",
       "permission": "account.read",
       "riskClass": "read",
       "surfaces": [
@@ -313,7 +313,7 @@
     {
       "name": "get_market_snapshot",
       "version": "1.1.1",
-      "description": "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
+      "description": "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. JSON for the model — never present as an MCP card. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -334,7 +334,7 @@
     {
       "name": "get_multi_timeframe_snapshot",
       "version": "1.1.1",
-      "description": "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "description": "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. JSON for the model — never present as an MCP card. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -395,7 +395,7 @@
     {
       "name": "get_trade_lessons",
       "version": "1.1.1",
-      "description": "Retrieves lessons learned from past trades as structured JSON (result, market_context.regime) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. Historical observation only — never statistical support for a specific recommendation. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=XAUUSD&recent=true.",
+      "description": "Retrieves lessons learned from past trades as structured JSON (result, market_context.regime) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: optionally after a realized loss on the same symbol, or when the operator asks about past mistakes \u2014 not before every analysis. Historical observation only \u2014 never statistical support for a specific recommendation. JSON only: never present this payload as an MCP card, never paste schema_version / empty arrays / raw fields. There is no lessons card. Summarize applicable lessons in 1\u20132 sentences or say there is no relevant history. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=XAUUSD&recent=true.",
       "permission": "memory.read",
       "riskClass": "read",
       "surfaces": [
@@ -475,7 +475,7 @@
     {
       "name": "list_instruments",
       "version": "1.1.1",
-      "description": "Lists tradable forex instruments — the linked account's own symbols, or the shared broker-seeded catalogue before a link — with an optional q search filter. When: browsing or searching for a pair. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
+      "description": "Lists tradable forex instruments — the linked account's own symbols, or the shared broker-seeded catalogue before a link — with an optional q search filter. When: browsing or searching for a pair. JSON only — not a pair-picker card. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -535,7 +535,7 @@
     {
       "name": "run_market_analysis",
       "version": "1.1.1",
-      "description": "Queues the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns job_id/status immediately (well under 1s); the real run (technical drawings auto-drawn on the user's chart when layout_id is passed) can take up to two minutes and never blocks this call. When: the operator asks for a complete analysis rather than individual indicator calls. Not for a quick single-indicator read — get_market_snapshot/get_forex_indicators are far cheaper when the operator just wants one number. Consumes 4 user credits. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call) until all_terminal is true, then read the result from that response — do not call this tool again to check status, and never poll multiple jobs one at a time when they can go in one jobs_wait call. The completed result includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
+      "description": "Queues the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns job_id/status immediately (well under 1s); the real run (technical drawings auto-drawn on the user's chart when layout_id is passed) can take up to two minutes and never blocks this call. When: the operator asks for a complete analysis rather than individual indicator calls. Returns JSON (job_id) only — no analysis card; after jobs_wait, summarize then call create_recommendation for recommendation-card. Not for a quick single-indicator read — get_market_snapshot/get_forex_indicators are far cheaper when the operator just wants one number. Consumes 4 user credits. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call) until all_terminal is true, then read the result from that response — do not call this tool again to check status, and never poll multiple jobs one at a time when they can go in one jobs_wait call. The completed result includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
       "permission": "market.read",
       "riskClass": "write",
       "surfaces": [
@@ -557,7 +557,7 @@
     {
       "name": "scan_market",
       "version": "1.1.1",
-      "description": "Scans and compares multiple symbols on one interval and ranks them by an undirected opportunity score (mixed bullish/bearish technical signal strength) — it does NOT compute a buy/sell direction; the response has no action/side field. When: the operator says 'take a trade' or asks for the best opportunity without naming a pair, to shortlist a candidate. Not a recommendation by itself — the top-scored symbol still needs its own real directional analysis (get_market_snapshot/detect_levels/etc.) before create_recommendation; never read the score's signals list as a verdict. read-only. scan market · compare symbols · best entry · pick a trade. Example: symbols=[EURUSD,GBPUSD].",
+      "description": "Scans and compares multiple symbols on one interval and ranks them by an undirected opportunity score (mixed bullish/bearish technical signal strength) — it does NOT compute a buy/sell direction; the response has no action/side field. When: the operator says 'take a trade' or asks for the best opportunity without naming a pair, to shortlist a candidate. JSON ranking only — never present as a card. Not a recommendation by itself — the top-scored symbol still needs its own real directional analysis (get_market_snapshot/detect_levels/etc.) before create_recommendation; never read the score's signals list as a verdict. read-only. scan market · compare symbols · best entry · pick a trade. Example: symbols=[EURUSD,GBPUSD].",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -598,7 +598,7 @@
     {
       "name": "show_jobs_by_ids",
       "version": "1.1.1",
-      "description": "Renders a completed batch of bucket-C jobs (run_market_analysis and similar) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to show the operator the results together. Not before all_terminal — call jobs_wait again first, don't guess at a still-running job's outcome. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. read-only.",
+      "description": "Returns completed bucket-C job results (run_market_analysis and similar) as JSON in one batch — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to read the results together. JSON only — do not present as an MCP card; summarize findings in prose, then issue the plan with create_recommendation (the only path that shows recommendation-card). Not before all_terminal — call jobs_wait again first. Never call this once per job. read-only.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -618,7 +618,7 @@
     {
       "name": "show_live_chart",
       "version": "1.1.1",
-      "description": "Shows a live mini chart card in chat, with candles refreshing about every 4s plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch a pair live inside the conversation. Not for a one-off static picture — capture_chart_snapshot is cheaper for that; use this only when the operator wants to keep watching. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
+      "description": "Shows a live gold chart card in chat — candles from the linked account, ticks updating in place, plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch gold live inside the conversation. Not after every analysis if create_recommendation already delivered recommendation-card + chart; never together with a lessons or jobs JSON card. Not for a one-off static picture — capture_chart_snapshot is cheaper for that. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
       "permission": "chart.read",
       "riskClass": "read",
       "surfaces": [

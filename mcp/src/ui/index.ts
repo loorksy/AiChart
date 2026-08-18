@@ -8,8 +8,42 @@ import { createUIResource } from "@mcp-ui/server";
 import { loggedHtmlReadHandler, logResourceRead } from "./resourceLog.js";
 import { normalizeWidgetPublicPath } from "./publicPath.js";
 import { publicAssetOrigin } from "./runtime.js";
+import {
+  matchRetiredWidgetPath,
+  RETIRED_STUB_HTML,
+  retiredWidgetUris,
+} from "./retired.js";
 import { legacyWidgetUris, skybridgePath, skybridgeUri, widgetUri } from "./uris.js";
 import { WIDGETS } from "./widgets.js";
+
+const BORDERLESS_WIDGETS = new Set([
+  "live-chart",
+  "chart-drawn",
+  "recommendation-card",
+  "retired-stub",
+]);
+
+export type ResourceCsp = {
+  connectDomains?: string[];
+  resourceDomains?: string[];
+  frameDomains?: string[];
+};
+
+/** MCP Apps resource `_meta.ui` — inline cards need no nested-iframe CSP. */
+export function resourceUiFor(widget: string): {
+  csp: ResourceCsp;
+  prefersBorder?: boolean;
+} {
+  if (BORDERLESS_WIDGETS.has(widget)) {
+    return { csp: {}, prefersBorder: false };
+  }
+  return { csp: {} };
+}
+
+/** `resources/read` contents `_meta` — hosts take CSP from here, not tool `_meta`. */
+export function resourceContentsMeta(widget: string): Record<string, unknown> {
+  return { ui: resourceUiFor(widget) };
+}
 
 function registerWidgetResource(
   server: McpServer,
@@ -17,7 +51,9 @@ function registerWidgetResource(
   uri: string,
   html: string,
   mimeType: string,
+  widget: string,
 ): void {
+  const contentsMeta = resourceContentsMeta(widget);
   registerAppResource(
     server,
     label,
@@ -25,12 +61,9 @@ function registerWidgetResource(
     {
       description: label,
       ...(mimeType !== RESOURCE_MIME_TYPE ? { mimeType } : {}),
-      // Listing-level fallback for the same declaration the read callback
-      // returns per content item (loggedHtmlReadHandler) — see the comment
-      // there for why an explicit empty csp is correct, not just the default.
-      _meta: { ui: { csp: {} } },
+      _meta: contentsMeta,
     },
-    loggedHtmlReadHandler(uri, html, mimeType),
+    loggedHtmlReadHandler(uri, html, mimeType, contentsMeta),
   );
 }
 
@@ -38,12 +71,7 @@ function asUiUri(path: string): `ui://${string}` {
   return `ui://${path}` as `ui://${string}`;
 }
 
-export {
-  APP_URI_ACCOUNT_OVERVIEW,
-  APP_URI_ANALYSIS,
-  widgetUri,
-  skybridgeUri,
-} from "./uris.js";
+export { widgetUri, skybridgeUri } from "./uris.js";
 export { getRecentResourceReads, logResourceRead } from "./resourceLog.js";
 
 export function appsUri(widget: string): string {
@@ -55,7 +83,7 @@ export function uiMetaFor(widget: string): Record<string, unknown> {
   const resourceUri = widgetUri(widget);
   const origin = publicAssetOrigin();
   return {
-    ui: { resourceUri },
+    ui: { resourceUri, ...resourceUiFor(widget) },
     [RESOURCE_URI_META_KEY]: resourceUri,
     "openai/outputTemplate": skybridgeUri(widget),
     "openai/toolInvocation/invoking": "تشغيل Lonora...",
@@ -80,8 +108,8 @@ export function registerWidgets(server: McpServer): void {
     const gptHtml = gptResource.text ?? html;
     const gptMime = gptResource.mimeType;
 
-    registerWidgetResource(server, `Lonora ${name} card`, nativeUri, html, RESOURCE_MIME_TYPE);
-    registerWidgetResource(server, `Lonora ${name} card (ChatGPT)`, gptUri, gptHtml, gptMime);
+    registerWidgetResource(server, `Lonora ${name} card`, nativeUri, html, RESOURCE_MIME_TYPE, name);
+    registerWidgetResource(server, `Lonora ${name} card (ChatGPT)`, gptUri, gptHtml, gptMime, name);
 
     for (const legacyUri of legacyWidgetUris(name)) {
       const isGpt = legacyUri.endsWith("-gpt");
@@ -91,8 +119,29 @@ export function registerWidgets(server: McpServer): void {
         legacyUri,
         isGpt ? gptHtml : html,
         isGpt ? gptMime : RESOURCE_MIME_TYPE,
+        name,
       );
     }
+  }
+
+  const stubGptResource = createUIResource({
+    uri: asUiUri("retired-stub-gpt"),
+    content: { type: "rawHtml", htmlString: RETIRED_STUB_HTML },
+    encoding: "text",
+    adapters: { appsSdk: { enabled: true } },
+  }).resource;
+  const stubGptHtml = stubGptResource.text ?? RETIRED_STUB_HTML;
+  const stubGptMime = stubGptResource.mimeType;
+  for (const uri of retiredWidgetUris()) {
+    const isGpt = uri.endsWith("-gpt");
+    registerWidgetResource(
+      server,
+      "Lonora retired card",
+      uri,
+      isGpt ? stubGptHtml : RETIRED_STUB_HTML,
+      isGpt ? stubGptMime : RESOURCE_MIME_TYPE,
+      "retired-stub",
+    );
   }
 }
 
@@ -129,6 +178,14 @@ export function widgetHtmlByPublicPath(path: string): {
       };
     }
     return { uri: widgetUri(name), html, mimeType: RESOURCE_MIME_TYPE };
+  }
+  const retired = matchRetiredWidgetPath(normalized);
+  if (retired) {
+    return {
+      uri: retired.uri,
+      html: RETIRED_STUB_HTML,
+      mimeType: retired.gpt ? "text/html+skybridge" : RESOURCE_MIME_TYPE,
+    };
   }
   return null;
 }

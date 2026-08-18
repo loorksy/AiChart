@@ -70,6 +70,15 @@
       "type": "number",
       "exclusiveMinimum": 0
     },
+    "take_profits": {
+      "description": "Every profit target in order (TP1..TP3). The card shows one row per unique target. take_profit is TP1; include the rest here or repeat TP1 in this array.",
+      "maxItems": 3,
+      "type": "array",
+      "items": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      }
+    },
     "visual_confirmation": {
       "description": "Did the chart images agree with the numbers? confirmed | contradicted | not_checked. confirmed is only valid when a live TradingView capture included drawings (drawings_included=true). Contradicted lowers the DISPLAYED model-judgement confidence.",
       "anyOf": [

@@ -271,7 +271,7 @@ function isBridgeFailureEnvelope(
 
 export function formatBridgeResult(
   data: unknown,
-  opts?: { structured?: boolean },
+  opts?: { structured?: boolean; card?: boolean },
 ): {
   content: Array<{ type: "text"; text: string }>;
   structuredContent?: Record<string, unknown>;
@@ -280,23 +280,24 @@ export function formatBridgeResult(
   const isError = isBridgeFailureEnvelope(data);
   const isPlainObject =
     !!data && typeof data === "object" && !Array.isArray(data);
-  // structuredContent feeds the interactive card (MCP Apps / ChatGPT widget).
-  // ALWAYS attach it for object payloads — a card-linked tool that omitted it
-  // rendered an empty card on first paint. Harmless for hosts without UI (they
-  // read the text block); the card layer defensively handles every shape.
-  const structured =
+  const payload =
     !isError && isPlainObject ? (data as Record<string, unknown>) : undefined;
+  // structuredContent feeds MCP Apps / ChatGPT widgets. Emit it ONLY for
+  // tools that actually advertise a card (`opts.card`) — attaching it to
+  // lessons/jobs/snapshots lets a host with cached `_meta` resurrect a
+  // deleted widget.
+  const structuredContent = opts?.card ? payload : undefined;
   // opts.structured only chooses the human-readable text fallback for the
   // flagship shapes; other payloads keep pretty JSON in the text block.
   let text: string;
-  if (opts?.structured && structured) {
+  if (opts?.structured && payload) {
     text = formatToolTextFallback(data) ?? JSON.stringify(data, null, 2);
   } else {
     text = JSON.stringify(data, null, 2);
   }
   return {
     content: [{ type: "text", text }],
-    ...(structured ? { structuredContent: structured } : {}),
+    ...(structuredContent ? { structuredContent } : {}),
     ...(isError ? { isError: true as const } : {}),
   };
 }

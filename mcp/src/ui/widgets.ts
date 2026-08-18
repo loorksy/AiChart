@@ -1,255 +1,98 @@
 import { widgetHtml } from "./runtime.js";
 
-const PLATFORM_URL = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
-
-const analysis = widgetHtml(
-  "Lonora analysis",
-  `<div class="card" id="analysis-card">
-    <div class="top">
-      <div><div class="title" id="title">—</div></div>
-      <div class="tag wait" id="badge">—</div>
-    </div>
-    <div class="main" id="main"><div class="skel"></div></div>
-    <div class="row">
-      <div class="mini"><span data-i18n="price">Price</span><strong id="price-val">—</strong></div>
-      <div class="mini"><span data-i18n="trend">Trend</span><strong id="trend-val">—</strong></div>
-    </div>
-    <div class="foot">
-      <span id="status" class="status"></span>
-    </div>
-  </div>`,
-  `
-  var current = { symbol: "", interval: "15m", layout_id: null, data_source: "metaapi" };
-  function canonSym(s){
-    s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    return s.length >= 6 ? s.slice(0, 6) : s;
-  }
-  function obj(v) { return v && typeof v === "object" ? v : {}; }
-  /* Handles: {snapshot}, MTF {snapshots:[{interval,snapshot}]}, detect_levels
-     (flat) — and surfaces indicator keys nested under snapshot.extra. */
-  function pickSnapshot(data) {
-    var s = data.snapshot;
-    if (!s && Array.isArray(data.snapshots)) {
-      for (var i = 0; i < data.snapshots.length; i++) {
-        var it = obj(data.snapshots[i]);
-        if (it.snapshot) { s = it.snapshot; break; }
-        if (it.price != null || it.close != null) { s = it; break; }
-      }
-    }
-    s = obj(s || data);
-    var extra = obj(s.extra);
-    var merged = {};
-    for (var k in s) merged[k] = s[k];
-    for (var k2 in extra) if (merged[k2] == null) merged[k2] = extra[k2];
-    return merged;
-  }
-  function fmtMacd(v) {
-    if (v == null) return null;
-    if (typeof v === "number") return v;
-    return v.histogram ?? v.value ?? v.macd ?? null;
-  }
-  function trendClass(AIC, v) {
-    return AIC.trendInfo(v);
-  }
-  window.__aicReady = function (AIC) {
-    AIC.applyStaticLabels();
-    AIC.onData(function (data) {
-      data = obj(data);
-      var snap = pickSnapshot(data);
-      var rec = obj(data.recommendation);
-      current.symbol = canonSym(snap.symbol || rec.symbol || data.symbol || current.symbol);
-      current.interval = snap.interval || data.interval || current.interval;
-      current.layout_id = data.layout_id || current.layout_id;
-      current.data_source = data.data_source || data.dataSource || current.data_source || "metaapi";
-      var trend = trendClass(AIC, rec.action || snap.trend || data.trend);
-      var card = document.getElementById("analysis-card");
-      card.className = "card " + trend[0];
-      document.getElementById("title").textContent = current.symbol ? current.symbol + " · " + current.interval : "—";
-      var badge = document.getElementById("badge");
-      badge.className = "tag " + (trend[0] === "buy" ? "green" : trend[0] === "sell" ? "red" : "amber");
-      var conf = AIC.num(rec.confidence ?? data.confidence);
-      badge.textContent = conf != null ? Math.round(conf) + "%" : (rec.action === "buy" ? AIC.t("buy") : rec.action === "sell" ? AIC.t("sell") : trend[1]);
-      var targets = data.targets || (rec.take_profit ? [rec.take_profit] : []);
-      /* Price-like fields: 0 is never a real market level — treat as missing. */
-      function pxv(v) {
-        var n = AIC.num(v);
-        return n == null || n === 0 ? null : n;
-      }
-      /* detect_levels gives supports[]/resistances[] arrays of {price,touches}.
-         Pick the level nearest to price on the correct side. */
-      function levelPrice(v) { return AIC.num(v && typeof v === "object" ? (v.price != null ? v.price : v.level) : v); }
-      function nearest(arr, ref, below) {
-        if (!Array.isArray(arr) || !arr.length) return null;
-        var best = null, bestD = Infinity;
-        for (var i = 0; i < arr.length; i++) {
-          var p = levelPrice(arr[i]);
-          if (p == null) continue;
-          if (ref != null) {
-            if (below && p > ref) continue;
-            if (!below && p < ref) continue;
-          }
-          var d = ref != null ? Math.abs(p - ref) : 0;
-          if (d < bestD) { bestD = d; best = p; }
-        }
-        return best != null ? best : levelPrice(arr[0]);
-      }
-      var refPrice = AIC.num(snap.price ?? snap.close ?? snap.currentPrice);
-      var supVal = pxv(snap.support ?? snap.nearestSupport ?? data.support);
-      if (supVal == null) supVal = nearest(snap.supports || data.supports, refPrice, true);
-      var resVal = pxv(snap.resistance ?? snap.nearestResistance ?? data.resistance);
-      if (resVal == null) resVal = nearest(snap.resistances || data.resistances, refPrice, false);
-      var priceVal = pxv(snap.price ?? snap.close ?? snap.currentPrice ?? rec.entry);
-      var main = document.getElementById("main");
-      var signalCls = trend[0] === "buy" ? "green" : trend[0] === "sell" ? "red" : "amber";
-      var signalTxt = rec.action === "buy" ? AIC.t("buy") : rec.action === "sell" ? AIC.t("sell") : trend[1];
-      var pairs = [];
-      if ((snap.rsi14 ?? snap.rsi) != null) pairs.push(["RSI", AIC.fmt(snap.rsi14 ?? snap.rsi, 1), ""]);
-      if (fmtMacd(snap.macd) != null) pairs.push(["MACD", AIC.fmt(fmtMacd(snap.macd), 4), ""]);
-      if (supVal != null) pairs.push([AIC.t("support"), AIC.fmt(supVal, 5), "green"]);
-      if (resVal != null) pairs.push([AIC.t("resistance"), AIC.fmt(resVal, 5), "red"]);
-      if (snap.change24hPct != null) {
-        pairs.push([AIC.t("change24h"), AIC.fmt(snap.change24hPct, 2) + "%", Number(snap.change24hPct) >= 0 ? "green" : "red"]);
-      }
-      var h = '<div class="signal ' + signalCls + '">' + signalTxt + '</div>';
-      if (conf != null) {
-        h += '<div class="confidence"><div class="bar ' + signalCls + '" style="width:' + Math.max(0, Math.min(100, conf)) + '%"></div></div>';
-      }
-      if (pairs.length) {
-        h += pairs.slice(0, 3).map(function (p) {
-          return '<div class="pair"><strong>' + p[0] + '</strong><span class="' + p[2] + '">' + p[1] + '</span></div>';
-        }).join("");
-      } else {
-        h += '<div class="sub">' + String(data.reply || snap.summary || rec.rationale || data.summary || "").slice(0, 120) + '</div>';
-      }
-      main.innerHTML = h;
-      document.getElementById("price-val").textContent = priceVal != null ? AIC.fmt(priceVal, 5) : "—";
-      document.getElementById("price-val").className = priceVal != null ? "blue" : "";
-      document.getElementById("trend-val").textContent = trend[1];
-      document.getElementById("trend-val").className = signalCls;
-      var statusEl = document.getElementById("status");
-      var stale = AIC.bridgeLinkState(data).stale;
-      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
-      statusEl.className = stale ? "status stale" : "status";
-      AIC.notifySize();
-    });
-  };
-  `,
-);
-
-function genericCard(titleKey: string, _subtitleKey: string) {
-  return widgetHtml(
-    `Lonora ${titleKey}`,
-    `<div class="card">
-      <div class="top">
-        <div><div class="title" data-i18n="${titleKey}"></div></div>
-      </div>
-      <div class="main" id="body"><div class="skel"></div></div>
-      <div class="foot">
-        <span id="status" class="status"></span>
-      </div>
-    </div>`,
-    `
-    function obj(v) { return v && typeof v === "object" ? v : {}; }
-    function unwrap(data) {
-      if (Array.isArray(data)) return { items: data };
-      data = obj(data);
-      var inner = data.data || data.payload || data.result;
-      if (inner && typeof inner === "object" && !Array.isArray(inner)) {
-        var merged = {};
-        for (var ik in inner) merged[ik] = inner[ik];
-        for (var dk in data) if (dk !== "data" && dk !== "payload" && dk !== "result" && merged[dk] == null) merged[dk] = data[dk];
-        return merged;
-      }
-      return data;
-    }
-    function rowsFrom(data, AIC) {
-      var out = [];
-      data = unwrap(data);
-      function add(label, value, digits) {
-        if (out.length >= 6) return;
-        var val = AIC.cell(value, digits == null ? 4 : digits);
-        if (val) out.push([label, val]);
-      }
-      var trades = AIC.pickTrades(data);
-      if (trades.length) add(AIC.t("trades"), String(trades.length));
-      if (Array.isArray(data.items)) add(AIC.t("items"), String(data.items.length));
-      if (Array.isArray(data.candidates)) add(AIC.t("candidates"), String(data.candidates.length));
-      if (Array.isArray(data.pending) || Array.isArray(data.approvals)) add(AIC.t("pending"), String((data.pending || data.approvals).length));
-      add(AIC.t("status"), data.status || data.mode || data.ready);
-      add(AIC.t("todayPnl"), data.todayRealizedPnlUsd || data.today_pnl || data.pnl, 2);
-      for (var k in data) {
-        if (k === "trades" || k === "openTrades" || k === "open_trades" || k === "capital" ||
-            k === "items" || k === "candidates" || k === "pending" || k === "approvals") continue;
-        var v = data[k];
-        if (v == null) continue;
-        if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") add(k, v);
-        if (Array.isArray(v)) add(k, String(v.length));
-        if (out.length >= 6) break;
-      }
-      return out;
-    }
-    window.__aicReady = function (AIC) {
-      AIC.applyStaticLabels();
-      AIC.onData(function (data) {
-        data = unwrap(data);
-        var body = document.getElementById("body");
-        var rows = rowsFrom(data, AIC);
-        if (!rows.length) {
-          body.innerHTML = '<div class="empty">' + AIC.t("noData") + '</div>';
-        } else {
-          body.innerHTML = rows.slice(0, 4).map(function (row) {
-            var val = AIC.cell(row[1], 4);
-            return val ? '<div class="pair"><strong>' + row[0] + '</strong><span>' + val + '</span></div>' : '';
-          }).join("") || '<div class="empty">' + AIC.t("noData") + '</div>';
-        }
-        var stale = AIC.bridgeLinkState(data).stale;
-        var statusEl = document.getElementById("status");
-        statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
-        statusEl.className = stale ? "status stale" : "status";
-        AIC.notifySize();
-      });
-    };
-    `,
-  );
-}
+const LIVE_CHART_CSS = `
+  html,body{background:transparent!important;padding:0;margin:0;height:100%}
+  .tv-live{position:relative;width:100%;min-height:340px;height:380px;background:transparent;overflow:hidden}
+  .tv-live canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .tv-rail{position:absolute;z-index:2;top:10px;inset-inline-start:12px;display:flex;align-items:center;gap:10px;pointer-events:none}
+  .tv-live-dot{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--up)}
+  .tv-live-dot::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-inline-end:6px;vertical-align:middle;box-shadow:0 0 0 4px color-mix(in srgb, var(--up) 22%, transparent)}
+  .tv-id{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.02em}
+  .tv-price{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+  .tv-hint{position:absolute;inset:0;display:none;place-items:center;color:var(--faint);font-size:12px;font-weight:700;padding:24px;text-align:center;background:transparent;z-index:1}
+  .tv-hint.show{display:grid}
+`;
 
 const liveChart = widgetHtml(
   "Lonora live chart",
-  `<div class="card">
-    <div class="top">
-      <div>
-        <div class="title" id="title">—</div>
-      </div>
-      <div class="tag green" id="live-tag">LIVE</div>
+  `<div class="tv-live" id="tv-live">
+    <div class="tv-rail">
+      <span class="tv-live-dot" id="live-tag">LIVE</span>
+      <span class="tv-id" id="title">—</span>
+      <span class="tv-price" id="price-lbl">—</span>
     </div>
-    <div class="main">
-      <div class="chart-wrap">
-        <canvas id="cv"></canvas>
-        <div id="hint" class="empty" style="display:none;position:absolute;inset:0;margin:auto;height:fit-content" data-i18n="noSymbol">No symbol yet</div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="mini"><span data-i18n="price">Price</span><strong id="price-lbl" class="green">—</strong></div>
-      <div class="mini"><span data-i18n="trend">Trend</span><strong id="trend-lbl">—</strong></div>
-    </div>
-    <div class="foot">
-      <span id="status" class="status"></span>
-    </div>
+    <canvas id="cv"></canvas>
+    <div id="hint" class="tv-hint"></div>
   </div>`,
   `
-  var PLATFORM = "${PLATFORM_URL}";
-  var S = { symbol:null, interval:"15m", layoutId:null, url:null, candles:[],
-            drawings:[], rec:null, targets:[], lastUpdate:0, paused:false,
-            failures:0, timer:null, booted:false, source:"metaapi", warning:null };
+  var S = { symbol:null, interval:"15m", layoutId:null, candles:[],
+            drawings:[], rec:null, targets:[], lastUpdate:0,
+            failures:0, timer:null, booted:false, warning:null, drawTries:0 };
 
-  /* Broker tickers (XAUUSDM, EURUSDm) → canonical 6-letter key for candle fetch. */
   function canonSym(s){
     s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     return s.length >= 6 ? s.slice(0, 6) : s;
   }
-
   function nnum(v){ v = Number(v); return isFinite(v) ? v : null; }
   function toMs(t){ t = Number(t); if (!isFinite(t) || t <= 0) return null; return t < 20000000000 ? t * 1000 : t; }
+  function isLightTheme(){
+    try {
+      var t = document.documentElement.getAttribute("data-theme");
+      if (t === "light" || t === "dark") return t === "light";
+      return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
+    } catch (e) { return false; }
+  }
+  /* Canvas cannot paint CSS var()/light-dark() — use resolved hex palettes. */
+  function theme(){
+    if (isLightTheme()) {
+      return {
+        up: "#0f766e", down: "#be123c", gold: "#b45309", info: "#1d4ed8",
+        muted: "#57534e", line: "rgba(28,25,23,.18)",
+        surface: "#f4f3ee", txt: "#141413"
+      };
+    }
+    return {
+      up: "#5eead4", down: "#fb7185", gold: "#fbbf24", info: "#7dd3fc",
+      muted: "#e2e8f0", line: "rgba(226,232,240,.28)",
+      surface: "#0b1220", txt: "#f8fafc"
+    };
+  }
+  function parseRgb(c){
+    c = String(c || "").trim();
+    if (c.charAt(0) !== "#") return null;
+    var h = c.slice(1);
+    if (h.length === 3 || h.length === 4) {
+      return [
+        parseInt(h.charAt(0)+h.charAt(0), 16),
+        parseInt(h.charAt(1)+h.charAt(1), 16),
+        parseInt(h.charAt(2)+h.charAt(2), 16)
+      ];
+    }
+    if (h.length === 6 || h.length === 8) {
+      return [
+        parseInt(h.slice(0,2), 16),
+        parseInt(h.slice(2,4), 16),
+        parseInt(h.slice(4,6), 16)
+      ];
+    }
+    return null;
+  }
+  function inkOn(bg){
+    var rgb = parseRgb(bg);
+    if (!rgb) return "#f8fafc";
+    var r = rgb[0]/255, gv = rgb[1]/255, b = rgb[2]/255;
+    var lin = function (x){ return x <= 0.04045 ? x/12.92 : Math.pow((x+0.055)/1.055, 2.4); };
+    var L = 0.2126*lin(r) + 0.7152*lin(gv) + 0.0722*lin(b);
+    return L > 0.45 ? "#141413" : "#f8fafc";
+  }
+  function paintChip(g, x, y, w, h, fill, label){
+    g.globalAlpha = 1;
+    g.fillStyle = fill;
+    g.fillRect(x, y, w, h);
+    g.fillStyle = inkOn(fill);
+    g.textAlign = "left";
+    g.fillText(label, x + 4, y + h / 2);
+  }
   function normCandles(o){
     o = o || {};
     var arr = Array.isArray(o.candles) ? o.candles : (Array.isArray(o) ? o : []);
@@ -272,41 +115,36 @@ const liveChart = widgetHtml(
     if (d.interval) S.interval = String(d.interval);
     if (d.layout_id) S.layoutId = d.layout_id;
     if (d.id && (d.state || d.drawings_count != null)) S.layoutId = d.id;
-    if (d.url) S.url = d.url;
-    if (!S.source) S.source = "metaapi";
     var st = (d.state && typeof d.state === "object") ? d.state : null;
     if (st) {
       if (Array.isArray(st.drawings)) S.drawings = st.drawings;
       if (st.recommendation !== undefined) S.rec = st.recommendation;
       if (Array.isArray(st.targets)) S.targets = st.targets;
     }
+    if (Array.isArray(d.drawings)) S.drawings = d.drawings;
+    if (d.recommendation !== undefined) S.rec = d.recommendation;
+    if (Array.isArray(d.targets)) S.targets = d.targets;
     var cc = null;
     var ohl = d.ohlc;
-    /* Some endpoints wrap payloads in {ok, data} — unwrap transparently. */
     if (ohl && ohl.data && typeof ohl.data === "object") ohl = ohl.data;
     var flat = d.data && typeof d.data === "object" ? d.data : d;
     if (ohl) {
       cc = normCandles(ohl);
-      S.source = "metaapi";
       S.warning = ohl.warning || null;
     } else if (Array.isArray(flat.candles)) {
       cc = normCandles(flat);
-      S.source = "metaapi";
       S.warning = flat.warning || null;
     }
     if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }
   }
 
-  /* ── rendering ── */
-  var UP = "#3FB27F", DOWN = "#E5636B", GOLD = "#E0B15E", INFO = "#7FB4E8",
-      MUTED = "#8A93A3", LINE = "#262C36";
-  function roleColor(dr){
+  function roleColor(th, dr){
+    var r = String(dr.semanticRole || dr.type || dr.label || "").toLowerCase();
+    if (/support|demand|take_profit|target|هدف/.test(r)) return th.up;
+    if (/resistance|supply|stop|وقف/.test(r)) return th.down;
+    if (/entry|fib|forecast|دخول/.test(r)) return th.gold;
     if (dr.color && /^#[0-9a-fA-F]{3,8}$/.test(dr.color)) return dr.color;
-    var r = String(dr.semanticRole || dr.type || "").toLowerCase();
-    if (/support|demand|take_profit|target/.test(r)) return UP;
-    if (/resistance|supply|stop/.test(r)) return DOWN;
-    if (/entry|fib|forecast/.test(r)) return GOLD;
-    return INFO;
+    return th.info;
   }
   function decimalsFor(span){
     if (span < 0.05) return 5;
@@ -321,23 +159,31 @@ const liveChart = widgetHtml(
 
   function draw(){
     var cv = document.getElementById("cv");
+    if (!cv) return;
     var dpr = window.devicePixelRatio || 1;
     var W = cv.clientWidth, H = cv.clientHeight;
-    if (!W || !H) return;
+    if (!W || !H) {
+      S.drawTries = (S.drawTries || 0) + 1;
+      if (S.drawTries < 40 && window.requestAnimationFrame) window.requestAnimationFrame(draw);
+      return;
+    }
+    S.drawTries = 0;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     var g = cv.getContext("2d");
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     var cs = S.candles;
     if (!cs.length) return;
+    var th = theme();
+    var UP = th.up, DOWN = th.down, GOLD = th.gold, INFO = th.info;
+    var MUTED = th.muted, LINE = th.line;
 
-    var padL = 6, padR = 56, padT = 10, padB = 20;
+    var padL = 6, padR = 56, padT = 36, padB = 20;
     var plotW = W - padL - padR, plotH = H - padT - padB;
-    var N = Math.min(90, cs.length), i0 = cs.length - N;
+    var N = Math.min(200, cs.length), i0 = cs.length - N;
     var lo = Infinity, hi = -Infinity;
     for (var i = i0; i < cs.length; i++) { if (cs[i].l < lo) lo = cs[i].l; if (cs[i].h > hi) hi = cs[i].h; }
     var span0 = hi - lo || Math.abs(hi) * 0.001 || 1;
-    /* pull recommendation/horizontal levels into range when nearby */
     var extras = [];
     if (S.rec) { extras.push(nnum(S.rec.entry), nnum(S.rec.stop_loss), nnum(S.rec.take_profit)); }
     for (var e2 = 0; e2 < S.targets.length; e2++) extras.push(nnum(S.targets[e2]));
@@ -348,7 +194,7 @@ const liveChart = widgetHtml(
     var span = (hi - lo) || span0; lo -= span * 0.06; hi += span * 0.06; span = hi - lo;
     var dec = decimalsFor(span);
     var step = plotW / N;
-    function xFor(i){ var ii = i < i0 ? i0 : i; return padL + (ii - i0 + 0.5) * step; }
+    function xFor(idx){ var ii = idx < i0 ? i0 : idx; return padL + (ii - i0 + 0.5) * step; }
     function yFor(p){ return padT + (hi - p) / span * plotH; }
     function idxForTime(t){
       if (t == null) return null;
@@ -362,7 +208,6 @@ const liveChart = widgetHtml(
       return ix == null ? null : xFor(ix);
     }
 
-    /* grid + price axis */
     g.font = "10px system-ui, sans-serif"; g.textBaseline = "middle";
     for (var gl = 0; gl <= 4; gl++) {
       var gp = lo + span * gl / 4, gy = yFor(gp);
@@ -371,7 +216,6 @@ const liveChart = widgetHtml(
       g.fillStyle = MUTED; g.textAlign = "left";
       g.fillText(fmtP(gp, dec), W - padR + 5, gy);
     }
-    /* time labels */
     g.textAlign = "center"; g.fillStyle = MUTED;
     for (var tl = 0; tl < 3; tl++) {
       var ti = i0 + Math.round((N - 1) * tl / 2);
@@ -383,21 +227,17 @@ const liveChart = widgetHtml(
     function hline(p, color, dash, label){
       var y = yFor(p);
       if (y < padT - 4 || y > padT + plotH + 4) return;
-      g.strokeStyle = color; g.lineWidth = 1;
+      g.strokeStyle = color; g.lineWidth = 1.25;
       g.setLineDash(dash === "dashed" ? [5,4] : dash === "dotted" ? [2,3] : []);
       g.beginPath(); g.moveTo(padL, y); g.lineTo(W - padR, y); g.stroke(); g.setLineDash([]);
       if (label) {
-        g.font = "9px system-ui, sans-serif";
-        var tw = g.measureText(label).width + 8;
-        g.fillStyle = "#171B22"; g.strokeStyle = color; g.globalAlpha = 0.95;
-        g.fillRect(padL + 2, y - 8, tw, 15); g.strokeRect(padL + 2, y - 8, tw, 15);
-        g.globalAlpha = 1; g.fillStyle = color; g.textAlign = "left";
-        g.fillText(label, padL + 6, y);
+        g.font = "bold 10px system-ui, sans-serif";
+        var tw = g.measureText(label).width + 10;
+        paintChip(g, padL + 2, y - 8, tw, 16, color, label);
         g.font = "10px system-ui, sans-serif";
       }
     }
 
-    /* zones first (behind candles) */
     for (var z = 0; z < S.drawings.length; z++) {
       var dz = S.drawings[z] || {};
       var tz = String(dz.type || "").toLowerCase();
@@ -406,7 +246,7 @@ const liveChart = widgetHtml(
       var p1 = nnum(pts[0] && pts[0].price != null ? pts[0].price : dz.price);
       var p2 = nnum(pts[1] && pts[1].price != null ? pts[1].price : dz.price2);
       if (p1 == null || p2 == null) continue;
-      var zc = roleColor(dz);
+      var zc = roleColor(th, dz);
       var y1 = yFor(Math.max(p1, p2)), y2 = yFor(Math.min(p1, p2));
       var zx1 = pts[0] ? ptX(pts[0]) : null, zx2 = pts[1] ? ptX(pts[1]) : null;
       var rx = zx1 != null ? Math.min(zx1, zx2 != null ? zx2 : W - padR) : padL;
@@ -415,10 +255,14 @@ const liveChart = widgetHtml(
       g.fillStyle = zc; g.globalAlpha = 0.10; g.fillRect(rx, y1, rw, y2 - y1);
       g.globalAlpha = 0.5; g.strokeStyle = zc; g.strokeRect(rx, y1, rw, y2 - y1);
       g.globalAlpha = 1;
-      if (dz.label) { g.fillStyle = zc; g.textAlign = "left"; g.fillText(String(dz.label), rx + 4, y1 + 8); }
+      if (dz.label) {
+        g.font = "bold 10px system-ui, sans-serif";
+        var zlbl = String(dz.label);
+        paintChip(g, rx + 4, y1 + 2, g.measureText(zlbl).width + 10, 16, zc, zlbl);
+        g.font = "10px system-ui, sans-serif";
+      }
     }
 
-    /* candles */
     var cw = Math.max(1.5, step * 0.62);
     for (var ci = i0; ci < cs.length; ci++) {
       var c = cs[ci], x = xFor(ci), up = c.c >= c.o;
@@ -430,12 +274,11 @@ const liveChart = widgetHtml(
       g.fillRect(x - cw / 2, top, cw, hgt);
     }
 
-    /* line/path drawings */
     for (var di = 0; di < S.drawings.length; di++) {
       var dr = S.drawings[di] || {};
       var ty = String(dr.type || "").toLowerCase();
       if (/zone|range_box|band|risk_reward/.test(ty)) continue;
-      var col = roleColor(dr);
+      var col = roleColor(th, dr);
       var ps = Array.isArray(dr.points) ? dr.points : [];
       var flatP = nnum(dr.price);
       if (/price_line|hline|baseline/.test(ty) || (ps.length <= 1 && flatP != null)) {
@@ -454,19 +297,22 @@ const liveChart = widgetHtml(
         }
         continue;
       }
-      /* markers / labels */
       if (/marker|arrow|text|label/.test(ty)) {
         var mp = ps[0];
         if (mp && mp.price != null) {
           var mx = ptX(mp), my = yFor(nnum(mp.price));
           if (mx != null) {
             g.fillStyle = col; g.beginPath(); g.arc(mx, my, 3.5, 0, 7); g.fill();
-            if (dr.label) { g.textAlign = "center"; g.fillText(String(dr.label), mx, my - 10); }
+            if (dr.label) {
+              var ml = String(dr.label);
+              g.font = "bold 10px system-ui, sans-serif";
+              paintChip(g, mx - 2, my - 18, g.measureText(ml).width + 10, 16, col, ml);
+              g.font = "10px system-ui, sans-serif";
+            }
           }
         }
         continue;
       }
-      /* long/short position boxes via meta */
       if (/position/.test(ty)) {
         var meta = dr.meta || {};
         var en = nnum(meta.entry), sl = nnum(meta.stopLoss), tp = nnum(meta.takeProfit);
@@ -475,7 +321,6 @@ const liveChart = widgetHtml(
         if (tp != null) hline(tp, UP, "dashed", chartLbl("target", fmtP(tp, dec)));
         continue;
       }
-      /* default: polyline through points (trend/channel/pattern/forecast) */
       if (ps.length >= 2) {
         g.strokeStyle = col; g.lineWidth = Number(dr.width) >= 1 ? Number(dr.width) : 1.5;
         g.setLineDash(/forecast/.test(ty) || dr.style === "dashed" ? [5,4] : dr.style === "dotted" ? [2,3] : []);
@@ -492,12 +337,16 @@ const liveChart = widgetHtml(
         g.setLineDash([]); g.lineWidth = 1;
         if (dr.label && ps[0] && ps[0].price != null) {
           var lbx = ptX(ps[0]);
-          if (lbx != null) { g.fillStyle = col; g.textAlign = "left"; g.fillText(String(dr.label), lbx + 4, yFor(nnum(ps[0].price)) - 8); }
+          if (lbx != null) {
+            var pl = String(dr.label);
+            g.font = "bold 10px system-ui, sans-serif";
+            paintChip(g, lbx + 4, yFor(nnum(ps[0].price)) - 16, g.measureText(pl).width + 10, 16, col, pl);
+            g.font = "10px system-ui, sans-serif";
+          }
         }
       }
     }
 
-    /* recommendation levels */
     if (S.rec && typeof S.rec === "object") {
       var re = nnum(S.rec.entry), rs = nnum(S.rec.stop_loss), rt = nnum(S.rec.take_profit);
       if (re != null) hline(re, GOLD, "dashed", chartLbl("entry", fmtP(re, dec)));
@@ -509,25 +358,23 @@ const liveChart = widgetHtml(
       }
     }
 
-    /* last price tag */
     var last = cs[cs.length - 1];
     var lpY = yFor(last.c);
-    g.strokeStyle = last.c >= last.o ? UP : DOWN;
+    var lastFill = last.c >= last.o ? UP : DOWN;
+    g.strokeStyle = lastFill;
     g.setLineDash([2,3]); g.beginPath(); g.moveTo(padL, lpY); g.lineTo(W - padR, lpY); g.stroke(); g.setLineDash([]);
-    g.fillStyle = last.c >= last.o ? UP : DOWN;
-    g.fillRect(W - padR + 1, lpY - 8, padR - 3, 16);
-    g.fillStyle = "#0B0E13"; g.textAlign = "left"; g.font = "bold 10px system-ui, sans-serif";
-    g.fillText(fmtP(last.c, dec), W - padR + 5, lpY);
+    g.font = "bold 10px system-ui, sans-serif";
+    paintChip(g, W - padR + 1, lpY - 8, padR - 3, 16, lastFill, fmtP(last.c, dec));
   }
 
-  /* ── UI glue ── */
   function setTitle(){
     var fallback = window.AIC && window.AIC.t ? window.AIC.t("chartTitle") : "Chart";
     document.getElementById("title").textContent = S.symbol ? S.symbol + " · " + S.interval : fallback;
+    var tag = document.getElementById("live-tag");
+    tag.textContent = window.AIC && window.AIC.t ? window.AIC.t("connLive") : "LIVE";
   }
-  function setLevels(){
+  function setPrice(){
     var priceEl = document.getElementById("price-lbl");
-    var trendEl = document.getElementById("trend-lbl");
     var last = S.candles.length ? S.candles[S.candles.length - 1] : null;
     if (last) {
       var lo = last.l, hi = last.h;
@@ -535,41 +382,29 @@ const liveChart = widgetHtml(
         lo = Math.min(lo, S.candles[ci].l);
         hi = Math.max(hi, S.candles[ci].h);
       }
-      var dec = decimalsFor(hi - lo);
-      priceEl.textContent = fmtP(last.c, dec);
-      priceEl.className = last.c >= last.o ? "green" : "red";
-      var up = S.candles.length > 1 && last.c >= S.candles[S.candles.length - 2].c;
-      trendEl.textContent = window.AIC && window.AIC.t ? (up ? window.AIC.t("bullish") : window.AIC.t("bearish")) : (up ? "Up" : "Down");
-      trendEl.className = up ? "green" : "red";
+      priceEl.textContent = fmtP(last.c, decimalsFor(hi - lo));
+      priceEl.className = "tv-price " + (last.c >= last.o ? "green" : "red");
     } else {
       priceEl.textContent = "—";
-      priceEl.className = "";
-      trendEl.textContent = "—";
-      trendEl.className = "";
+      priceEl.className = "tv-price";
     }
-    var tag = document.getElementById("live-tag");
-    tag.textContent = S.paused ? "PAUSE" : "LIVE";
-    tag.className = "tag " + (S.paused ? "amber" : "green");
   }
-  function setStatus(txt, stale){
-    var el = document.getElementById("status");
-    if (!stale) { el.textContent = ""; el.className = "status"; return; }
-    el.textContent = txt || "";
-    el.className = txt ? "status stale" : "status";
+  function setHint(txt){
+    var hint = document.getElementById("hint");
+    if (!txt) { hint.className = "tv-hint"; hint.textContent = ""; return; }
+    hint.className = "tv-hint show";
+    hint.textContent = txt;
   }
   function refresh(){
-    setTitle(); setLevels();
-    var hint = document.getElementById("hint");
+    setTitle(); setPrice();
     if (!S.symbol) {
-      hint.textContent = window.AIC && window.AIC.t ? window.AIC.t("noSymbolHint") : "No symbol yet";
-      hint.style.display = "block";
+      setHint(window.AIC && window.AIC.t ? window.AIC.t("noSymbolHint") : "No symbol yet");
     } else if (!S.candles.length) {
-      hint.textContent = S.warning
+      setHint(S.warning
         ? String(S.warning)
-        : (window.AIC && window.AIC.t ? window.AIC.t("noCandles") : "No candles available");
-      hint.style.display = "block";
+        : (window.AIC && window.AIC.t ? window.AIC.t("noCandles") : "No candles available"));
     } else {
-      hint.style.display = "none";
+      setHint("");
     }
     draw();
     if (window.AIC) window.AIC.notifySize();
@@ -577,24 +412,21 @@ const liveChart = widgetHtml(
 
   function schedule(ms){
     clearTimeout(S.timer);
-    if (S.paused) return;
     S.timer = setTimeout(tick, ms != null ? ms : (S.failures > 1 ? 10000 : 4000));
   }
   function tick(){
     if (document.hidden || !S.symbol || !window.AIC) { schedule(); return; }
-    var args = { symbol: canonSym(S.symbol), interval: S.interval, limit: 120 };
+    var args = { symbol: canonSym(S.symbol), interval: S.interval, limit: 200 };
     var calls = [window.AIC.callTool("get_ohlc", args)];
     if (S.layoutId) calls.push(window.AIC.callTool("get_chart_state", { layout_id: S.layoutId }));
     Promise.all(calls).then(function (res) {
-      var got = false;
-      if (res[0] && typeof res[0] === "object") { applyPayload({ ohlc: res[0] }); got = true; }
-      if (res[1] && typeof res[1] === "object") { applyPayload(res[1]); got = true; }
       S.failures = 0;
-      if (got) { setStatus("", false); refresh(); }
+      if (res[0] && typeof res[0] === "object") applyPayload({ ohlc: res[0] });
+      if (res[1] && typeof res[1] === "object") applyPayload(res[1]);
+      refresh();
       schedule();
     }).catch(function () {
       S.failures++;
-      setStatus(window.AIC && window.AIC.t ? window.AIC.t("updateFailed") : "Update failed", true);
       schedule();
     });
   }
@@ -606,61 +438,68 @@ const liveChart = widgetHtml(
       refresh();
       if (!S.booted) {
         S.booted = true;
-        /* draw_on_chart boots without candles — fetch immediately */
         schedule(S.candles.length ? 4000 : 600);
       }
     });
     document.addEventListener("visibilitychange", function () {
-      if (!document.hidden && !S.paused) schedule(300);
+      if (!document.hidden) schedule(300);
     });
     window.addEventListener("resize", draw);
+    window.addEventListener("aic:theme", function () { refresh(); });
   };
   `,
+  LIVE_CHART_CSS,
 );
 
-/* ─────────────────────────── recommendation ───────────────────────────
- * Dedicated trade-idea card: action badge + confidence, entry/stop/target
- * ladder with computed R:R, rationale, factor chips. Also renders scan_market
- * multi-opportunity payloads as a ranked list. Reads the recommendation from
- * many shapes (create_recommendation, run_market_analysis, scan_market). */
+const MARK_SVG = `<svg class="rec-mark" viewBox="100 250 900 670" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M258.63 274.35C278.01 271.86 299.01 274.62 317.66 279.79C400.53 302.73 452.07 386.95 434.75 471.32C429.32 497.75 416.93 522.49 399.9 543.35C387.04 559.1 370.42 572.4 352.62 582.11C332.62 593.02 310.2 599.97 287.5 601.87C266.99 603.59 245.9 601.15 226.28 595.25C140.5 569.44 90.62 477.72 116.16 391.6C120.93 375.53 128.1 359.97 137.59 346.1C149.4 328.83 164.29 313.8 181.6 302.02C204.84 286.21 230.99 277.9 258.63 274.35ZM805.76 274.41C816.59 272.9 828.7 273.63 839.5 274.88C922.33 284.44 985.94 354.65 985.59 438.5C985.23 523.81 919.85 593.52 835.5 601.82C819.14 603.43 802.12 601.81 786.13 598.45C698.33 580 642.8 491.95 660.29 404.7C671.01 351.17 710.18 305.39 760.72 285.23C775.29 279.42 790.31 276.58 805.76 274.41ZM542.79 642.35C558.84 638.96 571.8 654.43 583.11 663.41C612.25 686.55 640.77 710.54 670.12 733.39C677.05 738.78 683.77 744.46 690.68 749.87C696 754.03 701.29 758.22 701.91 765.5C702.24 769.44 700.84 773.79 698.44 776.94C693.51 783.4 678.53 793.35 671.57 799.05C643.15 822.33 614.44 845.3 585.64 868.09C575.11 876.42 561.61 891.61 547.5 891.6C533.22 891.59 519.55 876.01 508.84 867.63C480.11 845.16 451.58 822.27 423.45 799.04C416.48 793.28 401.51 783.42 396.56 776.93C394.19 773.81 392.75 769.41 393.08 765.5C393.67 758.5 398.66 754.34 403.8 750.32C411.09 744.63 418.24 738.74 425.43 732.94C452.38 711.24 479.12 689.25 506.32 667.87C516.1 660.19 530.89 644.87 542.79 642.35Z"/></svg>`;
+
+const COPY_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="14" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2"/></svg>`;
+
+const REC_CSS = `
+  #rec-card{
+    border:none!important;box-shadow:none!important;outline:none!important;
+    background:transparent!important;min-height:0!important;
+    padding:4px 0;max-width:100%;gap:0
+  }
+  #rec-card.buy,#rec-card.sell,#rec-card.wait{border:none!important}
+  #rec-card .foot{border-top:0;padding-top:8px}
+  #rec-card .foot:not(:has(.status:not(:empty))){display:none}
+  .rec-head{display:flex;align-items:center;gap:10px}
+  .rec-mark{width:28px;height:28px;color:var(--txt);flex:none;display:block}
+  .rec-meta{flex:1;min-width:0}
+  .rec-sym{font-size:12px;font-weight:700;color:var(--muted);line-height:1.2}
+  .rec-side{font-size:18px;font-weight:800;margin-top:2px;line-height:1.2}
+  .rec-conf{font-size:12px;font-weight:800;color:var(--muted);margin-inline-start:auto;flex:none;font-variant-numeric:tabular-nums}
+  .rec-levels{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+  .rec-level{
+    display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+    border:1px solid var(--line-soft);background:var(--surface-2)
+  }
+  .rec-level .k{flex:1;font-size:12px;font-weight:700;color:var(--muted)}
+  .rec-level .v{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+  .rec-copy{
+    flex:none;width:32px;height:32px;display:grid;place-items:center;color:var(--muted);
+    cursor:pointer;-webkit-tap-highlight-color:transparent;border-radius:8px
+  }
+  .rec-copy.ok{color:var(--up)}
+`
+
 const recommendationCard = widgetHtml(
   "Lonora recommendation",
-  `<div class="card wait" id="rec-card">
-    <div class="top">
-      <div>
-        <div class="title" id="title">—</div>
+  `<div class="card" id="rec-card">
+    <div class="rec-head">
+      ${MARK_SVG}
+      <div class="rec-meta">
+        <div class="rec-sym" id="title">—</div>
+        <div class="rec-side" id="side">—</div>
       </div>
-      <div class="tag amber" id="badge">—</div>
+      <div class="rec-conf" id="badge">—</div>
     </div>
-    <div class="main" id="body"><div class="skel"></div></div>
-    <div class="row">
-      <div class="mini"><span data-i18n="stopLoss">Stop loss</span><strong id="sl-val" class="red">—</strong></div>
-      <div class="mini"><span data-i18n="targetLabel">Target</span><strong id="tp-val" class="green">—</strong></div>
-    </div>
-    <div class="foot">
-      <span id="status" class="status"></span>
-    </div>
+    <div class="rec-levels" id="levels"></div>
+    <div class="foot"><span id="status" class="status"></span></div>
   </div>`,
   `
-  var PLATFORM = "${PLATFORM_URL}";
-  var current = { symbol:"", interval:"1h", chartUrl:null };
   function obj(v){ return v && typeof v === "object" ? v : {}; }
-  function pickRec(data){
-    if (data.recommendation) return obj(data.recommendation);
-    if (data.action || data.side) return data;
-    var lists = [data.opportunities, data.results, data.candidates, data.picks, data.scan, data.top];
-    for (var i=0;i<lists.length;i++){ if (Array.isArray(lists[i]) && lists[i].length) return obj(lists[i][0]); }
-    if (data.best || data.pick) return obj(data.best || data.pick);
-    return {};
-  }
-  function pickList(data){
-    var lists = [data.opportunities, data.results, data.candidates, data.picks, data.scan];
-    for (var i=0;i<lists.length;i++){ if (Array.isArray(lists[i]) && lists[i].length > 1) return lists[i]; }
-    return null;
-  }
-  function actInfo(AIC, a){
-    return AIC.actInfo(a);
-  }
   function first(){
     for (var i=0;i<arguments.length;i++){
       var v = arguments[i];
@@ -679,88 +518,122 @@ const recommendationCard = widgetHtml(
     }
     return data;
   }
-  function listFrom(data){
+  function pickRec(data){
     data = unwrapPayload(data);
-    var lists = [
-      data.opportunities, data.results, data.candidates, data.picks,
-      data.scan, data.top, data.recommendations
-    ];
-    if (Array.isArray(data.recommendation)) lists.push(data.recommendation);
-    for (var i=0;i<lists.length;i++){
-      if (Array.isArray(lists[i]) && lists[i].length) return lists[i];
-    }
-    return null;
-  }
-  pickList = listFrom;
-  pickRec = function(data){
-    data = unwrapPayload(data);
+    if (data.recommendation_card) return obj(data.recommendation_card);
     if (data.recommendation && !Array.isArray(data.recommendation)) return obj(data.recommendation);
     if (data.best || data.pick || data.selected) return obj(data.best || data.pick || data.selected);
     if (data.action || data.side || data.decision || data.direction || data.signal || data.entry || data.stop_loss || data.take_profit) return data;
-    var list = listFrom(data);
-    return list ? obj(list[0]) : {};
-  };
+    var lists = [data.opportunities, data.results, data.candidates, data.picks, data.scan, data.top, data.recommendations];
+    if (Array.isArray(data.recommendation)) lists.push(data.recommendation);
+    for (var i=0;i<lists.length;i++){
+      if (Array.isArray(lists[i]) && lists[i].length) return obj(lists[i][0]);
+    }
+    return {};
+  }
+  function flattenLevelVals(vals){
+    var out = [];
+    function push(v){
+      if (v == null || v === "") return;
+      if (Array.isArray(v)) { for (var i=0;i<v.length;i++) push(v[i]); return; }
+      if (typeof v === "object") {
+        push(v.price); push(v.value); push(v.level); push(v.take_profit); push(v.tp);
+        return;
+      }
+      out.push(v);
+    }
+    for (var i=0;i<vals.length;i++) push(vals[i]);
+    return out;
+  }
+  function uniqNums(AIC, vals){
+    var out = [];
+    vals = flattenLevelVals(vals);
+    for (var i=0;i<vals.length;i++){
+      var n = AIC.num(vals[i]);
+      if (n == null) continue;
+      var seen = false;
+      for (var j=0;j<out.length;j++) if (out[j] === n) { seen = true; break; }
+      if (!seen) out.push(n);
+    }
+    return out;
+  }
+  function esc(s){
+    return String(s)
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/"/g,"&quot;");
+  }
+  function copyIcon(){ return ${JSON.stringify(COPY_SVG)}; }
+  function levelRow(label, value, tone){
+    var txt = value == null ? "—" : String(value);
+    return '<div class="rec-level"><span class="k">'+esc(label)+'</span><strong class="v '+tone+'">'+esc(txt)+
+      '</strong><span class="rec-copy" data-copy="'+esc(txt)+'" title="copy">'+copyIcon()+'</span></div>';
+  }
+  function fallbackCopy(text){
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly","readonly");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  function copyText(text){
+    text = String(text || "");
+    if (!text || text === "—") return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function(){ fallbackCopy(text); });
+    } else fallbackCopy(text);
+  }
+
   window.__aicReady = function (AIC){
     AIC.applyStaticLabels();
+    var levelsEl = document.getElementById("levels");
+    levelsEl.addEventListener("click", function (ev) {
+      var t = ev.target;
+      while (t && t !== levelsEl) {
+        if (t.getAttribute && t.getAttribute("data-copy")) {
+          copyText(t.getAttribute("data-copy"));
+          t.className = "rec-copy ok";
+          setTimeout(function(){ t.className = "rec-copy"; }, 900);
+          return;
+        }
+        t = t.parentNode;
+      }
+    });
     AIC.onData(function (data){
       data = unwrapPayload(data);
       var rec = pickRec(data);
-      var act = actInfo(AIC, first(rec.action, rec.side, rec.decision, rec.direction, rec.signal, rec.type, rec.score != null ? "candidate" : null));
-      current.symbol = first(rec.symbol, rec.sym, data.symbol, data.baseSymbol, current.symbol);
-      current.interval = first(rec.timeframe, rec.interval, data.timeframe, data.interval, current.interval, "1h");
-      current.chartUrl = first(data.chart_url, data.chart_url_public, data.chart_url_telegram, data.chart_image_url, rec.chart_url, rec.chart_image_url, current.chartUrl);
-      var tf = current.interval || "1h";
-      document.getElementById("title").textContent = current.symbol ? current.symbol + " · " + tf : "—";
-      var card = document.getElementById("rec-card");
-      card.className = "card " + act.cls;
-      var badge = document.getElementById("badge");
+      var act = AIC.actInfo(first(rec.action, rec.side, rec.decision, rec.direction, rec.signal, rec.type));
+      var symbol = first(rec.symbol, rec.sym, data.symbol, data.baseSymbol) || "";
+      var tf = first(rec.timeframe, rec.interval, data.timeframe, data.interval, "15m");
+      document.getElementById("title").textContent = symbol ? symbol + " · " + tf : "—";
+      document.getElementById("rec-card").className = "card";
+      var sideEl = document.getElementById("side");
+      var sigCls = act.cls==="buy"?"green":act.cls==="sell"?"red":"amber";
+      sideEl.className = "rec-side " + sigCls;
+      sideEl.textContent = act.label || "—";
       var conf = AIC.num(first(rec.confidence, rec.score, rec.probability, data.confidence, data.score));
-      badge.className = "tag " + (act.cls === "buy" ? "green" : act.cls === "sell" ? "red" : "amber");
-      badge.textContent = conf != null ? Math.round(conf) + "%" : act.label;
-      var entry = AIC.num(first(rec.entry, rec.open, rec.price, rec.currentPrice));
+      if (conf != null && conf > 0 && conf <= 1) conf = conf * 100;
+      document.getElementById("badge").textContent = conf != null ? Math.round(conf) + "%" : "—";
+      var entry = AIC.num(first(rec.entry, rec.entry_price, rec.open, rec.price, rec.currentPrice));
       var sl = AIC.num(first(rec.stop_loss, rec.stopLoss, rec.stop, rec.sl));
-      var tp = AIC.num(first(rec.take_profit, rec.takeProfit, rec.target, rec.tp, Array.isArray(rec.targets)?rec.targets[0]:null, Array.isArray(data.targets)?data.targets[0]:null));
-      var body = document.getElementById("body");
-      var list = pickList(data);
-      if (list) {
-        var h = "";
-        for (var i=0;i<Math.min(list.length,4);i++){
-          var o = obj(list[i]); var oa = actInfo(AIC, first(o.action, o.side, o.decision, o.direction, o.signal, o.type, "candidate"));
-          var oc = AIC.num(first(o.confidence, o.score, o.probability));
-          var note = oc != null ? Math.round(oc)+"%" : (AIC.cell(first(o.summary, o.reason, o.rationale, o.price), 5) || "");
-          h += '<div class="pair"><strong>'+(o.symbol||o.sym||"—")+'</strong><span class="'+
-            (oa.cls==="buy"?"green":oa.cls==="sell"?"red":"amber")+'">'+
-            oa.label+(note ? " "+note : "")+'</span></div>';
-        }
-        body.innerHTML = h || '<div class="empty">'+AIC.t("noOpportunities")+'</div>';
-        document.getElementById("sl-val").textContent = "—";
-        document.getElementById("tp-val").textContent = "—";
-      } else if (entry!=null || sl!=null || tp!=null || act.dir !== 0) {
-        var sigCls = act.cls==="buy"?"green":act.cls==="sell"?"red":"amber";
-        var details = [];
-        if (entry != null) details.push([AIC.t("entryLabel"), AIC.fmt(entry, 5), "blue"]);
-        if (rec.risk_reward != null || rec.rr != null) details.push(["R:R", AIC.cell(first(rec.risk_reward, rec.rr), 2), ""]);
-        if (rec.pattern_name || rec.pattern) details.push([AIC.t("pattern"), String(first(rec.pattern_name, rec.pattern)), ""]);
-        if (Array.isArray(rec.factors) && rec.factors.length) details.push([AIC.t("factors"), rec.factors.slice(0,2).join(" · "), ""]);
-        var h2 = '<div class="signal '+sigCls+'">'+act.label+'</div>';
-        if (conf!=null) {
-          h2 += '<div class="confidence"><div class="bar '+sigCls+'" style="width:'+Math.max(0,Math.min(100,conf))+'%"></div></div>';
-        }
-        if (details.length) {
-          h2 += details.slice(0,3).map(function (p) {
-            return '<div class="pair"><strong>'+p[0]+'</strong><span class="'+p[2]+'">'+p[1]+'</span></div>';
-          }).join("");
-        } else if (rec.rationale || data.summary || data.reply) {
-          h2 += '<div class="sub">'+String(first(rec.rationale, data.summary, data.reply)).slice(0,140)+'</div>';
-        }
-        body.innerHTML = h2;
-        document.getElementById("sl-val").textContent = sl != null ? AIC.fmt(sl, 5) : "—";
-        document.getElementById("tp-val").textContent = tp != null ? AIC.fmt(tp, 5) : "—";
-      } else {
-        body.innerHTML = '<div class="empty">'+AIC.t("noRecommendation")+'</div>';
-        document.getElementById("sl-val").textContent = "—";
-        document.getElementById("tp-val").textContent = "—";
+      var tps = uniqNums(AIC, [
+        rec.targets, rec.take_profits, rec.takeProfits, rec.tps,
+        data.targets, data.take_profits,
+        rec.take_profit, rec.takeProfit, rec.target, rec.tp, rec.tp1, rec.tp2, rec.tp3
+      ]);
+      if (act.dir !== 0) tps.sort(function (a, b) { return act.dir > 0 ? a - b : b - a; });
+      var rows = "";
+      if (entry != null) rows += levelRow(AIC.t("entryLabel"), AIC.fmt(entry, 5), "blue");
+      if (sl != null) rows += levelRow(AIC.t("stopLoss"), AIC.fmt(sl, 5), "red");
+      for (var i=0;i<tps.length;i++){
+        var lab = tps.length === 1 ? AIC.t("targetLabel") : (AIC.t("target") + " " + (i+1));
+        rows += levelRow(lab, AIC.fmt(tps[i], 5), "green");
       }
+      levelsEl.innerHTML = rows || ('<div class="empty">'+AIC.t("noRecommendation")+'</div>');
       var stale = AIC.bridgeLinkState(data).stale;
       var statusEl = document.getElementById("status");
       statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
@@ -769,215 +642,11 @@ const recommendationCard = widgetHtml(
     });
   };
   `,
+  REC_CSS,
 );
 
-const scanResults = widgetHtml(
-  "Lonora scan results",
-  `<div class="card" id="scan-card">
-    <div class="top">
-      <div><div class="title" id="scan-title">—</div></div>
-      <div class="tag" id="scan-count">—</div>
-    </div>
-    <div class="main" id="scan-body"><div class="skel"></div></div>
-    <div class="foot">
-      <span id="scan-status" class="status"></span>
-    </div>
-  </div>`,
-  `
-  function obj(v){ return v && typeof v === "object" ? v : {}; }
-  window.__aicReady = function (AIC){
-    AIC.applyStaticLabels();
-    AIC.onData(function (data){
-      data = obj(data);
-      var candidates = Array.isArray(data.candidates) ? data.candidates.slice() : [];
-      candidates.sort(function (a, b) { return (AIC.num(b.score) || 0) - (AIC.num(a.score) || 0); });
-      document.getElementById("scan-title").textContent = Array.isArray(data.scanned) ? (data.scanned.length + " scanned") : "Scan";
-      document.getElementById("scan-count").textContent = String(candidates.length);
-      var body = document.getElementById("scan-body");
-      if (!candidates.length) {
-        body.innerHTML = '<div class="empty">' + AIC.t("noOpportunities") + '</div>';
-      } else {
-        body.innerHTML = candidates.slice(0, 6).map(function (c) {
-          var score = AIC.num(c.score);
-          var top = Array.isArray(c.signals) && c.signals.length ? c.signals.slice(0, 2).join(" · ") : "";
-          return '<div class="pair"><strong>' + (c.symbol || "—") + '</strong>' +
-            '<span class="blue">' + (score != null ? "score " + score : "—") + '</span></div>' +
-            (top ? '<div class="sub" style="margin:-6px 0 6px">' + top + '</div>' : "");
-        }).join("");
-      }
-      var statusEl = document.getElementById("scan-status");
-      var stale = AIC.bridgeLinkState(data).stale;
-      var errBits = Array.isArray(data.errors) && data.errors.length ? data.errors.length + " failed" : "";
-      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : errBits;
-      statusEl.className = stale ? "status stale" : (errBits ? "status stale" : "status");
-      AIC.notifySize();
-    });
-  };
-  `,
-);
-
-/* ─────────────────────────── levels report ───────────────────────────
- * detect_levels returns support/resistance clusters with a deterministic
- * strength score (touches + relative volume + recency), not the price/RSI/
- * MACD/decision shape the reused "analysis" template expects — that reuse
- * rendered an empty or misleading card (Phase 0 finding §2.2). This is
- * evidence-first (Pattern C: verdict-free here, since detect_levels makes
- * no trade call): current price, nearest support/resistance, then every
- * detected level with the inputs behind its score — never a bare number. */
-const levelsReport = widgetHtml(
-  "Lonora levels",
-  `<div class="card" id="lv-card">
-    <div class="top">
-      <div><div class="title" id="lv-title">—</div></div>
-      <div class="tag" id="lv-structure">—</div>
-    </div>
-    <div class="main" id="lv-body"><div class="skel"></div></div>
-    <div class="row">
-      <div class="mini"><span data-i18n="support">Support</span><strong id="lv-sup" class="green">—</strong></div>
-      <div class="mini"><span data-i18n="resistance">Resistance</span><strong id="lv-res" class="red">—</strong></div>
-    </div>
-    <div class="foot">
-      <span id="lv-status" class="status"></span>
-    </div>
-  </div>`,
-  `
-  function obj(v){ return v && typeof v === "object" ? v : {}; }
-  function structClass(s){
-    s = String(s || "").toLowerCase();
-    if (s === "uptrend") return ["green", "trend.uptrend"];
-    if (s === "downtrend") return ["red", "trend.downtrend"];
-    if (s === "range") return ["amber", "trend.range"];
-    return ["", "trend.unknown"];
-  }
-  function levelRow(AIC, lv, cls){
-    var price = AIC.num(lv && lv.price);
-    if (price == null) return "";
-    var bits = [];
-    if (lv.touches != null) bits.push(lv.touches + "×");
-    if (lv.strengthScore != null) bits.push("score " + Math.round(lv.strengthScore));
-    return '<div class="pair"><strong class="' + cls + '">' + AIC.fmt(price, 5) + '</strong>' +
-      '<span>' + bits.join(" · ") + '</span></div>';
-  }
-  window.__aicReady = function (AIC){
-    AIC.applyStaticLabels();
-    AIC.onData(function (data){
-      data = obj(data);
-      document.getElementById("lv-title").textContent = (data.symbol || "—") + (data.interval ? " · " + data.interval : "");
-      var sc = structClass(data.structure);
-      var structEl = document.getElementById("lv-structure");
-      structEl.className = "tag " + (sc[0] || "");
-      structEl.textContent = AIC.t(sc[1]);
-      var price = AIC.num(data.currentPrice);
-      var sup = AIC.num(data.nearestSupport);
-      var res = AIC.num(data.nearestResistance);
-      document.getElementById("lv-sup").textContent = sup != null ? AIC.fmt(sup, 5) : "—";
-      document.getElementById("lv-res").textContent = res != null ? AIC.fmt(res, 5) : "—";
-      var supports = Array.isArray(data.supports) ? data.supports.slice().sort(function(a,b){return (b.strengthScore||0)-(a.strengthScore||0);}) : [];
-      var resistances = Array.isArray(data.resistances) ? data.resistances.slice().sort(function(a,b){return (b.strengthScore||0)-(a.strengthScore||0);}) : [];
-      var body = document.getElementById("lv-body");
-      var rows = "";
-      if (price != null) rows += '<div class="pair"><strong>' + AIC.t("price") + '</strong><span class="blue">' + AIC.fmt(price, 5) + '</span></div>';
-      resistances.slice(0, 2).forEach(function (r) { rows += levelRow(AIC, r, "red"); });
-      supports.slice(0, 2).forEach(function (s) { rows += levelRow(AIC, s, "green"); });
-      body.innerHTML = rows || ('<div class="empty">' + (data.summary || AIC.t("noData")) + '</div>');
-      var statusEl = document.getElementById("lv-status");
-      var stale = AIC.bridgeLinkState(data).stale;
-      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : (data.summary || "");
-      statusEl.className = stale ? "status stale" : "status";
-      AIC.notifySize();
-    });
-  };
-  `,
-);
-
-/* ─────────────────────────── jobs report ───────────────────────────
- * show_jobs_by_ids: renders a whole batch of bucket-C job results
- * (run_market_analysis and similar) in ONE card instead of one display call
- * per job. Each job's own result shape can differ, so this deliberately does
- * NOT try to render any of them bespoke —
- * status first (queued/running never show fabricated numbers), then a
- * generic flattened key/value summary of whatever the completed result
- * actually contains, same discipline as the generic collections card. */
-const jobsReport = widgetHtml(
-  "Lonora jobs",
-  `<div class="card" id="jobs-card">
-    <div class="top">
-      <div><div class="title" data-i18n="chartTitle">Jobs</div></div>
-      <div class="tag" id="jobs-count">—</div>
-    </div>
-    <div class="main" id="jobs-body"><div class="skel"></div></div>
-    <div class="foot">
-      <span id="jobs-status" class="status"></span>
-    </div>
-  </div>`,
-  `
-  function obj(v){ return v && typeof v === "object" ? v : {}; }
-  function statusCls(s){
-    if (s === "completed") return "green";
-    if (s === "failed") return "red";
-    if (s === "not_found") return "";
-    return "amber";
-  }
-  function summarize(AIC, result){
-    result = obj(result);
-    var out = [];
-    for (var k in result) {
-      if (out.length >= 3) break;
-      var v = result[k];
-      if (v == null) continue;
-      if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") {
-        var c = AIC.cell(v, 4);
-        if (c) out.push(k + ": " + c);
-      }
-    }
-    return out.join(" · ");
-  }
-  window.__aicReady = function (AIC){
-    AIC.applyStaticLabels();
-    AIC.onData(function (data){
-      data = obj(data);
-      var jobs = Array.isArray(data.jobs) ? data.jobs : [];
-      document.getElementById("jobs-count").textContent = String(jobs.length);
-      var body = document.getElementById("jobs-body");
-      body.innerHTML = jobs.length ? jobs.map(function (j) {
-        j = obj(j);
-        var cls = statusCls(j.status);
-        var line = j.status === "failed" ? String(j.error || "") : (j.status === "completed" ? summarize(AIC, j.result) : (j.status === "not_found" ? "unknown job_id" : "still running"));
-        return '<div class="pair"><strong>' + (j.tool || j.id || "job") + '</strong>' +
-          '<span class="' + cls + '">' + String(j.status || "—") + '</span></div>' +
-          (line ? '<div class="sub" style="margin:-6px 0 6px">' + line + '</div>' : "");
-      }).join("") : '<div class="empty">' + AIC.t("noData") + '</div>';
-      var statusEl = document.getElementById("jobs-status");
-      var stale = AIC.bridgeLinkState(data).stale;
-      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
-      statusEl.className = stale ? "status stale" : "status";
-      AIC.notifySize();
-    });
-  };
-  `,
-);
-
-/**
- * Every widget a registered tool can point at.
- *
- * The account, open-trades, approval and trade-readiness cards were deleted
- * with the tools that rendered them. They were not merely unused: an approval
- * card carries Approve/Reject buttons that call `respond_approval`, and a
- * button wired to a tool this server no longer exposes is a control that fails
- * in the operator's hands. There is nothing to approve on a platform that
- * places no orders.
- */
 export const WIDGETS: Record<string, string> = {
-  analysis,
   "recommendation-card": recommendationCard,
-  "scan-results": scanResults,
-  "jobs-report": jobsReport,
-  "levels-report": levelsReport,
-  "pair-picker": genericCard("pairPickerTitle", "pairPickerSubtitle"),
-  "risk-status": genericCard("riskStatusTitle", "riskStatusSubtitle"),
-  "market-snapshot": analysis,
-  "mtf-analysis": analysis,
   "chart-drawn": liveChart,
   "live-chart": liveChart,
-  "lessons-card": genericCard("lessonsTitle", "lessonsSubtitle"),
 };

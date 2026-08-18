@@ -15,6 +15,7 @@ import { normalizeInterval } from "@/lib/intervals";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartStudy } from "@/lib/chart/studies";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { tryMintChartEmbedUrl } from "@/lib/embedChartToken";
 
 const pointSchema = z.object({
   price: z.number(),
@@ -90,6 +91,15 @@ function parseState(raw: string | null): LayoutState {
   }
 }
 
+function embedUrlFor(
+  userId: number,
+  layoutId: string,
+  symbol: string,
+  interval: string,
+): string | null {
+  return tryMintChartEmbedUrl({ userId, layoutId, symbol, interval });
+}
+
 /** Bridge: list layouts / read one layout's state (for MCP get_chart_state). */
 export async function GET(req: NextRequest) {
   try {
@@ -121,6 +131,8 @@ export async function GET(req: NextRequest) {
       updated_at: layout.updated_at ?? null,
       state: parseState(layout.state_json),
       url: `/chart/${layout.id}?symbol=${encodeURIComponent(layout.symbol)}`,
+      embed_url: embedUrlFor(userId, layout.id, layout.symbol, layout.interval),
+      bound: true,
     });
   } catch (e) {
     return handleError(e);
@@ -221,6 +233,8 @@ export async function POST(req: NextRequest) {
       drawings_count: Array.isArray(state.drawings) ? state.drawings.length : 0,
       studies_count: Array.isArray(state.studies) ? state.studies.length : 0,
       url: `/chart/${layout.id}?symbol=${encodeURIComponent(symbol)}`,
+      embed_url: embedUrlFor(userId, layout.id, symbol, interval),
+      bound: true,
     });
   } catch (e) {
     if (e instanceof z.ZodError) {

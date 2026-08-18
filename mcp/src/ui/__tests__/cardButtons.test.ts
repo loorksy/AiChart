@@ -114,5 +114,6 @@ describe("MCP cards: a card shows, it never acts", () => {
   it("cards default to Arabic/RTL at the document shell", () => {
     const page = widgetHtml("t", "<div>x</div>", "");
     assert.match(page, /<html lang="ar" dir="rtl">/);
+    assert.match(page, /<meta name="color-scheme" content="light dark" \/>/);
   });
 });

@@ -10,7 +10,7 @@
         "type": "string",
         "minLength": 1
       },
-      "description": "job_id values to render together, 1-12 per call"
+      "description": "job_id values to fetch together, 1-12 per call"
     }
   },
   "required": [

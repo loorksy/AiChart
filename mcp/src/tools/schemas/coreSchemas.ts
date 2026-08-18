@@ -208,7 +208,8 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
     market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
-    take_profit: z.number().positive(),
+    take_profit: z.number().positive().optional(),
+    take_profits: z.array(z.number().positive()).max(3).optional(),
   }),
   z.object({
     action: z.literal("sell"),
@@ -227,9 +228,20 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
     market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
-    take_profit: z.number().positive(),
+    take_profit: z.number().positive().optional(),
+    take_profits: z.array(z.number().positive()).max(3).optional(),
   }),
 ]).superRefine((body, ctx) => {
+  const hasTp =
+    typeof body.take_profit === "number" ||
+    (Array.isArray(body.take_profits) && body.take_profits.length > 0);
+  if (!hasTp) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["take_profit"],
+      message: "take_profit (or take_profits) is required for BUY/SELL recommendations",
+    });
+  }
   // A plan that waits must say what it waits for — in both forms. The sentence
   // is for the operator; only the rule can be machine-checked, and a stated
   // trigger nothing can check is how conditional plans filled on a bare touch.
@@ -305,6 +317,11 @@ const createRecommendationCatalogShape = {
   entry: z.number().positive().optional(),
   stop_loss: z.number().positive().optional(),
   take_profit: z.number().positive().optional(),
+  take_profits: z
+    .array(z.number().positive())
+    .max(3)
+    .optional()
+    .describe("Every profit target in order (TP1..TP3). The card shows one row per unique target. take_profit is TP1; include the rest here or repeat TP1 in this array."),
   visual_confirmation: zVisualConfirmation,
   timeframes_reviewed: zTimeframesReviewed,
   ...planContractFields,
@@ -315,7 +332,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_capabilities",
     domain: "core",
     description:
-      "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_account_overview -> get_agent_trade_mode), not a suggestion.",
+      "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_agent_settings -> resolve_agent_skills), not a suggestion.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -323,7 +340,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_lessons",
     domain: "core",
     description:
-      "Retrieves lessons learned from past trades as structured JSON (result, market_context.regime) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. Historical observation only — never statistical support for a specific recommendation. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=XAUUSD&recent=true.",
+      "Retrieves lessons learned from past trades as structured JSON (result, market_context.regime) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: optionally after a realized loss on the same symbol, or when the operator asks about past mistakes \u2014 not before every analysis. Historical observation only \u2014 never statistical support for a specific recommendation. JSON only: never present this payload as an MCP card, never paste schema_version / empty arrays / raw fields. There is no lessons card. Summarize applicable lessons in 1\u20132 sentences or say there is no relevant history. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=XAUUSD&recent=true.",
     inputSchema: {
       symbol: z.string().optional(),
       pattern: z.string().optional(),
@@ -331,7 +348,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       recent: z.boolean().optional().describe("Latest lessons regardless of symbol"),
     },
     annotations: READ_ONLY,
-    ui: { widget: "lessons-card" },
   },
   {
     name: "jobs_wait",
@@ -351,22 +367,21 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_jobs_by_ids",
     domain: "core",
     description:
-      "Renders a completed batch of bucket-C jobs (run_market_analysis and similar) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to show the operator the results together. Not before all_terminal — call jobs_wait again first, don't guess at a still-running job's outcome. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. read-only.",
+      "Returns completed bucket-C job results (run_market_analysis and similar) as JSON in one batch — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to read the results together. JSON only — do not present as an MCP card; summarize findings in prose, then issue the plan with create_recommendation (the only path that shows recommendation-card). Not before all_terminal — call jobs_wait again first. Never call this once per job. read-only.",
     inputSchema: {
       jobs: z
         .array(z.string().min(1))
         .min(1)
         .max(12)
-        .describe("job_id values to render together, 1-12 per call"),
+        .describe("job_id values to fetch together, 1-12 per call"),
     },
     annotations: READ_ONLY,
-    ui: { widget: "jobs-report" },
   },
   {
     name: "create_recommendation",
     domain: "core",
     description:
-      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. Confidence is the model's own judgement — never a statistically calibrated figure. Do not send backtested_confidence, statistical_support, strategy_id, or backtest_evidence; those fields no longer exist. Pass visual_confirmation + timeframes_reviewed after a live TradingView capture — confirmed is only valid when drawings_included=true; otherwise use not_checked.",
+      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server \u2014 do not send it. Call this in the SAME turn as the analysis BEFORE any operator-facing reply \u2014 never describe entry/SL/targets in prose first and wait to be asked for the card. On success the host AUTOMATICALLY shows recommendation-card plus the live platform chart (inline image + display_markdown) \u2014 present that card and paste display_markdown verbatim. Pass EVERY target: take_profit is TP1 and take_profits is the full list (2\u20133 numbers). Do not also present lessons, jobs, scan, snapshot, or levels JSON as cards; those tools have no UI. The only MCP cards are recommendation-card (this tool) and live-chart (show_live_chart). When: after the analysis settles on a direction \u2014 every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data \u2014 never looser than the sentence). side-effect: writes recommendation. activation_rule examples \u2014 timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} \u00b7 {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} \u00b7 {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} \u00b7 {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} \u00b7 composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. Confidence is the model's own judgement \u2014 never a statistically calibrated figure. Do not send backtested_confidence, statistical_support, strategy_id, or backtest_evidence; those fields no longer exist. Pass visual_confirmation + timeframes_reviewed after a live TradingView capture \u2014 confirmed is only valid when drawings_included=true; otherwise use not_checked.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
@@ -375,7 +390,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_settings",
     domain: "core",
     description:
-      "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live equity or exposure figures — that's get_account_overview/get_portfolio. read-only.",
+      "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live prices or analysis — use get_market_snapshot/get_ohlc for those. JSON only, no card. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },

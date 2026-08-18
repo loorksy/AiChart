@@ -77,6 +77,20 @@ describe("MCP card tools integration audit", () => {
               RESOURCE_MIME_TYPE,
               `${tool.name} must use MCP Apps MIME`,
             );
+            if (widget === "live-chart" || widget === "chart-drawn" || widget === "recommendation-card") {
+              const contentsMeta = item._meta as {
+                ui?: {
+                  prefersBorder?: boolean;
+                  csp?: Record<string, unknown>;
+                };
+              };
+              assert.equal(contentsMeta.ui?.prefersBorder, false);
+              assert.deepEqual(
+                contentsMeta.ui?.csp ?? {},
+                {},
+                `${tool.name} must not declare nested-iframe CSP`,
+              );
+            }
           } catch (e) {
             status = `READ_FAIL:${e instanceof Error ? e.message : e}`;
             assert.fail(`${tool.name} resources/read failed: ${status}`);
@@ -103,5 +117,29 @@ describe("MCP card tools integration audit", () => {
       assert.ok(hit.mimeType.includes("text/html"));
       assert.ok(hit.html.includes("window.AIC"), `${name} must inline shared runtime`);
     }
+  });
+
+  it("retired widget URIs serve a blank stub instead of 404", async () => {
+    const retired = [
+      "ui://aichart/lessons-card/v5",
+      "ui://aichart/jobs-report/v5",
+      "ui://aichart/analysis/v5",
+      "ui://aichart/scan-results/v5",
+    ];
+    await withMcpClient(async (client, listedUris) => {
+      for (const uri of retired) {
+        assert.ok(listedUris.has(uri), `${uri} must stay registered as a stub`);
+        const read = await client.readResource({ uri });
+        const item = read.contents[0]!;
+        const text = "text" in item ? item.text : "";
+        assert.ok((text || "").length > 32, `${uri} stub too small`);
+        assert.ok(!text.includes("lessonsTitle"), `${uri} must not resurrect the old card`);
+        assert.ok(!text.includes("دروس التداول"), `${uri} must not paint lessons chrome`);
+      }
+    });
+    const hit = widgetHtmlByPublicPath("lessons-card/v5");
+    assert.ok(hit);
+    assert.ok(hit.html.length > 32);
+    assert.ok(!hit.html.includes("window.AIC"));
   });
 });

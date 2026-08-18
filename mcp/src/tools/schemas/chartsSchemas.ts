@@ -104,7 +104,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_live_chart",
     domain: "charts",
     description:
-      "Shows a live mini chart card in chat, with candles refreshing about every 4s plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch a pair live inside the conversation. Not for a one-off static picture — capture_chart_snapshot is cheaper for that; use this only when the operator wants to keep watching. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
+      "Shows a live gold chart card in chat — candles from the linked account, ticks updating in place, plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch gold live inside the conversation. Not after every analysis if create_recommendation already delivered recommendation-card + chart; never together with a lessons or jobs JSON card. Not for a one-off static picture — capture_chart_snapshot is cheaper for that. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
@@ -160,7 +160,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_market_analysis",
     domain: "charts",
     description:
-      "Queues the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns job_id/status immediately (well under 1s); the real run (technical drawings auto-drawn on the user's chart when layout_id is passed) can take up to two minutes and never blocks this call. When: the operator asks for a complete analysis rather than individual indicator calls. Not for a quick single-indicator read — get_market_snapshot/get_forex_indicators are far cheaper when the operator just wants one number. Consumes 4 user credits. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call) until all_terminal is true, then read the result from that response — do not call this tool again to check status, and never poll multiple jobs one at a time when they can go in one jobs_wait call. The completed result includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
+      "Queues the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns job_id/status immediately (well under 1s); the real run (technical drawings auto-drawn on the user's chart when layout_id is passed) can take up to two minutes and never blocks this call. When: the operator asks for a complete analysis rather than individual indicator calls. Returns JSON (job_id) only — no analysis card; after jobs_wait, summarize then call create_recommendation for recommendation-card. Not for a quick single-indicator read — get_market_snapshot/get_forex_indicators are far cheaper when the operator just wants one number. Consumes 4 user credits. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call) until all_terminal is true, then read the result from that response — do not call this tool again to check status, and never poll multiple jobs one at a time when they can go in one jobs_wait call. The completed result includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
@@ -173,7 +173,6 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       destructiveHint: false,
       idempotentHint: false,
     },
-    ui: { widget: "analysis" },
   },
 ];
 

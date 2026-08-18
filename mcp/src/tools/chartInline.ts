@@ -21,6 +21,7 @@ export type McpContentBlock =
 export type ChartInlineResponse = {
   content: McpContentBlock[];
   isError?: boolean;
+  structuredContent?: Record<string, unknown>;
   [key: string]: unknown;
 };
 
@@ -131,7 +132,7 @@ export async function chartInlineContent(
     });
   }
 
-  return { content };
+  return { content, structuredContent: meta };
 }
 
 export function chartTimeoutContent(
@@ -470,27 +471,76 @@ export async function resolveChartSnapshotResponse(
  * recommendation — it degrades to an explicit image_captured:false with the
  * anti-hallucination note, because the recommendation row already exists.
  */
+function collectCardTargets(inner: Record<string, unknown>, extra?: unknown): number[] {
+  const out: number[] = [];
+  const push = (v: unknown): void => {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      if (!out.includes(v)) out.push(v);
+      return;
+    }
+    if (typeof v === "string" && v.trim()) {
+      try {
+        push(JSON.parse(v));
+      } catch {
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0 && !out.includes(n)) out.push(n);
+      }
+      return;
+    }
+    if (Array.isArray(v)) v.forEach(push);
+  };
+  push(inner.targets);
+  push(inner.take_profits);
+  push(inner.takeProfits);
+  push(inner.targets_json);
+  push(extra);
+  push(inner.take_profit);
+  push(inner.tp1);
+  push(inner.tp2);
+  push(inner.tp3);
+  return out.slice(0, 3);
+}
+
 export async function recommendationWithAutoChart(
   bridge: BridgeClient,
   recommendation: unknown,
-  req: { symbol?: string; timeframe?: string },
+  req: {
+    symbol?: string;
+    timeframe?: string;
+    action?: string;
+    take_profits?: unknown;
+  },
 ): Promise<ChartInlineResponse> {
   const rec = (recommendation ?? {}) as Record<string, unknown>;
   const inner = (rec.recommendation ?? rec) as Record<string, unknown>;
   const symbol = String(inner.symbol ?? req.symbol ?? "").toUpperCase();
   const timeframe = String(inner.timeframe ?? req.timeframe ?? "1h");
+  const action = String(
+    inner.action ?? inner.side ?? inner.direction ?? req.action ?? "",
+  ).toLowerCase();
+  const takeProfits = collectCardTargets(inner, req.take_profits);
+  if (action === "sell") takeProfits.sort((a, b) => b - a);
+  else takeProfits.sort((a, b) => a - b);
+  const rawConf = Number(inner.confidence);
+  const confidence = Number.isFinite(rawConf)
+    ? rawConf > 0 && rawConf <= 1
+      ? Math.round(rawConf * 100)
+      : rawConf
+    : inner.confidence;
   const card = {
     id: inner.id ?? rec.id,
     symbol,
-    side: inner.side,
+    action: action || undefined,
+    side: action || inner.side,
     timeframe,
     entry: inner.entry ?? inner.entry_price,
     entry_low: inner.entry_low,
     entry_high: inner.entry_high,
     stop_loss: inner.stop_loss,
-    take_profit: inner.take_profit,
-    take_profits: inner.take_profits,
-    confidence: inner.confidence,
+    take_profit: takeProfits[0] ?? inner.take_profit,
+    take_profits: takeProfits,
+    targets: takeProfits,
+    confidence,
     plan_type: inner.plan_type,
     status: inner.status,
   };
@@ -501,7 +551,7 @@ export async function recommendationWithAutoChart(
     recommendation_card: card,
     chart_auto_attached: true,
     presentation:
-      "Present recommendation_card to the operator AND paste display_markdown verbatim so they see the chart.",
+      "The host already shows recommendation-card. Do not wait to be asked. Paste display_markdown verbatim. Do not add lessons/jobs cards.",
   };
 
   if (symbol) {
@@ -550,6 +600,11 @@ export async function recommendationWithAutoChart(
         ),
       },
     ],
+    structuredContent: {
+      ...meta,
+      chart_auto_attached: false,
+      image_captured: false,
+    },
   };
 }
 

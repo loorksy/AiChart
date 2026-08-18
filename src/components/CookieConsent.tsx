@@ -17,6 +17,7 @@ export function CookieConsent() {
 
   useEffect(() => {
     try {
+      if (window.self !== window.top) return;
       if (!localStorage.getItem(KEY)) setVisible(true);
     } catch {
       /* storage blocked → keep quiet */

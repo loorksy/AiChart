@@ -8,20 +8,19 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_snapshot",
     domain: "market",
     description:
-      "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
+      "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. JSON for the model — never present as an MCP card. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol.describe("e.g. EURUSD"),
       interval: zInterval,
       market: zMarket,
     },
     annotations: READ_ONLY,
-    ui: { widget: "analysis" },
   },
   {
     name: "get_multi_timeframe_snapshot",
     domain: "market",
     description:
-      "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. JSON for the model — never present as an MCP card. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
     inputSchema: {
       symbol: zSymbol.describe("e.g. EURUSD"),
       intervals: z
@@ -32,7 +31,6 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       market: zMarket,
     },
     annotations: READ_ONLY,
-    ui: { widget: "analysis" },
   },
   {
     name: "get_market_price",
@@ -46,13 +44,12 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_instruments",
     domain: "market",
     description:
-      "Lists tradable forex instruments — the linked account's own symbols, or the shared broker-seeded catalogue before a link — with an optional q search filter. When: browsing or searching for a pair. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
+      "Lists tradable forex instruments — the linked account's own symbols, or the shared broker-seeded catalogue before a link — with an optional q search filter. When: browsing or searching for a pair. JSON only — not a pair-picker card. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
     inputSchema: {
       market: zMarket,
       q: z.string().max(20).optional().describe("Optional search e.g. EUR or XAU"),
     },
     annotations: READ_ONLY,
-    ui: { widget: "pair-picker" },
   },
   {
     name: "get_chart_link",
@@ -74,14 +71,13 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "scan_market",
     domain: "market",
     description:
-      "Scans and compares multiple symbols on one interval and ranks them by an undirected opportunity score (mixed bullish/bearish technical signal strength) — it does NOT compute a buy/sell direction; the response has no action/side field. When: the operator says 'take a trade' or asks for the best opportunity without naming a pair, to shortlist a candidate. Not a recommendation by itself — the top-scored symbol still needs its own real directional analysis (get_market_snapshot/detect_levels/etc.) before create_recommendation; never read the score's signals list as a verdict. read-only. scan market · compare symbols · best entry · pick a trade. Example: symbols=[EURUSD,GBPUSD].",
+      "Scans and compares multiple symbols on one interval and ranks them by an undirected opportunity score (mixed bullish/bearish technical signal strength) — it does NOT compute a buy/sell direction; the response has no action/side field. When: the operator says 'take a trade' or asks for the best opportunity without naming a pair, to shortlist a candidate. JSON ranking only — never present as a card. Not a recommendation by itself — the top-scored symbol still needs its own real directional analysis (get_market_snapshot/detect_levels/etc.) before create_recommendation; never read the score's signals list as a verdict. read-only. scan market · compare symbols · best entry · pick a trade. Example: symbols=[EURUSD,GBPUSD].",
     inputSchema: {
       symbols: z.array(z.string()).max(30).optional(),
       interval: zInterval,
       market: zMarket,
     },
     annotations: READ_ONLY,
-    ui: { widget: "scan-results" },
   },
   {
     name: "get_ohlc",
@@ -109,7 +105,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "detect_levels",
     domain: "market",
     description:
-      "Detects support and resistance levels plus market structure, with volume-weighted strength scoring per level. When: before placing SL/TP — treat the levels as context, not a sole entry signal. Symbol is used as given, never canonicalized — unlike get_market_snapshot/get_ohlc/get_market_price/detect_market_regime, a broker-suffixed symbol is NOT stripped here. Default limit unset (server default, 20-500). read-only. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "Detects support and resistance levels plus market structure, with volume-weighted strength scoring per level. When: before placing SL/TP — treat the levels as context, not a sole entry signal. JSON levels for plan construction — never present as a levels card; cite them in prose or draw them with draw_on_chart. Symbol is used as given, never canonicalized — unlike get_market_snapshot/get_ohlc/get_market_price/detect_market_regime, a broker-suffixed symbol is NOT stripped here. Default limit unset (server default, 20-500). read-only. Example: symbol=EURUSD&interval=4h&limit=120.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -117,7 +113,6 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       limit: z.number().int().min(20).max(500).optional(),
     },
     annotations: READ_ONLY,
-    ui: { widget: "levels-report" },
   },
   {
     name: "detect_market_regime",

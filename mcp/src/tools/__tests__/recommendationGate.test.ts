@@ -252,6 +252,38 @@ describe("create_recommendation structural gate", () => {
       assert.equal("strategy_id" in parsed.data, false);
     }
   });
+
+  it("accepts take_profits (2–3 targets) and take_profits without take_profit", () => {
+    const withList = createRecommendationInput.safeParse({
+      symbol: "EURUSD",
+      action: "buy",
+      plan_type: "immediate",
+      rationale: "Demand held and we scale out at three targets.",
+      factors: ["demand zone"],
+      entry: 1.1,
+      stop_loss: 1.09,
+      take_profit: 1.12,
+      take_profits: [1.12, 1.14, 1.16],
+      ...completePlanFields,
+    });
+    assert.equal(withList.success, true);
+    if (withList.success) {
+      assert.deepEqual(withList.data.take_profits, [1.12, 1.14, 1.16]);
+    }
+
+    const listOnly = createRecommendationInput.safeParse({
+      symbol: "EURUSD",
+      action: "sell",
+      plan_type: "immediate",
+      rationale: "Supply rejected and we scale out at three targets.",
+      factors: ["supply zone"],
+      entry: 1.1,
+      stop_loss: 1.12,
+      take_profits: [1.08, 1.06, 1.04],
+      ...completePlanFields,
+    });
+    assert.equal(listOnly.success, true);
+  });
 });
 
 describe("accuracy MCP tools are registered", () => {

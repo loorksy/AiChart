@@ -38,5 +38,7 @@ describe("no hand-built chart overlays", () => {
     assert.doesNotMatch(tvChart, /SpreadPriceLines/);
     assert.doesNotMatch(tvChart, /useLivePrice/);
     assert.doesNotMatch(tvChart, /enabled_features:[\s\S]{0,200}header_widget/);
+    assert.match(tvChart, /isCapture \|\| isEmbed/);
+    assert.match(tvChart, /embed\?: boolean/);
   });
 });

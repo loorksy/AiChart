@@ -634,7 +634,7 @@ export async function saveRecommendation(
                   entryHigh: rec.entry_high ?? rec.entry,
                   preferredEntry: rec.entry,
                   stopLoss: rec.stop_loss,
-                  targets: [rec.take_profit],
+                  targets: rec.targets?.length ? rec.targets : [rec.take_profit],
                 }
               : null,
           currentPrice: null,

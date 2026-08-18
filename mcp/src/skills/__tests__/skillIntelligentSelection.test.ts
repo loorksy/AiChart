@@ -129,26 +129,27 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
     );
   });
 
-  it("Cards without render_cards tool → rejected as unusable", () => {
+  it("cards skill no longer requires render_cards (MCP has no such tool)", () => {
     const { skills } = discoverSkills();
+    const cards = skills.find((s) => s.metadata.name === "cards");
+    assert.ok(cards);
+    assert.ok(
+      !cards.metadata.requiredTools?.length,
+      "MCP cannot satisfy render_cards; cards skill must stay loadable",
+    );
     const r = selectMcpSkills(skills, {
       request: "show interactive cards and widget layout",
       availableTools: [],
       maxSkills: 2,
     });
-    assert.ok(
-      r.rejected.some(
-        (x) => x.name === "cards" && x.reason === "required_tools_unavailable",
-      ),
-    );
-    assert.ok(!r.selected.some((s) => s.name === "cards"));
+    assert.ok(!r.rejected.some((x) => x.name === "cards" && x.reason === "required_tools_unavailable"));
   });
 
-  it("Cards with tool available → may select presentation skill", () => {
+  it("Cards skill may be selected for presentation requests", () => {
     const { skills } = discoverSkills();
     const r = selectMcpSkills(skills, {
       request: "show interactive cards and widget layout for the account",
-      availableTools: ["render_cards"],
+      availableTools: ["create_recommendation", "show_live_chart"],
       maxSkills: 2,
     });
     assert.ok(r.selected.some((s) => s.name === "cards"), JSON.stringify(r));

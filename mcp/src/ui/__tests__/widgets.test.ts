@@ -7,25 +7,25 @@ import { uiMeta } from "../../tools/registry.js";
 import { TOOL_CATALOG } from "../../tools/schemas/index.js";
 import type { ToolDefinition } from "../../tools/schemas/types.js";
 import { RESOURCE_URI_META_KEY } from "@modelcontextprotocol/ext-apps/server";
-import { appsUri, skybridgeUri, uiMetaFor, widgetHtmlByPublicPath } from "../index.js";
+import { appsUri, resourceContentsMeta, skybridgeUri, uiMetaFor, widgetHtmlByPublicPath } from "../index.js";
 import { publicAssetOrigin, RUNTIME_JS } from "../runtime.js";
 import { WIDGETS } from "../widgets.js";
 
 describe("MCP UI resources", () => {
   it("registers versioned canonical URIs for flagship cards", () => {
-    assert.equal(appsUri("account-overview"), "ui://aichart/account-overview/v5");
-    assert.equal(appsUri("analysis"), "ui://aichart/analysis/v5");
-    assert.equal(appsUri("portfolio"), "ui://aichart/portfolio/v3");
-    assert.equal(skybridgeUri("account-overview"), "ui://aichart/account-overview/v5-gpt");
-    assert.equal(skybridgeUri("analysis"), "ui://aichart/analysis/v5-gpt");
+    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v11");
+    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v11");
+    assert.equal(appsUri("recommendation-card"), "ui://aichart/recommendation-card/v7");
+    assert.equal(skybridgeUri("live-chart"), "ui://aichart/live-chart/v11-gpt");
+    assert.equal(skybridgeUri("recommendation-card"), "ui://aichart/recommendation-card/v7-gpt");
   });
 
   it("emits MCP Apps and OpenAI compatibility metadata", () => {
-    const meta = uiMetaFor("analysis");
-    const uri = appsUri("analysis");
+    const meta = uiMetaFor("recommendation-card");
+    const uri = appsUri("recommendation-card");
     assert.equal((meta.ui as { resourceUri: string }).resourceUri, uri);
     assert.equal(meta[RESOURCE_URI_META_KEY], uri);
-    assert.equal(meta["openai/outputTemplate"], skybridgeUri("analysis"));
+    assert.equal(meta["openai/outputTemplate"], skybridgeUri("recommendation-card"));
     assert.equal(meta["openai/toolInvocation/invoking"], "تشغيل Lonora...");
     const origin = publicAssetOrigin();
     assert.deepEqual(meta["openai/widgetCSP"], {
@@ -34,8 +34,54 @@ describe("MCP UI resources", () => {
     });
   });
 
+  it("paints the live chart in-document so Claude CSP cannot block a nested iframe", () => {
+    const origin = publicAssetOrigin();
+    const meta = uiMetaFor("live-chart");
+    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v11");
+    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v11");
+    assert.deepEqual(meta["openai/widgetCSP"], {
+      connect_domains: [origin],
+      resource_domains: [origin],
+    });
+    const ui = meta.ui as {
+      prefersBorder?: boolean;
+      csp?: {
+        frameDomains?: string[];
+        connectDomains?: string[];
+        resourceDomains?: string[];
+      };
+    };
+    assert.equal(ui.prefersBorder, false);
+    assert.deepEqual(ui.csp, {});
+    const recMeta = uiMetaFor("recommendation-card") as {
+      ui?: { prefersBorder?: boolean; csp?: Record<string, unknown> };
+    };
+    assert.equal(recMeta.ui?.prefersBorder, false);
+    assert.deepEqual(recMeta.ui?.csp, {});
+    const contents = resourceContentsMeta("live-chart") as {
+      ui?: { csp?: { frameDomains?: string[] } };
+      "openai/widgetCSP"?: { frame_domains?: string[] };
+    };
+    assert.deepEqual(contents.ui?.csp, {});
+    assert.equal(contents["openai/widgetCSP"], undefined);
+    const html = WIDGETS["live-chart"];
+    assert.ok(html.includes('id="cv"'));
+    assert.ok(html.includes('AIC.callTool("get_ohlc"'));
+    assert.ok(html.includes('AIC.callTool("get_chart_state"'));
+    assert.ok(!html.includes("<iframe"));
+    assert.ok(!html.includes("/embed/chart"));
+    assert.ok(!html.includes("embed_url"));
+    assert.ok(!html.includes('class="card"'));
+    assert.ok(html.includes('name="color-scheme"'));
+    assert.ok(html.includes("host-context-changed"));
+    assert.ok(html.includes("aic:theme"));
+    assert.ok(html.includes("function inkOn"));
+    assert.ok(html.includes("function paintChip"));
+    assert.ok(html.includes("isLightTheme"));
+  });
+
   it("registry uiMeta matches ui index helper", () => {
-    assert.deepEqual(uiMeta("account-overview"), uiMetaFor("account-overview"));
+    assert.deepEqual(uiMeta("recommendation-card"), uiMetaFor("recommendation-card"));
   });
 
   it("resolves public HTTP paths for native and skybridge templates", () => {
@@ -43,13 +89,13 @@ describe("MCP UI resources", () => {
     // and mime resolution, so it runs on a card that still exists.
     const native = widgetHtmlByPublicPath("recommendation-card/v1");
     assert.ok(native);
-    assert.equal(native.uri, "ui://aichart/recommendation-card/v5");
+    assert.equal(native.uri, "ui://aichart/recommendation-card/v7");
     assert.ok(native.html.length > 200);
     assert.equal(native.mimeType, "text/html;profile=mcp-app");
 
     const gpt = widgetHtmlByPublicPath("recommendation-card/v1-gpt");
     assert.ok(gpt);
-    assert.equal(gpt.uri, "ui://aichart/recommendation-card/v5-gpt");
+    assert.equal(gpt.uri, "ui://aichart/recommendation-card/v7-gpt");
     assert.equal(gpt.mimeType, "text/html+skybridge");
   });
 
@@ -57,6 +103,21 @@ describe("MCP UI resources", () => {
     for (const [name, html] of Object.entries(WIDGETS) as [string, string][]) {
       assert.ok(html.includes("window.AIC"), `${name} must inline the AIC runtime`);
       assert.ok(!/<(script|link)[^>]+(src|href)=/i.test(html), `${name} must not reference external assets`);
+      assert.ok(html.includes('name="color-scheme"'), `${name} must declare color-scheme so the host backdrop stays transparent`);
+    }
+  });
+
+  it("inline widget scripts are valid JavaScript after template interpolation", () => {
+    for (const [name, html] of Object.entries(WIDGETS) as [string, string][]) {
+      const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+      assert.ok(scripts.length >= 1, `${name} missing inline script`);
+      for (const [i, src] of scripts.entries()) {
+        try {
+          new Function(src);
+        } catch (err) {
+          assert.fail(`${name} script[${i}] failed to parse: ${err}`);
+        }
+      }
     }
   });
 });
@@ -135,10 +196,15 @@ describe("structured tool text fallback", () => {
       { snapshot: { symbol: "EURUSD", price: 1.08, rsi14: 55, trend: "bullish" } },
       { structured: true },
     );
-    assert.ok(out.structuredContent);
+    assert.equal(out.structuredContent, undefined);
     assert.ok(out.content[0]?.text.includes("EURUSD"));
     assert.ok(out.content[0]?.text.includes("Analysis EURUSD"));
     assert.ok(!out.content[0]?.text.startsWith("{"));
+    const carded = formatBridgeResult(
+      { snapshot: { symbol: "EURUSD", price: 1.08, rsi14: 55, trend: "bullish" } },
+      { structured: true, card: true },
+    );
+    assert.ok(carded.structuredContent);
   });
 });
 
@@ -191,29 +257,63 @@ describe("widget HTML safety", () => {
     assert.equal(parsed.conn.stale, false);
   });
 
-  it("recommendation card recognizes wrapped scan candidate payloads", () => {
+  it("recommendation card is a logo-only plan with copyable levels", () => {
     const html = WIDGETS["recommendation-card"];
     assert.ok(html.includes("unwrapPayload"));
-    assert.ok(html.includes("data.candidates"));
-    assert.ok(html.includes("data.recommendations"));
-    assert.ok(html.includes("rec.score"));
+    assert.ok(html.includes("recommendation_card"));
+    assert.ok(html.includes("take_profits"));
+    assert.ok(html.includes("flattenLevelVals"));
+    assert.ok(html.includes("uniqNums"));
+    assert.ok(html.includes("rec-mark"));
+    assert.ok(html.includes("rec-copy"));
+    assert.ok(html.includes('id="rec-card"'));
+    assert.ok(html.includes('className = "card"'));
+    assert.ok(html.includes("border:none"));
+    assert.ok(html.includes("conf > 0 && conf <= 1"));
+    assert.ok(!html.includes("<button"));
+    assert.ok(!html.includes('class="card buy"'));
+    assert.ok(RUNTIME_JS.includes("toFixed"));
+    assert.ok(!/toLocaleString\(undefined/.test(RUNTIME_JS));
   });
 
-  it("registers a card for every surface that has one", () => {
-    // The floor was 13 when account, open-trades, approval and readiness cards
-    // existed. They do not; a floor that can only be met by keeping dead HTML
-    // is not a guard. What matters is that nothing points at a missing widget,
-    // which "links card tools to registered widgets" below checks directly.
-    assert.ok(Object.keys(WIDGETS).length >= 8, `got ${Object.keys(WIDGETS).length}`);
+  it("registers only the live-chart and recommendation surfaces", () => {
+    assert.deepEqual(Object.keys(WIDGETS).sort(), [
+      "chart-drawn",
+      "live-chart",
+      "recommendation-card",
+    ]);
   });
 });
 
 describe("catalog card-linked tools", () => {
   it("links card tools to registered widgets", () => {
     const linked = TOOL_CATALOG.filter((t: ToolDefinition) => t.ui?.widget);
-    assert.ok(linked.length >= 8, `got ${linked.length}`);
+    assert.deepEqual(
+      linked.map((t) => t.name).sort(),
+      ["create_recommendation", "draw_on_chart", "get_chart_state", "show_live_chart"],
+    );
     for (const tool of linked) {
       assert.ok(WIDGETS[tool.ui!.widget], `${tool.name} → missing widget ${tool.ui!.widget}`);
     }
+  });
+
+  it("evidence tools never advertise a card", () => {
+    for (const name of [
+      "get_trade_lessons",
+      "show_jobs_by_ids",
+      "jobs_wait",
+      "scan_market",
+      "get_market_snapshot",
+      "detect_levels",
+      "run_market_analysis",
+    ]) {
+      const def = TOOL_CATALOG.find((t: ToolDefinition) => t.name === name);
+      assert.ok(def, name);
+      assert.equal(def!.ui, undefined, `${name} must not advertise a card`);
+    }
+    const jobs = TOOL_CATALOG.find((t: ToolDefinition) => t.name === "show_jobs_by_ids")!;
+    assert.equal(/as ONE card/i.test(jobs.description), false);
+    const lessons = TOOL_CATALOG.find((t: ToolDefinition) => t.name === "get_trade_lessons")!;
+    assert.match(lessons.description, /never present this payload as an MCP card/i);
   });
 });
