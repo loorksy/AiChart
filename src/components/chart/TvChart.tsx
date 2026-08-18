@@ -36,8 +36,6 @@ import type { ChatImagePayload } from "@/lib/chatImage";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { Recommendation } from "@/lib/types";
-import { SpreadPriceLines } from "@/lib/chart/tv/spreadPriceLines";
-import { useLivePrice } from "@/hooks/useLivePrice";
 import { barDurationSec } from "@/lib/intervals";
 import { CHART_CAPTURE_CANDLES } from "@/lib/chart/captureWindow";
 import {
@@ -241,12 +239,10 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const widgetRef = useRef<IChartingLibraryWidget | null>(null);
   const managerRef = useRef<TvDrawingManager | null>(null);
   const studyManagerRef = useRef<TvStudyManager | null>(null);
-  const spreadLinesRef = useRef<SpreadPriceLines | null>(null);
   const readyRef = useRef(false);
   const [ready, setReady] = useState(false);
   const headerButtonsRef = useRef<Map<string, HTMLElement>>(new Map());
   const headerActionsRef = useRef<TvHeaderAction[] | undefined>(headerActions);
-  const live = useLivePrice(capture ? "" : symbol, !capture);
   const directionRef = useRef<Direction>(direction);
   // Read inside the mount effect, which runs once and must not re-run when
   // unrelated props change.
@@ -633,7 +629,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           const chart = w.activeChart();
           managerRef.current = new TvDrawingManager(chart);
           studyManagerRef.current = new TvStudyManager(chart);
-          spreadLinesRef.current = new SpreadPriceLines(chart);
           setReady(true);
           // Re-anchor drawings after fresh history lands (frame/pair switch).
           chart.onDataLoaded().subscribe(null, () => {
@@ -667,8 +662,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       cancelled = true;
       readyRef.current = false;
       setReady(false);
-      void spreadLinesRef.current?.clear();
-      spreadLinesRef.current = null;
       managerRef.current = null;
       studyManagerRef.current = null;
       headerButtonsRef.current.clear();
@@ -786,16 +779,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       if (a.title) el.setAttribute("title", a.title);
     }
   }, [headerActions]);
-
-  // Bid / ask as library price lines (#7) — not a hand-built badge.
-  useEffect(() => {
-    if (!ready || capture) return;
-    const book =
-      live.bid != null && live.ask != null
-        ? { bid: live.bid, ask: live.ask }
-        : null;
-    void spreadLinesRef.current?.update(book);
-  }, [ready, capture, live.bid, live.ask]);
 
   // Theme and header direction can change without remounting the widget, so
   // drawings and the user's current chart state remain intact.

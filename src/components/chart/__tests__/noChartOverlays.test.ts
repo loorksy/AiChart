@@ -1,9 +1,8 @@
 /**
  * The chart surface must not layer hand-built chrome over the TradingView
- * widget. Library features own symbol legend and resolution; bid/ask are
- * createShape price lines. Orders are sent only by the agent — the chart must
- * never expose buy/sell or other chart-owned trading controls (not a license
- * gap; product decision).
+ * widget. Library features own symbol legend and resolution. Orders are sent
+ * only by the agent — the chart must never expose buy/sell or other
+ * chart-owned trading controls (not a license gap; product decision).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -36,7 +35,8 @@ describe("no hand-built chart overlays", () => {
     assert.match(tvChart, /control_bar/);
     assert.match(tvChart, /showSeriesTitle": false/);
     assert.match(tvChart, /custom_css_url/);
-    assert.match(tvChart, /SpreadPriceLines/);
+    assert.doesNotMatch(tvChart, /SpreadPriceLines/);
+    assert.doesNotMatch(tvChart, /useLivePrice/);
     assert.doesNotMatch(tvChart, /enabled_features:[\s\S]{0,200}header_widget/);
   });
 });
