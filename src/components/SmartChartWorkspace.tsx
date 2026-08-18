@@ -10,8 +10,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import dynamic from "next/dynamic";
@@ -49,12 +47,8 @@ import { useLocale } from "@/hooks/useLocale";
 import { useTheme } from "@/components/ThemeProvider";
 import {
   DEFAULT_DESKTOP_LAYOUT,
-  MAX_CHAT_WIDTH,
-  MIN_CHAT_WIDTH,
-  clampChatWidth,
   loadChatWidth,
   loadDesktopLayout,
-  saveChatWidth,
   saveDesktopLayout,
   type DesktopLayout,
 } from "@/lib/layout/chatLayout";
@@ -203,8 +197,8 @@ function SmartChartWorkspaceInner({
   const { resolved: chartTheme } = useTheme();
   const router = useRouter();
 
-  // Desktop chat-panel width (persisted, clamped). Not used on mobile.
-  const [chatWidth, setChatWidth] = useState<number>(() => loadChatWidth());
+  // Desktop chat-panel width. Fixed — dragging the split is disabled.
+  const [chatWidth] = useState<number>(() => loadChatWidth());
 
   // Read after mount so the server and first client render agree.
   useEffect(() => setDesktopLayout(loadDesktopLayout()), []);
@@ -819,36 +813,6 @@ function SmartChartWorkspaceInner({
   }, []);
 
 
-  // Desktop chat resize: chat is the right column, so dragging the handle left
-  // widens it. Persists on release.
-  const startChatResize = (e: ReactPointerEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = chatWidth;
-    const onMove = (ev: PointerEvent) =>
-      setChatWidth(clampChatWidth(startW + (startX - ev.clientX)));
-    const onUp = (ev: PointerEvent) => {
-      saveChatWidth(clampChatWidth(startW + (startX - ev.clientX)));
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  };
-
-  const resizeChatWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    let next: number | null = null;
-    if (event.key === "ArrowLeft") next = chatWidth + 24;
-    if (event.key === "ArrowRight") next = chatWidth - 24;
-    if (event.key === "Home") next = MIN_CHAT_WIDTH;
-    if (event.key === "End") next = MAX_CHAT_WIDTH;
-    if (next == null) return;
-    event.preventDefault();
-    const clamped = clampChatWidth(next);
-    setChatWidth(clamped);
-    saveChatWidth(clamped);
-  };
-
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       {!guest && !agentReady && (
@@ -964,23 +928,12 @@ function SmartChartWorkspaceInner({
 
         {chatEnabled && (
           <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t("layout.resize_chat")}
-            aria-valuemin={MIN_CHAT_WIDTH}
-            aria-valuemax={MAX_CHAT_WIDTH}
-            aria-valuenow={chatWidth}
-            tabIndex={0}
-            onPointerDown={startChatResize}
-            onKeyDown={resizeChatWithKeyboard}
+            aria-hidden
             className={cn(
-              "group hidden w-3 shrink-0 cursor-col-resize items-stretch justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              // Only meaningful when both panes are up.
-              desktopLayout === "split" && "xl:flex",
+              "pointer-events-none hidden w-px shrink-0 bg-border/50",
+              desktopLayout === "split" && "xl:block",
             )}
-          >
-            <span className="w-px bg-border/50 transition-colors group-hover:bg-primary/70 group-focus-visible:bg-primary" />
-          </div>
+          />
         )}
 
         {chatEnabled && (

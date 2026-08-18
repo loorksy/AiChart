@@ -142,6 +142,8 @@ test("workspace shows the chart as a sheet under xl, a pane from xl", () => {
   assert.match(workspace, /data-chart-pane/);
   assert.match(workspace, /bottom-0 z-40/);
   assert.match(workspace, /useSheetSlot\("chart"\)/);
+  assert.doesNotMatch(workspace, /cursor-col-resize/);
+  assert.doesNotMatch(workspace, /startChatResize/);
 });
 
 test("one overlay at a time across drawer, account sheet and chart sheet", () => {
