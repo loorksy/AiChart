@@ -1,15 +1,14 @@
 /**
- * MetaAPI provisioning REST — DRAFT create + hosted configuration link only.
+ * MetaAPI provisioning REST — create a cloud account from the in-app
+ * MetaTrader form, then read/delete it.
  *
- * No SDK. No login/password in any request we send. Trade endpoints are out
- * of scope (and banned by noExecutionGuard).
+ * Password is forwarded to MetaAPI in the create request only and is never
+ * written to Lonora storage. Trade endpoints are out of scope (banned by
+ * noExecutionGuard).
  */
 import crypto from "crypto";
 import { fetchWithTimeout } from "@/lib/externalFetch";
-import { BROKER_PLATFORM, type BrokerOption } from "./brokers";
-import { isHostedConfigUrl } from "./hostedUrl";
-
-export { CONFIG_LINK_ORIGIN, isHostedConfigUrl } from "./hostedUrl";
+import { BROKER_PLATFORM } from "./brokers";
 
 const PROVISIONING_ORIGIN =
   "https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai";
@@ -84,27 +83,27 @@ function errorMessage(body: Record<string, unknown>, fallback: string): string {
   return fallback;
 }
 
-export async function createDraftAccount(input: {
+export async function createTradingAccount(input: {
   token: string;
   userId: number;
-  broker: BrokerOption;
+  server: string;
+  login: string;
+  password: string;
   region?: string;
   transactionId?: string;
 }): Promise<{ id: string; state: MetaapiAccountState }> {
   const transactionId = input.transactionId ?? newTransactionId();
-  // cloud-g2 only offers high reliability, which MetaAPI refuses until the
-  // operator account is prepaid. G1 + regular is the hosted-link default so
-  // clicking Link opens the credentials page without a top-up.
   const payload: Record<string, unknown> = {
     name: `Lonora ${input.userId}`,
-    server: input.broker.server,
+    login: input.login,
+    password: input.password,
+    server: input.server,
     platform: BROKER_PLATFORM,
     magic: LONORA_MAGIC,
     type: "cloud-g1",
     reliability: "regular",
-    metadata: { lonoraUserId: String(input.userId), brokerId: input.broker.id },
+    metadata: { lonoraUserId: String(input.userId) },
   };
-  if (input.broker.keywords?.length) payload.keywords = input.broker.keywords;
   const region = input.region?.trim();
   if (region) payload.region = region;
 
@@ -125,7 +124,7 @@ export async function createDraftAccount(input: {
         throw new MetaapiClientError(502, "MetaAPI did not return an account id.");
       }
       const state =
-        typeof body.state === "string" ? body.state : "DRAFT";
+        typeof body.state === "string" ? body.state : "DEPLOYED";
       return { id, state };
     }
     if (res.status === 202) {
@@ -134,39 +133,10 @@ export async function createDraftAccount(input: {
     }
     throw new MetaapiClientError(
       res.status >= 400 && res.status < 600 ? res.status : 502,
-      errorMessage(body, "Could not create the broker-link account at MetaAPI."),
+      errorMessage(body, "Could not link the trading account at MetaAPI."),
     );
   }
-  throw new MetaapiClientError(504, "Timed out creating the broker-link account at MetaAPI.");
-}
-
-export async function createConfigurationLink(input: {
-  token: string;
-  accountId: string;
-  ttlInDays?: number;
-}): Promise<string> {
-  const ttl = input.ttlInDays ?? 1;
-  const res = await fetchWithTimeout(
-    `${PROVISIONING_ORIGIN}/users/current/accounts/${encodeURIComponent(input.accountId)}/configuration-link?ttlInDays=${ttl}`,
-    {
-      method: "PUT",
-      headers: headers(input.token),
-    },
-    { timeoutMs: 20_000, label: "MetaAPI" },
-  );
-  const body = await readJson(res);
-  if (!res.ok) {
-    throw new MetaapiClientError(
-      res.status >= 400 && res.status < 600 ? res.status : 502,
-      errorMessage(body, "Could not mint the credentials link."),
-    );
-  }
-  const link =
-    typeof body.configurationLink === "string" ? body.configurationLink : "";
-  if (!isHostedConfigUrl(link)) {
-    throw new MetaapiClientError(502, "MetaAPI returned a credentials URL that is not hosted.");
-  }
-  return link;
+  throw new MetaapiClientError(504, "Timed out linking the trading account at MetaAPI.");
 }
 
 export async function readAccount(input: {

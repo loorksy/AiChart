@@ -1,83 +1,62 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "path";
 import { describe, it } from "node:test";
 import {
-  BROKER_CATALOG,
   BROKER_PLATFORM,
-  brokerById,
-  brokerFromServer,
+  brokerIdForServer,
+  normalizeLogin,
+  normalizeServer,
 } from "@/lib/brokerLink/brokers";
-import { isHostedConfigUrl } from "@/lib/brokerLink/hostedUrl";
 import {
-  createDraftAccount,
-  createConfigurationLink,
+  createTradingAccount,
   LONORA_MAGIC,
 } from "@/lib/brokerLink/metaapiClient";
 
 const SRC = path.join(import.meta.dirname, "..", "..", "..");
 
-describe("broker catalog", () => {
-  it("is a tap-to-pick MT5 list with unique ids and no empty servers", () => {
-    const ids = new Set<string>();
-    for (const broker of BROKER_CATALOG) {
-      assert.equal(brokerById(broker.id)?.server, broker.server);
-      assert.ok(broker.server.trim().length > 0);
-      assert.equal(ids.has(broker.id), false);
-      ids.add(broker.id);
-    }
+describe("typed MT5 server", () => {
+  it("accepts a typed broker server name", () => {
     assert.equal(BROKER_PLATFORM, "mt5");
-    assert.ok(BROKER_CATALOG.length >= 2);
-    assert.equal(brokerFromServer("MyBroker-MT5")?.server, "MyBroker-MT5");
-    assert.equal(brokerFromServer("bad server"), null);
+    assert.equal(normalizeServer("ICMarketsSC-MT5"), "ICMarketsSC-MT5");
+    assert.equal(normalizeServer("MyBroker-MT5"), "MyBroker-MT5");
+    assert.equal(normalizeServer("XMGlobal-MT5 2"), "XMGlobal-MT5 2");
+    assert.equal(normalizeServer("bad@server"), null);
+    assert.equal(normalizeServer(""), null);
+    assert.equal(normalizeLogin("50194988"), "50194988");
+    assert.equal(normalizeLogin("bad login!"), null);
+    assert.equal(brokerIdForServer("Exness-MT5Real"), "server:exness-mt5real");
   });
 });
 
-describe("hosted configuration URL allowlist", () => {
-  it("accepts only MetaAPI credential pages", () => {
-    assert.equal(
-      isHostedConfigUrl(
-        "https://app.metaapi.cloud/configure-trading-account-credentials/abc/token",
-      ),
-      true,
-    );
-    assert.equal(
-      isHostedConfigUrl("https://evil.example/configure-trading-account-credentials/abc"),
-      false,
-    );
-    assert.equal(isHostedConfigUrl("https://app.metaapi.cloud/elsewhere"), false);
-    assert.equal(isHostedConfigUrl("http://app.metaapi.cloud/configure-trading-account-credentials/x"), false);
-  });
-});
-
-describe("MetaAPI client never sends credentials", () => {
-  it("createDraftAccount posts platform+server without login or password", async () => {
+describe("MetaAPI client forwards credentials once and never trades", () => {
+  it("createTradingAccount posts server+login+password without storing extras", async () => {
     const bodies: string[] = [];
     const restore = globalThis.fetch;
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       bodies.push(String(init?.body ?? ""));
-      return new Response(JSON.stringify({ id: "acct-1", state: "DRAFT" }), {
+      return new Response(JSON.stringify({ id: "acct-1", state: "DEPLOYED" }), {
         status: 201,
         headers: { "content-type": "application/json" },
       });
     }) as typeof fetch;
     try {
-      const broker = brokerById("exness-mt5");
-      assert.ok(broker);
-      const created = await createDraftAccount({
+      const created = await createTradingAccount({
         token: "tok",
         userId: 7,
-        broker,
+        server: "ICMarketsSC-MT5",
+        login: "50194988",
+        password: "secret-pass",
         transactionId: "a".repeat(32),
       });
       assert.equal(created.id, "acct-1");
-      assert.equal(created.state, "DRAFT");
+      assert.equal(created.state, "DEPLOYED");
       assert.equal(bodies.length, 1);
       const payload = JSON.parse(bodies[0]!) as Record<string, unknown>;
-      assert.equal("login" in payload, false);
-      assert.equal("password" in payload, false);
+      assert.equal(payload.login, "50194988");
+      assert.equal(payload.password, "secret-pass");
       assert.equal(payload.platform, "mt5");
-      assert.equal(payload.server, broker.server);
+      assert.equal(payload.server, "ICMarketsSC-MT5");
       assert.equal(payload.magic, LONORA_MAGIC);
       assert.equal(payload.type, "cloud-g1");
       assert.equal(payload.reliability, "regular");
@@ -100,16 +79,17 @@ describe("MetaAPI client never sends credentials", () => {
           headers: { "retry-after": "0" },
         });
       }
-      return new Response(JSON.stringify({ id: "acct-2", state: "DRAFT" }), {
+      return new Response(JSON.stringify({ id: "acct-2", state: "DEPLOYED" }), {
         status: 201,
       });
     }) as typeof fetch;
     try {
-      const broker = brokerById("icmarkets-mt5")!;
-      const created = await createDraftAccount({
+      const created = await createTradingAccount({
         token: "tok",
         userId: 1,
-        broker,
+        server: "Exness-MT5Real",
+        login: "1",
+        password: "x",
         transactionId: "b".repeat(32),
       });
       assert.equal(created.id, "acct-2");
@@ -118,29 +98,10 @@ describe("MetaAPI client never sends credentials", () => {
       globalThis.fetch = restore;
     }
   });
-
-  it("rejects a configuration link that is not the hosted credentials page", async () => {
-    const restore = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({
-          configurationLink: "https://evil.example/phish",
-        }),
-        { status: 200 },
-      )) as typeof fetch;
-    try {
-      await assert.rejects(
-        () => createConfigurationLink({ token: "tok", accountId: "acct-1" }),
-        /not hosted/,
-      );
-    } finally {
-      globalThis.fetch = restore;
-    }
-  });
 });
 
-describe("hosted-link route is session-auth and never a password form", () => {
-  it("the API and card never collect a password; broker is picked then MetaAPI is iframed", () => {
+describe("in-app MetaTrader form never stores the password", () => {
+  it("forwards password to MetaAPI only and never writes it to broker_links", () => {
     const route = readFileSync(
       path.join(SRC, "app/api/integrations/broker/route.ts"),
       "utf8",
@@ -153,31 +114,36 @@ describe("hosted-link route is session-auth and never a password form", () => {
       path.join(SRC, "lib/brokerLink/metaapiClient.ts"),
       "utf8",
     );
-    assert.match(route, /requireUser/);
-    assert.doesNotMatch(route, /resolveBridgeUserId/);
-    assert.doesNotMatch(route, /password/);
-    assert.match(route, /brokerId/);
-    assert.match(route, /replaceBrokerLink/);
-    assert.match(card, /<iframe/);
-    assert.match(card, /BROKER_CATALOG/);
-    assert.match(card, /Dialog\.Root/);
-    assert.doesNotMatch(card, /type=["']password["']/);
-    assert.doesNotMatch(card, /json\.error/);
-    assert.match(card, /metaapi_balance/);
-    assert.match(client, /No login\/password/);
-    assert.doesNotMatch(client, /\/trade/);
-    assert.match(client, /method: "DELETE"/);
-  });
-
-  it("creates a new draft when the chosen broker differs from the stored one", () => {
-    const route = readFileSync(
-      path.join(SRC, "app/api/integrations/broker/route.ts"),
+    const store = readFileSync(
+      path.join(SRC, "lib/brokerLink/store.ts"),
       "utf8",
     );
-    const post = route.slice(route.indexOf("export async function POST"));
-    assert.match(post, /needsNew/);
-    assert.match(post, /persistDraft/);
-    assert.match(post, /createConfigurationLink/);
-    assert.match(route, /deleteAccount/);
+    const sqlite = readFileSync(path.join(SRC, "lib/db/sqlite.ts"), "utf8");
+    const brokers = readFileSync(
+      path.join(SRC, "lib/brokerLink/brokers.ts"),
+      "utf8",
+    );
+    assert.equal(
+      existsSync(path.join(SRC, "lib/brokerLink/hostedUrl.ts")),
+      false,
+    );
+    assert.doesNotMatch(brokers, /BROKER_CATALOG/);
+    assert.match(route, /requireUser/);
+    assert.doesNotMatch(route, /resolveBridgeUserId/);
+    assert.match(route, /password: z\.string/);
+    assert.match(route, /createTradingAccount/);
+    assert.doesNotMatch(route, /insertBrokerLink\([\s\S]*password/);
+    assert.doesNotMatch(route, /configurationLink/);
+    assert.doesNotMatch(card, /<iframe/);
+    assert.doesNotMatch(card, /BROKER_CATALOG/);
+    assert.doesNotMatch(card, /Dialog\.Root/);
+    assert.match(card, /type=\{showPassword \? "text" : "password"\}/);
+    assert.match(card, /connect\.broker\.server/);
+    assert.match(card, /MetaTraderMark/);
+    assert.doesNotMatch(store, /password/);
+    assert.doesNotMatch(sqlite, /password_enc/);
+    assert.match(sqlite, /CREATE TABLE IF NOT EXISTS broker_links/);
+    assert.doesNotMatch(client, /\/trade/);
+    assert.match(client, /password: input\.password/);
   });
 });

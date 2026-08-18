@@ -33,12 +33,20 @@ export async function insertBrokerLink(row: {
   brokerId: string;
   server: string;
   state: string;
+  login?: string | null;
 }): Promise<BrokerLinkRow> {
   await execute(
     `INSERT INTO broker_links (
-       user_id, metaapi_account_id, broker_id, server, platform, state, updated_at
-     ) VALUES (?, ?, ?, ?, 'mt5', ?, ${nowExpr()})`,
-    [row.userId, row.metaapiAccountId, row.brokerId, row.server, row.state],
+       user_id, metaapi_account_id, broker_id, server, platform, state, login, updated_at
+     ) VALUES (?, ?, ?, ?, 'mt5', ?, ?, ${nowExpr()})`,
+    [
+      row.userId,
+      row.metaapiAccountId,
+      row.brokerId,
+      row.server,
+      row.state,
+      row.login ?? null,
+    ],
   );
   const saved = await getBrokerLink(row.userId);
   if (!saved) throw new Error("broker_links insert did not persist");
@@ -51,13 +59,21 @@ export async function replaceBrokerLink(row: {
   brokerId: string;
   server: string;
   state: string;
+  login?: string | null;
 }): Promise<BrokerLinkRow> {
   await execute(
     `UPDATE broker_links
         SET metaapi_account_id = ?, broker_id = ?, server = ?, platform = 'mt5',
-            state = ?, login = NULL, updated_at = ${nowExpr()}
+            state = ?, login = ?, updated_at = ${nowExpr()}
       WHERE user_id = ?`,
-    [row.metaapiAccountId, row.brokerId, row.server, row.state, row.userId],
+    [
+      row.metaapiAccountId,
+      row.brokerId,
+      row.server,
+      row.state,
+      row.login ?? null,
+      row.userId,
+    ],
   );
   const saved = await getBrokerLink(row.userId);
   if (!saved) throw new Error("broker_links replace did not persist");

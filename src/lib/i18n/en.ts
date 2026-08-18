@@ -231,28 +231,24 @@ export const en = {
 
   "connect.broker.title": "Link account",
   "connect.broker.subtitle":
-    "Press Link, pick your broker, then enter login and password in the MetaAPI form — Lonora never sees the password.",
-  "connect.broker.connect": "Link",
-  "connect.broker.continue": "Continue",
-  "connect.broker.pick": "Choose your broker",
-  "connect.broker.search": "Search brokers",
-  "connect.broker.other": "Another broker",
-  "connect.broker.server": "MetaTrader server name",
-  "connect.broker.env.live": "Live",
-  "connect.broker.env.demo": "Demo",
+    "Type your broker server, account number, and password — the same fields as MetaTrader.",
+  "connect.broker.connect": "Login",
+  "connect.broker.login": "Login",
+  "connect.broker.password": "Password",
+  "connect.broker.server": "Server",
+  "connect.broker.server_placeholder": "YourBroker-MT5",
+  "connect.broker.show_password": "Show password",
+  "connect.broker.hide_password": "Hide password",
   "connect.broker.unconfigured":
     "Broker linking is not enabled on the server yet. Add METAAPI_TOKEN in the admin keys panel.",
-  "connect.broker.draft": "Finish the form on MetaAPI.",
+  "connect.broker.draft": "Waiting for the broker connection.",
   "connect.broker.configured": "Account linked.",
-  "connect.broker.error": "Could not open the linking page.",
+  "connect.broker.error": "Could not link the trading account.",
   "connect.broker.needs_balance":
     "MetaAPI balance is required before linking can start.",
-  "connect.broker.modal.title": "Link account",
-  "connect.broker.modal.body":
-    "The form below belongs to MetaAPI. Lonora does not receive the password.",
-  "connect.broker.modal.open": "Open in a new window",
-  "connect.broker.modal.done": "Done",
-  "connect.broker.modal.close": "Close",
+  "connect.broker.auth_failed": "Login or password was rejected by the broker.",
+  "connect.broker.server_not_found":
+    "That server name was not found. Use the exact name from MetaTrader.",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",

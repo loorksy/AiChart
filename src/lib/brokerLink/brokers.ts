@@ -1,116 +1,24 @@
 /**
- * Tap-to-pick MT5 catalogue. MetaAPI's hosted page only collects login and
- * password — platform + server must be chosen before we create the DRAFT.
- * There is no MT4 option.
+ * Typed MT5 server name from the user's terminal. No broker catalogue —
+ * Lonora never asks them to pick from a fixed list.
  */
 export const BROKER_PLATFORM = "mt5" as const;
 
-export type BrokerEnv = "live" | "demo";
+const SERVER_RE = /^[A-Za-z0-9][A-Za-z0-9._\- ]{0,78}$/;
+const LOGIN_RE = /^[A-Za-z0-9._-]{1,32}$/;
 
-export interface BrokerOption {
-  id: string;
-  name: string;
-  server: string;
-  env: BrokerEnv;
-  /** Helps MetaAPI resolve the .dat when the server name is ambiguous. */
-  keywords?: string[];
-}
-
-export const BROKER_CATALOG: readonly BrokerOption[] = [
-  {
-    id: "icmarkets-mt5",
-    name: "IC Markets",
-    server: "ICMarketsSC-MT5",
-    env: "live",
-    keywords: ["Raw Trading Ltd"],
-  },
-  {
-    id: "icmarkets-mt5-demo",
-    name: "IC Markets Demo",
-    server: "ICMarketsSC-Demo",
-    env: "demo",
-    keywords: ["Raw Trading Ltd"],
-  },
-  {
-    id: "pepperstone-mt5",
-    name: "Pepperstone",
-    server: "Pepperstone-MT5-Live01",
-    env: "live",
-    keywords: ["Pepperstone Group Limited"],
-  },
-  {
-    id: "exness-mt5",
-    name: "Exness",
-    server: "Exness-MT5Real",
-    env: "live",
-    keywords: ["Exness"],
-  },
-  {
-    id: "exness-mt5-demo",
-    name: "Exness Demo",
-    server: "Exness-MT5Trial",
-    env: "demo",
-    keywords: ["Exness"],
-  },
-  {
-    id: "fusion-mt5",
-    name: "Fusion Markets",
-    server: "FusionMarkets-Live",
-    env: "live",
-    keywords: ["Fusion Markets"],
-  },
-  {
-    id: "xm-mt5",
-    name: "XM",
-    server: "XMGlobal-MT5",
-    env: "live",
-    keywords: ["XM Global Limited"],
-  },
-  {
-    id: "fbs-mt5",
-    name: "FBS",
-    server: "FBS-Real",
-    env: "live",
-    keywords: ["FBS"],
-  },
-  {
-    id: "vantage-mt5",
-    name: "Vantage",
-    server: "VantageInternational-MT5",
-    env: "live",
-    keywords: ["Vantage"],
-  },
-  {
-    id: "fpmarkets-mt5",
-    name: "FP Markets",
-    server: "FPMarkets-Live",
-    env: "live",
-    keywords: ["First Prudential Markets"],
-  },
-] as const;
-
-const SERVER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{1,78}$/;
-
-export function brokerById(id: string): BrokerOption | undefined {
-  return BROKER_CATALOG.find((b) => b.id === id);
-}
-
-export function publicBroker(b: BrokerOption): {
-  id: string;
-  name: string;
-  env: BrokerEnv;
-} {
-  return { id: b.id, name: b.name, env: b.env };
-}
-
-/** Custom MT5 server from the user's terminal — still no login/password. */
-export function brokerFromServer(server: string): BrokerOption | null {
-  const trimmed = server.trim();
+export function normalizeServer(server: string): string | null {
+  const trimmed = server.trim().replace(/\s+/g, " ");
   if (!SERVER_RE.test(trimmed)) return null;
-  return {
-    id: `custom:${trimmed.toLowerCase()}`,
-    name: trimmed,
-    server: trimmed,
-    env: "live",
-  };
+  return trimmed;
+}
+
+export function normalizeLogin(login: string): string | null {
+  const trimmed = login.trim();
+  if (!LOGIN_RE.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function brokerIdForServer(server: string): string {
+  return `server:${server.toLowerCase()}`;
 }
