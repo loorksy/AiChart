@@ -83,7 +83,9 @@ export function verifyChartEmbedToken(
   try {
     const raw = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Partial<ChartEmbedClaims>;
     if (raw.v !== 1) return null;
-    if (!Number.isInteger(raw.userId) || (raw.userId ?? 0) <= 0) return null;
+    if (typeof raw.userId !== "number" || !Number.isInteger(raw.userId) || raw.userId <= 0) {
+      return null;
+    }
     if (typeof raw.exp !== "number" || raw.exp <= nowSec) return null;
     const layoutId =
       typeof raw.layoutId === "string" && LAYOUT_ID.test(raw.layoutId) ? raw.layoutId : null;
