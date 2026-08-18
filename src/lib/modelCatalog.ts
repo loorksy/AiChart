@@ -86,3 +86,13 @@ export function isReasoningModel(model: string): boolean {
   const id = model.trim().toLowerCase().split("/").pop() ?? "";
   return /^o\d/.test(id) || /^gpt-5/.test(id) || /^deepseek-v4/.test(id);
 }
+
+/**
+ * Whether this model accepts image_url / vision parts on the chat path.
+ * DeepSeek V4 (TokenRouter) is text-only — sending a chart PNG 400s with
+ * "is not a multimodal model" and burned the first synthesizer attempt.
+ */
+export function modelAcceptsVision(model: string): boolean {
+  const id = model.trim().toLowerCase().split("/").pop() ?? "";
+  return !/^deepseek-v4/.test(id);
+}

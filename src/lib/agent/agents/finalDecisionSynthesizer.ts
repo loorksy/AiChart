@@ -13,8 +13,10 @@
  * data failure is an operational blocker with a name, never a decision to wait.
  */
 import { z } from "zod";
-import { callLLM, isLLMConfiguredAsync } from "@/lib/llm";
+import { callLLM, getActiveModel, isLLMConfiguredAsync } from "@/lib/llm";
 import type { ContentBlock } from "@/lib/anthropic";
+import { extractJson } from "@/lib/extractJson";
+import { isReasoningModel, modelAcceptsVision } from "@/lib/modelCatalog";
 import { createLogger } from "@/lib/logger";
 import { sanitizePublicText } from "../activity";
 import type { AgentRunContext } from "../types";
@@ -77,6 +79,15 @@ const log = createLogger("final-decision");
 
 
 /** The default second-round model call, with the extra frame attached. */
+function decisionMaxTokens(): number {
+  return isReasoningModel(getActiveModel()) ? 12000 : 3072;
+}
+
+function visionSafeBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  if (modelAcceptsVision(getActiveModel())) return blocks;
+  return blocks.filter((b) => b.type !== "image");
+}
+
 async function callModelWithBlocks(
   system: string,
   userMsg: string,
@@ -86,8 +97,13 @@ async function callModelWithBlocks(
   const res = await callLLM(
     {
       system,
-      messages: [{ role: "user", content: [{ type: "text", text: userMsg }, ...blocks] }],
-      maxTokens: 3072,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: userMsg }, ...visionSafeBlocks(blocks)],
+        },
+      ],
+      maxTokens: decisionMaxTokens(),
     },
     { tier: "deep", signal: ctx.signal },
   );
@@ -639,9 +655,10 @@ export async function runFinalDecisionSynthesizer(
   // question. Same images, same interleaving, same rules on both surfaces now.
   const visualBlocks = buildVisualBlocks(input.visualSnapshots ?? []);
   // The degradation contract (visualEvidence.ts): a missing view degrades the
-  // read, it never kills the analysis. When the active model rejects image
-  // input, the retry drops the images instead of failing the whole decision.
-  let includeVisuals = true;
+  // read, it never kills the analysis. Text-only models (DeepSeek V4) skip
+  // images on the first attempt — sending them 400s and wasted the retry.
+  // A vision model that still rejects images drops them on the second try.
+  let includeVisuals = modelAcceptsVision(getActiveModel());
   const callModel =
     deps.callModel ??
     (async (system: string, userMsg: string) => {
@@ -654,7 +671,7 @@ export async function runFinalDecisionSynthesizer(
         messages: [{ role: "user", content }],
         // Headroom for reasoning tokens plus the full plan payload: the three
         // layers, the levels, the conditions, and the decision trace.
-        maxTokens: 3072,
+        maxTokens: decisionMaxTokens(),
         // The trade decision ALWAYS runs on the deep model (item 15) — never a
         // quick/auxiliary tier, regardless of any default change.
         // The run signal (stage deadline / total budget / client disconnect)
@@ -1503,12 +1520,3 @@ function describePrimaryPattern(geometry: GeometrySnapshot): string | null {
   return `${pattern.patternType} · ${pattern.stage ?? pattern.status}`;
 }
 
-function extractJson(raw: string): string {
-  const text = raw.trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return text.slice(start, end + 1);
-  return text;
-}

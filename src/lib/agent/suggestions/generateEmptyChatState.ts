@@ -1,4 +1,5 @@
 import { callLLM, isLLMConfigured } from "@/lib/llm";
+import { extractJson } from "@/lib/extractJson";
 import type { AppLocale } from "@/lib/i18n";
 import { sanitizeAgentSuggestions } from "./sanitizeAgentSuggestions";
 import type { AgentSuggestion } from "./types";
@@ -25,16 +26,6 @@ Do not invent prices, recommendations, news, connection state, or analysis resul
 Do not mention tools, skills, MCP, modules, policies, feature flags, traces, schemas, or implementation details.
 Respond with JSON only:
 {"greeting":"...","suggestions":[{"label":"...","prompt":"..."}]}`;
-
-function extractJson(raw: string): string {
-  const text = raw.trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return text.slice(start, end + 1);
-  return text;
-}
 
 export async function generateEmptyChatState(
   facts: EmptyChatFacts,

@@ -5,6 +5,7 @@ import {
   DEFAULT_TOKENROUTER_MODEL,
   isAllowedModelRef,
   isReasoningModel,
+  modelAcceptsVision,
 } from "@/lib/modelCatalog";
 import {
   getActiveModel,
@@ -70,6 +71,14 @@ describe("TokenRouter provider (DeepSeek V4 Pro catalogue)", () => {
     assert.equal(isReasoningModel(DEFAULT_TOKENROUTER_MODEL), true);
     assert.equal(isReasoningModel("deepseek-v4-pro-0813-free"), true);
     assert.equal(isReasoningModel("deepseek-v3-0324"), false);
+  });
+
+  it("does not send chart images — DeepSeek V4 is not multimodal", () => {
+    assert.equal(modelAcceptsVision(DEFAULT_TOKENROUTER_MODEL), false);
+    assert.equal(modelAcceptsVision("deepseek-v4-pro-0813-free"), false);
+    assert.equal(modelAcceptsVision("tokenrouter/deepseek/deepseek-v4-pro-0813-free"), false);
+    assert.equal(modelAcceptsVision("gpt-4.1"), true);
+    assert.equal(modelAcceptsVision("claude-sonnet-5"), true);
   });
 
   it("is enabled by default; only an explicit off kills it", () => {

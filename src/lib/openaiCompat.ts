@@ -21,7 +21,7 @@ import {
   llmTtftTimeoutMs,
 } from "./externalFetch";
 import { resilientFetch } from "./providerResilience";
-import { isReasoningModel } from "./modelCatalog";
+import { isReasoningModel, modelAcceptsVision } from "./modelCatalog";
 
 export interface OpenAICompatTarget {
   baseUrl: string;
@@ -119,6 +119,21 @@ function toOAMessages(system: string, messages: Message[]): OAMessage[] {
   return out;
 }
 
+/**
+ * Drop image blocks before they hit a text-only gateway. DeepSeek V4 via
+ * TokenRouter 400s on image_url ("is not a multimodal model"); stripping
+ * here keeps every OpenAI-compat caller (decision, browse, chat) from
+ * burning an attempt on a chart PNG the model cannot read.
+ */
+export function dropUnsupportedVision(model: string, messages: Message[]): Message[] {
+  if (modelAcceptsVision(model)) return messages;
+  return messages.map((m) => {
+    if (typeof m.content === "string") return m;
+    const kept = m.content.filter((b) => b.type !== "image");
+    return kept === m.content ? m : { ...m, content: kept };
+  });
+}
+
 /** Model id without OpenRouter vendor prefix (e.g. openai/gpt-4.1 → gpt-4.1). */
 function bareModelId(model: string): string {
   const trimmed = model.trim().toLowerCase();
@@ -152,16 +167,21 @@ export function openAICompatTokenLimitField(
  */
 const REASONING_MIN_TOKENS = 8192;
 const REASONING_MAX_TOKENS = 16000;
+/** DeepSeek V4 spends more of the completion budget on thinking than o-series. */
+const DEEPSEEK_REASONING_MIN_TOKENS = 12000;
+
+function reasoningTokenFloor(model: string): number {
+  const id = bareModelId(model);
+  return /^deepseek-v4/.test(id) ? DEEPSEEK_REASONING_MIN_TOKENS : REASONING_MIN_TOKENS;
+}
 
 function tokenLimitBody(
   model: string,
   maxTokens?: number,
 ): Record<string, number> {
+  const floor = reasoningTokenFloor(model);
   const limit = isReasoningModel(model)
-    ? Math.min(
-        Math.max(maxTokens ?? REASONING_MIN_TOKENS, REASONING_MIN_TOKENS),
-        REASONING_MAX_TOKENS,
-      )
+    ? Math.min(Math.max(maxTokens ?? floor, floor), REASONING_MAX_TOKENS)
     : Math.min(maxTokens ?? 4096, 4096);
   const field = openAICompatTokenLimitField(model);
   return { [field]: limit };
@@ -202,15 +222,19 @@ export function toOATools(tools?: ToolDef[]) {
 export function fromOAChoice(choice: {
   message?: {
     content?: string | null;
+    reasoning_content?: string | null;
     tool_calls?: OAToolCall[];
   };
   finish_reason?: string;
 }): { content: ContentBlock[]; stop_reason: string } {
   const blocks: ContentBlock[] = [];
   const msg = choice.message;
+  // DeepSeek V4 (and some other reasoning gateways) put the visible answer
+  // in `reasoning_content` when `content` is empty or still thinking.
+  const text = (msg?.content ?? "").trim() || (msg?.reasoning_content ?? "").trim();
 
-  if (msg?.content) {
-    blocks.push({ type: "text", text: msg.content });
+  if (text) {
+    blocks.push({ type: "text", text });
   }
   for (const tc of msg?.tool_calls ?? []) {
     let input: Record<string, unknown> = {};
@@ -288,7 +312,10 @@ export async function callOpenAICompat(
         model: target.model,
         ...tokenLimitBody(target.model, params.maxTokens),
         ...reasoningBody(target.model),
-        messages: toOAMessages(params.system, params.messages),
+        messages: toOAMessages(
+          params.system,
+          dropUnsupportedVision(target.model, params.messages),
+        ),
         ...(params.tools ? { tools: toOATools(params.tools) } : {}),
       }),
       cache: "no-store",
@@ -393,7 +420,10 @@ async function streamOnce(
       model: target.model,
       ...tokenLimitBody(target.model, params.maxTokens),
       ...reasoningBody(target.model),
-      messages: toOAMessages(params.system, params.messages),
+      messages: toOAMessages(
+        params.system,
+        dropUnsupportedVision(target.model, params.messages),
+      ),
       stream: true,
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),
     }),
@@ -423,6 +453,7 @@ async function streamOnce(
   let messageId = "";
   let finishReason = "";
   let text = "";
+  let reasoning = "";
   // tool calls accumulate by index
   const toolAcc = new Map<
     number,
@@ -449,6 +480,7 @@ async function streamOnce(
         choices?: {
           delta?: {
             content?: string | null;
+            reasoning_content?: string | null;
             tool_calls?: {
               index?: number;
               id?: string;
@@ -480,6 +512,9 @@ async function streamOnce(
         text += delta.content;
         handlers?.onTextDelta?.(delta.content);
       }
+      if (delta?.reasoning_content) {
+        reasoning += delta.reasoning_content;
+      }
       for (const tc of delta?.tool_calls ?? []) {
         const idx = tc.index ?? 0;
         const acc = toolAcc.get(idx) ?? { id: "", name: "", args: "" };
@@ -498,7 +533,8 @@ async function streamOnce(
   }
 
   const content: ContentBlock[] = [];
-  if (text) content.push({ type: "text", text });
+  const visible = text.trim() || reasoning.trim();
+  if (visible) content.push({ type: "text", text: visible });
   for (const [, acc] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
     if (!acc.id || !acc.name) continue;
     let input: Record<string, unknown> = {};
@@ -553,7 +589,10 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
         model: target.model,
         ...tokenLimitBody(target.model, params.maxTokens ?? 4096),
         ...reasoningBody(target.model),
-        messages: toOAMessages(params.system, params.messages),
+        messages: toOAMessages(
+          params.system,
+          dropUnsupportedVision(target.model, params.messages),
+        ),
         response_format: {
           type: "json_schema",
           json_schema: {
@@ -571,10 +610,14 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
   if (!res.ok) throw new Error(await readError(res, target.model));
 
   const payload = (await res.json()) as {
-    choices?: { message?: { content?: string | null } }[];
+    choices?: {
+      message?: { content?: string | null; reasoning_content?: string | null };
+    }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
-  const raw = payload.choices?.[0]?.message?.content?.trim();
+  const msg = payload.choices?.[0]?.message;
+  const raw =
+    (msg?.content ?? "").trim() || (msg?.reasoning_content ?? "").trim();
   if (!raw) throw new Error(`رد JSON فارغ من ${target.model}`);
 
   let data: T;

@@ -5,6 +5,7 @@
  * or generation fails, this returns [] and the UI shows no suggestions.
  */
 import { callLLM, isLLMConfigured } from "@/lib/llm";
+import { extractJson } from "@/lib/extractJson";
 import type { AgentFinalResult } from "../types";
 import type { AppLocale } from "@/lib/i18n";
 import { sanitizeAgentSuggestions } from "./sanitizeAgentSuggestions";
@@ -119,12 +120,3 @@ export async function generateAgentSuggestions(
   }
 }
 
-function extractJson(raw: string): string {
-  const text = raw.trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return text.slice(start, end + 1);
-  return text;
-}

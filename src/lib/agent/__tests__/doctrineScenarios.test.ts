@@ -13,6 +13,8 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { runFinalDecisionSynthesizer } from "@/lib/agent/agents/finalDecisionSynthesizer";
 import type { FinalDecisionInput } from "@/lib/agent/agents/finalDecisionAgent";
 import type { AgentMarketContext } from "@/lib/agent/marketContext/buildAgentMarketContext";
@@ -319,6 +321,16 @@ describe("visual evidence", () => {
     assert.equal(label.numeric_context.price, 4000);
     assert.match(label.note, /never from the pixels/);
     assert.equal((blocks[3] as { source: { data: string } }).source.data, "BBBB");
+  });
+
+  it("skips chart images on the first attempt when the active model is text-only", () => {
+    const src = readFileSync(
+      path.join(import.meta.dirname, "..", "agents", "finalDecisionSynthesizer.ts"),
+      "utf8",
+    );
+    assert.match(src, /let includeVisuals = modelAcceptsVision\(getActiveModel\(\)\)/);
+    assert.match(src, /function visionSafeBlocks/);
+    assert.match(src, /decisionMaxTokens/);
   });
 
   it("skips snapshots that carry no image rather than sending an empty block", async () => {
