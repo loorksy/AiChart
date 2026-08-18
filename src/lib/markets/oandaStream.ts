@@ -69,10 +69,17 @@ async function runStream(): Promise<void> {
   const url = `${streamBaseUrl()}/v3/accounts/${accountId}/pricing/stream?instruments=${instruments.join("%2C")}`;
 
   while (!stopRequested && symbolListeners.size > 0) {
+    const controller = new AbortController();
+    let idle: ReturnType<typeof setTimeout> | null = null;
+    const bumpIdle = () => {
+      if (idle) clearTimeout(idle);
+      idle = setTimeout(() => controller.abort(), 20_000);
+    };
     try {
+      bumpIdle();
       const res = await fetch(url, {
         headers: { authorization: `Bearer ${apiToken}` },
-        // A long-lived chunked response — no timeout signal here.
+        signal: controller.signal,
       });
       if (!res.ok || !res.body) {
         throw new Error(`OANDA stream HTTP ${res.status}`);
@@ -82,6 +89,7 @@ async function runStream(): Promise<void> {
       const decoder = new TextDecoder();
       let buffer = "";
       while (!stopRequested) {
+        bumpIdle();
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
@@ -113,6 +121,8 @@ async function runStream(): Promise<void> {
       }
     } catch {
       /* fall through to reconnect backoff below */
+    } finally {
+      if (idle) clearTimeout(idle);
     }
     if (stopRequested || symbolListeners.size === 0) break;
     await new Promise((r) => setTimeout(r, reconnectDelayMs));

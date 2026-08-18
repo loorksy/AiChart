@@ -355,6 +355,7 @@ export const ar: Record<TranslationKey, string> = {
   "agent.stage.resumed": "(من تشغيل سابق)",
   "agent.run_details": "تفاصيل التنفيذ",
   "agent.error": "حدث خطأ",
+  "agent.reconnecting": "انقطع الاتصال — نعيد المحاولة…",
   "agent.copy": "نسخ الرسالة",
   "agent.copied": "تم نسخ الرسالة",
 
@@ -616,6 +617,7 @@ export const ar: Record<TranslationKey, string> = {
   "layout.account_balance": "رصيد الحساب",
   "layout.mt_setup": "MetaTrader غير متصل — افتح إعدادات الاتصال",
   "layout.agent_unavailable": "الذكاء الاصطناعي غير مُفعّل على الخادم — التحليل غير متاح.",
+  "layout.server_reconnecting": "انقطع الاتصال بالخادم — نعيد الربط…",
 
   // Settings
   "settings.title": "الإعدادات",

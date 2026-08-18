@@ -356,6 +356,7 @@ export const en = {
   "agent.stage.resumed": "(from a previous run)",
   "agent.run_details": "Run details",
   "agent.error": "Something went wrong",
+  "agent.reconnecting": "Connection lost — reconnecting…",
   "agent.copy": "Copy message",
   "agent.copied": "Message copied",
 
@@ -630,6 +631,7 @@ export const en = {
   "layout.account_balance": "Account balance",
   "layout.mt_setup": "MetaTrader disconnected — open connection settings",
   "layout.agent_unavailable": "AI is not enabled on the server — analysis is unavailable.",
+  "layout.server_reconnecting": "Lost the server — reconnecting…",
 
   // Settings
   "settings.title": "Settings",

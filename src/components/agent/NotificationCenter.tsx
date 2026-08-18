@@ -16,6 +16,7 @@ import { Bell, CheckCheck, Settings2, X } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import type { AlertLog } from "@/lib/types";
+import { APP_WAKE_EVENT } from "@/lib/appWake";
 
 const BACKOFF_BASE_MS = 1_000;
 const BACKOFF_MAX_MS = 30_000;
@@ -122,6 +123,23 @@ export function NotificationCenter({ className }: { className?: string }) {
       if (retryRef.current) clearTimeout(retryRef.current);
     };
   }, [connect, merge, reconnectAttempt]);
+
+  useEffect(() => {
+    const onWake = () => {
+      attemptRef.current = 0;
+      if (retryRef.current) {
+        clearTimeout(retryRef.current);
+        retryRef.current = null;
+      }
+      connect();
+    };
+    window.addEventListener(APP_WAKE_EVENT, onWake);
+    window.addEventListener("online", onWake);
+    return () => {
+      window.removeEventListener(APP_WAKE_EVENT, onWake);
+      window.removeEventListener("online", onWake);
+    };
+  }, [connect]);
 
   const unread = alerts.filter((a) => a.read_at == null).length;
 

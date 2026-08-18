@@ -14,6 +14,7 @@ import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
 import { SheetCoordinatorProvider, useSheetSlot } from "@/components/shell/SheetCoordinator";
 import { ConsoleTopBar } from "@/components/shell/ConsoleTopBar";
+import { ServerLinkBanner } from "@/components/shell/ServerLinkBanner";
 import {
   navForRole,
   activeNav,
@@ -512,6 +513,7 @@ function ConsoleShellBody({
                 (pathname === "/chat" && Boolean(searchParams.get("chat"))))
             }
           />
+          <ServerLinkBanner />
           <main
             className={cn(
               "aichart-scroll flex min-h-0 flex-1 flex-col",

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AdminLimits, PublicUser } from "@/lib/types";
 import { displayNameFromEmail } from "@/lib/displayName";
+import { APP_WAKE_EVENT } from "@/lib/appWake";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 export interface QuotaInfo {
   used: number;
@@ -37,13 +39,16 @@ export function useMe(refreshKey = 0) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/me");
+      const res = await fetchWithTimeout("/api/me", { timeoutMs: 8_000 });
       if (res.status === 401) {
         setData(null);
         return;
       }
+      if (!res.ok) return;
       const json = await res.json();
       if (!json.user) {
+        // A 200 without a user is a real signed-out payload. A network
+        // blip must not look like a logout — that path is the catch below.
         setData(null);
         return;
       }
@@ -69,7 +74,8 @@ export function useMe(refreshKey = 0) {
           : undefined,
       });
     } catch {
-      setData(null);
+      // Keep the last good session. One failed /api/me used to null the
+      // user, hide conversations, and make the whole console look dead.
     } finally {
       setLoading(false);
     }
@@ -83,7 +89,16 @@ export function useMe(refreshKey = 0) {
     const id = window.setInterval(() => {
       void refresh();
     }, 60_000);
-    return () => window.clearInterval(id);
+    const onWake = () => {
+      void refresh();
+    };
+    window.addEventListener(APP_WAKE_EVENT, onWake);
+    window.addEventListener("online", onWake);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener(APP_WAKE_EVENT, onWake);
+      window.removeEventListener("online", onWake);
+    };
   }, [refresh]);
 
   return { data, loading, refresh };

@@ -820,6 +820,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("pageshow", notify);
+    window.addEventListener("aichart:app-wake", notify);
+    window.addEventListener("online", notify);
     window.visualViewport?.addEventListener("resize", notify);
     window.visualViewport?.addEventListener("scroll", notify);
     return () => {
@@ -827,6 +829,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("pageshow", notify);
+      window.removeEventListener("aichart:app-wake", notify);
+      window.removeEventListener("online", notify);
       window.visualViewport?.removeEventListener("resize", notify);
       window.visualViewport?.removeEventListener("scroll", notify);
     };

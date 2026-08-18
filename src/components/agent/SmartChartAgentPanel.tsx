@@ -122,6 +122,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       messages,
       stageEvents,
       running,
+      reconnecting,
       error,
       sendMessage,
       cancel,
@@ -483,7 +484,12 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             </div>
           ))}
 
-          {error && (
+          {reconnecting && (
+            <p className="mx-auto w-full max-w-3xl rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {t("agent.reconnecting")}
+            </p>
+          )}
+          {error && !reconnecting && (
             <p className="mx-auto w-full max-w-3xl rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {error}
             </p>
