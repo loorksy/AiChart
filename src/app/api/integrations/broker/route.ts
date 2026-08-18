@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { handleError, requireUser } from "@/lib/api";
-import { brokerById, BROKER_CATALOG, publicBroker } from "@/lib/brokerLink/brokers";
+import { DEFAULT_BROKER } from "@/lib/brokerLink/brokers";
 import {
   createConfigurationLink,
   createDraftAccount,
@@ -15,12 +14,6 @@ import {
 } from "@/lib/brokerLink/store";
 import { metaapiConfigured, metaapiRegion, metaapiToken } from "@/lib/brokerLink/token";
 import { startTrialClock } from "@/lib/subscription/entitlement";
-
-const PostBody = z
-  .object({
-    brokerId: z.string().min(1).max(64).optional(),
-  })
-  .strict();
 
 function publicState(state: string): "draft" | "configured" {
   return state === "DRAFT" ? "draft" : "configured";
@@ -56,24 +49,17 @@ export async function GET(req: Request) {
         }
       }
     }
-    const broker = row ? brokerById(row.broker_id) : undefined;
     return NextResponse.json({
       configured,
       linked: Boolean(row),
       status: row ? publicState(row.state) : null,
-      state: row?.state ?? null,
-      login: row?.login ?? null,
-      broker: broker ? publicBroker(broker) : row
-        ? { id: row.broker_id, name: row.server, env: "live" as const }
-        : null,
-      brokers: BROKER_CATALOG.map(publicBroker),
     });
   } catch (err) {
     return handleError(err);
   }
 }
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
     const user = await requireUser();
     const token = await metaapiToken();
@@ -84,35 +70,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const json: unknown = await req.json().catch(() => ({}));
-    const parsed = PostBody.safeParse(json);
-    if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
-    }
-
     let row = await getBrokerLink(user.id);
     if (!row) {
-      const broker = parsed.data.brokerId
-        ? brokerById(parsed.data.brokerId)
-        : undefined;
-      if (!broker) {
-        return NextResponse.json(
-          { error: "Pick a broker from the list." },
-          { status: 400 },
-        );
-      }
       const created = await createDraftAccount({
         token,
         userId: user.id,
-        broker,
+        broker: DEFAULT_BROKER,
         region: await metaapiRegion(),
       });
       try {
         row = await insertBrokerLink({
           userId: user.id,
           metaapiAccountId: created.id,
-          brokerId: broker.id,
-          server: broker.server,
+          brokerId: DEFAULT_BROKER.id,
+          server: DEFAULT_BROKER.server,
           state: created.state,
         });
       } catch {
@@ -126,15 +97,11 @@ export async function POST(req: Request) {
       accountId: row.metaapi_account_id,
     });
 
-    let login = row.login;
-    let state = row.state;
     try {
       const live = await readAccount({
         token,
         accountId: row.metaapi_account_id,
       });
-      state = live.state;
-      login = live.login;
       await updateBrokerLinkStatus(user.id, {
         state: live.state,
         login: live.login,
@@ -146,14 +113,7 @@ export async function POST(req: Request) {
       if (!(err instanceof MetaapiClientError)) throw err;
     }
 
-    const broker = brokerById(row.broker_id);
-    return NextResponse.json({
-      configurationLink,
-      status: publicState(state),
-      state,
-      login,
-      broker: broker ? publicBroker(broker) : { id: row.broker_id, name: row.server, env: "live" },
-    });
+    return NextResponse.json({ configurationLink });
   } catch (err) {
     if (err instanceof MetaapiClientError) {
       return NextResponse.json(

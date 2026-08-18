@@ -1,4 +1,4 @@
-/** Hosted MetaAPI credentials page — the only URL the iframe/popup may open. */
+/** Hosted MetaAPI credentials page — the only URL Lonora may open. */
 export const CONFIG_LINK_ORIGIN = "https://app.metaapi.cloud";
 
 export function isHostedConfigUrl(url: string): boolean {

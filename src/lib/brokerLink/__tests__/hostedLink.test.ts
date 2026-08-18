@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "path";
 import { describe, it } from "node:test";
-import { BROKER_CATALOG, brokerById, BROKER_PLATFORM } from "@/lib/brokerLink/brokers";
+import { DEFAULT_BROKER, BROKER_PLATFORM } from "@/lib/brokerLink/brokers";
 import { isHostedConfigUrl } from "@/lib/brokerLink/hostedUrl";
 import {
   createDraftAccount,
@@ -12,17 +12,11 @@ import {
 
 const SRC = path.join(import.meta.dirname, "..", "..", "..");
 
-describe("broker catalog", () => {
-  it("is a tap-to-pick MT5 list with unique ids and no empty servers", () => {
-    const ids = new Set<string>();
-    for (const broker of BROKER_CATALOG) {
-      assert.equal(brokerById(broker.id)?.server, broker.server);
-      assert.ok(broker.server.trim().length > 0);
-      assert.equal(ids.has(broker.id), false);
-      ids.add(broker.id);
-    }
+describe("silent default broker", () => {
+  it("hardcodes MT5 server so Lonora never shows a broker form", () => {
     assert.equal(BROKER_PLATFORM, "mt5");
-    assert.ok(BROKER_CATALOG.length >= 2);
+    assert.ok(DEFAULT_BROKER.server.trim().length > 0);
+    assert.equal(DEFAULT_BROKER.id, "icmarkets-mt5");
   });
 });
 
@@ -55,12 +49,10 @@ describe("MetaAPI client never sends credentials", () => {
       });
     }) as typeof fetch;
     try {
-      const broker = brokerById("icmarkets-mt5-demo");
-      assert.ok(broker);
       const created = await createDraftAccount({
         token: "tok",
         userId: 7,
-        broker,
+        broker: DEFAULT_BROKER,
         transactionId: "a".repeat(32),
       });
       assert.equal(created.id, "acct-1");
@@ -70,7 +62,7 @@ describe("MetaAPI client never sends credentials", () => {
       assert.equal("login" in payload, false);
       assert.equal("password" in payload, false);
       assert.equal(payload.platform, "mt5");
-      assert.equal(payload.server, broker.server);
+      assert.equal(payload.server, DEFAULT_BROKER.server);
       assert.equal(payload.magic, LONORA_MAGIC);
     } finally {
       globalThis.fetch = restore;
@@ -96,11 +88,10 @@ describe("MetaAPI client never sends credentials", () => {
       });
     }) as typeof fetch;
     try {
-      const broker = brokerById("icmarkets-mt5-demo")!;
       const created = await createDraftAccount({
         token: "tok",
         userId: 1,
-        broker,
+        broker: DEFAULT_BROKER,
         transactionId: "b".repeat(32),
       });
       assert.equal(created.id, "acct-2");
@@ -130,8 +121,8 @@ describe("MetaAPI client never sends credentials", () => {
   });
 });
 
-describe("hosted-link route is session-auth and never a password form", () => {
-  it("the API and card never collect or forward a password", () => {
+describe("hosted-link route is session-auth and never a Lonora form", () => {
+  it("the API and card never collect broker, login, or password", () => {
     const route = readFileSync(
       path.join(SRC, "app/api/integrations/broker/route.ts"),
       "utf8",
@@ -144,14 +135,30 @@ describe("hosted-link route is session-auth and never a password form", () => {
       path.join(SRC, "lib/brokerLink/metaapiClient.ts"),
       "utf8",
     );
+    const brokers = readFileSync(
+      path.join(SRC, "lib/brokerLink/brokers.ts"),
+      "utf8",
+    );
     assert.match(route, /requireUser/);
     assert.doesNotMatch(route, /resolveBridgeUserId/);
     assert.doesNotMatch(route, /password/);
+    assert.doesNotMatch(route, /await req\.json/);
+    assert.doesNotMatch(route, /export async function POST\(req/);
+    assert.match(route, /DEFAULT_BROKER/);
     assert.doesNotMatch(card, /type=["']password["']/);
+    assert.doesNotMatch(card, /<iframe/);
+    assert.doesNotMatch(card, /<input/);
+    assert.doesNotMatch(card, /<select/);
+    assert.doesNotMatch(card, /brokers\.map/);
+    assert.doesNotMatch(card, /brokerId/);
+    assert.match(card, /window\.open/);
+    assert.match(card, /method: "POST"/);
     assert.match(client, /No login\/password/);
     assert.doesNotMatch(client, /\/trade/);
     assert.match(route, /createDraftAccount/);
     assert.match(route, /getBrokerLink/);
+    assert.doesNotMatch(brokers, /BROKER_CATALOG/);
+    assert.doesNotMatch(brokers, /brokerById/);
   });
 
   it("reuses the stored account id instead of creating a second one", () => {

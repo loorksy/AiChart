@@ -229,27 +229,15 @@ export const en = {
   "connect.mcp.complete_profile": "Complete profile",
   "connect.mcp.paid_only": "MCP connection requires an active paid subscription.",
 
-  "connect.broker.title": "Broker account",
+  "connect.broker.title": "Link account",
   "connect.broker.subtitle":
-    "Pick your broker, then enter the account number and password on MetaAPI’s page. Lonora never sees the password.",
-  "connect.broker.pick": "Choose your broker",
-  "connect.broker.env.live": "Live",
-  "connect.broker.env.demo": "Demo",
-  "connect.broker.connect": "Continue to credentials",
-  "connect.broker.continue": "Enter credentials",
-  "connect.broker.refresh": "Refresh status",
+    "Press Link. Broker, login, and password are entered on MetaAPI’s page — Lonora never sees them.",
+  "connect.broker.connect": "Link",
   "connect.broker.unconfigured":
     "Broker linking is not enabled on the server yet. Add METAAPI_TOKEN in the admin keys panel.",
-  "connect.broker.draft": "Waiting for account credentials",
-  "connect.broker.configured": "Account linked",
-  "connect.broker.login": "Account {login}",
-  "connect.broker.modal.title": "Enter credentials on MetaAPI",
-  "connect.broker.modal.body":
-    "The form below belongs to MetaAPI. Lonora does not receive the password.",
-  "connect.broker.modal.open": "Open in a new window",
-  "connect.broker.modal.done": "I’ve finished",
-  "connect.broker.modal.close": "Close",
-  "connect.broker.error": "Could not start broker linking.",
+  "connect.broker.draft": "Finish the form on MetaAPI.",
+  "connect.broker.configured": "Account linked.",
+  "connect.broker.error": "Could not open the linking page.",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",
