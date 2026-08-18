@@ -395,15 +395,14 @@ export async function POST(req: NextRequest) {
       executionState = deriveExecutionState({
         planType: body.plan_type as PlanType,
         levels:
-          body.take_profit != null &&
-          body.stop_loss != null &&
           takeProfit != null &&
+          body.stop_loss != null &&
           entryLow != null &&
           entryHigh != null
             ? {
                 entryLow,
                 entryHigh,
-                preferredEntry: body.entry,
+                preferredEntry: body.entry ?? entryLow,
                 stopLoss: body.stop_loss,
                 targets: takeProfits,
               }
