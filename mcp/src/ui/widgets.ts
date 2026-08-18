@@ -602,6 +602,7 @@ const liveChart = widgetHtml(
       if (!document.hidden) schedule(300);
     });
     window.addEventListener("resize", draw);
+    window.addEventListener("aic:theme", function () { refresh(); });
   };
   `,
   LIVE_CHART_CSS,

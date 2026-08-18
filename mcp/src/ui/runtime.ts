@@ -190,6 +190,45 @@ export const RUNTIME_JS = `
     applyDocLocale();
     applyStaticLabels();
   }
+
+  /* Claude MCP Apps pass hostContext.theme + CSS variables. Matching
+     color-scheme drops the iframe's opaque white/black canvas backdrop
+     (claude.com/docs/.../transparent-theming). */
+  function applyDocumentTheme(theme) {
+    if (theme !== "light" && theme !== "dark") return;
+    var el = document.documentElement;
+    if (!el || !el.setAttribute) return;
+    el.setAttribute("data-theme", theme);
+    el.style.colorScheme = theme;
+    if (el.classList) {
+      el.classList.toggle("dark", theme === "dark");
+      el.classList.toggle("light", theme === "light");
+    }
+    try { window.dispatchEvent(new CustomEvent("aic:theme", { detail: theme })); } catch (e) {}
+  }
+  function applyHostStyleVariables(vars) {
+    if (!vars || typeof vars !== "object") return;
+    var el = document.documentElement;
+    if (!el || !el.style || !el.style.setProperty) return;
+    for (var k in vars) {
+      if (Object.prototype.hasOwnProperty.call(vars, k) && vars[k] != null) {
+        el.style.setProperty(k, String(vars[k]));
+      }
+    }
+  }
+  function applyHostContext(ctx) {
+    if (!ctx || typeof ctx !== "object") return;
+    if (ctx.theme) applyDocumentTheme(ctx.theme);
+    var styles = ctx.styles;
+    if (styles && styles.variables) applyHostStyleVariables(styles.variables);
+    var loc = normLoc(ctx.locale);
+    if (loc) setLocale(loc);
+  }
+  try {
+    var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+    applyDocumentTheme(prefersLight ? "light" : "dark");
+  } catch (e) {}
+
   function emit() {
     if (latest != null) setLocale(resolveLocale(latest));
     for (var i = 0; i < listeners.length; i++) {
@@ -497,8 +536,15 @@ export const RUNTIME_JS = `
       return unwrapEnvelope(window.openai.toolOutput || (meta && (meta.structuredContent || meta.toolOutput || meta.data)) || meta || null);
     }
     latest = readOpenAiData();
+    function readOpenAiTheme() {
+      var g = window.openai || {};
+      var t = g.theme || (g.globals && g.globals.theme);
+      if (t === "light" || t === "dark") applyDocumentTheme(t);
+    }
+    readOpenAiTheme();
     window.addEventListener("openai:set_globals", function () {
       latest = readOpenAiData() || latest;
+      readOpenAiTheme();
       emit();
     });
     finishApi({
@@ -541,6 +587,12 @@ export const RUNTIME_JS = `
         else p.resolve(m.result);
         return;
       }
+      if (m.method === "ui/notifications/host-context-changed" ||
+          m.method === "ui/notifications/hostcontextchanged") {
+        applyHostContext(m.params || m.hostContext || {});
+        setTimeout(notifySize, 50);
+        return;
+      }
       if (m.method === "ui/notifications/tool-result") {
         var pr = m.params || {};
         latest = normalizeToolResult(pr);
@@ -563,7 +615,10 @@ export const RUNTIME_JS = `
       clientInfo: { name: "aichart-widget", version: "1.0.0" },
       appCapabilities: { availableDisplayModes: ["inline"] },
     })
-      .then(function () {
+      .then(function (result) {
+        var ctx = result && (result.hostContext || result.host_context);
+        if (ctx) applyHostContext(ctx);
+        else if (result && result.theme) applyHostContext(result);
         send({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
       })
       .catch(function () {});
@@ -583,13 +638,43 @@ export const RUNTIME_JS = `
 
 /** Shared inline trading-card theme (host iframe sandbox blocks external assets). */
 export const THEME_CSS = `
+  html{color-scheme:light dark;background:transparent}
   :root{
-    --surface:#131922; --surface-2:#192231; --surface-3:#202b3b;
-    --txt:#f8fafc; --muted:#9aa6b2; --faint:#64748b;
-    --amber:#f5c26b; --up:#2dd4bf; --down:#fb7185; --info:#60a5fa;
-    --line:rgba(148,163,184,.2); --line-soft:rgba(148,163,184,.12);
+    --up:#2dd4bf; --down:#fb7185; --amber:#f5c26b; --info:#60a5fa;
+    --surface:var(--color-background-secondary,#131922);
+    --surface-2:var(--color-background-tertiary,#192231);
+    --surface-3:var(--color-background-primary,#202b3b);
+    --txt:var(--color-text-primary,#f8fafc);
+    --muted:var(--color-text-secondary,#9aa6b2);
+    --faint:var(--color-text-tertiary,#64748b);
+    --line:var(--color-border-primary,rgba(148,163,184,.2));
+    --line-soft:var(--color-border-tertiary,rgba(148,163,184,.12));
     --shadow:0 18px 44px rgba(2,6,23,.34);
-    --sans:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --sans:var(--font-sans,Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);
+  }
+  [data-theme="light"]{
+    --surface:var(--color-background-secondary,#f4f3ee);
+    --surface-2:var(--color-background-tertiary,#eceae4);
+    --surface-3:var(--color-background-primary,#faf9f5);
+    --txt:var(--color-text-primary,#141413);
+    --muted:var(--color-text-secondary,#5e5e59);
+    --faint:var(--color-text-tertiary,#8a8a84);
+    --line:var(--color-border-primary,rgba(20,20,19,.14));
+    --line-soft:var(--color-border-tertiary,rgba(20,20,19,.08));
+    --shadow:0 18px 44px rgba(20,20,19,.08);
+  }
+  @media (prefers-color-scheme:light){
+    :root:not([data-theme="dark"]){
+      --surface:var(--color-background-secondary,#f4f3ee);
+      --surface-2:var(--color-background-tertiary,#eceae4);
+      --surface-3:var(--color-background-primary,#faf9f5);
+      --txt:var(--color-text-primary,#141413);
+      --muted:var(--color-text-secondary,#5e5e59);
+      --faint:var(--color-text-tertiary,#8a8a84);
+      --line:var(--color-border-primary,rgba(20,20,19,.14));
+      --line-soft:var(--color-border-tertiary,rgba(20,20,19,.08));
+      --shadow:0 18px 44px rgba(20,20,19,.08);
+    }
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{background:transparent}
@@ -599,7 +684,7 @@ export const THEME_CSS = `
     position:relative;isolation:isolate;
     min-width:260px;max-width:560px;width:100%;min-height:300px;margin:0 auto;
     border:1px solid var(--line);border-radius:8px;
-    background:linear-gradient(180deg,var(--surface),#101620 100%);
+    background:var(--surface);
     box-shadow:var(--shadow);
     padding:18px;display:flex;flex-direction:column;gap:14px;overflow:hidden;
   }
@@ -720,6 +805,7 @@ export function widgetHtml(title: string, body: string, script: string, extraCss
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
 <title>${title}</title>
 <style>${THEME_CSS}${extraCss}</style>
 </head>

@@ -37,8 +37,8 @@ describe("MCP UI resources", () => {
   it("paints the live chart in-document so Claude CSP cannot block a nested iframe", () => {
     const origin = publicAssetOrigin();
     const meta = uiMetaFor("live-chart");
-    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v8");
-    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v8");
+    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v9");
+    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v9");
     assert.deepEqual(meta["openai/widgetCSP"], {
       connect_domains: [origin],
       resource_domains: [origin],
@@ -67,6 +67,9 @@ describe("MCP UI resources", () => {
     assert.ok(!html.includes("/embed/chart"));
     assert.ok(!html.includes("embed_url"));
     assert.ok(!html.includes('class="card"'));
+    assert.ok(html.includes('name="color-scheme"'));
+    assert.ok(html.includes("host-context-changed"));
+    assert.ok(html.includes("aic:theme"));
   });
 
   it("registry uiMeta matches ui index helper", () => {
@@ -92,6 +95,7 @@ describe("MCP UI resources", () => {
     for (const [name, html] of Object.entries(WIDGETS) as [string, string][]) {
       assert.ok(html.includes("window.AIC"), `${name} must inline the AIC runtime`);
       assert.ok(!/<(script|link)[^>]+(src|href)=/i.test(html), `${name} must not reference external assets`);
+      assert.ok(html.includes('name="color-scheme"'), `${name} must declare color-scheme so the host backdrop stays transparent`);
     }
   });
 });
