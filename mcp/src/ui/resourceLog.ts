@@ -76,10 +76,9 @@ export function loggedHtmlReadHandler(
             uri: requested,
             mimeType,
             text: html,
-            // Most cards are fully inline (empty csp). The live TradingView
-            // card iframes the platform embed page, so its ui meta declares
-            // frameDomains — see resourceUiFor() in ui/index.ts.
-            _meta: { ui },
+            // Hosts (Claude MCP Apps) build CSP from contents `_meta.ui.csp`,
+            // not from the tool. Empty/partial CSP → frame-src 'none'.
+            _meta: ui,
           },
         ],
       };

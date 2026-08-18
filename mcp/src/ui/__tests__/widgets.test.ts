@@ -7,7 +7,7 @@ import { uiMeta } from "../../tools/registry.js";
 import { TOOL_CATALOG } from "../../tools/schemas/index.js";
 import type { ToolDefinition } from "../../tools/schemas/types.js";
 import { RESOURCE_URI_META_KEY } from "@modelcontextprotocol/ext-apps/server";
-import { appsUri, skybridgeUri, uiMetaFor, widgetHtmlByPublicPath } from "../index.js";
+import { appsUri, liveChartCspOrigins, resourceContentsMeta, skybridgeUri, uiMetaFor, widgetHtmlByPublicPath } from "../index.js";
 import { publicAssetOrigin, RUNTIME_JS } from "../runtime.js";
 import { WIDGETS } from "../widgets.js";
 
@@ -34,27 +34,44 @@ describe("MCP UI resources", () => {
     });
   });
 
-  it("declares frameDomains and no host chrome for the live TradingView card", () => {
-    const origin = publicAssetOrigin();
+  it("declares a complete CSP so the host can frame the bound TradingView card", () => {
+    const origins = liveChartCspOrigins();
     const meta = uiMetaFor("live-chart");
-    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v6");
-    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v6");
+    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v7");
+    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v7");
     assert.deepEqual(meta["openai/widgetCSP"], {
-      connect_domains: [origin],
-      resource_domains: [origin],
-      frame_domains: [origin],
+      connect_domains: origins,
+      resource_domains: origins,
+      frame_domains: origins,
     });
     const ui = meta.ui as {
       prefersBorder?: boolean;
-      csp?: { frameDomains?: string[] };
+      csp?: {
+        frameDomains?: string[];
+        connectDomains?: string[];
+        resourceDomains?: string[];
+      };
     };
     assert.equal(ui.prefersBorder, false);
-    assert.deepEqual(ui.csp?.frameDomains, [origin]);
+    assert.deepEqual(ui.csp?.frameDomains, origins);
+    assert.deepEqual(ui.csp?.connectDomains, origins);
+    assert.deepEqual(ui.csp?.resourceDomains, origins);
+    const contents = resourceContentsMeta("live-chart") as {
+      ui?: { csp?: { frameDomains?: string[] } };
+      "openai/widgetCSP"?: { frame_domains?: string[] };
+    };
+    assert.deepEqual(contents.ui?.csp?.frameDomains, origins);
+    assert.deepEqual(contents["openai/widgetCSP"]?.frame_domains, origins);
     const html = WIDGETS["live-chart"];
-    assert.ok(html.includes("/embed/chart"));
+    assert.ok(html.includes("embed_url"));
+    assert.ok(html.includes('searchParams.get("token")'));
     assert.ok(html.includes("<iframe"));
     assert.ok(!html.includes('id="cv"'));
     assert.ok(!html.includes('class="card"'));
+    assert.ok(
+      !html.includes("/embed/chart?"),
+      "must not build an anonymous guest embed URL",
+    );
   });
 
   it("registry uiMeta matches ui index helper", () => {

@@ -5,6 +5,7 @@ import {
   getOptionalUser,
   handleError,
 } from "@/lib/api";
+import { t } from "@/lib/i18n";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { subscribeOandaSymbolTicks } from "@/lib/markets/oandaStream";
 import { TRADABLE_SYMBOLS } from "@/lib/markets/forexInstruments";
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
     const user = await getOptionalUser();
     if (!user && !checkRateLimit(`ticks:${clientKey(req)}`, 30, 60_000)) {
       return new Response(
-        JSON.stringify({ error: "طلبات كثيرة — سجّل الدخول للمتابعة." }),
+        JSON.stringify({ error: t("ar", "api.guest_rate_limit") }),
         { status: 429, headers: { "Content-Type": "application/json" } },
       );
     }

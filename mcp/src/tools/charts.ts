@@ -112,6 +112,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           interval?: string;
           state?: Record<string, unknown>;
           url?: string;
+          embed_url?: string | null;
         };
         let layout: LayoutRes | null = null;
         try {
@@ -148,6 +149,23 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           );
         }
         const interval = a.interval ?? layout?.interval ?? "15m";
+        type EmbedRes = {
+          embed_url?: string;
+          layout_id?: string;
+          symbol?: string;
+          interval?: string;
+        };
+        let embed: EmbedRes | null = null;
+        try {
+          embed = (await bridge.get("/api/agent/chart/embed", {
+            layout_id: layout?.id ?? a.layout_id,
+            symbol,
+            interval,
+          })) as EmbedRes;
+        } catch {
+          embed = null;
+        }
+        const embed_url = embed?.embed_url ?? layout?.embed_url ?? null;
         // Canonical instrument keys — strip broker suffixes (XAUUSDM → XAUUSD).
         // Route may wrap payload in {ok, data, meta} — unwrap before use.
         const fetchCandles = async (source?: string) => {
@@ -168,10 +186,12 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         if (!ohlc) ohlc = { candles: [] };
         return {
           live_chart: true,
+          bound: Boolean(embed_url),
           symbol,
           interval,
-          layout_id: layout?.id ?? null,
+          layout_id: embed?.layout_id ?? layout?.id ?? null,
           url: layout?.url ?? null,
+          embed_url,
           ohlc: ohlc ? { ...ohlc, source: "oanda" } : ohlc,
           state: layout?.state ?? null,
           data_source: "oanda",

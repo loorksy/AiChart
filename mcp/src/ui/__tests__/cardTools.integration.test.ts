@@ -12,7 +12,7 @@ import { loadConfig } from "../../config.js";
 import { createAiChartMcpServer } from "../../server/mcpServer.js";
 import { TOOL_CATALOG } from "../../tools/schemas/index.js";
 import type { ToolDefinition } from "../../tools/schemas/types.js";
-import { appsUri, widgetHtmlByPublicPath } from "../index.js";
+import { appsUri, liveChartCspOrigins, widgetHtmlByPublicPath } from "../index.js";
 import { WIDGETS } from "../widgets.js";
 
 // This is a self-contained in-memory audit (linked client/server transport). It
@@ -77,6 +77,25 @@ describe("MCP card tools integration audit", () => {
               RESOURCE_MIME_TYPE,
               `${tool.name} must use MCP Apps MIME`,
             );
+            if (widget === "live-chart" || widget === "chart-drawn") {
+              const origins = liveChartCspOrigins();
+              const contentsMeta = item._meta as {
+                ui?: {
+                  csp?: {
+                    frameDomains?: string[];
+                    connectDomains?: string[];
+                    resourceDomains?: string[];
+                  };
+                };
+              };
+              assert.deepEqual(
+                contentsMeta.ui?.csp?.frameDomains,
+                origins,
+                `${tool.name} resources/read must declare frameDomains`,
+              );
+              assert.deepEqual(contentsMeta.ui?.csp?.connectDomains, origins);
+              assert.deepEqual(contentsMeta.ui?.csp?.resourceDomains, origins);
+            }
           } catch (e) {
             status = `READ_FAIL:${e instanceof Error ? e.message : e}`;
             assert.fail(`${tool.name} resources/read failed: ${status}`);

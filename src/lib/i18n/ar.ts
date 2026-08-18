@@ -455,6 +455,7 @@ export const ar: Record<TranslationKey, string> = {
     "لم يكتمل التحليل: تغطية {stages} التاريخية غير كافية بعد. ما جُمع من أدلة قبل ذلك معروض أدناه، ولم يُفترض شيء مكانه.",
   "fault.auth": "لا يمكن الاتصال بمزوّد الخدمة بسبب مشكلة صلاحيات — تحتاج مراجعة الإعداد.",
   "fault.rate_limit": "مزوّد الخدمة مشغول حالياً — أعد المحاولة بعد قليل.",
+  "api.guest_rate_limit": "طلبات كثيرة — سجّل الدخول للمتابعة.",
   "fault.timeout": "استغرقت العملية وقتاً أطول من المسموح — أعد المحاولة بعد قليل.",
   "fault.network": "تعذّر الاتصال بالشبكة — أعد المحاولة بعد قليل.",
   "fault.provider_unavailable": "مزوّد الخدمة غير متاح مؤقتاً — أعد المحاولة بعد قليل.",
@@ -742,6 +743,7 @@ export const ar: Record<TranslationKey, string> = {
   "chart.smart_chart": "الشارت الذكي",
   "chart.sign_in": "تسجيل الدخول",
   "chart.create_account": "إنشاء حساب",
+  "embed.chart.invalid": "رابط الشارت الحي غير صالح أو منتهٍ.",
   "a11y.skip_to_content": "الانتقال إلى المحتوى الرئيسي",
 
   // --- Parts 16-18: recommendation tracker + statistics ---

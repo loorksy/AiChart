@@ -462,6 +462,7 @@ export const en = {
   "fault.auth":
     "Cannot reach the service provider due to an authorization problem — the configuration needs review.",
   "fault.rate_limit": "The service provider is busy right now — try again shortly.",
+  "api.guest_rate_limit": "Too many requests — sign in to continue.",
   "fault.timeout": "The operation took longer than allowed — try again shortly.",
   "fault.network": "A network connection problem occurred — try again shortly.",
   "fault.provider_unavailable":
@@ -756,6 +757,7 @@ export const en = {
   "chart.smart_chart": "Smart chart",
   "chart.sign_in": "Sign in",
   "chart.create_account": "Create account",
+  "embed.chart.invalid": "This live chart link is invalid or expired.",
   "a11y.skip_to_content": "Skip to main content",
 
   // --- Parts 16-18: recommendation tracker + statistics ---

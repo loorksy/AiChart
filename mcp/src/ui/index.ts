@@ -13,19 +13,59 @@ import { WIDGETS } from "./widgets.js";
 
 const LIVE_CHART_WIDGETS = new Set(["live-chart", "chart-drawn"]);
 
-/** MCP Apps resource `_meta.ui` — empty CSP for inline cards; frameDomains for TV embed. */
+export type ResourceCsp = {
+  connectDomains?: string[];
+  resourceDomains?: string[];
+  frameDomains?: string[];
+};
+
+/** Origins Claude may frame for the live TradingView card. */
+export function liveChartCspOrigins(): string[] {
+  const origin = publicAssetOrigin();
+  const production = "https://aichart.lork.cloud";
+  return origin === production ? [origin] : [origin, production];
+}
+
+function liveChartCsp(): ResourceCsp {
+  const origins = liveChartCspOrigins();
+  return {
+    connectDomains: origins,
+    resourceDomains: origins,
+    frameDomains: origins,
+  };
+}
+
+function liveChartOpenAiCsp(): Record<string, string[]> {
+  const origins = liveChartCspOrigins();
+  return {
+    connect_domains: origins,
+    resource_domains: origins,
+    frame_domains: origins,
+  };
+}
+
+/** MCP Apps resource `_meta.ui` — empty CSP for inline cards; full CSP for TV embed. */
 export function resourceUiFor(widget: string): {
-  csp: { frameDomains?: string[] } | Record<string, never>;
+  csp: ResourceCsp;
   prefersBorder?: boolean;
 } {
-  const origin = publicAssetOrigin();
   if (LIVE_CHART_WIDGETS.has(widget)) {
     return {
-      csp: { frameDomains: [origin] },
+      csp: liveChartCsp(),
       prefersBorder: false,
     };
   }
   return { csp: {} };
+}
+
+/** `resources/read` contents `_meta` — hosts take CSP from here, not tool `_meta`. */
+export function resourceContentsMeta(widget: string): Record<string, unknown> {
+  const ui = resourceUiFor(widget);
+  if (!LIVE_CHART_WIDGETS.has(widget)) return { ui };
+  return {
+    ui,
+    "openai/widgetCSP": liveChartOpenAiCsp(),
+  };
 }
 
 function registerWidgetResource(
@@ -36,7 +76,7 @@ function registerWidgetResource(
   mimeType: string,
   widget: string,
 ): void {
-  const ui = resourceUiFor(widget);
+  const contentsMeta = resourceContentsMeta(widget);
   registerAppResource(
     server,
     label,
@@ -44,9 +84,9 @@ function registerWidgetResource(
     {
       description: label,
       ...(mimeType !== RESOURCE_MIME_TYPE ? { mimeType } : {}),
-      _meta: { ui },
+      _meta: contentsMeta,
     },
-    loggedHtmlReadHandler(uri, html, mimeType, ui),
+    loggedHtmlReadHandler(uri, html, mimeType, contentsMeta),
   );
 }
 
@@ -78,11 +118,7 @@ export function uiMetaFor(widget: string): Record<string, unknown> {
     "openai/toolInvocation/invoking": "تشغيل Lonora...",
     "openai/toolInvocation/invoked": "اكتمل تحديث Lonora.",
     "openai/widgetCSP": live
-      ? {
-          connect_domains: [origin],
-          resource_domains: [origin],
-          frame_domains: [origin],
-        }
+      ? liveChartOpenAiCsp()
       : {
           connect_domains: [origin],
           resource_domains: [origin],

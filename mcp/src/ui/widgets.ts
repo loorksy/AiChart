@@ -239,7 +239,7 @@ const liveChart = widgetHtml(
   var ORIGIN = "${PLATFORM_ORIGIN}";
   var S = { symbol:null, interval:"15m", layoutId:null, drawings:[], rec:null,
             targets:[], studies:[], theme:"dark", locale:"ar", booted:false,
-            failures:0, timer:null, frameReady:false };
+            failures:0, timer:null, frameReady:false, embedUrl:null };
 
   function canonSym(s){
     s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -248,19 +248,29 @@ const liveChart = widgetHtml(
   function origin(){
     try { return new URL(ORIGIN).origin; } catch (e) { return "https://aichart.lork.cloud"; }
   }
+  function isBoundEmbed(url){
+    if (!url || typeof url !== "string") return false;
+    try {
+      var u = new URL(url);
+      return u.origin === origin() && u.pathname === "/embed/chart" && !!u.searchParams.get("token");
+    } catch (e) { return false; }
+  }
   function embedSrc(){
-    var q = "interval=" + encodeURIComponent(S.interval || "15m") +
-      "&theme=" + encodeURIComponent(S.theme || "dark") +
-      "&locale=" + encodeURIComponent(S.locale || "ar");
-    if (S.symbol) q = "symbol=" + encodeURIComponent(S.symbol) + "&" + q;
-    return origin() + "/embed/chart?" + q;
+    var url = S.embedUrl;
+    if (!isBoundEmbed(url)) return "";
+    if (url.indexOf("theme=") < 0)
+      url += (url.indexOf("?") >= 0 ? "&" : "?") + "theme=" + encodeURIComponent(S.theme || "dark");
+    if (url.indexOf("locale=") < 0)
+      url += "&locale=" + encodeURIComponent(S.locale || "ar");
+    return url;
   }
   function applyPayload(d){
     d = d || {};
+    var prevSym = S.symbol, prevIv = S.interval, prevLid = S.layoutId;
     if (d.symbol) S.symbol = canonSym(d.symbol);
     if (d.interval) S.interval = String(d.interval);
     if (d.layout_id) S.layoutId = d.layout_id;
-    if (d.id && (d.state || d.drawings_count != null)) S.layoutId = d.id;
+    if (d.id && (d.state || d.drawings_count != null || d.embed_url)) S.layoutId = d.id;
     if (d.theme === "light" || d.theme === "dark") S.theme = d.theme;
     if (d.locale) S.locale = String(d.locale);
     var st = (d.state && typeof d.state === "object") ? d.state : null;
@@ -274,6 +284,10 @@ const liveChart = widgetHtml(
     if (d.recommendation !== undefined) S.rec = d.recommendation;
     if (Array.isArray(d.targets)) S.targets = d.targets;
     if (Array.isArray(d.studies)) S.studies = d.studies;
+    if (isBoundEmbed(d.embed_url)) {
+      var identityChanged = S.symbol !== prevSym || S.interval !== prevIv || S.layoutId !== prevLid;
+      if (!S.embedUrl || identityChanged) S.embedUrl = d.embed_url;
+    }
   }
   function setTitle(){
     var fallback = window.AIC && window.AIC.t ? window.AIC.t("chartTitle") : "Chart";
@@ -306,6 +320,7 @@ const liveChart = widgetHtml(
   function mountFrame(){
     var f = document.getElementById("tv");
     var next = embedSrc();
+    if (!next) return;
     if (f.getAttribute("src") === next) { pushState(); return; }
     S.frameReady = false;
     f.onload = function () { S.frameReady = true; pushState(); };
@@ -313,8 +328,10 @@ const liveChart = widgetHtml(
   }
   function refresh(){
     setTitle();
-    if (!S.symbol) {
-      setHint(window.AIC && window.AIC.t ? window.AIC.t("noSymbolHint") : "No symbol yet");
+    if (!embedSrc()) {
+      setHint(window.AIC && window.AIC.t ? window.AIC.t("noBoundChart") : "Waiting for the linked account");
+      var f = document.getElementById("tv");
+      if (f) f.removeAttribute("src");
     } else {
       setHint("");
       mountFrame();
