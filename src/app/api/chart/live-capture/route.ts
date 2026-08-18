@@ -6,6 +6,7 @@ import {
   ackLiveCapture,
   completeLiveCapture,
   listPendingLiveCaptures,
+  noteLiveCapturePoll,
 } from "@/lib/chart/liveCapture";
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     if (!layout) {
       return NextResponse.json({ error: "layout not found" }, { status: 404 });
     }
+    noteLiveCapturePoll(user.id, layoutId);
     return NextResponse.json({
       requests: listPendingLiveCaptures(user.id, layoutId),
     });

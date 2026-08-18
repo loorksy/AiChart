@@ -38,6 +38,8 @@ import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { Recommendation } from "@/lib/types";
 import { SpreadPriceLines } from "@/lib/chart/tv/spreadPriceLines";
 import { useLivePrice } from "@/hooks/useLivePrice";
+import { barDurationSec } from "@/lib/intervals";
+import { CHART_CAPTURE_CANDLES } from "@/lib/chart/captureWindow";
 import {
   LOCALE_STORAGE_KEY,
   dirForLocale,
@@ -275,6 +277,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       const restoreInterval = interval;
       let hidDrawings = false;
       let hidStudies = false;
+      let previousRange: { from: number; to: number } | null = null;
       const previousHide =
         typeof w.hideAllDrawingTools === "function"
           ? w.hideAllDrawingTools().value()
@@ -331,7 +334,28 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           }
         }
 
-        await new Promise((r) => window.setTimeout(r, 80));
+        try {
+          const range = chart.getVisibleRange();
+          if (
+            range &&
+            Number.isFinite(range.from) &&
+            Number.isFinite(range.to)
+          ) {
+            previousRange = { from: range.from, to: range.to };
+          }
+        } catch {
+          previousRange = null;
+        }
+        const barSec = Math.max(1, barDurationSec(opts?.interval ?? interval));
+        const rangeTo = Math.floor(Date.now() / 1000) + barSec;
+        const rangeFrom = rangeTo - CHART_CAPTURE_CANDLES * barSec;
+        try {
+          await chart.setVisibleRange({ from: rangeFrom, to: rangeTo });
+        } catch {
+          /* keep current zoom if the library refuses the range */
+        }
+
+        await new Promise((r) => window.setTimeout(r, 200));
 
         let drawingsRendered = 0;
         let studiesRendered = 0;
@@ -393,6 +417,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           }
           if (chart.resolution() !== toResolution(restoreInterval)) {
             chart.setResolution(toResolution(restoreInterval), () => {});
+          }
+          if (previousRange) {
+            void chart.setVisibleRange(previousRange);
           }
         } catch {
           /* restore best-effort */

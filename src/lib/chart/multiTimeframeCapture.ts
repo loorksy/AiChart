@@ -10,7 +10,7 @@
  * without its numeric counterpart being present in the same payload.
  */
 
-import { captureChartImage } from "@/lib/chart/liveCapture";
+import { captureChartImage, LIVE_CAPTURE_ACK_MS } from "@/lib/chart/liveCapture";
 import { canonicalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { getUnifiedSnapshot } from "@/lib/markets";
@@ -45,7 +45,7 @@ export const DEFAULT_MAX_IMAGES = 4;
 /** Hard ceiling regardless of what the caller asks for. */
 export const MAX_IMAGES_LIMIT = 6;
 /** Per-image wall clock. One slow timeframe must not sink the request. */
-export const DEFAULT_IMAGE_TIMEOUT_MS = 8_000;
+export const DEFAULT_IMAGE_TIMEOUT_MS = 16_000;
 const MIN_IMAGE_TIMEOUT_MS = 2_000;
 const MAX_IMAGE_TIMEOUT_MS = 20_000;
 /** Enough candles for the regime detector's 60-bar minimum plus its baseline. */
@@ -208,7 +208,7 @@ export async function captureTimeframeImage(
       liveSession: input.liveSession,
       includeDrawings: input.includeDrawings,
       includeStudies: input.includeStudies,
-      ackTimeoutMs: Math.min(timeoutMs, 4_000),
+      ackTimeoutMs: Math.min(timeoutMs, LIVE_CAPTURE_ACK_MS),
     }),
     timeoutMs,
   );

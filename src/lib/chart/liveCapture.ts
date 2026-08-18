@@ -14,9 +14,14 @@ import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import type { MarketType } from "@/lib/markets/types";
 import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import type { VisualConfirmation } from "@/lib/recommendations/visualConfirmation";
+import {
+  CHART_CAPTURE_CANDLES,
+  LIVE_TAB_FRESH_MS,
+} from "@/lib/chart/captureWindow";
 
 export const LIVE_CAPTURE_CONCURRENCY = 2;
-export const LIVE_CAPTURE_ACK_MS = 4_000;
+/** Background chart tabs are timer-throttled (~1s); 8s still gets several polls. */
+export const LIVE_CAPTURE_ACK_MS = 8_000;
 export const LIVE_CAPTURE_UPLOAD_MS = 12_000;
 /** How long a successful live capture authorises visual_confirmation. */
 export const LAST_CAPTURE_TTL_MS = 10 * 60 * 1000;
@@ -76,6 +81,45 @@ const lastCaptures = new Map<
   number,
   { meta: ChartCaptureMeta; at: number; layoutId: string }
 >();
+/** Heartbeat from GET /api/chart/live-capture — which tab can screenshot. */
+const liveTabs = new Map<string, { userId: number; layoutId: string; at: number }>();
+
+function liveTabKey(userId: number, layoutId: string): string {
+  return `${userId}:${layoutId}`;
+}
+
+export function noteLiveCapturePoll(userId: number, layoutId: string): void {
+  liveTabs.set(liveTabKey(userId, layoutId), {
+    userId,
+    layoutId,
+    at: Date.now(),
+  });
+}
+
+/**
+ * Prefer a layout whose tab has polled recently so MCP captures hit the
+ * open TradingView widget instead of a stale/created layout that nobody
+ * is watching (that path was QuickChart every time).
+ */
+export function pickLiveLayoutId(
+  userId: number,
+  preferred?: string | null,
+): string | undefined {
+  const now = Date.now();
+  const pref =
+    preferred && /^[A-Za-z0-9]{8,16}$/.test(preferred) ? preferred : undefined;
+  if (pref) {
+    const hit = liveTabs.get(liveTabKey(userId, pref));
+    if (hit && now - hit.at <= LIVE_TAB_FRESH_MS) return pref;
+  }
+  let best: { layoutId: string; at: number } | null = null;
+  for (const tab of liveTabs.values()) {
+    if (tab.userId !== userId) continue;
+    if (now - tab.at > LIVE_TAB_FRESH_MS) continue;
+    if (!best || tab.at > best.at) best = { layoutId: tab.layoutId, at: tab.at };
+  }
+  return best?.layoutId ?? pref;
+}
 
 let active = 0;
 const waiters: Array<() => void> = [];
@@ -217,7 +261,9 @@ async function quickchartFallback(
   market: MarketType,
   reason: CaptureFallbackReason,
 ): Promise<ChartCaptureResult | null> {
-  const buffer = await buildChartSnapshotBufferForMarket(userId, symbol, interval, market);
+  const buffer = await buildChartSnapshotBufferForMarket(userId, symbol, interval, market, {
+    limit: CHART_CAPTURE_CANDLES,
+  });
   if (!buffer) return null;
   const meta: ChartCaptureMeta = {
     image_source: "quickchart_fallback",
@@ -345,6 +391,7 @@ export function resetLiveCaptureForTests(): void {
   }
   pending.clear();
   lastCaptures.clear();
+  liveTabs.clear();
   active = 0;
   waiters.length = 0;
 }

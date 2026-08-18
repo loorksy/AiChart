@@ -40,4 +40,16 @@ describe("SmartChartWorkspace initial state matches server truth", () => {
       "the one pipe is the platform's OANDA feed; there is no paint-time account placeholder",
     );
   });
+
+  it("live-capture poller keeps answering when the tab is in the background", () => {
+    const captureBlock = SRC.slice(
+      SRC.indexOf("Live-capture RPC"),
+      SRC.indexOf("const t = window.setInterval(() => void tick(), 400)"),
+    );
+    assert.doesNotMatch(
+      captureBlock,
+      /visibilityState/,
+      "MCP captures arrive while the operator is in Claude — a hidden /chat tab must still poll",
+    );
+  });
 });

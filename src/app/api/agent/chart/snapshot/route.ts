@@ -4,7 +4,7 @@ import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getChartLayoutById, getOrCreateChartLayout } from "@/lib/store";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
-import { captureChartImage } from "@/lib/chart/liveCapture";
+import { captureChartImage, pickLiveLayoutId } from "@/lib/chart/liveCapture";
 
 const schema = z.object({
   symbol: z.string().min(1),
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
         layoutId = undefined;
       }
     }
+    layoutId = pickLiveLayoutId(userId, layoutId);
     if (!layoutId) {
       const primary = await getOrCreateChartLayout(userId, body.symbol.toUpperCase());
       layoutId = primary?.id;

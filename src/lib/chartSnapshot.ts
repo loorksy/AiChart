@@ -9,6 +9,7 @@ import {
   validateChatImage,
   type ChatImagePayload,
 } from "./chatImage";
+import { CHART_CAPTURE_CANDLES } from "./chart/captureWindow";
 
 export interface ChartSnapshotInput {
   symbol: string;
@@ -446,8 +447,8 @@ async function renderChartPng(
     body: JSON.stringify({
       version: "3",
       chart,
-      width: 900,
-      height: 480,
+      width: 1280,
+      height: 560,
       backgroundColor: "#0a0e17",
       format: "png",
     }),
@@ -464,7 +465,7 @@ export async function buildChartSnapshotUrl(
   input: ChartSnapshotInput,
 ): Promise<string | null> {
   try {
-    const limit = input.limit ?? 80;
+    const limit = input.limit ?? CHART_CAPTURE_CANDLES;
     const candles = await fetchCandleSeries(
       undefined,
       input.symbol,
@@ -476,7 +477,7 @@ export async function buildChartSnapshotUrl(
     const chart = buildChartJson(input, candles);
     if (!chart) return null;
     const encoded = encodeURIComponent(JSON.stringify(chart));
-    return `https://quickchart.io/chart?v=3&w=900&h=480&bkg=%230a0e17&c=${encoded}`;
+    return `https://quickchart.io/chart?v=3&w=1280&h=560&bkg=%230a0e17&c=${encoded}`;
   } catch {
     return null;
   }
@@ -487,7 +488,7 @@ export async function buildChartSnapshotBuffer(
   input: ChartSnapshotInput,
 ): Promise<Buffer | null> {
   try {
-    const limit = input.limit ?? 80;
+    const limit = input.limit ?? CHART_CAPTURE_CANDLES;
     const candles = await fetchCandleSeries(
       undefined,
       input.symbol,
@@ -513,7 +514,7 @@ export async function buildChartSnapshotBufferForMarket(
   extras: Partial<ChartSnapshotInput> = {},
 ): Promise<Buffer | null> {
   try {
-    const limit = extras.limit ?? 80;
+    const limit = extras.limit ?? CHART_CAPTURE_CANDLES;
     const candles = await fetchCandleSeries(
       userId,
       symbol,

@@ -494,7 +494,6 @@ function SmartChartWorkspaceInner({
 
     const tick = async () => {
       if (stopped || busy) return;
-      if (document.visibilityState !== "visible") return;
       busy = true;
       try {
         const res = await fetch(`/api/chart/live-capture?layout_id=${layoutId}`, {

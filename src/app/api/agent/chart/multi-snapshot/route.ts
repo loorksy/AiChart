@@ -12,6 +12,8 @@ import {
   rejectNonForexMarket,
   resolveActiveMarket,
 } from "@/lib/marketPolicy";
+import { getChartLayoutById, getOrCreateChartLayout } from "@/lib/store";
+import { pickLiveLayoutId } from "@/lib/chart/liveCapture";
 
 const schema = z.object({
   symbol: z.string().min(1),
@@ -47,6 +49,16 @@ export async function POST(req: NextRequest) {
     }
     const market = resolveActiveMarket(body.market ?? DEFAULT_MARKET);
 
+    let layoutId = body.layout_id;
+    if (layoutId) {
+      const owned = await getChartLayoutById(layoutId, userId);
+      if (!owned) layoutId = undefined;
+    }
+    layoutId = pickLiveLayoutId(userId, layoutId);
+    if (!layoutId) {
+      layoutId = (await getOrCreateChartLayout(userId, body.symbol.toUpperCase()))?.id;
+    }
+
     const result = await captureMultiTimeframeSnapshot(userId, {
       symbol: body.symbol,
       timeframes: body.timeframes,
@@ -55,7 +67,7 @@ export async function POST(req: NextRequest) {
       imageTimeoutMs: body.image_timeout_ms ?? DEFAULT_IMAGE_TIMEOUT_MS,
       includeNumericContext: body.include_numeric_context,
       skipCache: body.fresh === true,
-      layoutId: body.layout_id,
+      layoutId,
       liveSession: body.live_session !== false,
       includeDrawings: body.include_drawings,
       includeStudies: body.include_studies,

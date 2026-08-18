@@ -18,6 +18,8 @@ import {
   klinesClientKey,
 } from "@/lib/ohlc/klinesClientCache";
 
+import { CHART_CAPTURE_CANDLES } from "@/lib/chart/captureWindow";
+
 /** Upstream history pulls reject ranges over ~5000 candles — stay safely under. */
 const MAX_BARS_PER_REQUEST = 4000;
 
@@ -316,7 +318,7 @@ export function createAiChartDatafeed(
             void fetchCandles(ticker, interval, {
               from: fromMs,
               to: toMs,
-              limit: Math.min(Math.max(countBack, 300), maxBars),
+              limit: Math.min(Math.max(countBack, CHART_CAPTURE_CANDLES), maxBars),
             })
               .then(({ candles }) => {
                 if (candles.length) setKlinesClientCache(cacheKey, candles);
@@ -332,7 +334,7 @@ export function createAiChartDatafeed(
         {
           from: fromMs,
           to: toMs,
-          limit: Math.min(Math.max(countBack, 300), maxBars),
+          limit: Math.min(Math.max(countBack, CHART_CAPTURE_CANDLES), maxBars),
         },
       );
       if (isLatestWindow && rows.length) {

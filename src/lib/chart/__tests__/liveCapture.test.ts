@@ -12,6 +12,8 @@ import {
   drawingsIncludedFromCapture,
   listPendingLiveCaptures,
   liveCaptureActiveCount,
+  noteLiveCapturePoll,
+  pickLiveLayoutId,
   resetLiveCaptureForTests,
   studiesIncludedFromCapture,
 } from "@/lib/chart/liveCapture";
@@ -60,6 +62,22 @@ describe("coerceVisualConfirmation", () => {
     assert.equal(coerceVisualConfirmation("confirmed", 99), "not_checked");
     assert.equal(coerceVisualConfirmation("contradicted", 99), "not_checked");
     assert.equal(coerceVisualConfirmation("not_checked", 99), "not_checked");
+  });
+});
+
+describe("pickLiveLayoutId", () => {
+  afterEach(() => resetLiveCaptureForTests());
+
+  it("prefers a layout that has polled recently over a stale preferred id", () => {
+    noteLiveCapturePoll(7, "LiveTab01");
+    assert.equal(pickLiveLayoutId(7, "StaleTab9"), "LiveTab01");
+    assert.equal(pickLiveLayoutId(7), "LiveTab01");
+  });
+
+  it("keeps the preferred layout when that tab is the one polling", () => {
+    noteLiveCapturePoll(7, "Prefer001");
+    noteLiveCapturePoll(8, "OtherUser");
+    assert.equal(pickLiveLayoutId(7, "Prefer001"), "Prefer001");
   });
 });
 
