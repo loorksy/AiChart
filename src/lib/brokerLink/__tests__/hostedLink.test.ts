@@ -64,6 +64,8 @@ describe("MetaAPI client never sends credentials", () => {
       assert.equal(payload.platform, "mt5");
       assert.equal(payload.server, DEFAULT_BROKER.server);
       assert.equal(payload.magic, LONORA_MAGIC);
+      assert.equal(payload.type, "cloud-g1");
+      assert.equal(payload.reliability, "regular");
     } finally {
       globalThis.fetch = restore;
     }
@@ -151,7 +153,11 @@ describe("hosted-link route is session-auth and never a Lonora form", () => {
     assert.doesNotMatch(card, /<select/);
     assert.doesNotMatch(card, /brokers\.map/);
     assert.doesNotMatch(card, /brokerId/);
+    assert.doesNotMatch(card, /json\.error/);
+    assert.match(card, /metaapi_balance/);
     assert.match(card, /window\.open/);
+    assert.match(route, /publicBrokerError/);
+    assert.doesNotMatch(route, /\{ error: err\.message \}/);
     assert.match(card, /method: "POST"/);
     assert.match(client, /No login\/password/);
     assert.doesNotMatch(client, /\/trade/);

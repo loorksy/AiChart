@@ -19,6 +19,26 @@ function publicState(state: string): "draft" | "configured" {
   return state === "DRAFT" ? "draft" : "configured";
 }
 
+function publicBrokerError(err: MetaapiClientError): {
+  error: string;
+  code: "metaapi_balance" | "metaapi_error";
+  status: number;
+} {
+  const msg = err.message.toLowerCase();
+  if (/top up|high reliability|insufficient (funds|balance)/.test(msg)) {
+    return {
+      error: "MetaAPI balance is required before linking can start.",
+      code: "metaapi_balance",
+      status: 402,
+    };
+  }
+  return {
+    error: "Could not open the linking page.",
+    code: "metaapi_error",
+    status: err.status >= 400 && err.status < 500 ? err.status : 502,
+  };
+}
+
 export async function GET(req: Request) {
   try {
     const user = await requireUser();
@@ -116,9 +136,10 @@ export async function POST() {
     return NextResponse.json({ configurationLink });
   } catch (err) {
     if (err instanceof MetaapiClientError) {
+      const body = publicBrokerError(err);
       return NextResponse.json(
-        { error: err.message },
-        { status: err.status >= 400 && err.status < 500 ? err.status : 502 },
+        { error: body.error, code: body.code },
+        { status: body.status },
       );
     }
     return handleError(err);

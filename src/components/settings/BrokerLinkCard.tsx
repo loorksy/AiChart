@@ -47,11 +47,17 @@ export function BrokerLinkCard() {
     try {
       const res = await fetch("/api/integrations/broker", { method: "POST" });
       const json = (await res.json()) as {
-        error?: string;
+        code?: string;
         configurationLink?: string;
       };
       if (!res.ok) {
-        setError(json.error ?? t("connect.broker.error"));
+        setError(
+          t(
+            json.code === "metaapi_balance"
+              ? "connect.broker.needs_balance"
+              : "connect.broker.error",
+          ),
+        );
         return;
       }
       const url = json.configurationLink;

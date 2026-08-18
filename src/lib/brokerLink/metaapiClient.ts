@@ -92,13 +92,16 @@ export async function createDraftAccount(input: {
   transactionId?: string;
 }): Promise<{ id: string; state: MetaapiAccountState }> {
   const transactionId = input.transactionId ?? newTransactionId();
+  // cloud-g2 only offers high reliability, which MetaAPI refuses until the
+  // operator account is prepaid. G1 + regular is the hosted-link default so
+  // clicking Link opens the credentials page without a top-up.
   const payload: Record<string, unknown> = {
     name: `Lonora ${input.userId}`,
     server: input.broker.server,
     platform: BROKER_PLATFORM,
     magic: LONORA_MAGIC,
-    type: "cloud-g2",
-    reliability: "high",
+    type: "cloud-g1",
+    reliability: "regular",
     metadata: { lonoraUserId: String(input.userId), brokerId: input.broker.id },
   };
   if (input.broker.keywords?.length) payload.keywords = input.broker.keywords;

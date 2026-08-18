@@ -238,6 +238,8 @@ export const en = {
   "connect.broker.draft": "Finish the form on MetaAPI.",
   "connect.broker.configured": "Account linked.",
   "connect.broker.error": "Could not open the linking page.",
+  "connect.broker.needs_balance":
+    "MetaAPI balance is required before linking can start.",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",

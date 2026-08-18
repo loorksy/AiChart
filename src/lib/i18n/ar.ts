@@ -237,6 +237,7 @@ export const ar: Record<TranslationKey, string> = {
   "connect.broker.draft": "أكمل النموذج في صفحة MetaAPI.",
   "connect.broker.configured": "الحساب مربوط.",
   "connect.broker.error": "تعذر فتح صفحة الربط.",
+  "connect.broker.needs_balance": "يلزم رصيد في MetaAPI قبل بدء الربط.",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",
