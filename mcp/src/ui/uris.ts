@@ -13,6 +13,7 @@ const VERSIONED_WIDGET_PATHS: Record<string, string> = {
   portfolio: "portfolio/v3",
   "live-chart": "live-chart/v11",
   "chart-drawn": "chart-drawn/v11",
+  "recommendation-card": "recommendation-card/v6",
 };
 
 /** Older URIs Claude may still request after a version bump — serve current HTML. */

@@ -77,7 +77,7 @@ describe("MCP card tools integration audit", () => {
               RESOURCE_MIME_TYPE,
               `${tool.name} must use MCP Apps MIME`,
             );
-            if (widget === "live-chart" || widget === "chart-drawn") {
+            if (widget === "live-chart" || widget === "chart-drawn" || widget === "recommendation-card") {
               const contentsMeta = item._meta as {
                 ui?: {
                   prefersBorder?: boolean;

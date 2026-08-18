@@ -11,7 +11,7 @@ import { publicAssetOrigin } from "./runtime.js";
 import { legacyWidgetUris, skybridgePath, skybridgeUri, widgetUri } from "./uris.js";
 import { WIDGETS } from "./widgets.js";
 
-const PANE_WIDGETS = new Set(["live-chart", "chart-drawn"]);
+const BORDERLESS_WIDGETS = new Set(["live-chart", "chart-drawn", "recommendation-card"]);
 
 export type ResourceCsp = {
   connectDomains?: string[];
@@ -24,7 +24,7 @@ export function resourceUiFor(widget: string): {
   csp: ResourceCsp;
   prefersBorder?: boolean;
 } {
-  if (PANE_WIDGETS.has(widget)) {
+  if (BORDERLESS_WIDGETS.has(widget)) {
     return { csp: {}, prefersBorder: false };
   }
   return { csp: {} };

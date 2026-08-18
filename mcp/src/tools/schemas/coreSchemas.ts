@@ -344,7 +344,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       recent: z.boolean().optional().describe("Latest lessons regardless of symbol"),
     },
     annotations: READ_ONLY,
-    ui: { widget: "lessons-card" },
   },
   {
     name: "jobs_wait",
@@ -373,7 +372,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         .describe("job_id values to render together, 1-12 per call"),
     },
     annotations: READ_ONLY,
-    ui: { widget: "jobs-report" },
   },
   {
     name: "get_strategy_performance",

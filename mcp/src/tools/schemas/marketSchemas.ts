@@ -15,7 +15,6 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       market: zMarket,
     },
     annotations: READ_ONLY,
-    ui: { widget: "analysis" },
   },
   {
     name: "get_multi_timeframe_snapshot",
@@ -32,7 +31,6 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       market: zMarket,
     },
     annotations: READ_ONLY,
-    ui: { widget: "analysis" },
   },
   {
     name: "get_market_price",
@@ -52,7 +50,6 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       q: z.string().max(20).optional().describe("Optional search e.g. EUR or XAU"),
     },
     annotations: READ_ONLY,
-    ui: { widget: "pair-picker" },
   },
   {
     name: "get_chart_link",
@@ -81,7 +78,6 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       market: zMarket,
     },
     annotations: READ_ONLY,
-    ui: { widget: "scan-results" },
   },
   {
     name: "get_ohlc",
@@ -117,7 +113,6 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       limit: z.number().int().min(20).max(500).optional(),
     },
     annotations: READ_ONLY,
-    ui: { widget: "levels-report" },
   },
   {
     name: "detect_market_regime",

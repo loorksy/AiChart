@@ -173,7 +173,6 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       destructiveHint: false,
       idempotentHint: false,
     },
-    ui: { widget: "analysis" },
   },
 ];
 
