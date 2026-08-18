@@ -18,7 +18,12 @@ const SAME_PROVIDER_ALT: Partial<Record<LLMProvider, string>> = {
   openrouter: "openrouter/openai/gpt-4o-mini",
 };
 
-const SYNC_PROVIDERS: LLMProvider[] = ["openai", "anthropic", "openrouter"];
+const SYNC_PROVIDERS: LLMProvider[] = [
+  "openai",
+  "anthropic",
+  "openrouter",
+  "tokenrouter",
+];
 
 function isAllowedModelRef(ref: string): boolean {
   const lower = ref.toLowerCase();
@@ -80,4 +85,5 @@ export const PROVIDER_BASE_URL: Partial<Record<LLMProvider, string>> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
   openrouter: "https://openrouter.ai/api/v1",
+  tokenrouter: "https://api.tokenrouter.com/v1",
 };

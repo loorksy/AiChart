@@ -4,10 +4,13 @@ import { getPlatformValueAsync } from "@/lib/platformConfig";
 import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/anthropic";
 import {
   ANTHROPIC_MODEL_CHOICES,
+  DEFAULT_TOKENROUTER_MODEL,
   OPENAI_MODEL_CHOICES,
+  TOKENROUTER_MODEL_CHOICES,
 } from "@/lib/modelCatalog";
 import {
   isOpenRouterEnabledAsync,
+  isTokenRouterEnabledAsync,
   parsePlatformProvider,
 } from "@/lib/llm";
 import { listOpenRouterFreeModels } from "@/lib/openaiCompat";
@@ -19,7 +22,7 @@ const log = createLogger("agent.models");
 export interface AgentModelOption {
   /** "provider/model" — what the client stores as the preference. */
   ref: string;
-  provider: "openai" | "anthropic" | "openrouter";
+  provider: "openai" | "anthropic" | "openrouter" | "tokenrouter";
   model: string;
   label: string;
 }
@@ -30,6 +33,8 @@ export interface AgentModelOption {
  * OpenAI/Anthropic stay on the curated catalogue. OpenRouter is a test
  * gateway: when the key is present and not explicitly disabled, the live
  * openrouter.ai catalogue is fetched so the operator can trial any route.
+ * TokenRouter is a closed catalogue (DeepSeek V4 Pro) offered when the key
+ * is present and not explicitly disabled.
  * Never exposes key material.
  */
 export async function GET() {
@@ -40,19 +45,25 @@ export async function GET() {
       anthropicKey,
       openrouterKey,
       openrouterEnabled,
+      tokenrouterKey,
+      tokenrouterEnabled,
       defaultProvider,
       defaultOpenAiModel,
       defaultClaudeModel,
       defaultOpenRouterModel,
+      defaultTokenRouterModel,
     ] = await Promise.all([
       getPlatformValueAsync("OPENAI_API_KEY"),
       getPlatformValueAsync("ANTHROPIC_API_KEY"),
       getPlatformValueAsync("OPENROUTER_API_KEY"),
       isOpenRouterEnabledAsync(),
+      getPlatformValueAsync("TOKENROUTER_API_KEY"),
+      isTokenRouterEnabledAsync(),
       getPlatformValueAsync("AI_PROVIDER"),
       getPlatformValueAsync("AI_MODEL"),
       getPlatformValueAsync("ANTHROPIC_MODEL"),
       getPlatformValueAsync("OPENROUTER_MODEL"),
+      getPlatformValueAsync("TOKENROUTER_MODEL"),
     ]);
 
     const options: AgentModelOption[] = [];
@@ -115,6 +126,17 @@ export async function GET() {
       }
     }
 
+    if (tokenrouterKey && tokenrouterEnabled) {
+      options.push(
+        ...TOKENROUTER_MODEL_CHOICES.map((m) => ({
+          ref: `tokenrouter/${m.id}`,
+          provider: "tokenrouter" as const,
+          model: m.id,
+          label: m.label,
+        })),
+      );
+    }
+
     const settings = await getSettings(user.id);
     const provider = parsePlatformProvider(defaultProvider);
     const platformDefault =
@@ -124,7 +146,9 @@ export async function GET() {
           ? // Env override wins; otherwise the newest live free route — the
             // same pick the engine's auto-resolution makes.
             `openrouter/${defaultOpenRouterModel?.trim() || firstFreeOpenRouterModel || "openai/gpt-4o-mini"}`
-          : `openai/${defaultOpenAiModel?.trim() || "gpt-4.1"}`;
+          : provider === "tokenrouter"
+            ? `tokenrouter/${defaultTokenRouterModel?.trim() || DEFAULT_TOKENROUTER_MODEL}`
+            : `openai/${defaultOpenAiModel?.trim() || "gpt-4.1"}`;
 
     return NextResponse.json({
       models: options,

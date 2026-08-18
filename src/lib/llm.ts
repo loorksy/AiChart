@@ -1,10 +1,12 @@
 /**
  * Unified LLM layer. First-class providers: OpenAI (OpenAI-compatible client),
- * Anthropic Claude (native Messages API), and OpenRouter (OpenAI-compatible
- * gateway at https://openrouter.ai — test-only, admin-toggleable).
+ * Anthropic Claude (native Messages API), OpenRouter (OpenAI-compatible
+ * gateway at https://openrouter.ai — test-only, admin-toggleable), and
+ * TokenRouter (OpenAI-compatible gateway at https://api.tokenrouter.com/v1
+ * with a closed DeepSeek V4 Pro catalogue).
  * The operator picks the provider + model from the admin keys panel
- * (AI_PROVIDER / AI_MODEL / ANTHROPIC_MODEL / OPENROUTER_*); every
- * chat/analysis call routes through the active provider.
+ * (AI_PROVIDER / AI_MODEL / ANTHROPIC_MODEL / OPENROUTER_* / TOKENROUTER_*);
+ * every chat/analysis call routes through the active provider.
  */
 
 import {
@@ -24,7 +26,7 @@ import {
   type OpenAICompatTarget,
 } from "./openaiCompat";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { isAllowedModelRef } from "./modelCatalog";
+import { DEFAULT_TOKENROUTER_MODEL, isAllowedModelRef } from "./modelCatalog";
 import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
 import { recordLLMUsage } from "./billing/usageMeter";
 import { createLogger } from "./logger";
@@ -90,13 +92,20 @@ export async function isOfferedModelRef(
 ): Promise<boolean> {
   if (isAllowedModelRef(`${parsed.provider}/${parsed.model}`)) return true;
   // OpenRouter is a live gateway: any well-formed route id is offered once the
-  // operator's key is ready (and not explicitly disabled).
+  // operator's key is ready (and not explicitly disabled). TokenRouter stays
+  // on the closed catalogue above — it is not a live-all gateway.
   if (parsed.provider === "openrouter") {
     if (!(await isProviderReadyAsync("openrouter"))) return false;
     return /^[A-Za-z0-9._:/-]{1,120}$/.test(parsed.model);
   }
   const configuredField =
-    parsed.provider === "anthropic" ? "ANTHROPIC_MODEL" : "AI_MODEL";
+    parsed.provider === "anthropic"
+      ? "ANTHROPIC_MODEL"
+      : parsed.provider === "tokenrouter"
+        ? "TOKENROUTER_MODEL"
+        : parsed.provider === "openrouter"
+          ? "OPENROUTER_MODEL"
+          : "AI_MODEL";
   const configured = (await getPlatformValueAsync(configuredField))?.trim();
   return Boolean(configured) && configured === parsed.model;
 }
@@ -112,25 +121,28 @@ export function parseModelRef(ref?: string | null): RequestModelSelection | null
   if (
     provider !== "openai" &&
     provider !== "anthropic" &&
-    provider !== "openrouter"
+    provider !== "openrouter" &&
+    provider !== "tokenrouter"
   ) {
     return null;
   }
   return { provider, model };
 }
 
-export type LLMProvider = "openai" | "anthropic" | "openrouter";
+export type LLMProvider = "openai" | "anthropic" | "openrouter" | "tokenrouter";
 
 export const LLM_PROVIDERS: { id: LLMProvider; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "anthropic", label: "Anthropic (Claude)" },
   { id: "openrouter", label: "OpenRouter (اختبار)" },
+  { id: "tokenrouter", label: "TokenRouter" },
 ];
 
 const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  tokenrouter: "TOKENROUTER_API_KEY",
 };
 
 const DEFAULT_MODEL = "gpt-4.1";
@@ -220,17 +232,31 @@ export async function isOpenRouterEnabledAsync(): Promise<boolean> {
   return !isExplicitlyDisabled(await getPlatformValueAsync("OPENROUTER_ENABLED"));
 }
 
+/**
+ * TokenRouter is available once a key exists unless the admin explicitly turns
+ * it off. Unset/blank means enabled — matching "paste key → it works".
+ */
+export function isTokenRouterEnabled(): boolean {
+  return !isExplicitlyDisabled(getPlatformValue("TOKENROUTER_ENABLED"));
+}
+
+export async function isTokenRouterEnabledAsync(): Promise<boolean> {
+  return !isExplicitlyDisabled(await getPlatformValueAsync("TOKENROUTER_ENABLED"));
+}
+
 export function parsePlatformProvider(raw?: string | null): LLMProvider {
   const v = raw?.trim();
   if (v === "anthropic") return "anthropic";
   if (v === "openrouter") return "openrouter";
+  if (v === "tokenrouter") return "tokenrouter";
   return "openai";
 }
 
-/** Key present, and (for OpenRouter) the admin enable toggle is on. */
+/** Key present, and (for gateways) the admin enable toggle is on. */
 export function isProviderReady(provider: LLMProvider): boolean {
   if (!getProviderApiKey(provider)?.trim()) return false;
   if (provider === "openrouter") return isOpenRouterEnabled();
+  if (provider === "tokenrouter") return isTokenRouterEnabled();
   return true;
 }
 
@@ -238,6 +264,7 @@ export async function isProviderReadyAsync(provider: LLMProvider): Promise<boole
   const key = (await getPlatformValueAsync(PROVIDER_KEY_FIELD[provider]))?.trim();
   if (!key) return false;
   if (provider === "openrouter") return isOpenRouterEnabledAsync();
+  if (provider === "tokenrouter") return isTokenRouterEnabledAsync();
   return true;
 }
 
@@ -258,6 +285,9 @@ export function getActiveModel(): string {
   }
   if (provider === "openrouter") {
     return getPlatformValue("OPENROUTER_MODEL")?.trim() || DEFAULT_OPENROUTER_MODEL;
+  }
+  if (provider === "tokenrouter") {
+    return getPlatformValue("TOKENROUTER_MODEL")?.trim() || DEFAULT_TOKENROUTER_MODEL;
   }
   return getPlatformValue("AI_MODEL")?.trim() || DEFAULT_MODEL;
 }
@@ -288,6 +318,9 @@ export function getQuickModel(): string {
   }
   if (provider === "openrouter") {
     return getPlatformValue("OPENROUTER_QUICK_MODEL")?.trim() || getDeepModel();
+  }
+  if (provider === "tokenrouter") {
+    return getPlatformValue("TOKENROUTER_QUICK_MODEL")?.trim() || getDeepModel();
   }
   return getPlatformValue("AI_QUICK_MODEL")?.trim() || getDeepModel();
 }
@@ -361,8 +394,27 @@ function openRouterCompatTarget(model: string): OpenAICompatTarget {
   };
 }
 
+function tokenRouterCompatTarget(model: string): OpenAICompatTarget {
+  if (!isTokenRouterEnabled()) {
+    throw new Error(
+      "TokenRouter is disabled in the admin panel. Set TOKENROUTER_ENABLED to use it.",
+    );
+  }
+  const apiKey = getProviderApiKey("tokenrouter");
+  if (!apiKey) {
+    throw new Error("TokenRouter API key is not configured. Add it from the keys panel.");
+  }
+  return {
+    baseUrl: "https://api.tokenrouter.com/v1",
+    apiKey,
+    model,
+    resilienceKey: "tokenrouter",
+  };
+}
+
 function compatTargetFor(provider: LLMProvider, model: string): OpenAICompatTarget {
   if (provider === "openrouter") return openRouterCompatTarget(model);
+  if (provider === "tokenrouter") return tokenRouterCompatTarget(model);
   return openaiCompatTarget(model);
 }
 

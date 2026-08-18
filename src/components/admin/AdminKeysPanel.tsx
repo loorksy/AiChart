@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
 
+import { TOKENROUTER_MODEL_CHOICES } from "@/lib/modelCatalog";
 import { OpenAIModelPicker } from "@/components/admin/OpenAIModelPicker";
 import { Button } from "@/components/squareui/button";
 import { Input } from "@/components/squareui/input";
@@ -71,6 +72,7 @@ const PROVIDERS: { id: string; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "anthropic", label: "Anthropic (Claude)" },
   { id: "openrouter", label: "OpenRouter (اختبار)" },
+  { id: "tokenrouter", label: "TokenRouter" },
 ];
 
 export function AdminKeysPanel() {
@@ -129,6 +131,9 @@ export function AdminKeysPanel() {
     if (patch.OPENROUTER_API_KEY && patch.OPENROUTER_ENABLED !== "0") {
       patch.OPENROUTER_ENABLED = "1";
     }
+    if (patch.TOKENROUTER_API_KEY && patch.TOKENROUTER_ENABLED !== "0") {
+      patch.TOKENROUTER_ENABLED = "1";
+    }
     if (Object.keys(patch).length === 0) {
       setMsg({
         type: "err",
@@ -181,9 +186,14 @@ export function AdminKeysPanel() {
   const openrouterEnabledField = fields.find((f) => f.key === "OPENROUTER_ENABLED");
   const openrouterKeyField = fields.find((f) => f.key === "OPENROUTER_API_KEY");
   const openrouterModelField = fields.find((f) => f.key === "OPENROUTER_MODEL");
+  const tokenrouterEnabledField = fields.find((f) => f.key === "TOKENROUTER_ENABLED");
+  const tokenrouterKeyField = fields.find((f) => f.key === "TOKENROUTER_API_KEY");
+  const tokenrouterModelField = fields.find((f) => f.key === "TOKENROUTER_MODEL");
   const providerRaw = draft.AI_PROVIDER ?? providerField?.value ?? "openai";
   const activeProvider =
-    providerRaw === "anthropic" || providerRaw === "openrouter"
+    providerRaw === "anthropic" ||
+    providerRaw === "openrouter" ||
+    providerRaw === "tokenrouter"
       ? providerRaw
       : "openai";
   const currentAnthropicModel =
@@ -192,6 +202,11 @@ export function AdminKeysPanel() {
     draft.OPENROUTER_MODEL ??
     openrouterModelField?.value ??
     "openai/gpt-4o-mini";
+  const currentTokenRouterModel =
+    draft.TOKENROUTER_MODEL ??
+    tokenrouterModelField?.value ??
+    TOKENROUTER_MODEL_CHOICES[0]?.id ??
+    "deepseek/deepseek-v4-pro-0813-free";
 
   const aiExtraFields = fields.filter(
     (f) =>
@@ -203,7 +218,10 @@ export function AdminKeysPanel() {
       f.key !== "ANTHROPIC_MODEL" &&
       f.key !== "OPENROUTER_ENABLED" &&
       f.key !== "OPENROUTER_API_KEY" &&
-      f.key !== "OPENROUTER_MODEL",
+      f.key !== "OPENROUTER_MODEL" &&
+      f.key !== "TOKENROUTER_ENABLED" &&
+      f.key !== "TOKENROUTER_API_KEY" &&
+      f.key !== "TOKENROUTER_MODEL",
   );
 
   if (loading && fields.length === 0) {
@@ -300,7 +318,7 @@ export function AdminKeysPanel() {
                     <div
                       role="radiogroup"
                       aria-label="المزوّد الافتراضي"
-                      className="inline-flex gap-1 rounded-lg border border-border bg-background p-1"
+                      className="inline-flex flex-wrap gap-1 rounded-lg border border-border bg-background p-1"
                     >
                       {PROVIDERS.map((p) => (
                         <button
@@ -419,6 +437,78 @@ export function AdminKeysPanel() {
                         emptyHint="أدخل مفتاح OpenRouter أعلاه لجلب النماذج المتاحة ديناميكياً."
                         loadingHint="جارٍ جلب النماذج من OpenRouter…"
                       />
+                    )}
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-border/70 bg-muted/30 px-3 py-3">
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">TokenRouter</span>
+                      {" — "}
+                      OpenAI-compatible gateway at{" "}
+                      <a
+                        href="https://tokenrouter.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline underline-offset-2"
+                        dir="ltr"
+                      >
+                        api.tokenrouter.com/v1
+                      </a>
+                      . Closed catalogue: DeepSeek V4 Pro. Paste a key to enable;
+                      the kill-switch disables it without deleting the key.
+                    </p>
+                    {tokenrouterEnabledField && (
+                      <ConfigFieldRow
+                        f={{
+                          ...tokenrouterEnabledField,
+                          value: tokenrouterEnabledField.value ?? "1",
+                        }}
+                        draft={draft}
+                        setDraftValue={setDraftValue}
+                      />
+                    )}
+                    {tokenrouterKeyField && (
+                      <ConfigFieldRow
+                        f={tokenrouterKeyField}
+                        draft={draft}
+                        setDraftValue={setDraftValue}
+                      />
+                    )}
+                    {tokenrouterModelField && (
+                      <Field
+                        label={
+                          <>
+                            TokenRouter model
+                            <span className="ms-2 text-[10px] text-muted-foreground" dir="ltr">
+                              TOKENROUTER_MODEL
+                            </span>
+                          </>
+                        }
+                        htmlFor="TOKENROUTER_MODEL"
+                      >
+                        <select
+                          id="TOKENROUTER_MODEL"
+                          dir="ltr"
+                          className="admin-input focus-ring tap-target h-10 w-full text-sm"
+                          value={currentTokenRouterModel}
+                          onChange={(e) =>
+                            setDraftValue("TOKENROUTER_MODEL", e.target.value)
+                          }
+                        >
+                          {TOKENROUTER_MODEL_CHOICES.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label} — {m.id}
+                            </option>
+                          ))}
+                          {!TOKENROUTER_MODEL_CHOICES.some(
+                            (m) => m.id === currentTokenRouterModel,
+                          ) && (
+                            <option value={currentTokenRouterModel}>
+                              {currentTokenRouterModel}
+                            </option>
+                          )}
+                        </select>
+                      </Field>
                     )}
                   </div>
 

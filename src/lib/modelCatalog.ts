@@ -36,9 +36,18 @@ export const ANTHROPIC_MODEL_CHOICES: ModelChoice[] = [
 // A hardcoded list here would go stale the day OpenRouter rotates its free
 // tier, and a paid route sneaking in would bill the operator silently.
 
+/** TokenRouter is a closed catalogue: one DeepSeek V4 Pro free route. */
+export const DEFAULT_TOKENROUTER_MODEL =
+  "deepseek/deepseek-v4-pro-0813-free";
+
+export const TOKENROUTER_MODEL_CHOICES: ModelChoice[] = [
+  { id: DEFAULT_TOKENROUTER_MODEL, label: "DeepSeek V4 Pro" },
+];
+
 const ALLOWED_REFS = new Set<string>([
   ...OPENAI_MODEL_CHOICES.map((m) => `openai/${m.id}`),
   ...ANTHROPIC_MODEL_CHOICES.map((m) => `anthropic/${m.id}`),
+  ...TOKENROUTER_MODEL_CHOICES.map((m) => `tokenrouter/${m.id}`),
 ]);
 
 /** Is this "provider/model" ref one the platform offers? */
@@ -59,13 +68,13 @@ export function shortModelLabel(label: string): string {
       /^(OpenAI|Anthropic|Google|Meta|Mistral|DeepSeek|xAI|Qwen|OpenRouter|Amazon|Microsoft|Cohere|Perplexity)\s*[:·|-]\s*/i,
       "",
     )
-    .replace(/^(Claude|OpenAI|Anthropic)\s+/i, "")
+    .replace(/^(Claude|OpenAI|Anthropic|DeepSeek)\s+/i, "")
     .trim();
   return stripped || trimmed;
 }
 
 /**
- * o-series and gpt-5 models "think" before answering — reasoning tokens
+ * o-series, gpt-5, and DeepSeek V4 models "think" before answering — reasoning tokens
  * spend wall-clock time and completion budget before the visible answer
  * starts, the same way Claude 5-family extended thinking does. Callers that
  * size a completion-token cap or a stage deadline for a fast/non-reasoning
@@ -75,5 +84,5 @@ export function shortModelLabel(label: string): string {
  */
 export function isReasoningModel(model: string): boolean {
   const id = model.trim().toLowerCase().split("/").pop() ?? "";
-  return /^o\d/.test(id) || /^gpt-5/.test(id);
+  return /^o\d/.test(id) || /^gpt-5/.test(id) || /^deepseek-v4/.test(id);
 }

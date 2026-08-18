@@ -56,7 +56,7 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     group: "ai",
     secret: false,
     plainStorage: false,
-    placeholder: "openai | anthropic | openrouter",
+    placeholder: "openai | anthropic | openrouter | tokenrouter",
   },
   {
     key: "ANTHROPIC_API_KEY",
@@ -104,6 +104,34 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "openai/gpt-4o-mini",
   },
   {
+    // Kill-switch. Unset = on (key alone is enough to use it); set to 0 to
+    // disable without deleting the key.
+    key: "TOKENROUTER_ENABLED",
+    label: "Enable TokenRouter (kill-switch — off to disable without deleting the key)",
+    labelEn: "TOKENROUTER_ENABLED",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    type: "toggle",
+  },
+  {
+    key: "TOKENROUTER_API_KEY",
+    label: "TokenRouter API key",
+    labelEn: "TOKENROUTER_API_KEY",
+    group: "ai",
+    secret: true,
+    plainStorage: false,
+  },
+  {
+    key: "TOKENROUTER_MODEL",
+    label: "TokenRouter model",
+    labelEn: "TOKENROUTER_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "deepseek/deepseek-v4-pro-0813-free",
+  },
+  {
     // Both quick-model keys are optional: llm.ts falls back to the deep model
     // when they are blank, so an empty field changes nothing.
     key: "AI_QUICK_MODEL",
@@ -131,6 +159,15 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     secret: false,
     plainStorage: false,
     placeholder: "اتركه فارغاً لاستخدام النموذج الأساسي",
+  },
+  {
+    key: "TOKENROUTER_QUICK_MODEL",
+    label: "TokenRouter quick model (optional)",
+    labelEn: "TOKENROUTER_QUICK_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "Leave blank to use the deep model",
   },
   {
     key: "TELEGRAM_BOT_TOKEN",

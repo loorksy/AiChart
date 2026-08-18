@@ -30,7 +30,7 @@ export async function GET() {
 }
 
 const putSchema = z.object({
-  provider: z.enum(["openai", "anthropic", "openrouter"]),
+  provider: z.enum(["openai", "anthropic", "openrouter", "tokenrouter"]),
   model: z.string().min(2).max(128).transform((m) => m.toLowerCase()),
   input_usd_per_m: z.number().min(0).max(10_000),
   output_usd_per_m: z.number().min(0).max(10_000),

@@ -23,6 +23,9 @@ export async function GET(req: NextRequest) {
       openrouter: {
         configured: Boolean(getProviderApiKey("openrouter")),
       },
+      tokenrouter: {
+        configured: Boolean(getProviderApiKey("tokenrouter")),
+      },
     };
     return NextResponse.json({
       provider,

@@ -8,7 +8,7 @@ import { shortModelLabel } from "@/lib/modelCatalog";
 
 interface ModelOption {
   ref: string;
-  provider: "openai" | "anthropic" | "openrouter";
+  provider: "openai" | "anthropic" | "openrouter" | "tokenrouter";
   model: string;
   label: string;
 }
@@ -24,6 +24,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   openrouter: "OpenRouter",
+  tokenrouter: "TokenRouter",
 };
 
 /**

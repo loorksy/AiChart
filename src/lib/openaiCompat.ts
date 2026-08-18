@@ -173,7 +173,11 @@ function tokenLimitBody(
  * TTFT budget instead of stalling for tens of seconds.
  */
 function reasoningBody(model: string): Record<string, unknown> {
-  if (isReasoningModel(model)) return { reasoning_effort: "low" };
+  // OpenAI-style effort is only valid on o-series / gpt-5. Other reasoning
+  // models (DeepSeek V4 via TokenRouter) still get token headroom from
+  // isReasoningModel, but must not receive a field their gateway rejects.
+  const id = bareModelId(model);
+  if (/^o\d/.test(id) || /^gpt-5/.test(id)) return { reasoning_effort: "low" };
   return {};
 }
 
