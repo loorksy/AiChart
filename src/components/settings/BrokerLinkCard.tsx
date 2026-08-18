@@ -28,8 +28,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const fieldClass =
+  "h-11 border-border bg-background text-start dark:bg-background";
+
 export function BrokerLinkCard() {
-  const { t } = useLocale();
+  const { t, dir, locale } = useLocale();
   const [status, setStatus] = useState<BrokerStatus | null>(null);
   const [server, setServer] = useState("");
   const [login, setLogin] = useState("");
@@ -92,41 +95,39 @@ export function BrokerLinkCard() {
 
   return (
     <Surface padding="lg" className="space-y-5" data-testid="broker-link-card">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col items-center gap-3 text-center">
         <MetaTraderMark />
         {status.status === "configured" ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
+          <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
             <Check className="h-3.5 w-3.5" aria-hidden />
             {t("connect.broker.configured")}
           </span>
-        ) : status.status === "draft" ? (
-          <span className="inline-flex shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-            {t("connect.broker.draft")}
-          </span>
         ) : null}
+        <h2 className="sr-only">{t("connect.broker.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("connect.broker.subtitle")}</p>
       </div>
-      <h2 className="sr-only">{t("connect.broker.title")}</h2>
-      <p className="text-sm text-muted-foreground">{t("connect.broker.subtitle")}</p>
 
       {!status.configured ? (
-        <p className="rounded-[var(--radius)] bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+        <p className="rounded-[var(--radius)] bg-muted/50 px-4 py-3 text-center text-sm text-muted-foreground">
           {t("connect.broker.unconfigured")}
         </p>
       ) : (
         <form
           className="mx-auto w-full max-w-md space-y-3"
+          dir={dir}
+          lang={locale}
           onSubmit={(event) => {
             event.preventDefault();
             if (canSubmit) void submit();
           }}
         >
-          <label className="block space-y-1.5 text-sm">
+          <label className="block space-y-1.5 text-start text-sm">
             <span className="font-medium">{t("connect.broker.login")}</span>
             <Input
               value={login}
               onChange={(e) => setLogin(e.target.value)}
-              className="h-11"
-              dir="ltr"
+              className={fieldClass}
+              dir={dir}
               inputMode="numeric"
               autoComplete="username"
               autoCapitalize="off"
@@ -134,15 +135,15 @@ export function BrokerLinkCard() {
               spellCheck={false}
             />
           </label>
-          <label className="block space-y-1.5 text-sm">
+          <label className="block space-y-1.5 text-start text-sm">
             <span className="font-medium">{t("connect.broker.password")}</span>
             <span className="relative block">
               <Input
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="h-11 pe-11"
-                dir="ltr"
+                className={`${fieldClass} pe-11`}
+                dir={dir}
                 autoComplete="current-password"
               />
               <button
@@ -163,14 +164,14 @@ export function BrokerLinkCard() {
               </button>
             </span>
           </label>
-          <label className="block space-y-1.5 text-sm">
+          <label className="block space-y-1.5 text-start text-sm">
             <span className="font-medium">{t("connect.broker.server")}</span>
             <Input
               value={server}
               onChange={(e) => setServer(e.target.value)}
               placeholder={t("connect.broker.server_placeholder")}
-              className="h-11"
-              dir="ltr"
+              className={fieldClass}
+              dir={dir}
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}

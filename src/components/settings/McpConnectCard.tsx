@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Copy, Check } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
 import { useLocale } from "@/hooks/useLocale";
+import { settingsPath } from "@/lib/settings/paths";
 
 export function McpConnectCard() {
   const { t } = useLocale();
@@ -73,7 +74,7 @@ export function McpConnectCard() {
       <p className="text-sm text-muted-foreground">{t("connect.mcp.note")}</p>
       <p className="text-xs text-muted-foreground">
         {t("connect.mcp.paid_only")}{" "}
-        <Link href="/console/settings" className="text-link">
+        <Link href={settingsPath("profile")} className="text-link">
           {t("settings.manage_account")}
         </Link>
       </p>

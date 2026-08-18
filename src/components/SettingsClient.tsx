@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, Cable, Moon, Save, Sparkles, Sun, User } from "lucide-react";
+import { Bell, Cable, ChevronRight, Moon, Save, Sparkles, Sun, User } from "lucide-react";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
 import { TelegramLinkCard } from "@/components/settings/TelegramLinkCard";
 import { BrokerLinkCard } from "@/components/settings/BrokerLinkCard";
@@ -14,11 +14,17 @@ import { Button, buttonVariants } from "@/components/squareui/button";
 import { Checkbox } from "@/components/squareui/checkbox";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { useLocale } from "@/hooks/useLocale";
-import type { TranslationKey } from "@/lib/i18n";
+import {
+  SETTINGS_ROOT,
+  SETTINGS_SECTIONS,
+  settingsLabelKey,
+  settingsPath,
+  type SettingsSectionId,
+} from "@/lib/settings/paths";
 import { cn } from "@/lib/utils";
 import type { AdminLimits, PublicUser, TradingSettings } from "@/lib/types";
 
-type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "skills";
+type TabId = SettingsSectionId | "subscription";
 
 /**
  * Ordered by how often a trader actually opens each one, not by how the ids
@@ -26,17 +32,20 @@ type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alert
  * position, so it belongs in the composer beside the send button, not two
  * navigations away.
  */
-export const TABS = [
-  { id: "profile", labelKey: "settings.tab.account", icon: User },
-  { id: "alerts", labelKey: "settings.tab.alerts", icon: Bell },
-  { id: "appearance", labelKey: "settings.tab.appearance", icon: Sun },
-  { id: "integrations", labelKey: "settings.tab.connections", icon: Cable },
-  { id: "skills", labelKey: "skills.title", icon: Sparkles },
-] as const satisfies ReadonlyArray<{
-  id: TabId;
-  labelKey: TranslationKey;
-  icon: typeof User;
-}>;
+const TAB_ICONS = {
+  profile: User,
+  alerts: Bell,
+  appearance: Sun,
+  integrations: Cable,
+  skills: Sparkles,
+} as const;
+
+export const TABS = SETTINGS_SECTIONS.map((section) => ({
+  id: section.id,
+  slug: section.slug,
+  labelKey: section.labelKey,
+  icon: TAB_ICONS[section.id],
+}));
 
 export type SettingsTabId = TabId;
 
@@ -121,6 +130,31 @@ export default function SettingsClient({
         <nav className="flex gap-1.5 overflow-x-auto pb-1" aria-label={t("settings.sections")}>
           {tabs.map((item) => {
             const Icon = item.icon;
+            const active = tab === item.id;
+            const className = cn(
+              "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors focus-ring sm:min-h-9",
+              active
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            );
+            const label = (
+              <>
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                {t(item.labelKey)}
+              </>
+            );
+            if (!embedMode) {
+              return (
+                <Link
+                  key={item.id}
+                  href={settingsPath(item.id)}
+                  aria-current={active ? "page" : undefined}
+                  className={className}
+                >
+                  {label}
+                </Link>
+              );
+            }
             return (
               <button
                 key={item.id}
@@ -129,16 +163,10 @@ export default function SettingsClient({
                   setTab(item.id);
                   onTabChange?.(item.id);
                 }}
-                aria-current={tab === item.id ? "true" : undefined}
-                className={cn(
-                  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors focus-ring sm:min-h-9",
-                  tab === item.id
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
+                aria-current={active ? "true" : undefined}
+                className={className}
               >
-                <Icon className="h-4 w-4" aria-hidden="true" />
-                {t(item.labelKey)}
+                {label}
               </button>
             );
           })}
@@ -173,7 +201,7 @@ export default function SettingsClient({
             </div>
           </dl>
           <Link
-            href="/console/settings"
+            href={settingsPath("profile")}
             className={cn(buttonVariants({ variant: "outline", size: "xl" }))}
           >
             {t("settings.manage_account")}
@@ -276,7 +304,24 @@ export default function SettingsClient({
     ? content
     : (
         <main dir={dir} className="page-shell max-w-6xl space-y-5">
-          <PageHeader title={t("settings.title")} description={t("settings.subtitle")} />
+          <PageHeader
+            title={t("settings.title")}
+            description={t("settings.subtitle")}
+            breadcrumb={
+              <nav
+                aria-label={t("settings.breadcrumb")}
+                className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground"
+              >
+                <Link href={SETTINGS_ROOT} className="hover:text-foreground">
+                  {t("settings.title")}
+                </Link>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 rtl:rotate-180" aria-hidden />
+                <span className="text-foreground">
+                  {t(settingsLabelKey(tab === "subscription" ? "profile" : tab))}
+                </span>
+              </nav>
+            }
+          />
           {content}
         </main>
       );

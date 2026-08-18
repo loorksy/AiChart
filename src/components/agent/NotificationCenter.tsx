@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Bell, CheckCheck, Settings2, X } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { settingsPath } from "@/lib/settings/paths";
 import { cn } from "@/lib/utils";
 import type { AlertLog } from "@/lib/types";
 import { APP_WAKE_EVENT } from "@/lib/appWake";
@@ -299,7 +300,7 @@ export function NotificationCenter({ className }: { className?: string }) {
                 {/* Alert preferences (alerts_enabled / alert_signals) live in
                     settings — link there rather than duplicating the form. */}
                 <Link
-                  href="/console/settings"
+                  href={settingsPath("alerts")}
                   onClick={() => setOpen(false)}
                   className="flex shrink-0 items-center gap-1.5 border-t border-border px-3 py-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
                 >

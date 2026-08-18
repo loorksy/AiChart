@@ -575,6 +575,7 @@ export const ar: Record<TranslationKey, string> = {
   "settings.title": "الإعدادات",
   "settings.subtitle": "الحساب والاتصالات والمظهر والمخاطرة",
   "settings.sections": "أقسام الإعدادات",
+  "settings.breadcrumb": "مسار الإعدادات",
   "settings.tab.account": "الحساب",
   "settings.tab.appearance": "المظهر",
   "settings.tab.connections": "الاتصالات",

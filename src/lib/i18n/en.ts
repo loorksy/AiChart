@@ -590,6 +590,7 @@ export const en = {
   "settings.title": "Settings",
   "settings.subtitle": "Account, connections, appearance, and risk",
   "settings.sections": "Settings sections",
+  "settings.breadcrumb": "Settings path",
   "settings.tab.account": "Account",
   "settings.tab.appearance": "Appearance",
   "settings.tab.connections": "Connections",

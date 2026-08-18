@@ -9,7 +9,7 @@ export function MetaTraderMark({ className }: { className?: string }) {
     <img
       src="/brand/metatrader-5.svg"
       alt="MetaTrader 5"
-      className={cn("h-11 w-auto max-w-full", className)}
+      className={cn("h-8 w-auto", className)}
     />
   );
 }

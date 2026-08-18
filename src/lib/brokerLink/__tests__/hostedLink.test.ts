@@ -140,6 +140,9 @@ describe("in-app MetaTrader form never stores the password", () => {
     assert.match(card, /type=\{showPassword \? "text" : "password"\}/);
     assert.match(card, /connect\.broker\.server/);
     assert.match(card, /MetaTraderMark/);
+    assert.doesNotMatch(card, /connect\.broker\.draft/);
+    assert.match(card, /items-center/);
+    assert.match(card, /border-border bg-background/);
     assert.match(
       readFileSync(
         path.join(SRC, "components/settings/MetaTraderMark.tsx"),
@@ -147,6 +150,16 @@ describe("in-app MetaTrader form never stores the password", () => {
       ),
       /\/brand\/metatrader-5\.svg/,
     );
+    assert.match(
+      readFileSync(
+        path.join(SRC, "components/settings/MetaTraderMark.tsx"),
+        "utf8",
+      ),
+      /h-8 w-auto/,
+    );
+    assert.match(card, /dir=\{dir\}/);
+    assert.match(card, /lang=\{locale\}/);
+    assert.doesNotMatch(card, /dir="ltr"/);
     assert.equal(
       existsSync(path.join(SRC, "..", "public/brand/metatrader-5.svg")),
       true,
