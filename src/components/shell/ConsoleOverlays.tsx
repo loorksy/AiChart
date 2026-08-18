@@ -4,7 +4,7 @@ import { createContext, useContext } from "react";
 import type { SettingsTabId } from "@/components/SettingsClient";
 
 type ConsoleOverlays = {
-  /** Opens settings over the current page instead of navigating to it. */
+  /** Navigates to the settings path for that section so the URL names it. */
   openSettings: (tab?: SettingsTabId) => void;
 };
 
@@ -15,9 +15,9 @@ const ConsoleOverlaysContext = createContext<ConsoleOverlays>({
 export const ConsoleOverlaysProvider = ConsoleOverlaysContext.Provider;
 
 /**
- * Lets any control inside the shell summon a shell-owned overlay. The account
- * menu is rendered in two places and neither of them should own the modal's
- * lifetime — the shell does, so closing the menu cannot take settings with it.
+ * Lets any control inside the shell open settings as a real destination. The
+ * account menu is rendered in two places; both call this so the URL, not a
+ * floating overlay, is what names the section.
  */
 export function useConsoleOverlays(): ConsoleOverlays {
   return useContext(ConsoleOverlaysContext);

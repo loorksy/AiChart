@@ -7,6 +7,7 @@ import {
   isSettingsSectionSlug,
   settingsPath,
   settingsTabFromLegacyQuery,
+  settingsTabFromPathname,
   settingsTabFromSlug,
 } from "@/lib/settings/paths";
 
@@ -32,14 +33,21 @@ describe("settings paths", () => {
     assert.equal(settingsTabFromLegacyQuery("nope"), null);
   });
 
-  it("the settings page tabs are paths; the overlay still uses buttons", () => {
+  it("reads the section from /console/settings/<slug>", () => {
+    assert.equal(settingsTabFromPathname("/console/settings/account"), "profile");
+    assert.equal(settingsTabFromPathname("/console/settings/connections"), "integrations");
+    assert.equal(settingsTabFromPathname("/console/settings"), "profile");
+    assert.equal(settingsTabFromPathname("/chat"), null);
+  });
+
+  it("the settings overlay tabs are real paths; embed mode still uses buttons", () => {
     const client = readFileSync(
       path.join(SRC, "components/SettingsClient.tsx"),
       "utf8",
     );
     assert.match(client, /href=\{settingsPath\(item\.id\)\}/);
-    assert.match(client, /if \(!embedMode\)/);
-    assert.match(client, /onClick=\{\(\) => \{[\s\S]*setTab\(item\.id\)/);
+    assert.match(client, /data-testid="settings-modal"/);
+    assert.match(client, /embedMode/);
     assert.doesNotMatch(client, /\?tab=/);
   });
 });

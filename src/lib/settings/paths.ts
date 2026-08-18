@@ -5,7 +5,7 @@ import type { TranslationKey } from "@/lib/i18n";
  * share, and the in-page nav all name the same place.
  *
  * Tab ids stay the older internal names (`profile`, `integrations`) so the
- * modal and saved query-string links keep working; the public slug is what
+ * overlay and saved query-string links keep working; the public slug is what
  * appears in the address bar.
  */
 export const SETTINGS_ROOT = "/console/settings" as const;
@@ -44,6 +44,14 @@ export function settingsTabFromLegacyQuery(tab: string | undefined): SettingsSec
   }
   if (isSettingsSectionSlug(tab)) return settingsTabFromSlug(tab);
   return null;
+}
+
+/** Section named by `/console/settings/<slug>` (or a bare `/console/settings`). */
+export function settingsTabFromPathname(pathname: string): SettingsSectionId | null {
+  const parts = pathname.split("/").filter(Boolean);
+  const at = parts.lastIndexOf("settings");
+  if (at === -1) return null;
+  return settingsTabFromLegacyQuery(parts[at + 1]) ?? "profile";
 }
 
 export function settingsLabelKey(id: SettingsSectionId): TranslationKey {

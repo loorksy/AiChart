@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, PanelLeft, PanelLeftClose, X } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { ProfileAccountSheet } from "@/components/agent/SidebarProfileMenu";
-import { SettingsModal } from "@/components/SettingsModal";
 import { ConsoleOverlaysProvider } from "@/components/shell/ConsoleOverlays";
 import type { SettingsTabId } from "@/components/SettingsClient";
+import { settingsPath } from "@/lib/settings/paths";
 import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
 import { SheetCoordinatorProvider, useSheetSlot } from "@/components/shell/SheetCoordinator";
@@ -103,6 +103,7 @@ function ConsoleShellBody({
   showConversations,
 }: AppConsoleShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { t, dir, locale } = useLocale();
   const { data: me } = useMe();
@@ -111,8 +112,6 @@ function ConsoleShellBody({
   const [mobileOpen, setMobileOpen] = useSheetSlot("sidebarDrawer");
   const [navPath, setNavPath] = useState(pathname);
   const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTabId>("profile");
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const isAdmin = role === "admin";
   // Until /api/me resolves, keep non-admin nav conservative (trial-sized).
@@ -198,11 +197,11 @@ function ConsoleShellBody({
   const overlaysApi = useMemo(
     () => ({
       openSettings: (tab?: SettingsTabId) => {
-        setSettingsTab(tab ?? "profile");
-        setSettingsOpen(true);
+        const id = !tab || tab === "subscription" ? "profile" : tab;
+        router.push(settingsPath(id));
       },
     }),
-    [setSettingsTab, setSettingsOpen],
+    [router],
   );
 
   const productLink = (item: NavItem, iconOnly: boolean, onNavigate?: () => void) => {
@@ -490,11 +489,6 @@ function ConsoleShellBody({
           takes the overlay slot, and an overlay cannot outlive its own trigger.
         */}
         <ProfileAccountSheet displayName={displayName} />
-        <SettingsModal
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-          initialTab={settingsTab}
-        />
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
           <ConsoleTopBar

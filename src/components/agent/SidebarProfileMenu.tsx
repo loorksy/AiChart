@@ -73,9 +73,7 @@ function ProfileMenuItems({
         onClick={() => {
           onDone();
           // Used to push /console/account — a page that has not existed since
-          // the migration, so this item 404'd. Settings opens over the
-          // workspace (same contract as the settings item below), on the
-          // profile tab.
+          // the migration, so this item 404'd. Settings is /console/settings/account.
           openSettings("profile");
         }}
       >
@@ -155,7 +153,6 @@ function ProfileMenuItems({
         data-testid="profile-settings"
         className={rowClass}
         onClick={() => {
-          // Opens over the workspace instead of navigating away from it.
           onDone();
           openSettings();
         }}
