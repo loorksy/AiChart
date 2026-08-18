@@ -12,6 +12,7 @@ import {
   drawingsIncludedFromCapture,
   listPendingLiveCaptures,
   liveCaptureActiveCount,
+  hasFreshLiveTab,
   noteLiveCapturePoll,
   pickLiveLayoutId,
   resetLiveCaptureForTests,
@@ -78,6 +79,11 @@ describe("pickLiveLayoutId", () => {
     noteLiveCapturePoll(7, "Prefer001");
     noteLiveCapturePoll(8, "OtherUser");
     assert.equal(pickLiveLayoutId(7, "Prefer001"), "Prefer001");
+  });
+
+  it("does not return a preferred layout that has not polled", () => {
+    assert.equal(pickLiveLayoutId(7, "Prefer001"), undefined);
+    assert.equal(hasFreshLiveTab(7, "Prefer001"), false);
   });
 });
 
@@ -169,7 +175,25 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
     layoutId = layout.id;
   });
 
+  it("skips the ACK wait when no tab has polled recently", async () => {
+    const t0 = Date.now();
+    const result = await captureChartImage({
+      userId,
+      layoutId,
+      symbol: "XAUUSD",
+      interval: "15m",
+      liveSession: true,
+      ackTimeoutMs: 8_000,
+    });
+    assert.ok(Date.now() - t0 < 2_000, "must not wait the ACK timeout");
+    if (!result) return;
+    assert.equal(result.image_source, "quickchart_fallback");
+    assert.equal(result.fallback_reason, "no_live_session");
+    assert.equal(result.drawings_included, false);
+  });
+
   it("accepts a TradingView PNG, reports drawings actually rendered, and caps concurrency at 2", async () => {
+    noteLiveCapturePoll(userId, layoutId);
     const capture = captureChartImage({
       userId,
       layoutId,
@@ -230,6 +254,7 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
     assert.equal(result.fallback_reason, undefined);
     assert.equal(coerceVisualConfirmation("confirmed", userId), "confirmed");
 
+    noteLiveCapturePoll(userId, layoutId);
     const started: Promise<unknown>[] = [];
     let peak = 0;
     const watch = setInterval(() => {
@@ -254,6 +279,7 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
   });
 
   it("empty upload rejects as upload_failed and drawings_included is false", async () => {
+    noteLiveCapturePoll(userId, layoutId);
     const capture = captureChartImage({
       userId,
       layoutId,
@@ -291,6 +317,7 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
   });
 
   it("upload timeout after ack is capture_timeout", async () => {
+    noteLiveCapturePoll(userId, layoutId);
     const capture = captureChartImage({
       userId,
       layoutId,

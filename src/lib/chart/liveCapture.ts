@@ -118,7 +118,21 @@ export function pickLiveLayoutId(
     if (now - tab.at > LIVE_TAB_FRESH_MS) continue;
     if (!best || tab.at > best.at) best = { layoutId: tab.layoutId, at: tab.at };
   }
-  return best?.layoutId ?? pref;
+  return best?.layoutId;
+}
+
+/** True when this user has a /chat tab that polled within LIVE_TAB_FRESH_MS. */
+export function hasFreshLiveTab(userId: number, layoutId?: string): boolean {
+  const now = Date.now();
+  if (layoutId && /^[A-Za-z0-9]{8,16}$/.test(layoutId)) {
+    const hit = liveTabs.get(liveTabKey(userId, layoutId));
+    return Boolean(hit && now - hit.at <= LIVE_TAB_FRESH_MS);
+  }
+  for (const tab of liveTabs.values()) {
+    if (tab.userId !== userId) continue;
+    if (now - tab.at <= LIVE_TAB_FRESH_MS) return true;
+  }
+  return false;
 }
 
 let active = 0;
@@ -314,6 +328,12 @@ export async function captureChartImage(
   const layout = await getChartLayoutById(layoutId, input.userId);
   if (!layout) {
     return quickchartFallback(input.userId, symbol, interval, market, "layout_not_found");
+  }
+
+  // No polling /chat tab: skip the 8s ACK wait. Same honest QuickChart
+  // payload (no_live_session) without hanging the MCP tool.
+  if (!hasFreshLiveTab(input.userId, layoutId)) {
+    return quickchartFallback(input.userId, symbol, interval, market, "no_live_session");
   }
 
   const gotSlot = await acquireSlot(input.ackTimeoutMs ?? LIVE_CAPTURE_ACK_MS);
