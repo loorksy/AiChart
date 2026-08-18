@@ -103,9 +103,7 @@ export async function isOfferedModelRef(
       ? "ANTHROPIC_MODEL"
       : parsed.provider === "tokenrouter"
         ? "TOKENROUTER_MODEL"
-        : parsed.provider === "openrouter"
-          ? "OPENROUTER_MODEL"
-          : "AI_MODEL";
+        : "AI_MODEL";
   const configured = (await getPlatformValueAsync(configuredField))?.trim();
   return Boolean(configured) && configured === parsed.model;
 }
