@@ -10,8 +10,7 @@
  * without its numeric counterpart being present in the same payload.
  */
 
-import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
-import { capturePlatformChart } from "@/lib/chart/platformChartCapture";
+import { captureChartImage } from "@/lib/chart/liveCapture";
 import { canonicalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { getUnifiedSnapshot } from "@/lib/markets";
@@ -145,6 +144,10 @@ export interface CaptureTimeframeInput {
   timeoutMs?: number;
   /** Skip the short-TTL cache (forces a fresh render). */
   skipCache?: boolean;
+  layoutId?: string;
+  liveSession?: boolean;
+  includeDrawings?: boolean;
+  includeStudies?: boolean;
 }
 
 export type CaptureTimeframeResult =
@@ -154,13 +157,15 @@ export type CaptureTimeframeResult =
       source: ChartSnapshotSource;
       capturedAt: number;
       fromCache: boolean;
+      drawings_included: boolean;
+      studies_included: boolean;
+      fallback_reason?: string;
     }
   | { ok: false; reason: string };
 
 /**
- * One timeframe → one PNG. Prefers the operator's own platform chart (same
- * pixels they see) and falls back to the server-rendered chart, always
- * inside the caller's per-image budget.
+ * One timeframe → one PNG. Prefers a live TradingView takeClientScreenshot
+ * when a tab is open; otherwise an honest QuickChart fallback.
  */
 export async function captureTimeframeImage(
   userId: number,
@@ -177,7 +182,7 @@ export async function captureTimeframeImage(
     input.market,
   );
 
-  if (!input.skipCache) {
+  if (!input.skipCache && input.liveSession !== true) {
     const cached = getCachedChartSnapshot(cacheKey);
     if (cached) {
       return {
@@ -186,80 +191,53 @@ export async function captureTimeframeImage(
         source: cached.source,
         capturedAt: cached.capturedAt,
         fromCache: true,
+        drawings_included: false,
+        studies_included: false,
+        fallback_reason: cached.source === "quickchart_fallback" ? "no_live_session" : undefined,
       };
     }
   }
 
-  const deadline = Date.now() + timeoutMs;
-  const store = (
-    imageBase64: string,
-    source: ChartSnapshotSource,
-  ): CaptureTimeframeResult => {
-    const capturedAt = Date.now();
-    setCachedChartSnapshot(cacheKey, { imageBase64, source, capturedAt });
-    return { ok: true, imageBase64, source, capturedAt, fromCache: false };
-  };
-
-  // The platform chart is the operator's own view — try it first, on a
-  // BOUNDED share of the budget. Racing it against the full budget meant a
-  // slow-but-alive Playwright boot (cold Chromium + TV widget can need tens
-  // of seconds) consumed everything, `remaining` hit zero, and the renderer
-  // fallback below was unreachable — every frame of every analysis came back
-  // `capture_timeout` and "vision" decisions ran numbers-only.
-  try {
-    const platformBudget = Math.min(
-      Math.max(0, deadline - Date.now()),
-      Math.round(timeoutMs * 0.55),
-    );
-    const platformPromise = capturePlatformChart({
+  const captured = await withDeadline(
+    captureChartImage({
       userId,
-      symbol: input.symbol.toUpperCase(),
+      layoutId: input.layoutId,
+      symbol: input.symbol,
       interval: input.interval,
-    });
-    const platform = await withDeadline(platformPromise, platformBudget);
-    if (platform !== TIMED_OUT && platform) {
-      return store(platform.buffer.toString("base64"), "platform_chart");
-    }
-    if (platform === TIMED_OUT) {
-      // Do not waste the burn: when the abandoned capture eventually lands,
-      // cache it so the NEXT analysis gets the operator's real chart warm.
-      platformPromise
-        .then((late) => {
-          if (late) {
-            setCachedChartSnapshot(cacheKey, {
-              imageBase64: late.buffer.toString("base64"),
-              source: "platform_chart",
-              capturedAt: Date.now(),
-            });
-          }
-        })
-        .catch(() => undefined);
-    }
-  } catch {
-    /* fall through to the broker / renderer sources */
-  }
-
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) {
-    return { ok: false, reason: "capture_timeout" };
-  }
-
-  const rendered = await withDeadline(
-    buildChartSnapshotBufferForMarket(
-      userId,
-      input.symbol.toUpperCase(),
-      input.interval,
-      input.market,
-    ),
-    remaining,
+      market: input.market,
+      liveSession: input.liveSession,
+      includeDrawings: input.includeDrawings,
+      includeStudies: input.includeStudies,
+      ackTimeoutMs: Math.min(timeoutMs, 4_000),
+    }),
+    timeoutMs,
   );
-  if (rendered === TIMED_OUT) {
+  if (captured === TIMED_OUT) {
     return { ok: false, reason: "capture_timeout" };
   }
-  if (!rendered) {
+  if (!captured) {
     return { ok: false, reason: "chart_render_unavailable" };
   }
-  return store(rendered.toString("base64"), "quickchart");
+  const capturedAt = Date.now();
+  // Unattended callers reuse only a QuickChart fallback. A live TradingView
+  // PNG must not be served later as if it were a no-session capture.
+  if (captured.image_source === "quickchart_fallback") {
+    setCachedChartSnapshot(cacheKey, {
+      imageBase64: captured.image_base64,
+      source: captured.image_source,
+      capturedAt,
+    });
+  }
+  return {
+    ok: true,
+    imageBase64: captured.image_base64,
+    source: captured.image_source,
+    capturedAt,
+    fromCache: false,
+    drawings_included: captured.drawings_included,
+    studies_included: captured.studies_included,
+    fallback_reason: captured.fallback_reason,
+  };
 }
 
 export interface TimeframeNumericContext {
@@ -505,6 +483,9 @@ export interface TimeframeSnapshot {
   captured_at: string;
   image_source: ChartSnapshotSource;
   from_cache: boolean;
+  drawings_included: boolean;
+  studies_included: boolean;
+  fallback_reason?: string;
   numeric_context: TimeframeNumericContext | null;
 }
 
@@ -521,6 +502,10 @@ export interface MultiTimeframeCaptureInput {
   imageTimeoutMs?: number;
   includeNumericContext?: boolean;
   skipCache?: boolean;
+  layoutId?: string;
+  liveSession?: boolean;
+  includeDrawings?: boolean;
+  includeStudies?: boolean;
 }
 
 export interface MultiTimeframeCaptureResult {
@@ -541,8 +526,8 @@ export interface MultiTimeframeCaptureResult {
  */
 export const VISUAL_EVIDENCE_GUARDRAILS = [
   "Images confirm shape only (rejection candle, gap, formation). Every precise level must come from numeric_context / detect_levels — never read off the pixels.",
-  "Visual agreement never authorises live execution. Backtest evidence, calibrated confidence, and the minimum trade-count gate remain the only execution authority.",
-  "State explicitly in the recommendation whether visual and numeric evidence agree, and pass visual_confirmation to create_recommendation so the disagreement is recorded rather than dropped.",
+  "A TradingView live capture is the operator's chart. A quickchart_fallback is NOT — never describe it as the user's chart.",
+  "drawings_included=false forces visual_confirmation to not_checked. Do not report confirmed against a picture that omitted the drawings.",
 ];
 
 /**
@@ -579,6 +564,10 @@ export async function captureMultiTimeframeSnapshot(
           market,
           timeoutMs: input.imageTimeoutMs,
           skipCache: input.skipCache,
+          layoutId: input.layoutId,
+          liveSession: input.liveSession,
+          includeDrawings: input.includeDrawings,
+          includeStudies: input.includeStudies,
         }).catch((error): CaptureTimeframeResult => ({
           ok: false,
           reason: errorText(error),
@@ -608,6 +597,9 @@ export async function captureMultiTimeframeSnapshot(
       captured_at: new Date(image.capturedAt).toISOString(),
       image_source: image.source,
       from_cache: image.fromCache,
+      drawings_included: image.drawings_included,
+      studies_included: image.studies_included,
+      fallback_reason: image.fallback_reason,
       numeric_context: numeric,
     });
   }

@@ -10,8 +10,6 @@
  * contribution is recorded as skipped with an explicit reason (never silent).
  */
 import {
-  researchBacktestEnabled,
-  researchServiceEnabled,
   researchSwarmEnabled,
   researchSwarmPresetsEnabled,
   researchValidationEnabled,
@@ -23,7 +21,6 @@ import {
 } from "@/lib/tradingDna/repository";
 import { collectTradingDnaEvidence } from "@/lib/tradingDna/evidence";
 import type { TradingDnaSnapshot } from "@/lib/tradingDna/types";
-import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
 
 export const RESEARCH_EVIDENCE_VERSION = "1.2.0";
 
@@ -624,99 +621,19 @@ export async function collectBoundedResearchEvidence(
     }
   }
 
-  // ---- Backtest (use completed artifacts from DNA only; never block on new run) ----
-  const backtestIds = dnaSnapshot?.evidence.backtestIds ?? [];
-  if (!researchServiceEnabled() || !researchBacktestEnabled()) {
-    contributions.push({
-      system: "backtest",
-      status: "skipped",
-      reason: "feature_flag_off",
-      reasonDetail: humanizeSkip("feature_flag_off"),
-    });
-    timeline.push({
-      step: "backtest",
-      status: "skipped",
-      reason: "feature_flag_off",
-    });
-  } else if (!plan.backtestWorth) {
-    contributions.push({
-      system: "backtest",
-      status: "skipped",
-      reason: plan.reasons.backtest,
-      reasonDetail: humanizeSkip(plan.reasons.backtest),
-    });
-    timeline.push({
-      step: "backtest",
-      status: "skipped",
-      reason: plan.reasons.backtest,
-    });
-  } else {
-    // The prepared path (plan §13 H.4): the strategy pipeline precomputes
-    // calibrated per-symbol×timeframe support into strategy_deployments, so
-    // the answer is a table read — the only kind of backtest evidence that
-    // fits inside a request budget. On-demand runs stay non-blocking.
-    const support =
-      input.symbol && input.interval
-        ? await withTimeout(
-            getStatisticalSupport({
-              userId: input.userId,
-              symbol: input.symbol,
-              timeframe: input.interval,
-            }),
-            Math.min(300, remaining()),
-          ).catch(() => null)
-        : null;
-
-    if (support && support.level !== "unavailable" && support.strategyId) {
-      // Bounded influence, scaled by the summary's own grade — the numbers
-      // were verified by the pipeline; this only relays them.
-      const delta =
-        support.level === "strong" ? 0.05 : support.level === "moderate" ? 0.02 : 0;
-      historicalEvidenceTendency += delta;
-      contributions.push({
-        system: "backtest",
-        status: "used",
-        reason: "precomputed_support_summary",
-        reasonDetail: support.detail,
-        jobId: support.strategyId,
-        evidenceTendency: delta,
-      });
-      summariesAr.push(`دعم إحصائي مُحضّر مسبقاً (${support.level}): ${support.detail}`);
-      summariesEn.push(
-        `Precomputed statistical support (${support.level}) from verified strategy ${support.strategyId}.`,
-      );
-      timeline.push({ step: "backtest", status: "used" });
-    } else if (backtestIds.length > 0) {
-      // DNA may carry verified backtest IDs — influence ONLY when metrics exist.
-      // Presence of job IDs alone must not raise confidence.
-      contributions.push({
-        system: "backtest",
-        status: "skipped",
-        reason: "insufficient_historical_metrics",
-        reasonDetail: `Found ${backtestIds.length} completed backtest id(s) in DNA evidence but no parsed reliability metrics in this sync path. Presence alone does not raise confidence.`,
-        jobId: backtestIds[0],
-        evidenceTendency: 0,
-      });
-      timeline.push({
-        step: "backtest",
-        status: "skipped",
-        reason: "insufficient_historical_metrics",
-      });
-    } else {
-      contributions.push({
-        system: "backtest",
-        status: "skipped",
-        reason: "justified_but_no_completed_job_in_latency_budget",
-        reasonDetail:
-          "Historical confirmation is justified, but the prepared support summary has no verified strategy for this symbol and timeframe and no completed backtest is attached to DNA. A blocking Research Service run is not started mid-request (latency/safety).",
-      });
-      timeline.push({
-        step: "backtest",
-        status: "skipped",
-        reason: "justified_but_no_completed_job_in_latency_budget",
-      });
-    }
-  }
+  // Simulation backtests are deleted. Never raise confidence from them.
+  contributions.push({
+    system: "backtest",
+    status: "unavailable",
+    reason: "statistical_claims_removed",
+    reasonDetail:
+      "Simulation backtests and calibrated-confidence claims have been removed. Forward recommendation outcomes are the only evidence.",
+  });
+  timeline.push({
+    step: "backtest",
+    status: "skipped",
+    reason: "statistical_claims_removed",
+  });
 
   // ---- Validation (never raises confidence alone; only after backtest used) ----
   const backtestUsed = contributions.some(

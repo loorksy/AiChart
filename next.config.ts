@@ -29,7 +29,7 @@ const nextConfig: NextConfig = {
     ];
   },
   // better-sqlite3 is a native module and must not be bundled by Next.
-  serverExternalPackages: ["better-sqlite3", "pg", "metaapi.cloud-sdk", "playwright"],
+  serverExternalPackages: ["better-sqlite3", "pg", "metaapi.cloud-sdk"],
   // Vendored OpenAI realtime-voice-component ships TypeScript source.
   transpilePackages: ["realtime-voice-component", "metal-fx", "@paper-design/shaders"],
   turbopack: {

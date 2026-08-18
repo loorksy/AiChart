@@ -60,7 +60,8 @@ describe("computeRecommendationStats", () => {
     assert.equal(stats.wins, 2);
     assert.equal(stats.losses, 1);
     assert.equal(stats.completedTriggered, 3);
-    assert.equal(stats.winRate, 67); // 2 / 3
+    // Sample below WIN_RATE_SAMPLE_FLOOR — percentage suppressed.
+    assert.equal(stats.winRate, null);
     assert.equal(stats.active, 1);
     assert.equal(stats.pending, 1);
   });
@@ -69,8 +70,21 @@ describe("computeRecommendationStats", () => {
     const stats = computeRecommendationStats([rec("expired", { triggeredAt: undefined })]);
     assert.equal(stats.losses, 0);
     assert.equal(stats.wins, 0);
-    assert.equal(stats.winRate, 0);
+    assert.equal(stats.winRate, null);
     assert.equal(stats.breakdown.untriggeredExpired, 1);
+    assert.equal(stats.breakdown.expired, 1);
+    assert.equal(stats.expiredUnactivatedRate, 1);
+  });
+
+  it("suppresses win-rate percentage below the sample-size floor", () => {
+    const sevenWins = Array.from({ length: 7 }, () => rec("win_tp1"));
+    const below = computeRecommendationStats(sevenWins);
+    assert.equal(below.completedTriggered, 7);
+    assert.equal(below.winRate, null);
+
+    const eight = computeRecommendationStats([...sevenWins, rec("loss")]);
+    assert.equal(eight.completedTriggered, 8);
+    assert.equal(eight.winRate, 88); // 7/8
   });
 
   it("produces the TP1/TP2/TP3 breakdown", () => {

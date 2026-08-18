@@ -62,10 +62,6 @@ export interface CanonicalRecommendation {
   targets: number[];
   risk: Record<string, unknown>;
   confidence: number;
-  backtestedConfidence?: number;
-  confidenceLow?: number;
-  confidenceHigh?: number;
-  backtestId?: number;
   marketRegime?: string;
   strategyId: string;
   strategyVersion: string;
@@ -108,10 +104,6 @@ export interface CreateCanonicalRecommendationInput {
   targets?: number[];
   risk?: Record<string, unknown>;
   confidence?: number;
-  backtestedConfidence?: number;
-  confidenceLow?: number;
-  confidenceHigh?: number;
-  backtestId?: number;
   marketRegime?: string;
   strategyId?: string;
   strategyVersion?: string;
@@ -144,11 +136,9 @@ export interface CreateCanonicalRecommendationInput {
    * claims to grade. Nothing else may set this.
    */
   legacyImport?: boolean;
-  /** Verified statistical backing: strong | moderate | weak | unavailable. */
-  statisticalSupport?: string | null;
   /**
-   * Where the support came from — a different fact from how strong it is:
-   * direct_analysis | strategy_supported | historical_memory | deep_research.
+   * Where the decision's support came from:
+   * direct_analysis | historical_memory | deep_research.
    * Left null rather than guessed, so a row never implies evidence it lacks.
    */
   evidenceSource?: string | null;

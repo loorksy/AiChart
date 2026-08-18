@@ -165,7 +165,6 @@ describe("single brain — one place decides, one path changes", () => {
     const evidenceModules = [
       "lib/marketMemory/caseQuery.ts",
       "lib/marketMemory/caseIndexer.ts",
-      "lib/strategies/supportSummary.ts",
       "lib/chart/geometry/patternStage.ts",
       "lib/agent/evidenceDimensions.ts",
     ];
@@ -247,7 +246,7 @@ describe("explainability is a validity condition", () => {
       "creation must seed revision 1",
     );
     const canonical = `${repository.text}\n${revisions.text}`;
-    for (const column of ["plan_type", "execution_state", "statistical_support"]) {
+    for (const column of ["plan_type", "execution_state", "evidence_source"]) {
       assert.ok(
         canonical.includes(column),
         `${column} must be written by the canonical modules; an in-memory-only layer is invisible to the tracker`,

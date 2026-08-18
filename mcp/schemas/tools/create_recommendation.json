@@ -43,11 +43,6 @@
     "pattern_name": {
       "type": "string"
     },
-    "strategy_version": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64
-    },
     "chart_drawings": {
       "type": "array",
       "items": {
@@ -57,18 +52,6 @@
         },
         "additionalProperties": {}
       }
-    },
-    "strategy_id": {
-      "type": "string",
-      "minLength": 3,
-      "maxLength": 128,
-      "pattern": "^[a-z0-9_]+_v\\d+$",
-      "description": "Server-validated catalog strategy id (e.g. ema_trend_follow_v1). Discover valid ids and their evidence with get_strategy_performance; unknown ids are rejected server-side."
-    },
-    "backtested_confidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 100
     },
     "market_regime": {
       "type": "string",
@@ -88,7 +71,7 @@
       "exclusiveMinimum": 0
     },
     "visual_confirmation": {
-      "description": "Did the chart images agree with the numbers? confirmed | contradicted | not_checked. Contradicted lowers the DISPLAYED confidence; it never changes backtest evidence.",
+      "description": "Did the chart images agree with the numbers? confirmed | contradicted | not_checked. confirmed is only valid when a live TradingView capture included drawings (drawings_included=true). Contradicted lowers the DISPLAYED model-judgement confidence.",
       "anyOf": [
         {
           "type": "string",

@@ -9,8 +9,8 @@ import {
   walkForwardStateFrom,
   type EvidenceCard,
 } from "@/lib/agent/evidenceCard";
-import { MIN_BACKTEST_TRADES } from "@/lib/strategies/evidence";
-import type { StrategyBacktestEvidence, StrategyDeployment } from "@/lib/strategies/evidence";
+import { MIN_BACKTEST_TRADES } from "@/lib/strategies/thresholds";
+import type { StrategyBacktestEvidence, StrategyDeployment } from "@/lib/agent/evidenceCard";
 
 function backtest(over: Partial<StrategyBacktestEvidence> = {}): StrategyBacktestEvidence {
   return {

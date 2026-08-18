@@ -305,31 +305,6 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
-    "get_strategy_performance",
-    mcpToolConfig("get_strategy_performance"),
-    async (args) => {
-      const { strategy_id, symbol, timeframe } = args as {
-        strategy_id: string;
-        symbol?: string;
-        timeframe?: string;
-      };
-      // Advances pending backtests server-side (research polling) — needs
-      // more than the 15s bridge default when the service is under load.
-      return bridgeCall("get_strategy_performance", args as Record<string, unknown>, () =>
-        bridge.get(
-          "/api/agent/strategy/performance",
-          {
-            strategy_id,
-            symbol,
-            timeframe,
-          },
-          60_000,
-        ),
-      );
-    },
-  );
-
-  server.registerTool(
     "create_recommendation",
     mcpToolConfig("create_recommendation"),
     async (body) => {

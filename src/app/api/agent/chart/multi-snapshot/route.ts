@@ -23,6 +23,10 @@ const schema = z.object({
   include_numeric_context: z.boolean().optional(),
   /** Bypass the short-TTL snapshot cache. */
   fresh: z.boolean().optional(),
+  layout_id: z.string().optional(),
+  include_drawings: z.boolean().optional(),
+  include_studies: z.boolean().optional(),
+  live_session: z.boolean().optional(),
 });
 
 /**
@@ -51,6 +55,10 @@ export async function POST(req: NextRequest) {
       imageTimeoutMs: body.image_timeout_ms ?? DEFAULT_IMAGE_TIMEOUT_MS,
       includeNumericContext: body.include_numeric_context,
       skipCache: body.fresh === true,
+      layoutId: body.layout_id,
+      liveSession: body.live_session !== false,
+      includeDrawings: body.include_drawings,
+      includeStudies: body.include_studies,
     });
 
     // Nothing captured at all is a genuine failure, not a partial one.

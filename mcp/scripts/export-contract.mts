@@ -75,12 +75,6 @@ const OVERRIDES: Record<string, Override> = {
   get_account_symbols: { permission: "market.read" },
   evaluate_trade: { permission: "account.read" },
   get_trade_lessons: { permission: "memory.read" },
-  run_backtest: {
-    permission: "research.run",
-    riskClass: "write",
-    timeoutMs: 120_000,
-  },
-  get_strategy_performance: { permission: "recommendation.read" },
   detect_market_regime: { permission: "market.read" },
   get_market_price: { permission: "market.read", aliases: ["get_price"] },
   // — settings writes —

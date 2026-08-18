@@ -100,10 +100,6 @@ export interface Recommendation {
   direction?: RecommendationAction | null;
   entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   confidence: number;
-  backtested_confidence?: number | null;
-  confidence_low?: number | null;
-  confidence_high?: number | null;
-  backtest_id?: number | null;
   market_regime?: string | null;
   entry: number | null;
   stop_loss: number | null;
@@ -123,8 +119,6 @@ export interface Recommendation {
   market: MarketType | null;
   /** IDs of trade_lessons referenced during analysis (JSON array). */
   memory_refs_json: string | null;
-  strategy_id?: string | null;
-  strategy_version?: string | null;
   expires_at?: number | null;
   status?: import("./recommendations/canonical/types").RecommendationStatus;
   status_reason?: string | null;

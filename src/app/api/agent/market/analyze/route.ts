@@ -127,6 +127,7 @@ export async function POST(req: NextRequest) {
       // Claude flow — analyse, then create — produces both halves of a real
       // pair on the same symbol and candle.
       surface: "platform",
+      liveSession: true,
       userMessage: `حلّل ${symbol} على إطار ${interval} كفرصة سكالب واشرح قرارك.`,
       chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
       requestContext: {

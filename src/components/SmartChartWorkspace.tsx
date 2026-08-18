@@ -446,6 +446,89 @@ function SmartChartWorkspaceInner({
     };
   }, [guest, layoutId, capture, isAnalyzing, symbol, interval, hydrateFromSnapshot]);
 
+  // Live-capture RPC: the server asks this tab to photograph the rendered
+  // TradingView widget (drawings and studies included) and POST the PNG.
+  // Same HTTP-poll family as layout refresh — not a new transport.
+  useEffect(() => {
+    if (guest || !layoutId || capture) return;
+    let stopped = false;
+    let busy = false;
+
+    const processOne = async (request: {
+      id: string;
+      includeDrawings?: boolean;
+      includeStudies?: boolean;
+      symbol?: string;
+      interval?: string;
+    }) => {
+      const ack = await fetch("/api/chart/live-capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "ack",
+          request_id: request.id,
+          layout_id: layoutId,
+        }),
+      });
+      if (!ack.ok) return;
+      const shot = await chartRef.current?.captureSnapshot({
+        includeDrawings: request.includeDrawings !== false,
+        includeStudies: request.includeStudies !== false,
+        symbol: request.symbol,
+        interval: request.interval,
+      });
+      if (!shot) return;
+      await fetch("/api/chart/live-capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "upload",
+          request_id: request.id,
+          layout_id: layoutId,
+          image_base64: shot.pngBase64,
+          drawings_rendered: shot.drawingsRendered,
+          studies_rendered: shot.studiesRendered,
+        }),
+      });
+    };
+
+    const tick = async () => {
+      if (stopped || busy) return;
+      if (document.visibilityState !== "visible") return;
+      busy = true;
+      try {
+        const res = await fetch(`/api/chart/live-capture?layout_id=${layoutId}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          requests?: Array<{
+            id: string;
+            includeDrawings?: boolean;
+            includeStudies?: boolean;
+            symbol?: string;
+            interval?: string;
+          }>;
+        };
+        for (const request of data.requests ?? []) {
+          if (stopped) break;
+          await processOne(request);
+        }
+      } catch {
+        /* transient — next tick */
+      } finally {
+        busy = false;
+      }
+    };
+
+    const t = window.setInterval(() => void tick(), 400);
+    void tick();
+    return () => {
+      stopped = true;
+      window.clearInterval(t);
+    };
+  }, [guest, layoutId, capture]);
+
   useEffect(() => {
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);

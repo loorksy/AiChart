@@ -199,11 +199,10 @@ describe("doctrine scenarios", () => {
     assert.equal(dim?.grade, "weak", "the conflict is reported, not hidden");
   });
 
-  it("no matching strategy → plan stands, labelled as unsupported", async () => {
+  it("does not claim statistical support for a recommendation", async () => {
     const out = await decide({}, answer());
     const support = out.result?.evidenceDimensions?.find((d) => d.key === "statistical_support");
-    assert.equal(support?.grade, "unavailable");
-    assert.match(support?.detail ?? "", /التحليل المباشر/);
+    assert.equal(support, undefined);
     assertCompletePlan(out.result!);
   });
 

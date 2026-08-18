@@ -14,7 +14,7 @@
  *   G2 LIQUIDITY   — where are the stop clusters and session pools?
  *   G3 SUPPLY      — which zones are fresh and which are already mitigated?
  *   G4 STRUCTURE   — what does HTF bias plus LTF structure actually say?
- *   G5 STRATEGY    — does a calibrated, adequately-sampled strategy match?
+ *   G5 (removed)   — backtest apparatus deleted; never blocks.
  *   G6 RISK        — does the geometry survive stops, costs and R math?
  *   G7 REVALIDATE  — is the plan still true against a quote fetched just now?
  *
@@ -42,7 +42,7 @@ export const GATE_NAMES: Record<GateId, string> = {
   G2: "liquidity_map",
   G3: "supply_demand",
   G4: "structure_and_bias",
-  G5: "strategy_and_backtest",
+  G5: "removed",
   G6: "risk_geometry",
   G7: "live_revalidation",
 };
@@ -101,8 +101,7 @@ export const GATE_REQUIRED_TO_RUN: Record<GateId, boolean> = {
   G3: false,
   // Without structure there is no plan to have — this is the analysis itself.
   G4: true,
-  // An uncalibrated strategy must not be cited as calibrated; the plan waits.
-  G5: true,
+  G5: false,
   // Geometry is arithmetic on data already in hand; it cannot be "unavailable"
   // for provider reasons, so if it is, something is genuinely wrong.
   G6: true,

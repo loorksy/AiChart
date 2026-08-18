@@ -339,7 +339,7 @@ describe("multiTimeframeContent image delivery", () => {
     content_type: "image/png",
     image_base64,
     captured_at: "2026-07-31T10:00:00.000Z",
-    image_source: "platform_chart",
+    image_source: "tradingview_capture",
     from_cache: false,
     numeric_context: { price: 4130.02 },
   });

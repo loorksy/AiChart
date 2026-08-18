@@ -15,15 +15,12 @@ import { t } from "@/lib/i18n";
 import type { GateDefinition } from "./chain";
 import { evaluateNewsWindow, newsBlockReasonAr } from "./newsWindow";
 import type { BlockingEvent } from "./newsWindow";
-import { confidenceFromEvidence, gradeStrategyEvidence } from "./strategyEvidence";
-import type { StrategyMatch } from "./strategyEvidence";
 import { revalidatePlan } from "./revalidation";
 import type { StructureResult } from "../agents/structureAgent";
 import type { LiquidityResult } from "../agents/liquidityAgent";
 import type { SupplyDemandResult } from "../agents/supplyDemandAgent";
 import type { MultiTimeframeResult } from "../agents/multiTimeframeAgent";
 import type { NewsMacroResult } from "../agents/newsMacroAgent";
-import type { StatisticalSupport } from "@/lib/strategies/supportSummary";
 import { validateEntryCoherence } from "@/lib/recommendations/entrySemantics";
 import type { EntryPlan } from "@/lib/recommendations/entrySemantics";
 
@@ -37,8 +34,8 @@ export interface GateInputs {
   liquidity: LiquidityResult | null;
   supplyDemand: SupplyDemandResult | null;
   mtf: MultiTimeframeResult | null;
-  /** Null only when the deployments lookup itself failed. */
-  statisticalSupport: StatisticalSupport | null;
+  /** Unused — backtest apparatus deleted. Kept optional so callers compile. */
+  statisticalSupport?: unknown;
   /** The plan about to be constructed, in canonical entry semantics. */
   plan: EntryPlan;
   /** ATR on the entry timeframe, price units — G7's reachability yardstick. */
@@ -74,50 +71,11 @@ function toBlockingEvents(
   return out;
 }
 
-/**
- * The evidence G5 is allowed to cite.
- *
- * The sample size is the BACKTESTED trade count, not the live one. Live
- * outcomes are the decay signal — they tell you whether a validated strategy is
- * still working — but they start at zero for every newly minted deployment, and
- * reading them as the sample made a strategy validated on 400 historical trades
- * look like a strategy with no record at all.
- *
- * The win rate comes from that same backtest and is never derived. Computing
- * one from the calibrated-confidence midpoint would manufacture exactly the
- * unvalidated number this gate exists to refuse.
- */
-function strategyMatches(support: StatisticalSupport): StrategyMatch[] {
-  const deployments = support.deployments ?? [];
-  if (deployments.length === 0 && support.strategyId) {
-    return [
-      {
-        strategyId: support.strategyId,
-        sampleSize: support.liveSampleSize ?? 0,
-        calibratedConfidence: support.calibratedConfidence,
-      },
-    ];
-  }
-  return deployments.map((item) => ({
-    strategyId: item.strategyId,
-    sampleSize: item.backtestTrades,
-    winRate: item.backtestWinRate ?? undefined,
-    calibratedConfidence: item.calibratedConfidence,
-  }));
-}
-
 export interface GateBuildResult {
   gates: GateDefinition[];
-  /**
-   * Filled in by G5 while the chain runs — the only confidence the plan may
-   * claim. Null means no calibrated evidence exists and the plan must be
-   * presented without a percentage.
-   */
-  calibratedConfidence: { value: number | null };
 }
 
 export function buildGates(input: GateInputs): GateBuildResult {
-  const calibratedConfidence: { value: number | null } = { value: null };
 
   const gates: GateDefinition[] = [
     {
@@ -237,43 +195,11 @@ export function buildGates(input: GateInputs): GateBuildResult {
 
     {
       id: "G5",
-      // `unavailable` here can mean two very different things, and only one of
-      // them is a hazard. If the lookup itself FAILED we do not know what the
-      // record says, and a plan issued blind to its own strategy's track record
-      // must not go out — that blocks. If the lookup SUCCEEDED and simply found
-      // nothing, the backtest pipeline that fills the table is not deployed yet
-      // (Phase 4): the same class of standing gap as an unconfigured news feed,
-      // which costs confidence and is stated in the plan rather than silencing
-      // the platform until the pipeline lands.
-      required: input.statisticalSupport == null,
-      run: async () => {
-        if (!input.statisticalSupport) {
-          return {
-            status: "unavailable",
-            reasonAr: t("ar", "gate.strategy.registry_unavailable"),
-          };
-        }
-        const verdict = gradeStrategyEvidence(strategyMatches(input.statisticalSupport));
-        calibratedConfidence.value = confidenceFromEvidence(verdict);
-        if (verdict.grade === "none") {
-          return {
-            status: "unavailable",
-            reasonAr: verdict.reasonAr,
-            confidenceDelta: -15,
-            evidence: { grade: verdict.grade },
-          };
-        }
-        return {
-          status: "pass",
-          reasonAr: verdict.reasonAr,
-          confidenceDelta: verdict.grade === "calibrated" ? 0 : -10,
-          evidence: {
-            grade: verdict.grade,
-            strategyId: verdict.match?.strategyId,
-            citableStats: verdict.citableStats ?? null,
-          },
-        };
-      },
+      required: false,
+      run: async () => ({
+        status: "pass",
+        evidence: { statistical_claims: "removed" },
+      }),
     },
 
     {
@@ -336,5 +262,5 @@ export function buildGates(input: GateInputs): GateBuildResult {
     },
   ];
 
-  return { gates, calibratedConfidence };
+  return { gates };
 }

@@ -18,11 +18,30 @@
  */
 // TYPE-only import (erased at build time) — safe from the client bundle.
 import { t } from "@/lib/i18n";
-import type { StrategyBacktestEvidence, StrategyDeployment } from "@/lib/strategies/evidence";
-// VALUE import must come from the dependency-free thresholds module: importing
-// it from evidence.ts would drag the database into the browser bundle and break
-// `next build`. Types are erased; values are not.
 import { MIN_BACKTEST_TRADES } from "@/lib/strategies/thresholds";
+
+/** Local shapes so this module does not import the deleted backtest store. */
+export interface StrategyBacktestEvidence {
+  strategyId: string;
+  symbol: string;
+  timeframe: string;
+  tradeCount: number;
+  winRate: number | null;
+  profitFactor: number | null;
+  calibratedConfidence: number | null;
+  confidenceLow: number | null;
+  confidenceHigh: number | null;
+  validation: Record<string, unknown>;
+}
+
+export interface StrategyDeployment {
+  state: string;
+  calibratedConfidence: number;
+  confidenceLow: number;
+  confidenceHigh: number;
+  liveSampleSize: number;
+  liveWinRate: number | null;
+}
 
 /** The plan's fixed envelope for historical influence. Do not widen. */
 export const HISTORICAL_DELTA_MIN = -0.15;

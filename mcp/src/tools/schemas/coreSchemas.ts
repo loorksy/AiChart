@@ -2,8 +2,6 @@ import { z } from "zod";
 import { DESTRUCTIVE, IDEMPOTENT_WRITE, READ_ONLY } from "../registry.js";
 import type { ToolDefinition } from "./types.js";
 import {
-  zBacktestStrategyId,
-  zBacktestTimeframe,
   zChartDrawings,
   zConfidence,
   zDryRun,
@@ -25,7 +23,7 @@ const zVisualConfirmation = z
   .union([z.enum(["confirmed", "contradicted", "not_checked"]), z.boolean()])
   .optional()
   .describe(
-    "Did the chart images agree with the numbers? confirmed | contradicted | not_checked. Contradicted lowers the DISPLAYED confidence; it never changes backtest evidence.",
+    "Did the chart images agree with the numbers? confirmed | contradicted | not_checked. confirmed is only valid when a live TradingView capture included drawings (drawings_included=true). Contradicted lowers the DISPLAYED model-judgement confidence.",
   );
 
 const zTimeframesReviewed = z
@@ -173,13 +171,12 @@ const planContractFields = {
 
 const recommendationSharedFields = {
   symbol: zSymbol,
-  // Optional for BUY/SELL — server replaces with calibrated backtest evidence.
+  // Optional — the model's own judgement. Never a statistically calibrated figure.
   confidence: zConfidence.optional(),
   rationale: z.string().min(10),
   factors: z.array(z.string()).min(1).max(8),
   timeframe: z.string().optional(),
   pattern_name: z.string().optional(),
-  strategy_version: z.string().min(1).max(64).optional(),
   chart_drawings: zChartDrawings,
   visual_confirmation: zVisualConfirmation,
   timeframes_reviewed: zTimeframesReviewed,
@@ -190,11 +187,8 @@ const recommendationSharedFields = {
  * Structural shape for a recommendation.
  *
  * BUY/SELL requires LEVELS — a direction with nowhere to enter, stop, or take
- * profit is not a plan. It does NOT require a backtested strategy: send
- * strategy_id (and optionally backtested_confidence) when real evidence exists,
- * omit both otherwise and the server records the recommendation as direct
- * analysis with no statistical support. Evidence grades a plan; it never
- * decides whether the plan may exist.
+ * profit is not a plan. Confidence is the model's own judgement. There is no
+ * backtested_confidence, statistical_support, or strategy_id field.
  */
 export const createRecommendationInput = z.discriminatedUnion("action", [
   z.object({
@@ -211,8 +205,6 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
       "immediate = price is in a valid entry area now. anticipatory = entering while the structure is still forming (higher risk, say so). conditional = the entry waits for a stated trigger.",
     ),
     ...recommendationSharedFields,
-    strategy_id: zBacktestStrategyId.optional(),
-    backtested_confidence: zConfidence.optional(),
     market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
@@ -232,8 +224,6 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
       "immediate = price is in a valid entry area now. anticipatory = entering while the structure is still forming (higher risk, say so). conditional = the entry waits for a stated trigger.",
     ),
     ...recommendationSharedFields,
-    strategy_id: zBacktestStrategyId.optional(),
-    backtested_confidence: zConfidence.optional(),
     market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
@@ -310,10 +300,7 @@ const createRecommendationCatalogShape = {
   factors: z.array(z.string()).min(1).max(8),
   timeframe: z.string().optional(),
   pattern_name: z.string().optional(),
-  strategy_version: z.string().min(1).max(64).optional(),
   chart_drawings: zChartDrawings,
-  strategy_id: zBacktestStrategyId.optional(),
-  backtested_confidence: zConfidence.optional(),
   market_regime: z.string().min(3).max(64).optional(),
   entry: z.number().positive().optional(),
   stop_loss: z.number().positive().optional(),
@@ -336,7 +323,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_lessons",
     domain: "core",
     description:
-      "Retrieves lessons learned from past trades as structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. Not a substitute for get_strategy_performance — lessons are past-trade outcomes, not a strategy's live-vs-backtest evidence. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=EURUSD&recent=true.",
+      "Retrieves lessons learned from past trades as structured JSON (result, market_context.regime) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. Historical observation only — never statistical support for a specific recommendation. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=XAUUSD&recent=true.",
     inputSchema: {
       symbol: z.string().optional(),
       pattern: z.string().optional(),
@@ -376,22 +363,10 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     ui: { widget: "jobs-report" },
   },
   {
-    name: "get_strategy_performance",
-    domain: "core",
-    description:
-      "Compares a strategy's live outcomes against its existing backtest evidence and reports its deployment state (shadow/active/suspended). Evidence is whatever was already computed for this strategy/symbol/timeframe — there is no tool to run a new backtest, so an unbacktested combination reports no evidence rather than one. When: before create_recommendation to obtain a server-issued backtested_confidence. Not a source of confidence numbers to invent from — only a confidence value THIS tool returned may be passed to create_recommendation's backtested_confidence field. read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
-    inputSchema: {
-      strategy_id: zBacktestStrategyId,
-      symbol: z.string().optional(),
-      timeframe: zBacktestTimeframe.optional(),
-    },
-    annotations: READ_ONLY,
-  },
-  {
     name: "create_recommendation",
     domain: "core",
     description:
-      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
+      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. Confidence is the model's own judgement — never a statistically calibrated figure. Do not send backtested_confidence, statistical_support, strategy_id, or backtest_evidence; those fields no longer exist. Pass visual_confirmation + timeframes_reviewed after a live TradingView capture — confirmed is only valid when drawings_included=true; otherwise use not_checked.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
@@ -408,7 +383,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "find_similar_cases",
     domain: "core",
     description:
-      "Finds structurally similar past moments for this symbol and timeframe and returns aggregated forward outcomes for BOTH directions (buy and short) — evidence to weigh, never confirmation of a direction already chosen, and never a gate on a recommendation. When: during analysis, to ask what historically followed setups like the current one. Not a substitute for get_strategy_performance's live-vs-backtest comparison — this is unlabelled historical pattern matching, not a validated strategy's track record. Defaults: min_similarity 0.82, limit unset (server default). found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. read-only.",
+      "Finds structurally similar past moments for this symbol and timeframe and returns aggregated forward outcomes for BOTH directions (buy and short) — historical observation to weigh, never confirmation of a direction already chosen, never a gate on a recommendation, and never statistical support for a specific recommendation. When: during analysis, to ask what historically followed setups like the current one. Defaults: min_similarity 0.82, limit unset (server default). found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. read-only.",
     inputSchema: findSimilarCasesShape,
     annotations: READ_ONLY,
   },
@@ -424,7 +399,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_chart_snapshot",
     domain: "core",
     description:
-      "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. Not for multiple timeframes at once — capture_multi_timeframe_snapshot does that in one parallel call instead of several of these. Default inline_image=true. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "Captures an image of the operator's live TradingView chart for one symbol and interval when a chart tab is open (image_source=tradingview_capture, drawings/studies as actually rendered). With no live tab the response is an honest QuickChart fallback (image_source=quickchart_fallback, fallback_reason=no_live_session, drawings_included=false) that is NEVER the user's chart — do not describe it as such, and visual_confirmation must be not_checked. The PNG is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim (the link expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. Not for multiple timeframes at once — capture_multi_timeframe_snapshot does that in one parallel call. Default inline_image=true, include_drawings=true, include_studies=true. read-only on market; side-effect: capture.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -432,6 +407,16 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       pattern_name: z.string().optional(),
       chart_drawings: zChartDrawings,
       layout_id: z.string().optional(),
+      include_drawings: zLooseBoolean
+        .optional()
+        .describe(
+          "Include drawings already rendered on the live TradingView chart (default true). When false the same TradingView path captures a clean chart — never a QuickChart substitute.",
+        ),
+      include_studies: zLooseBoolean
+        .optional()
+        .describe(
+          "Include studies already rendered on the live TradingView chart (default true). When false the same TradingView path captures without them.",
+        ),
       inline_image: zLooseBoolean
         .optional()
         .describe(
@@ -480,6 +465,17 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         .boolean()
         .optional()
         .describe("Bypass the ~12s snapshot cache and force a fresh render."),
+      layout_id: z.string().optional(),
+      include_drawings: zLooseBoolean
+        .optional()
+        .describe(
+          "Include drawings already rendered on the live TradingView chart (default true). When false the same TradingView path captures a clean chart.",
+        ),
+      include_studies: zLooseBoolean
+        .optional()
+        .describe(
+          "Include studies already rendered on the live TradingView chart (default true).",
+        ),
     },
     annotations: READ_ONLY,
   },

@@ -336,10 +336,19 @@ describe("canonical adapters, lessons, Gold versions and analytics", () => {
 
   it("deduplicates evidence-backed lesson candidates and versions Gold weights without live mutation", async () => {
     const lifecycle = await import("@/lib/recommendations/canonical");
+    const db = await import("@/lib/db");
+    const learner = await db.insertReturningId(
+      "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+      ["gold-learner@example.com", "x", "user", "active"],
+    );
+    await db.execute(
+      "INSERT INTO user_entitlements (user_id, plan_status) VALUES (?, 'active')",
+      [learner],
+    );
     for (let index = 0; index < 20; index += 1) {
       const recommendation = await lifecycle.createCanonicalRecommendation({
       ...canonicalCompletePlan(),
-        userId: owner,
+        userId: learner,
         symbol: index % 2 ? "XAUUSD" : "XAUEUR",
         market: "forex",
         timeframe: "1h",
@@ -353,7 +362,7 @@ describe("canonical adapters, lessons, Gold versions and analytics", () => {
         source: "test",
       });
       await lifecycle.recordRecommendationOutcome({
-        userId: owner,
+        userId: learner,
         recommendationId: recommendation.recommendationId,
         type: "TP3",
         targetIndex: 3,
@@ -367,43 +376,42 @@ describe("canonical adapters, lessons, Gold versions and analytics", () => {
         dedupeKey: `validated-${index}`,
       });
     }
-    const db = await import("@/lib/db");
     const candidateRows = await db.query<{ id: number }>(
       "SELECT id FROM trade_lesson_candidates WHERE user_id = ? AND strategy_id = ?",
-      [owner, "gold-agent-x"],
+      [learner, "direct_analysis"],
     );
     assert.equal(candidateRows.length, 1, "duplicate lesson fingerprints collapse to one candidate");
-    const validatedLesson = await lifecycle.validateTradeLessonCandidate(owner, candidateRows[0]!.id);
+    const validatedLesson = await lifecycle.validateTradeLessonCandidate(learner, candidateRows[0]!.id);
     assert.equal(validatedLesson?.status, "validated");
     assert.equal(validatedLesson?.sampleSize, 20);
     assert.ok((validatedLesson?.evidenceEventIds.length ?? 0) >= 20);
 
     const originalWeights = { trend: 1 };
     const version1 = await lifecycle.proposeGoldWeightVersion({
-      userId: owner,
+      userId: learner,
       strategyId: "gold-agent-x",
       currentWeights: originalWeights,
     });
     assert.equal(version1?.status, "candidate");
     assert.deepEqual(originalWeights, { trend: 1 }, "proposal never mutates live input weights");
-    const active1 = await lifecycle.activateGoldWeightVersion(owner, "gold-agent-x", version1!.version);
+    const active1 = await lifecycle.activateGoldWeightVersion(learner, "gold-agent-x", version1!.version);
     assert.equal(active1?.status, "active");
     const version2 = await lifecycle.proposeGoldWeightVersion({
-      userId: owner,
+      userId: learner,
       strategyId: "gold-agent-x",
       currentWeights: active1!.weights,
     });
-    await lifecycle.activateGoldWeightVersion(owner, "gold-agent-x", version2!.version);
-    const rolledBack = await lifecycle.rollbackGoldWeightVersion(owner, "gold-agent-x", version1!.version);
+    await lifecycle.activateGoldWeightVersion(learner, "gold-agent-x", version2!.version);
+    const rolledBack = await lifecycle.rollbackGoldWeightVersion(learner, "gold-agent-x", version1!.version);
     assert.equal(rolledBack?.version, version1?.version);
     assert.equal(rolledBack?.status, "active");
-    const history = await lifecycle.listGoldWeightVersions(owner, "gold-agent-x");
+    const history = await lifecycle.listGoldWeightVersions(learner, "gold-agent-x");
     assert.equal(history.length, 2);
 
-    const analytics = await lifecycle.computeCanonicalRecommendationAnalytics(owner);
+    const analytics = await lifecycle.computeCanonicalRecommendationAnalytics(learner);
     assert.ok(analytics.bySymbol.some((group) => group.key === "XAUUSD"));
     assert.ok(analytics.byTimeframe.some((group) => group.key === "1h"));
-    assert.ok(analytics.byStrategy.some((group) => group.key === "gold-agent-x"));
+    assert.ok(analytics.byStrategy.some((group) => group.key === "direct_analysis"));
     assert.ok(analytics.byConfidence.length > 0);
     assert.ok(analytics.bySession.length > 0);
     assert.ok(analytics.byExitReason.length > 0);

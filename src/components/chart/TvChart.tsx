@@ -117,8 +117,26 @@ function loadTvScript(): Promise<void> {
   return scriptPromise;
 }
 
+export type TvChartSnapshotResult = {
+  pngBase64: string;
+  drawingsRendered: number;
+  studiesRendered: number;
+};
+
 export type TvChartHandle = {
   capturePng: () => Promise<ChatImagePayload | null>;
+  /**
+   * Agent live-capture: PNG of the rendered widget via takeClientScreenshot.
+   * When includeDrawings/includeStudies are false the matching layers are
+   * hidden for the shot and restored afterwards — still TradingView, never
+   * a server-side redraw.
+   */
+  captureSnapshot: (opts?: {
+    includeDrawings?: boolean;
+    includeStudies?: boolean;
+    symbol?: string;
+    interval?: string;
+  }) => Promise<TvChartSnapshotResult | null>;
   currentSymbol: () => string;
   latestCandle: () => TvLatestCandle | null;
   /** Visible time window (unix seconds) so the agent can reason on what the
@@ -247,6 +265,140 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   onIntervalChangeRef.current = onIntervalChange;
 
   useImperativeHandle(ref, () => ({
+    captureSnapshot: async (opts) => {
+      const w = widgetRef.current;
+      if (!w || !readyRef.current) return null;
+      const includeDrawings = opts?.includeDrawings !== false;
+      const includeStudies = opts?.includeStudies !== false;
+      const chart = w.activeChart();
+      const restoreSymbol = normalizeSymbolCase(symbol);
+      const restoreInterval = interval;
+      let hidDrawings = false;
+      let hidStudies = false;
+      const previousHide =
+        typeof w.hideAllDrawingTools === "function"
+          ? w.hideAllDrawingTools().value()
+          : false;
+
+      const waitCb = (fn: (cb: () => void) => void, timeoutMs = 2500) =>
+        new Promise<void>((resolve) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            resolve();
+          };
+          const timer = window.setTimeout(finish, timeoutMs);
+          try {
+            fn(() => {
+              window.clearTimeout(timer);
+              finish();
+            });
+          } catch {
+            window.clearTimeout(timer);
+            finish();
+          }
+        });
+
+      try {
+        if (opts?.symbol) {
+          const wanted = normalizeSymbolCase(opts.symbol);
+          const current = chart.symbol();
+          const currentBare = normalizeSymbolCase(
+            current.includes(":") ? current.split(":").pop()! : current,
+          );
+          if (currentBare !== wanted) {
+            await waitCb((cb) => chart.setSymbol(wanted, cb));
+          }
+        }
+        if (opts?.interval) {
+          const target = toResolution(opts.interval);
+          if (chart.resolution() !== target) {
+            await waitCb((cb) => chart.setResolution(target, cb));
+          }
+        }
+
+        if (!includeDrawings && typeof w.hideAllDrawingTools === "function") {
+          w.hideAllDrawingTools().setValue(true);
+          hidDrawings = true;
+        }
+        if (!includeStudies) {
+          try {
+            chart.removeAllStudies();
+            hidStudies = true;
+          } catch {
+            /* studies already empty / API refused */
+          }
+        }
+
+        await new Promise((r) => window.setTimeout(r, 80));
+
+        let drawingsRendered = 0;
+        let studiesRendered = 0;
+        try {
+          drawingsRendered = includeDrawings ? chart.getAllShapes().length : 0;
+        } catch {
+          drawingsRendered = includeDrawings
+            ? managerRef.current?.trackedIds().length ?? 0
+            : 0;
+        }
+        try {
+          studiesRendered = includeStudies ? chart.getAllStudies().length : 0;
+        } catch {
+          studiesRendered = includeStudies
+            ? studyManagerRef.current?.appliedFingerprints().length ?? 0
+            : 0;
+        }
+
+        const src = await w.takeClientScreenshot();
+        const maxW = 1280;
+        const scale = src.width > maxW ? maxW / src.width : 1;
+        const width = Math.max(1, Math.round(src.width * scale));
+        const height = Math.max(1, Math.round(src.height * scale));
+        const out = document.createElement("canvas");
+        out.width = width;
+        out.height = height;
+        const ctx = out.getContext("2d");
+        if (!ctx) return null;
+        ctx.fillStyle = "#0f1115";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(src, 0, 0, width, height);
+        const pngBase64 = out.toDataURL("image/png").split(",")[1];
+        if (!pngBase64) return null;
+        return { pngBase64, drawingsRendered, studiesRendered };
+      } catch {
+        return null;
+      } finally {
+        if (hidDrawings && typeof w.hideAllDrawingTools === "function") {
+          try {
+            w.hideAllDrawingTools().setValue(previousHide);
+          } catch {
+            /* widget torn down */
+          }
+        }
+        if (hidStudies) {
+          try {
+            studyManagerRef.current?.apply(studies ?? []);
+          } catch {
+            /* restore best-effort */
+          }
+        }
+        try {
+          const current = chart.symbol();
+          const currentBare = normalizeSymbolCase(
+            current.includes(":") ? current.split(":").pop()! : current,
+          );
+          if (currentBare !== restoreSymbol) {
+            chart.setSymbol(restoreSymbol, () => {});
+          }
+          if (chart.resolution() !== toResolution(restoreInterval)) {
+            chart.setResolution(toResolution(restoreInterval), () => {});
+          }
+        } catch {
+          /* restore best-effort */
+        }
+      }
+    },
     capturePng: async () => {
       const w = widgetRef.current;
       if (!w || !readyRef.current) return null;

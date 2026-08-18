@@ -59,7 +59,7 @@ const BRIDGE_RESULT = {
       content_type: "image/png",
       image_base64: PNG_1H.toString("base64"),
       captured_at: "2026-07-25T10:00:01.000Z",
-      image_source: "quickchart",
+      image_source: "quickchart_fallback",
       from_cache: true,
       numeric_context: { price: 4130.02, nearest_support: 4106.7 },
     },
@@ -68,7 +68,7 @@ const BRIDGE_RESULT = {
       content_type: "image/png",
       image_base64: PNG_4H.toString("base64"),
       captured_at: "2026-07-25T10:00:02.000Z",
-      image_source: "quickchart",
+      image_source: "quickchart_fallback",
       from_cache: false,
       numeric_context: null,
     },
@@ -188,8 +188,6 @@ describe("create_recommendation visual audit fields", () => {
     symbol: "XAUUSD",
     action: "buy" as const,
     plan_type: "immediate" as const,
-    strategy_id: "ema_trend_follow_v1" as const,
-    backtested_confidence: 62.5,
     market_regime: "trending",
     rationale: "We buy with the validated EMA trend follow edge.",
     factors: ["regime aligned"],
@@ -254,13 +252,12 @@ describe("create_recommendation visual audit fields", () => {
     // The recommendation is recorded as direct analysis; what visual review
     // must never do is imply statistical backing, and it does not — the server
     // labels support separately from anything the chart showed.
-    const { strategy_id: _s, backtested_confidence: _b, ...withoutEvidence } = base;
     const parsed = createRecommendationInput.safeParse({
-      ...withoutEvidence,
+      ...base,
       visual_confirmation: "confirmed",
       timeframes_reviewed: ["15m", "1h", "4h", "1D"],
     });
     assert.equal(parsed.success, true);
-    assert.equal(parsed.data?.strategy_id, undefined);
+    assert.equal("strategy_id" in (parsed.data ?? {}), false);
   });
 });

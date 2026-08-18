@@ -170,11 +170,11 @@ describe("effective recommendation revisions", () => {
     const legacyId = await db.insertReturningId(
       `INSERT INTO recommendations
          (user_id, symbol, market, timeframe, action, direction, confidence,
-          strategy_id, strategy_version, status, status_reason, source,
+          status, status_reason, source,
           engine_version, entry, stop_loss, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        owner, "XAUUSD", "forex", "5m", "buy", "buy", 70, "unspecified", "1",
+        owner, "XAUUSD", "forex", "5m", "buy", "buy", 70,
         "active", "legacy row", "test", "pre-revision", 3992, 3986,
         Date.now() + 3_600_000,
       ],

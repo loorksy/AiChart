@@ -135,10 +135,10 @@ export async function proposeGoldWeightVersion(input: {
     `SELECT e.event_id, e.event_type, e.evidence_json
        FROM recommendation_learning_events e
        JOIN recommendations r ON r.id = e.recommendation_id AND r.user_id = e.user_id
-      WHERE e.user_id = ? AND COALESCE(r.strategy_id, 'unspecified') = ?
+      WHERE e.user_id = ?
         AND e.event_type IN ('RecommendationSucceeded','RecommendationFailed')
       ORDER BY e.occurred_at ASC, e.event_id ASC`,
-    [input.userId, input.strategyId],
+    [input.userId],
   );
   const evidence = rows.flatMap((row) => {
     const validated = validatedEvidence(row.evidence_json);

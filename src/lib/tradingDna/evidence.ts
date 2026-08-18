@@ -22,7 +22,6 @@ interface RecommendationRow {
   symbol: string;
   market: string | null;
   timeframe: string | null;
-  strategy_id: string | null;
   direction: "buy" | "sell" | "wait" | null;
   action: "buy" | "sell" | "wait";
   confidence: number;
@@ -178,7 +177,7 @@ export async function collectTradingDnaEvidence(
   const [recommendationRows, outcomeRows, learningRows, lessons] = await Promise.all([
     query<RecommendationRow>(
       `SELECT id, symbol, COALESCE(market, 'forex') AS market, timeframe,
-              strategy_id, direction, action, confidence, status, created_at
+              direction, action, confidence, status, created_at
          FROM recommendations WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
       [userId, MAX_RECOMMENDATIONS],
     ),
@@ -204,7 +203,7 @@ export async function collectTradingDnaEvidence(
       symbol: row.symbol,
       market: row.market ?? "forex",
       timeframe: row.timeframe ?? "unknown",
-      strategyId: row.strategy_id ?? "unspecified",
+      strategyId: "direct_analysis",
       direction: row.direction ?? row.action,
       confidence: Number(row.confidence),
       status: row.status,

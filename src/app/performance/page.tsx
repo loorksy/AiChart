@@ -2,13 +2,12 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { StatisticsSection } from "@/components/performance/StatisticsSection";
 import { RecommendationsSection } from "@/components/performance/RecommendationsSection";
-import { BacktestSection } from "@/components/performance/BacktestSection";
 import { PerformanceSectionNav } from "@/components/performance/PerformanceSectionNav";
 import { PerformanceHashScroll } from "@/components/performance/PerformanceHashScroll";
 
 /**
- * The performance story of a recommendations platform: the plans, how they
- * turned out, and the validated strategies behind them.
+ * The performance story of a recommendations platform: the plans and how they
+ * turned out. Confidence on each plan is the model's own judgement.
  *
  * The "executions" half is gone with the execution layer. It rendered open
  * broker trades and pending approval intents from tables nothing writes any
@@ -26,7 +25,6 @@ export default async function PerformancePage() {
       <PerformanceSectionNav />
       <RecommendationsSection />
       <StatisticsSection />
-      <BacktestSection />
     </main>
   );
 }

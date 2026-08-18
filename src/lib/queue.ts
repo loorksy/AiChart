@@ -29,15 +29,6 @@ export interface JobPayloads {
   };
   /** Repair detected open-market candle gaps for one warehouse series. */
   candle_gap_repair: { symbol: string; interval: string };
-  /** Submit one catalog backtest (export + research job + pending row). */
-  strategy_backtest_submit: {
-    userId: number;
-    strategyId: string;
-    symbol: string;
-    timeframe: string;
-  };
-  /** Advance one backtest through the evidence state machine. */
-  strategy_backtest_advance: { userId: number; backtestId: number };
 }
 export type JobName = keyof JobPayloads;
 

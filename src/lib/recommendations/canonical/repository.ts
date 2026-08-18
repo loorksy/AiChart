@@ -33,13 +33,7 @@ interface RecommendationRow {
   targets_json: string | null;
   risk_json: string | null;
   confidence: number;
-  backtested_confidence: number | null;
-  confidence_low: number | null;
-  confidence_high: number | null;
-  backtest_id: number | null;
   market_regime: string | null;
-  strategy_id: string | null;
-  strategy_version: string | null;
   created_at: string | number;
   expires_at: number | null;
   status: string | null;
@@ -132,18 +126,9 @@ function toCanonical(row: RecommendationRow): CanonicalRecommendation {
     targets: numberArray(row.targets_json, row.take_profit),
     risk: jsonObject(row.risk_json),
     confidence: Number(row.confidence),
-    backtestedConfidence:
-      row.backtested_confidence == null
-        ? undefined
-        : Number(row.backtested_confidence),
-    confidenceLow:
-      row.confidence_low == null ? undefined : Number(row.confidence_low),
-    confidenceHigh:
-      row.confidence_high == null ? undefined : Number(row.confidence_high),
-    backtestId: row.backtest_id == null ? undefined : Number(row.backtest_id),
     marketRegime: row.market_regime ?? undefined,
-    strategyId: row.strategy_id ?? "unspecified",
-    strategyVersion: row.strategy_version ?? "1",
+    strategyId: "direct_analysis",
+    strategyVersion: "1",
     createdAt: epoch(row.created_at),
     expiresAt:
       row.expires_at == null
@@ -260,13 +245,12 @@ export async function createCanonicalRecommendation(
       `INSERT INTO recommendations
         (user_id, analysis_id, session_id, chat_id, symbol, market, timeframe,
          action, direction, entry, stop_loss, take_profit, targets_json, risk_json,
-         confidence, backtested_confidence, confidence_low, confidence_high,
-         backtest_id, market_regime, strategy_id, strategy_version, expires_at, status, status_reason,
+         confidence, market_regime, expires_at, status, status_reason,
          source, engine_version, entry_type, legacy_tracking_id, rationale, factors,
          chart_drawings_json, pattern_name, analysis_tier, context_json,
-         statistical_support, evidence_source, plan_type, execution_state,
+         evidence_source, plan_type, execution_state,
          updated_at, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
       [
         input.userId,
         input.analysisId ?? null,
@@ -283,13 +267,7 @@ export async function createCanonicalRecommendation(
         JSON.stringify(targets),
         JSON.stringify(input.risk ?? {}),
         clampConfidence(input.confidence),
-        input.backtestedConfidence ?? null,
-        input.confidenceLow ?? null,
-        input.confidenceHigh ?? null,
-        input.backtestId ?? null,
         input.marketRegime ?? null,
-        input.strategyId ?? "unspecified",
-        input.strategyVersion ?? "1",
         expiresAt,
         status,
         input.statusReason ?? "created",
@@ -303,11 +281,7 @@ export async function createCanonicalRecommendation(
         input.patternName ?? null,
         input.analysisTier ?? null,
         input.contextJson ?? null,
-        input.statisticalSupport ?? null,
-        input.evidenceSource ?? null,
-        // Written on the row itself, not only via the revision pointer: the
-        // revision seed below is best-effort, and a plan whose seed failed must
-        // not read as having no plan type or execution state.
+        input.evidenceSource ?? "direct_analysis",
         input.planType ?? null,
         input.executionState ?? null,
         now,
@@ -324,15 +298,11 @@ export async function createCanonicalRecommendation(
       direction,
       entry: input.entry ?? undefined,
       stopLoss: input.stopLoss ?? undefined,
-      backtestedConfidence: input.backtestedConfidence,
-      confidenceLow: input.confidenceLow,
-      confidenceHigh: input.confidenceHigh,
-      backtestId: input.backtestId,
       marketRegime: input.marketRegime,
       targets,
       confidence: clampConfidence(input.confidence),
-      strategyId: input.strategyId ?? "unspecified",
-      strategyVersion: input.strategyVersion ?? "1",
+      strategyId: "direct_analysis",
+      strategyVersion: "1",
       expiresAt,
       status,
       source: input.source ?? "web",

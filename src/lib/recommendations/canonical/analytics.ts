@@ -112,7 +112,8 @@ export async function computeCanonicalRecommendationAnalytics(
   userId: number,
 ): Promise<CanonicalRecommendationAnalytics> {
   const rows = await query<AnalyticsRow>(
-    `SELECT r.id AS recommendation_id, r.symbol, r.timeframe, r.strategy_id,
+    `SELECT r.id AS recommendation_id, r.symbol, r.timeframe,
+            'direct_analysis' AS strategy_id,
             r.confidence, r.session_id, r.entry_type, r.status, r.created_at,
             o.r_multiple, o.holding_ms, o.mae, o.mfe, o.outcome_type
        FROM recommendations r

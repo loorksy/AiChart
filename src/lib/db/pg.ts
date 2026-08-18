@@ -113,10 +113,6 @@ const SCHEMA = `
     action          TEXT NOT NULL,
     direction       TEXT,
     confidence      INTEGER NOT NULL DEFAULT 0,
-    backtested_confidence DOUBLE PRECISION,
-    confidence_low  DOUBLE PRECISION,
-    confidence_high DOUBLE PRECISION,
-    backtest_id     BIGINT,
     market_regime   TEXT,
     entry           DOUBLE PRECISION,
     stop_loss       DOUBLE PRECISION,
@@ -124,8 +120,6 @@ const SCHEMA = `
     targets_json    TEXT NOT NULL DEFAULT '[]',
     risk_json       TEXT NOT NULL DEFAULT '{}',
     timeframe       TEXT,
-    strategy_id     TEXT NOT NULL DEFAULT 'unspecified',
-    strategy_version TEXT NOT NULL DEFAULT '1',
     expires_at      BIGINT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'draft',
     status_reason   TEXT NOT NULL DEFAULT '',
@@ -136,9 +130,8 @@ const SCHEMA = `
     effective_revision_no INTEGER,
     plan_type       TEXT,
     execution_state TEXT,
-    statistical_support TEXT,
-    -- Where the decision's support came from, distinct from its grade above:
-    -- direct_analysis | strategy_supported | historical_memory | deep_research.
+    -- Where the decision's support came from:
+    -- direct_analysis | historical_memory | deep_research.
     -- NULL on pre-existing rows; never backfilled with an implied source.
     evidence_source TEXT,
     rationale       TEXT,
@@ -954,68 +947,6 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_gold_candles_time
     ON gold_candles (timeframe, time DESC);
 
-  -- ── The backtest result cache ────────────────────────────────────────────
-  --
-  -- What makes a backtest "lightning" is not running it faster — it is not
-  -- running it again. A strategy's result over a fixed window of closed bars
-  -- cannot change, so it is computed once and read thereafter.
-  --
-  -- The key is the whole claim: which strategy, at which spec revision, on
-  -- which timeframe, over exactly which bars. A revision bump or a deeper store
-  -- produces a different key and therefore a real re-run, which is the point —
-  -- a cache that survived a spec change would serve results for a strategy that
-  -- no longer exists.
-  CREATE TABLE IF NOT EXISTS backtest_results (
-    cache_key      TEXT PRIMARY KEY,
-    strategy_id    TEXT NOT NULL,
-    spec_revision  TEXT NOT NULL,
-    timeframe      TEXT NOT NULL,
-    bars_from      BIGINT NOT NULL,
-    bars_to        BIGINT NOT NULL,
-    bar_count      INTEGER NOT NULL,
-    backtest_id    INTEGER,
-    job_id         TEXT,
-    status         TEXT NOT NULL,
-    trade_count    INTEGER,
-    win_rate       DOUBLE PRECISION,
-    metrics_json   TEXT NOT NULL DEFAULT '{}',
-    created_at     BIGINT NOT NULL,
-    updated_at     BIGINT NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy
-    ON backtest_results (strategy_id, timeframe, updated_at DESC);
-
-  CREATE TABLE IF NOT EXISTS strategy_backtests (
-    id BIGSERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    strategy_id TEXT NOT NULL, strategy_version TEXT NOT NULL DEFAULT '1',
-    symbol TEXT NOT NULL, timeframe TEXT NOT NULL, job_id TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending', trade_count INTEGER NOT NULL DEFAULT 0,
-    win_rate DOUBLE PRECISION, expectancy DOUBLE PRECISION, sharpe_ratio DOUBLE PRECISION,
-    max_drawdown_pct DOUBLE PRECISION, profit_factor DOUBLE PRECISION,
-    calibrated_confidence DOUBLE PRECISION, confidence_low DOUBLE PRECISION,
-    confidence_high DOUBLE PRECISION, metrics_json TEXT NOT NULL DEFAULT '{}',
-    validation_json TEXT NOT NULL DEFAULT '{}', error_message TEXT,
-    created_at BIGINT NOT NULL, completed_at BIGINT, updated_at BIGINT NOT NULL,
-    UNIQUE (user_id, job_id)
-  );
-  CREATE INDEX IF NOT EXISTS idx_strategy_backtests_lookup
-    ON strategy_backtests (user_id, strategy_id, symbol, timeframe, status, completed_at);
-
-  CREATE TABLE IF NOT EXISTS strategy_deployments (
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    strategy_id TEXT NOT NULL, symbol TEXT NOT NULL, timeframe TEXT NOT NULL,
-    backtest_id BIGINT NOT NULL REFERENCES strategy_backtests(id) ON DELETE RESTRICT,
-    state TEXT NOT NULL DEFAULT 'shadow', expected_win_rate DOUBLE PRECISION NOT NULL,
-    calibrated_confidence DOUBLE PRECISION NOT NULL,
-    confidence_low DOUBLE PRECISION NOT NULL, confidence_high DOUBLE PRECISION NOT NULL,
-    live_sample_size INTEGER NOT NULL DEFAULT 0, live_win_rate DOUBLE PRECISION,
-    suspended_reason TEXT, updated_at BIGINT NOT NULL,
-    PRIMARY KEY (user_id, strategy_id, symbol, timeframe)
-  );
-  CREATE INDEX IF NOT EXISTS idx_strategy_deployments_state
-    ON strategy_deployments (user_id, state, strategy_id);
-
   CREATE TABLE IF NOT EXISTS trade_lesson_candidates (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1130,6 +1061,25 @@ const SCHEMA = `
 `;
 
 async function migratePg(client: PoolClient) {
+  await client.query(`
+    DROP TABLE IF EXISTS strategy_deployments;
+    DROP TABLE IF EXISTS strategy_backtests CASCADE;
+    DROP TABLE IF EXISTS backtest_results;
+  `).catch(() => {});
+  for (const col of [
+    "backtested_confidence",
+    "confidence_low",
+    "confidence_high",
+    "backtest_id",
+    "strategy_id",
+    "strategy_version",
+    "statistical_support",
+  ]) {
+    await client
+      .query(`ALTER TABLE recommendations DROP COLUMN IF EXISTS ${col}`)
+      .catch(() => {});
+  }
+
   await client.query(`
     ALTER TABLE recommendation_reevaluations
       ADD COLUMN IF NOT EXISTS trigger_payload_json TEXT NOT NULL DEFAULT '{}',
@@ -1436,12 +1386,6 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS direction TEXT,
       ADD COLUMN IF NOT EXISTS targets_json TEXT NOT NULL DEFAULT '[]',
       ADD COLUMN IF NOT EXISTS risk_json TEXT NOT NULL DEFAULT '{}',
-      ADD COLUMN IF NOT EXISTS strategy_id TEXT NOT NULL DEFAULT 'unspecified',
-      ADD COLUMN IF NOT EXISTS strategy_version TEXT NOT NULL DEFAULT '1',
-      ADD COLUMN IF NOT EXISTS backtested_confidence DOUBLE PRECISION,
-      ADD COLUMN IF NOT EXISTS confidence_low DOUBLE PRECISION,
-      ADD COLUMN IF NOT EXISTS confidence_high DOUBLE PRECISION,
-      ADD COLUMN IF NOT EXISTS backtest_id BIGINT,
       ADD COLUMN IF NOT EXISTS market_regime TEXT,
       ADD COLUMN IF NOT EXISTS expires_at BIGINT,
       ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft',
@@ -1453,7 +1397,6 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS effective_revision_no INTEGER,
       ADD COLUMN IF NOT EXISTS plan_type TEXT,
       ADD COLUMN IF NOT EXISTS execution_state TEXT,
-      ADD COLUMN IF NOT EXISTS statistical_support TEXT,
       ADD COLUMN IF NOT EXISTS evidence_source TEXT
   `).catch(() => {});
   await client.query(`

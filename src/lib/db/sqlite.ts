@@ -108,10 +108,6 @@ const SCHEMA = `
     action          TEXT NOT NULL,
     direction       TEXT,
     confidence      INTEGER NOT NULL DEFAULT 0,
-    backtested_confidence REAL,
-    confidence_low  REAL,
-    confidence_high REAL,
-    backtest_id     INTEGER,
     market_regime   TEXT,
     entry           REAL,
     stop_loss       REAL,
@@ -119,8 +115,6 @@ const SCHEMA = `
     targets_json    TEXT NOT NULL DEFAULT '[]',
     risk_json       TEXT NOT NULL DEFAULT '{}',
     timeframe       TEXT,
-    strategy_id     TEXT NOT NULL DEFAULT 'unspecified',
-    strategy_version TEXT NOT NULL DEFAULT '1',
     expires_at      INTEGER NOT NULL,
     status          TEXT NOT NULL DEFAULT 'draft',
     status_reason   TEXT NOT NULL DEFAULT '',
@@ -130,11 +124,9 @@ const SCHEMA = `
     effective_revision_no INTEGER,
     plan_type       TEXT,
     execution_state TEXT,
-    statistical_support TEXT,
-    -- Where the decision's support actually came from. Named separately from
-    -- statistical_support (a GRADE) because the source and its strength are
-    -- different facts: direct_analysis | strategy_supported | historical_memory
-    -- | deep_research. NULL on rows written before it existed — never given a
+    -- Where the decision's support actually came from:
+    -- direct_analysis | historical_memory | deep_research.
+    -- NULL on rows written before it existed — never given a
     -- value that would imply evidence the row does not have.
     evidence_source TEXT,
     updated_at      INTEGER,
@@ -958,17 +950,16 @@ const SCHEMA = `
 
   -- ── The gold candle store ────────────────────────────────────────────────
   --
-  -- Backtests need bars, and OANDA is a rate-limited API rather than a
-  -- database: re-fetching five years of 15m candles for every strategy run is
-  -- how "lightning backtests" become an overnight job. So closed bars are kept.
+  -- Analysis needs bars, and OANDA is a rate-limited API rather than a
+  -- database. Closed bars are kept so reads do not re-fetch history every time.
   --
   -- No symbol column, on purpose. This platform trades one instrument, and a
   -- symbol column is an invitation to store a second one — the exact drift
   -- gold-only exists to prevent. The timeframe IS the partition.
   --
   -- Only CLOSED bars are ever written. A forming bar's high and low are still
-  -- moving, and a backtest that read one would be trading on a candle the
-  -- market had not finished printing.
+  -- moving; a read that used one would be looking at a candle the market had
+  -- not finished printing.
   CREATE TABLE IF NOT EXISTS gold_candles (
     timeframe  TEXT NOT NULL,
     time       INTEGER NOT NULL,
@@ -981,89 +972,6 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_gold_candles_time
     ON gold_candles (timeframe, time DESC);
-
-  -- ── The backtest result cache ────────────────────────────────────────────
-  --
-  -- What makes a backtest "lightning" is not running it faster — it is not
-  -- running it again. A strategy's result over a fixed window of closed bars
-  -- cannot change, so it is computed once and read thereafter.
-  --
-  -- The key is the whole claim: which strategy, at which spec revision, on
-  -- which timeframe, over exactly which bars. A revision bump or a deeper store
-  -- produces a different key and therefore a real re-run, which is the point —
-  -- a cache that survived a spec change would serve results for a strategy that
-  -- no longer exists.
-  CREATE TABLE IF NOT EXISTS backtest_results (
-    cache_key      TEXT PRIMARY KEY,
-    strategy_id    TEXT NOT NULL,
-    spec_revision  TEXT NOT NULL,
-    timeframe      TEXT NOT NULL,
-    bars_from      INTEGER NOT NULL,
-    bars_to        INTEGER NOT NULL,
-    bar_count      INTEGER NOT NULL,
-    backtest_id    INTEGER,
-    job_id         TEXT,
-    status         TEXT NOT NULL,
-    trade_count    INTEGER,
-    win_rate       REAL,
-    metrics_json   TEXT NOT NULL DEFAULT '{}',
-    created_at     INTEGER NOT NULL,
-    updated_at     INTEGER NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy
-    ON backtest_results (strategy_id, timeframe, updated_at DESC);
-
-  CREATE TABLE IF NOT EXISTS strategy_backtests (
-    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id               INTEGER NOT NULL,
-    strategy_id           TEXT NOT NULL,
-    strategy_version      TEXT NOT NULL DEFAULT '1',
-    symbol                TEXT NOT NULL,
-    timeframe             TEXT NOT NULL,
-    job_id                TEXT NOT NULL,
-    status                TEXT NOT NULL DEFAULT 'pending',
-    trade_count           INTEGER NOT NULL DEFAULT 0,
-    win_rate              REAL,
-    expectancy            REAL,
-    sharpe_ratio          REAL,
-    max_drawdown_pct      REAL,
-    profit_factor         REAL,
-    calibrated_confidence REAL,
-    confidence_low        REAL,
-    confidence_high       REAL,
-    metrics_json          TEXT NOT NULL DEFAULT '{}',
-    validation_json       TEXT NOT NULL DEFAULT '{}',
-    error_message         TEXT,
-    created_at            INTEGER NOT NULL,
-    completed_at          INTEGER,
-    updated_at            INTEGER NOT NULL,
-    UNIQUE (user_id, job_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-  CREATE INDEX IF NOT EXISTS idx_strategy_backtests_lookup
-    ON strategy_backtests (user_id, strategy_id, symbol, timeframe, status, completed_at);
-
-  CREATE TABLE IF NOT EXISTS strategy_deployments (
-    user_id               INTEGER NOT NULL,
-    strategy_id           TEXT NOT NULL,
-    symbol                TEXT NOT NULL,
-    timeframe             TEXT NOT NULL,
-    backtest_id           INTEGER NOT NULL,
-    state                 TEXT NOT NULL DEFAULT 'shadow',
-    expected_win_rate     REAL NOT NULL,
-    calibrated_confidence REAL NOT NULL,
-    confidence_low        REAL NOT NULL,
-    confidence_high       REAL NOT NULL,
-    live_sample_size      INTEGER NOT NULL DEFAULT 0,
-    live_win_rate         REAL,
-    suspended_reason      TEXT,
-    updated_at            INTEGER NOT NULL,
-    PRIMARY KEY (user_id, strategy_id, symbol, timeframe),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (backtest_id) REFERENCES strategy_backtests(id) ON DELETE RESTRICT
-  );
-  CREATE INDEX IF NOT EXISTS idx_strategy_deployments_state
-    ON strategy_deployments (user_id, state, strategy_id);
 
   CREATE TABLE IF NOT EXISTS trade_lesson_candidates (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1189,6 +1097,29 @@ const SCHEMA = `
 `;
 
 function migrate(db: Database.Database) {
+  db.pragma("foreign_keys = OFF");
+  db.exec(`
+    DROP TABLE IF EXISTS strategy_deployments;
+    DROP TABLE IF EXISTS strategy_backtests;
+    DROP TABLE IF EXISTS backtest_results;
+  `);
+  for (const col of [
+    "backtested_confidence",
+    "confidence_low",
+    "confidence_high",
+    "backtest_id",
+    "strategy_id",
+    "strategy_version",
+    "statistical_support",
+  ]) {
+    try {
+      db.exec(`ALTER TABLE recommendations DROP COLUMN ${col}`);
+    } catch {
+      /* column already gone */
+    }
+  }
+  db.pragma("foreign_keys = ON");
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS dynamic_pages (
       slug          TEXT PRIMARY KEY,
@@ -1343,12 +1274,6 @@ function migrate(db: Database.Database) {
     ["direction", "TEXT"],
     ["targets_json", "TEXT NOT NULL DEFAULT '[]'"],
     ["risk_json", "TEXT NOT NULL DEFAULT '{}'"],
-    ["strategy_id", "TEXT NOT NULL DEFAULT 'unspecified'"],
-    ["strategy_version", "TEXT NOT NULL DEFAULT '1'"],
-    ["backtested_confidence", "REAL"],
-    ["confidence_low", "REAL"],
-    ["confidence_high", "REAL"],
-    ["backtest_id", "INTEGER"],
     ["market_regime", "TEXT"],
     ["expires_at", "INTEGER"],
     ["status", "TEXT NOT NULL DEFAULT 'draft'"],
@@ -1362,7 +1287,6 @@ function migrate(db: Database.Database) {
     ["effective_revision_no", "INTEGER"],
     ["plan_type", "TEXT"],
     ["execution_state", "TEXT"],
-    ["statistical_support", "TEXT"],
     ["evidence_source", "TEXT"],
   ];
   // Additive for databases created before the parity key existed.

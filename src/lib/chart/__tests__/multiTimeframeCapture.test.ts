@@ -97,8 +97,12 @@ describe("visual evidence guardrails", () => {
     const text = VISUAL_EVIDENCE_GUARDRAILS.join(" ").toLowerCase();
     assert.ok(text.includes("detect_levels"), "levels must come from numbers");
     assert.ok(
-      text.includes("never authorises live execution"),
-      "images must not authorise execution",
+      text.includes("quickchart_fallback") || text.includes("not the operator"),
+      "fallback images must not be described as the user's chart",
+    );
+    assert.ok(
+      text.includes("drawings_included=false"),
+      "missing drawings force visual_confirmation not_checked",
     );
   });
 });
@@ -113,12 +117,12 @@ describe("chart snapshot cache", () => {
     const key = chartSnapshotCacheKey(7, "xauusd", "1h", "forex");
     setCachedChartSnapshot(key, {
       imageBase64: "AAAA",
-      source: "quickchart",
+      source: "quickchart_fallback",
       capturedAt: 1_000,
     });
     const hit = getCachedChartSnapshot(key);
     assert.equal(hit?.imageBase64, "AAAA");
-    assert.equal(hit?.source, "quickchart");
+    assert.equal(hit?.source, "quickchart_fallback");
   });
 
   it("expires the entry once the TTL has passed", () => {
@@ -126,7 +130,7 @@ describe("chart snapshot cache", () => {
     const key = chartSnapshotCacheKey(7, "XAUUSD", "1h", "forex");
     setCachedChartSnapshot(
       key,
-      { imageBase64: "AAAA", source: "quickchart", capturedAt: 0 },
+      { imageBase64: "AAAA", source: "quickchart_fallback", capturedAt: 0 },
       10_000,
     );
     assert.ok(getCachedChartSnapshot(key, 10_500));
@@ -147,7 +151,7 @@ describe("chart snapshot cache", () => {
     const key = chartSnapshotCacheKey(3, "EURUSD", "15m", "forex");
     setCachedChartSnapshot(key, {
       imageBase64: "AAAA",
-      source: "quickchart",
+      source: "quickchart_fallback",
       capturedAt: 0,
     });
     assert.equal(chartSnapshotCacheSize(), 0);

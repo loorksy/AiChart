@@ -191,8 +191,8 @@ export type CreateTrackedRecommendationInput = Omit<
     evidenceSourceSurface?: string | null;
     decisionTrace?: Record<string, unknown> | null;
     /**
-     * Where the decision's support came from — distinct from the support GRADE:
-     * direct_analysis | strategy_supported | historical_memory | deep_research.
+     * Where the decision's support came from:
+     * direct_analysis | historical_memory | deep_research.
      */
     evidenceSource?: string | null;
     /** See CreateCanonicalRecommendationInput.legacyImport — migration only. */
@@ -208,8 +208,8 @@ export type CreateTrackedRecommendationInput = Omit<
      */
     tradability?: TradabilityAssessment | null;
     /**
-     * Catalog / statistical strategy id when known. Preferred over setupType for
-     * the canonical strategyId binding.
+     * Internal grouping key for lessons. Always "direct_analysis" after
+     * simulation backtests were removed; never a catalog strategy claim.
      */
     strategyId?: string;
   };
@@ -421,7 +421,6 @@ export async function createTrackedRecommendation(
     // journal needs the plan type to report.
     planType: input.planType ?? null,
     executionState: input.executionState ?? null,
-    statisticalSupport: input.statisticalSupport ?? null,
     evidenceSource: input.evidenceSource ?? null,
     initialRevision: {
       entryLow: input.entryLow ?? null,

@@ -47,7 +47,7 @@ before(async () => {
 
 async function planRow(trackingId: string) {
   const rows = await db.query<Record<string, unknown>>(
-    `SELECT id, plan_type, execution_state, statistical_support, effective_revision_no
+    `SELECT id, plan_type, execution_state, evidence_source, effective_revision_no
        FROM recommendations WHERE legacy_tracking_id = ? AND user_id = ?`,
     [trackingId, userId],
   );
@@ -74,7 +74,6 @@ function create(id: string, over: Record<string, unknown> = {}) {
     expiresAt: Date.now() + 3_600_000,
     planType: "conditional",
     executionState: "awaiting_activation",
-    statisticalSupport: "unavailable",
     entryLow: 1.098,
     entryHigh: 1.102,
     triggerCondition: "إغلاق شمعة فوق 1.1005",
@@ -87,14 +86,13 @@ function create(id: string, over: Record<string, unknown> = {}) {
 }
 
 describe("the three layers reach storage", () => {
-  it("writes plan type, execution state, and the support grade", async () => {
+  it("writes plan type, execution state, and evidence_source", async () => {
     await create("rec-layers");
     const row = await planRow("rec-layers");
     assert.ok(row, "the recommendation was not stored");
-    // Each of these was NULL before: computed in memory, never persisted.
     assert.equal(row.plan_type, "conditional");
     assert.equal(row.execution_state, "awaiting_activation");
-    assert.equal(row.statistical_support, "unavailable");
+    assert.equal(row.evidence_source, "direct_analysis");
   });
 
   it("gives every new recommendation an effective revision", async () => {
@@ -208,11 +206,11 @@ describe("the three layers reach storage", () => {
     const id = await db.insertReturningId(
       `INSERT INTO recommendations
          (user_id, symbol, market, timeframe, action, direction, confidence,
-          strategy_id, strategy_version, status, status_reason, source, engine_version,
+          status, status_reason, source, engine_version,
           expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        userId, "BTCUSDT", "crypto", "1h", "wait", "wait", 0, "legacy", "1",
+        userId, "BTCUSDT", "crypto", "1h", "wait", "wait", 0,
         "active", "legacy", "web", "legacy", Date.now() + 3_600_000,
       ],
     );

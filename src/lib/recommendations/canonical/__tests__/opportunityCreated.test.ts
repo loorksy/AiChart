@@ -41,12 +41,12 @@ async function legacyRecommendation(over: { legacyTrackingId?: string | null } =
   const id = await db.insertReturningId(
     `INSERT INTO recommendations
        (user_id, symbol, market, timeframe, action, direction, confidence,
-        strategy_id, strategy_version, status, status_reason, source,
+        status, status_reason, source,
         engine_version, entry, stop_loss, take_profit, legacy_tracking_id, expires_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       userId, "EURUSD", "forex", "1h", "buy", "buy", 70,
-      "unspecified", "1", "active", "test", "agent", "opportunity-test",
+      "active", "test", "agent", "opportunity-test",
       1.1, 1.09, 1.12, over.legacyTrackingId ?? null,
       Date.now() + 3_600_000,
     ],

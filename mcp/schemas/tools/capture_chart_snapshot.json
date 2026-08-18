@@ -28,6 +28,14 @@
     "layout_id": {
       "type": "string"
     },
+    "include_drawings": {
+      "description": "Include drawings already rendered on the live TradingView chart (default true). When false the same TradingView path captures a clean chart — never a QuickChart substitute.",
+      "type": "boolean"
+    },
+    "include_studies": {
+      "description": "Include studies already rendered on the live TradingView chart (default true). When false the same TradingView path captures without them.",
+      "type": "boolean"
+    },
     "inline_image": {
       "description": "Set false to skip the inline image copy (default true). The operator-facing display_markdown is returned either way.",
       "type": "boolean"

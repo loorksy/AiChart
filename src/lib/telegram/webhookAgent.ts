@@ -481,6 +481,7 @@ export async function handleTelegramMessage(
 
     const result = await runUnifiedChartAgent({
       surface: "platform",
+      liveSession: false,
       userMessage: turnMessage,
       chartContext: { symbol: DATA_SYMBOL, interval: "15m", dataSource: "oanda" },
       requestContext: {

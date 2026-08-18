@@ -10,9 +10,7 @@ import { listValidatedTradeLessons } from "@/lib/recommendations/canonical/trade
 import type { TradeLesson, TradeLessonMatch } from "@/lib/types";
 
 interface RecommendationLessonContext {
-  strategy_id: string | null;
   market_regime: string | null;
-  backtest_id: number | null;
   timeframe: string | null;
   action: string;
   confidence: number;
@@ -52,8 +50,7 @@ async function structuredLessons(
         lesson.recommendation_id == null
           ? null
           : await queryOne<RecommendationLessonContext>(
-              `SELECT strategy_id, market_regime, backtest_id, timeframe,
-                      action, confidence
+              `SELECT market_regime, timeframe, action, confidence
                  FROM recommendations WHERE id = ? AND user_id = ?`,
               [lesson.recommendation_id, userId],
             );
@@ -67,8 +64,7 @@ async function structuredLessons(
           pnl_pct: Number(lesson.pnl_pct),
         },
         strategy: {
-          id: recommendation?.strategy_id ?? lesson.pattern_name ?? "unspecified",
-          backtest_id: recommendation?.backtest_id ?? null,
+          id: lesson.pattern_name ?? "direct_analysis",
         },
         market_context: {
           symbol: lesson.symbol,
@@ -76,7 +72,7 @@ async function structuredLessons(
           timeframe: recommendation?.timeframe ?? lesson.timeframe,
           regime: recommendation?.market_regime ?? "unknown",
           direction: recommendation?.action ?? "unknown",
-          calibrated_confidence: recommendation?.confidence ?? null,
+          confidence: recommendation?.confidence ?? null,
           entry: object(lesson.entry_context_json),
         },
         evidence: {

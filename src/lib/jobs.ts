@@ -21,11 +21,3 @@ if (!hasHandler("memory_lifecycle")) {
   });
 }
 
-if (!hasHandler("strategy_backtest_advance")) {
-  registerHandler("strategy_backtest_advance", async ({ userId, backtestId }) => {
-    const { refreshStrategyBacktest } = await import("./strategies/evidence");
-    const { randomUUID } = await import("node:crypto");
-    await refreshStrategyBacktest({ userId, requestId: randomUUID() }, backtestId);
-  });
-}
-

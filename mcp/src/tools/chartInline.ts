@@ -172,6 +172,9 @@ export interface MultiTimeframeBridgeSnapshot {
   captured_at?: string;
   image_source?: string;
   from_cache?: boolean;
+  drawings_included?: boolean;
+  studies_included?: boolean;
+  fallback_reason?: string;
   numeric_context?: Record<string, unknown> | null;
 }
 
@@ -299,6 +302,9 @@ export async function multiTimeframeContent(
         timeframe: frame.snapshot.timeframe,
         captured_at: frame.snapshot.captured_at,
         image_source: frame.snapshot.image_source,
+        drawings_included: frame.snapshot.drawings_included === true,
+        studies_included: frame.snapshot.studies_included === true,
+        fallback_reason: frame.snapshot.fallback_reason ?? null,
         from_cache: frame.snapshot.from_cache === true,
         image_block_index: attached ? blockIndex++ : null,
         ...imageDeliveryFields(
@@ -346,7 +352,32 @@ export type ChartSnapshotBridgeResult = {
   symbol?: string;
   interval?: string;
   image_source?: string;
+  drawings_included?: boolean;
+  studies_included?: boolean;
+  fallback_reason?: string | null;
 };
+
+function snapshotHonestyMeta(res: ChartSnapshotBridgeResult): Record<string, unknown> {
+  const drawingsIncluded = res.drawings_included === true;
+  const fallback =
+    Boolean(res.fallback_reason) || res.image_source === "quickchart_fallback";
+  return {
+    drawings_included: drawingsIncluded,
+    studies_included: res.studies_included === true,
+    fallback_reason: res.fallback_reason ?? null,
+    ...(fallback
+      ? {
+          note:
+            "This image is NOT the operator's TradingView chart. Do not describe it as the user's chart. visual_confirmation must be not_checked.",
+        }
+      : !drawingsIncluded
+        ? {
+            note:
+              "drawings_included is false — visual_confirmation must be not_checked. Do not report confirmed against this picture.",
+          }
+        : {}),
+  };
+}
 
 /** Handles JSON from POST /api/agent/chart/snapshot (platform, MT5, or QuickChart). */
 export async function resolveChartSnapshotResponse(
@@ -395,6 +426,7 @@ export async function resolveChartSnapshotResponse(
         ok: true,
         status: "ready",
         image_source: res.image_source,
+        ...snapshotHonestyMeta(res),
       },
       res.image_base64,
       context,
@@ -480,11 +512,19 @@ export async function recommendationWithAutoChart(
         45_000,
       )) as ChartSnapshotBridgeResult;
       if (snap?.image_base64) {
-        const delivered = await chartInlineContent(meta, snap.image_base64, {
-          tool: "create_recommendation",
-          symbol,
-          timeframe,
-        });
+        const delivered = await chartInlineContent(
+          {
+            ...meta,
+            image_source: snap.image_source,
+            ...snapshotHonestyMeta(snap),
+          },
+          snap.image_base64,
+          {
+            tool: "create_recommendation",
+            symbol,
+            timeframe,
+          },
+        );
         // A broken capture must not surface as a failed recommendation.
         if (!delivered.isError) return delivered;
       }

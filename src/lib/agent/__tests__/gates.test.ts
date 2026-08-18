@@ -10,7 +10,6 @@ import { describe, it } from "node:test";
 import { runGateChain, refusalSummaryAr } from "../gates/chain";
 import type { GateDefinition } from "../gates/chain";
 import { evaluateNewsWindow, newsBlockReasonAr } from "../gates/newsWindow";
-import { gradeStrategyEvidence, confidenceFromEvidence } from "../gates/strategyEvidence";
 import { revalidatePlan } from "../gates/revalidation";
 import { GATE_IDS } from "../gates/types";
 import type { GateId } from "../gates/types";
@@ -61,14 +60,14 @@ describe("gate chain ordering and short-circuiting", () => {
       { id: "G2", run: async () => ({ status: "unavailable" as const }) },
       pass("G3"),
       pass("G4"),
-      // G5 is required: an uncalibrated claim must never pass as calibrated.
-      { id: "G5", run: async () => ({ status: "unavailable" as const, reasonAr: "المخزن غير متاح" }) },
-      pass("G6"),
+      pass("G5"),
+      // G6 is required: geometry that cannot run must not ship a plan.
+      { id: "G6", run: async () => ({ status: "unavailable" as const, reasonAr: "لا هندسة" }) },
       pass("G7"),
     ];
     const result = await runGateChain(gates);
     assert.equal(result.allowed, false, "a required gate that could not run must block");
-    assert.equal(result.vetoedBy?.id, "G5");
+    assert.equal(result.vetoedBy?.id, "G6");
     // G2 is optional — being unavailable did not stop the chain reaching G5.
     assert.equal(result.verdicts.find((v) => v.id === "G2")?.status, "unavailable");
   });
@@ -167,53 +166,6 @@ describe("G1 — the news blackout window", () => {
     const reason = newsBlockReasonAr(v);
     assert.match(reason ?? "", /US CPI/);
     assert.match(reason ?? "", /40/);
-  });
-});
-
-describe("G5 — strategy evidence grading", () => {
-  const calibrated = {
-    strategyId: "supply_rejection_v3",
-    sampleSize: 214,
-    winRate: 0.61,
-    expectancy: 0.42,
-    calibratedConfidence: 61,
-  };
-
-  it("cites stats only when the sample clears the bar", () => {
-    const v = gradeStrategyEvidence([calibrated]);
-    assert.equal(v.grade, "calibrated");
-    assert.equal(v.citableStats?.sampleSize, 214);
-    assert.equal(confidenceFromEvidence(v), 61);
-  });
-
-  it("labels a thin sample uncalibrated and quotes NO numbers", () => {
-    const thin = { ...calibrated, sampleSize: 12 };
-    const v = gradeStrategyEvidence([thin]);
-    assert.equal(v.grade, "uncalibrated");
-    assert.equal(v.citableStats, undefined, "a 12-trade record is not an edge");
-    assert.equal(confidenceFromEvidence(v), null, "no honest percentage exists here");
-    assert.match(v.reasonAr, /غير مُعايرة/);
-  });
-
-  it("vetoes when nothing matches", () => {
-    const v = gradeStrategyEvidence([]);
-    assert.equal(v.grade, "none");
-    assert.equal(confidenceFromEvidence(v), null);
-  });
-
-  it("ranks by evidence, not by the most flattering win rate", () => {
-    const lucky = {
-      strategyId: "lucky_v1",
-      sampleSize: 8,
-      winRate: 0.95,
-      calibratedConfidence: 95,
-    };
-    const v = gradeStrategyEvidence([lucky, calibrated]);
-    assert.equal(
-      v.match?.strategyId,
-      "supply_rejection_v3",
-      "a small lucky sample must not outrank a large one",
-    );
   });
 });
 

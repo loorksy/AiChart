@@ -467,6 +467,7 @@ export async function POST(req: NextRequest) {
               userMessage: resolvedMessage,
               chartContext: body.chartContext,
               locale: body.locale,
+              liveSession: true,
               requestContext: {
                 requestId,
                 userId: user.id,

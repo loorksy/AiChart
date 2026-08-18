@@ -100,11 +100,11 @@ export async function evaluateTradeLessonCandidate(
     `SELECT e.event_id, e.event_type, r.symbol, r.confidence, COALESCE(r.direction, r.action) AS direction
        FROM recommendation_learning_events e
        JOIN recommendations r ON r.id = e.recommendation_id AND r.user_id = e.user_id
-      WHERE e.user_id = ? AND COALESCE(r.strategy_id, 'unspecified') = ?
+      WHERE e.user_id = ?
         AND COALESCE(r.market, 'forex') = ?
         AND e.event_type IN ('RecommendationSucceeded','RecommendationFailed')
       ORDER BY e.occurred_at ASC, e.event_id ASC`,
-    [userId, recommendation.strategyId, recommendation.market],
+    [userId, recommendation.market],
   );
   const sameDirection = evidence.filter((row) => row.direction === recommendation.direction);
   const minSampleSize = gates.minSampleSize ?? DEFAULT_LESSON_MIN_SAMPLE_SIZE;

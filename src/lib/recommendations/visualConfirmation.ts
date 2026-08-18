@@ -75,10 +75,9 @@ export interface VisualConfidenceAdjustment {
 /**
  * Applies the contradiction penalty to a DISPLAYED confidence only.
  *
- * The caller must keep server-owned statistical evidence
- * (`backtested_confidence`, its interval, the backtest id) untouched: this
- * adjustment communicates uncertainty to the operator, it does not restate the
- * measured edge.
+ * The caller must keep the model's own judgement score as the stored
+ * confidence. This adjustment is display-only: it communicates visual
+ * uncertainty to the operator, it does not invent statistical support.
  */
 export function applyVisualConfidencePenalty(
   confidence: number,

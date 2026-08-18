@@ -39,8 +39,22 @@ export function RecommendationStatsOverview({ stats }: { stats: RecommendationSt
       <Tile label={t("stats.pending")} value={String(stats.pending)} tone="text-[var(--warning)]" />
       <Tile label={t("stats.winning")} value={String(stats.wins)} tone="text-[var(--buy)]" />
       <Tile label={t("stats.losing")} value={String(stats.losses)} tone="text-[var(--sell)]" />
-      <Tile label={t("stats.win_rate")} value={`${stats.winRate}%`} tone="text-[var(--buy)]" />
+      <Tile
+        label={t("stats.win_rate")}
+        value={
+          stats.winRate == null
+            ? `${stats.completedTriggered}`
+            : `${stats.winRate}%`
+        }
+        tone="text-[var(--buy)]"
+      />
       <Tile label={t("stats.completed")} value={String(stats.completedTriggered)} />
+      {stats.expiredUnactivatedRate != null && (
+        <Tile
+          label={t("stats.expired_unactivated_rate")}
+          value={`${Math.round(stats.expiredUnactivatedRate * 100)}%`}
+        />
+      )}
       {stats.avgPlannedRr != null && (
         <Tile label={t("stats.avg_planned_rr")} value={String(stats.avgPlannedRr)} />
       )}

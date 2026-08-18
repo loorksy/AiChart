@@ -5,7 +5,7 @@ import { useEffect } from "react";
 /**
  * On mount, scroll once to the element matching `window.location.hash`
  * (e.g. `/performance#trades`). Section ids are owned by RecommendationsSection,
- * TradesClient, StatisticsSection, and BacktestSection.
+ * TradesClient and StatisticsSection.
  */
 export function PerformanceHashScroll() {
   useEffect(() => {

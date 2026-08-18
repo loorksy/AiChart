@@ -12,7 +12,8 @@ export interface GroupStat {
   total: number;
   wins: number;
   losses: number;
-  winRate: number; // 0..100, over completed triggered only
+  /** 0..100 over completed triggered only; null below the sample-size floor. */
+  winRate: number | null;
 }
 
 export interface RecommendationStats {
@@ -21,8 +22,11 @@ export interface RecommendationStats {
   pending: number;
   wins: number;
   losses: number;
-  winRate: number;
+  /** 0..100; null when completedTriggered < WIN_RATE_SAMPLE_FLOOR. */
+  winRate: number | null;
   completedTriggered: number;
+  /** untriggeredExpired / total — expired-unactivated is not a loss. */
+  expiredUnactivatedRate: number | null;
   breakdown: {
     win_tp1: number;
     win_tp2: number;
@@ -43,6 +47,13 @@ export interface RecommendationStats {
 }
 
 const WIN_OUTCOMES = new Set(["win_tp1", "win_tp2", "win_tp3"]);
+
+/**
+ * Below this completed-triggered sample, no win-rate percentage is shown.
+ * Matches find_similar_cases (`MIN_STATS_SAMPLE`) so a handful of outcomes
+ * never becomes a quoted rate.
+ */
+export const WIN_RATE_SAMPLE_FLOOR = 8;
 
 function periodStartMs(period: StatsPeriod, now: number): number {
   const DAY = 86_400_000;
@@ -83,7 +94,8 @@ function groupStat(key: string, list: TrackedRecommendation[]): GroupStat {
     total: list.length,
     wins,
     losses,
-    winRate: denom > 0 ? Math.round((wins / denom) * 100) : 0,
+    winRate:
+      denom >= WIN_RATE_SAMPLE_FLOOR ? Math.round((wins / denom) * 100) : null,
   };
 }
 
@@ -142,14 +154,23 @@ export function computeRecommendationStats(
   const mean = (xs: number[]) =>
     xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
 
+  const untriggeredExpired = recs.filter(
+    (r) => r.outcome === "expired" && !r.triggeredAt,
+  ).length;
+
   return {
     total: recs.length,
     active,
     pending,
     wins,
     losses,
-    winRate: denom > 0 ? Math.round((wins / denom) * 100) : 0,
+    winRate:
+      denom >= WIN_RATE_SAMPLE_FLOOR ? Math.round((wins / denom) * 100) : null,
     completedTriggered: completed.length,
+    expiredUnactivatedRate:
+      recs.length > 0
+        ? Math.round((untriggeredExpired / recs.length) * 1000) / 1000
+        : null,
     breakdown: {
       win_tp1: count("win_tp1"),
       win_tp2: count("win_tp2"),
@@ -158,7 +179,7 @@ export function computeRecommendationStats(
       expired: count("expired"),
       cancelled: count("cancelled"),
       invalidated: count("invalidated"),
-      untriggeredExpired: recs.filter((r) => r.outcome === "expired" && !r.triggeredAt).length,
+      untriggeredExpired,
     },
     bySymbol: groupBy(recs, (r) => r.symbol),
     byTimeframe: groupBy(recs, (r) => r.interval),

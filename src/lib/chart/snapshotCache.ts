@@ -14,10 +14,10 @@
 
 /**
  * Where a snapshot image came from.
- * - `platform_chart`: the operator's own TradingView view (preferred).
- * - `quickchart`: a server-side redraw of the same candles (last resort).
+ * - `tradingview_capture`: takeClientScreenshot from a live chart tab.
+ * - `quickchart_fallback`: server-side redraw — never the operator's chart.
  */
-export type ChartSnapshotSource = "platform_chart" | "quickchart";
+export type ChartSnapshotSource = "tradingview_capture" | "quickchart_fallback";
 
 export interface CachedChartSnapshot {
   imageBase64: string;

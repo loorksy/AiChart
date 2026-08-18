@@ -40,6 +40,17 @@
     "fresh": {
       "description": "Bypass the ~12s snapshot cache and force a fresh render.",
       "type": "boolean"
+    },
+    "layout_id": {
+      "type": "string"
+    },
+    "include_drawings": {
+      "description": "Include drawings already rendered on the live TradingView chart (default true). When false the same TradingView path captures a clean chart.",
+      "type": "boolean"
+    },
+    "include_studies": {
+      "description": "Include studies already rendered on the live TradingView chart (default true).",
+      "type": "boolean"
     }
   },
   "required": [

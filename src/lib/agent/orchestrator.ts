@@ -118,7 +118,6 @@ import {
 } from "@/lib/recommendations/tradability";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/markets/tradingSession";
-import { getEvidenceCard, getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import { handleIndicatorCommand } from "./indicators/handleIndicatorCommand";
 import {
@@ -314,6 +313,11 @@ export interface UnifiedAgentInput {
    * test-only seam.
    */
   timeBasis?: "live" | "replay";
+  /**
+   * True when a live TradingView tab may photograph the operator's chart.
+   * Unattended cron/Telegram/worker leave this unset/false.
+   */
+  liveSession?: boolean;
   /** Model-provider seam used by integration tests; never a second brain. */
   synthesizerDeps?: SynthesizerDeps;
 }
@@ -1131,18 +1135,11 @@ async function runUnifiedChartAgentInner(
   // two: the module's whole premise is that evidence arriving after the
   // decision is the same as none, and serialising a second lookup here would
   // spend that budget twice for one table.
-  const [statisticalSupport, evidenceCard] = await Promise.all([
-    getStatisticalSupport({
-      userId: ctx.userId,
-      symbol: market.symbol,
-      timeframe: market.interval,
-    }).catch(() => null),
-    getEvidenceCard({
-      userId: ctx.userId,
-      symbol: market.symbol,
-      timeframe: market.interval,
-    }).catch(() => null),
-  ]);
+  const statisticalSupport = {
+    level: "unavailable" as const,
+    detail: "Backtest apparatus removed. Confidence is the model's own judgement.",
+  };
+  const evidenceCard = null;
 
   // What followed structurally similar moments. Read before the decision like
   // every other piece of evidence, and for both directions — the memory must not
@@ -1185,6 +1182,8 @@ async function runUnifiedChartAgentInner(
         symbol: market.symbol,
         interval: market.interval,
         timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+        layoutId: chartContext?.layoutId,
+        liveSession: input.liveSession === true,
       })
     : { snapshots: [], requested: [], missing: [], elapsedMs: 0 };
   if (visual.snapshots.length) {
@@ -1281,6 +1280,8 @@ async function runUnifiedChartAgentInner(
                 interval: market.interval,
                 timeframes: [timeframe],
                 timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+                layoutId: chartContext?.layoutId,
+                liveSession: input.liveSession === true,
               }).catch(() => null);
               return extra?.snapshots[0] ?? null;
             }),
@@ -1722,7 +1723,6 @@ async function runUnifiedChartAgentInner(
         blocked: !finalDecision.recommendation,
         imagesFor: snapshotImageTimeframes,
         providers: [
-          statisticalSupport ? "statistical_support" : null,
           historicalCases ? "case_memory" : null,
           news ? "calendar" : null,
         ].filter((name): name is string => name != null),
@@ -1748,8 +1748,8 @@ async function runUnifiedChartAgentInner(
       risk,
       drawings,
       chartSnapshotHash,
-      statisticalSupport: statisticalSupport?.level,
-      statisticalStrategyId: statisticalSupport?.strategyId,
+      statisticalSupport: undefined,
+      statisticalStrategyId: undefined,
       evidenceSnapshot: synth.evidenceSnapshot,
       entryType: gateEntryType,
       // The verdict bundle rides with the plan so a post-mortem can reconstruct
@@ -2397,7 +2397,6 @@ async function storeFinalRecommendation(input: {
     direction: rec.action,
     planType: rec.planType,
     executionState: rec.executionState,
-    statisticalSupport: input.statisticalSupport ?? undefined,
     entry: rec.entry,
     entryZone: rec.entryZone,
     // Canonical semantics from the gate chain, falling back to a structural
@@ -2650,14 +2649,7 @@ async function persistTrackedRecommendation(
     // activation condition to watch and the journal a plan type to report.
     planType: active.planType,
     executionState: active.executionState,
-    statisticalSupport: active.statisticalSupport,
-    // The SOURCE of support, distinct from its grade: a verified strategy
-    // backed this plan, or it stands on direct analysis alone. Deep-research
-    // revisions record their own source through the revision mechanism.
-    evidenceSource:
-      active.statisticalSupport && active.statisticalSupport !== "unavailable"
-        ? "strategy_supported"
-        : "direct_analysis",
+    evidenceSource: "direct_analysis",
     entryLow: active.entryZone?.low,
     entryHigh: active.entryZone?.high,
     triggerCondition: active.triggerCondition,

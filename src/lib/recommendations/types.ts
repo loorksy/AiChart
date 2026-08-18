@@ -82,8 +82,6 @@ export interface TrackedRecommendation {
   planType?: "immediate" | "anticipatory" | "conditional";
   /** Whether the plan can be entered right now — the contract's third layer. */
   executionState?: "valid_now" | "awaiting_activation" | "expired" | "invalidated" | "blocked";
-  /** Verified statistical backing, or its absence stated plainly. */
-  statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
   /** Entry zone bounds, when the plan defines a zone rather than a price. */
   entryLow?: number;
   entryHigh?: number;

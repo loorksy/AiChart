@@ -39,6 +39,7 @@ describe("confidence semantics", () => {
       dataSufficientForTrade: false,
     });
     assert.equal(c.displayKind, "recommendation");
+    assert.equal(c.displayLabelKey, "agent.model_judgement_confidence");
     assert.equal(c.recommendationConfidence, 0.8);
   });
 

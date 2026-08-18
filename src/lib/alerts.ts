@@ -198,25 +198,22 @@ export async function deliverSignal(
          * the message still beats prose alone. Capture is raced against a hard
          * budget so a slow headless boot can only delay an alert, never sink it.
          */
+        // Unattended alert: no live TradingView tab. Honest QuickChart
+        // fallback — never labelled as the operator's chart.
         let buffer: Buffer | null = null;
         try {
-          const { capturePlatformChart } = await import(
-            "@/lib/chart/platformChartCapture"
-          );
-          const live = await Promise.race([
-            capturePlatformChart({
-              userId,
-              symbol: rec.symbol,
-              interval: rec.timeframe ?? "1h",
-              watermark: true,
-              width: 1280,
-              height: 720,
-            }),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 25_000)),
-          ]);
-          buffer = live?.buffer ?? null;
+          const { captureChartImage } = await import("@/lib/chart/liveCapture");
+          const captured = await captureChartImage({
+            userId,
+            symbol: rec.symbol,
+            interval: rec.timeframe ?? "1h",
+            liveSession: false,
+          });
+          if (captured?.image_base64) {
+            buffer = Buffer.from(captured.image_base64, "base64");
+          }
         } catch {
-          /* playwright unavailable in this runtime — fall through */
+          /* capture unavailable — fall through */
         }
         if (!buffer) {
           buffer = await buildChartSnapshotBuffer({

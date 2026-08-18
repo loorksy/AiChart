@@ -29,7 +29,8 @@ export interface ConfidenceSemantics {
     | "agent.confidence"
     | "agent.analysis_confidence"
     | "agent.decision_confidence"
-    | "agent.recommendation_confidence";
+    | "agent.recommendation_confidence"
+    | "agent.model_judgement_confidence";
   /** Value shown in the badge (0–1), or not_applicable. */
   displayValue: ConfidenceValue;
   factors: ConfidenceFactor[];
@@ -132,7 +133,7 @@ export function buildRecommendationConfidence(input: {
     recommendationConfidence: recommendation,
     executionReadiness: "not_applicable",
     displayKind: "recommendation",
-    displayLabelKey: "agent.recommendation_confidence",
+    displayLabelKey: "agent.model_judgement_confidence",
     displayValue: recommendation,
     factors: [
       ...(input.setupQuality == null

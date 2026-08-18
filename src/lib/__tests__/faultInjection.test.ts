@@ -26,7 +26,7 @@ import {
 import { classifyAgentError, isRetryableFailureCode } from "@/lib/agent/errorTaxonomy";
 import { isTransportFailure } from "@/lib/research/transportState";
 import { ResearchServiceError } from "@/lib/research/errors";
-import { MIN_BACKTEST_TRADES } from "@/lib/strategies/evidence";
+import { MIN_BACKTEST_TRADES } from "@/lib/strategies/thresholds";
 
 const realFetch = globalThis.fetch;
 

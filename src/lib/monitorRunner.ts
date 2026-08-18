@@ -1,15 +1,10 @@
 import { runCronPostScan } from "./cronPostScan";
 import { checkEconomicEventProximity } from "./recommendations/economicEventMonitor";
 import { listUsersForMonitor } from "./store";
-import { notifyUser } from "./telegram";
-import { refreshAllStrategyDecay } from "./strategies/evidence";
 
 export interface MonitorCycleEvent {
   userId: number;
-  type:
-    | "strategy_promoted"
-    | "strategy_suspended"
-    | "economic_event";
+  type: "economic_event";
   detail: string;
   delivered: boolean;
 }
@@ -32,29 +27,6 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
   };
   for (const { id: userId } of users) {
     try {
-      const strategyEvents = await refreshAllStrategyDecay(userId);
-      for (const strategyEvent of strategyEvents) {
-        const deployment = strategyEvent.deployment;
-        const detail =
-          strategyEvent.event === "suspended"
-            ? `تم تعليق الاستراتيجية ${deployment.strategyId} على ${deployment.symbol} ${deployment.timeframe}: ${deployment.suspendedReason ?? "انحراف الأداء الحي عن الاختبار التاريخي"}.`
-            : `انتقلت الاستراتيجية ${deployment.strategyId} على ${deployment.symbol} ${deployment.timeframe} من الظل إلى الحالة النشطة بعد ${deployment.liveSampleSize} نتيجة مراقبة.`;
-        let delivered = true;
-        try {
-          await notifyUser(userId, detail);
-        } catch {
-          delivered = false;
-        }
-        result.events.push({
-          userId,
-          type:
-            strategyEvent.event === "suspended"
-              ? "strategy_suspended"
-              : "strategy_promoted",
-          detail,
-          delivered,
-        });
-      }
       // Calendar proximity (plan §8 C.6): a factual "release in N minutes"
       // alert for plans the operator holds, plus a re-evaluation trigger so the
       // brain — never the monitor — can re-decide. With no news provider this

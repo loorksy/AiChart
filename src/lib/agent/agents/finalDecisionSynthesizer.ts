@@ -52,7 +52,7 @@ import { breakLevelOf, offersAnticipatoryEntry } from "@/lib/chart/geometry/patt
 import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
-import type { StatisticalSupport } from "@/lib/strategies/supportSummary";
+import type { StatisticalSupport } from "@/lib/strategies/supportTypes";
 import { serializeCostEvidence } from "../marketContext/costEvidence";
 import { FEATURES } from "../featureFlags";
 import { metrics } from "@/lib/metrics";
@@ -505,7 +505,7 @@ Ask, in order:
 - historicalCases carries what followed structurally similar moments, for BOTH directions, measured before you chose one. Read both sides. A memory leaning the other way is a real argument to weigh, not a veto — and when both sides are thin the memory simply has nothing to say.
 - Quote a historical rate ONLY when historicalCases gives you one. A null hitRate means the sample is too small for a percentage: cite the count, or say there is no comparable history. Never turn "3 of 4 similar cases worked" into a number.
 - Never claim statistical support you were not given, and never invent a win rate, a historical count, news, or any number.
-- statisticalSupport is your validated arsenal for THIS symbol and timeframe: its level (strong/moderate/weak/unavailable), the best deployment's calibrated confidence, and a deployments list of matching backtested strategies. When level is not "unavailable", weigh it and CITE it (strategy, calibrated confidence, live sample) in your reasoning; when a listed strategy's conditions match your setup, say so. When it is "unavailable", say plainly the plan rests on direct analysis. It informs confidence — never the existence of the direction.
+- statisticalSupport is always unavailable: simulation backtests and calibrated-confidence claims have been removed. Say plainly the plan rests on live analysis and your own judgement. Do not cite a backtest, a strategy deployment, or a statistically calibrated confidence. historicalCases and cost evidence remain historical observation and execution-cost facts — never statistical support for this recommendation.
 - executionCost is the cost evidence: whenever executionCost.source is anything other than "unavailable" (observed_quote, live_cost_profile, session_profile, static_fallback), cite its spread figure (observed_spread_pips, naming the source when it is a fallback) in your cost reasoning — never say the spread is unavailable; you may only claim the spread/slippage is unavailable when executionCost.source === "unavailable".
 - Never claim news was checked when newsRisk is "unknown".
 - macroRegime (Fed policy rate/trend, inflation, curve) and cotPositioning (weekly speculative positioning, with extremes flagged) are SLOW context: they strengthen or weaken a plan and its confidence, never its existence or direction. An extreme positioning reading is a crowding warning, not a signal. Never claim macro or positioning was checked when its block is absent.
@@ -912,7 +912,7 @@ function buildModelContext(
     // absence is worth stating rather than papering over.
     statisticalSupport: (FEATURES.evidencePipelineV2() ? input.statisticalSupport : null) ?? {
       level: "unavailable",
-      detail: "No verified strategy evidence for this symbol and timeframe.",
+      detail: "Statistical backtest claims have been removed. The plan rests on live analysis and the model's own judgement.",
     },
     // What followed structurally similar moments — both directions, so this is
     // evidence to weigh and not a confirmation of a direction already picked.

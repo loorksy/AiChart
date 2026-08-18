@@ -40,7 +40,7 @@ export function RecommendationPerformanceTable({
                 <td className="py-1 text-center text-buy">{g.wins}</td>
                 <td className="py-1 text-center text-sell">{g.losses}</td>
                 <td className="py-1 text-center font-semibold text-foreground">
-                  {g.winRate}%
+                  {g.winRate == null ? g.wins + g.losses : `${g.winRate}%`}
                 </td>
               </tr>
             ))}

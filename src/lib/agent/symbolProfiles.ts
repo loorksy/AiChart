@@ -12,8 +12,6 @@
  * before instrument-aware parameters existed — flipped direction on ordinary
  * gold noise.
  */
-import { DATA_SYMBOL } from "@/lib/gold";
-import { getStrategyDeployment, type StrategyDeployment } from "@/lib/strategies/evidence";
 
 export interface BiasEngineParams {
   /** How many recent bars biasFromCandles looks back over. */
@@ -37,16 +35,3 @@ export function biasParamsForSymbol(_symbol?: string): BiasEngineParams {
   return GOLD_BIAS_PARAMS;
 }
 
-/**
- * The calibrated-confidence source: `strategy_deployments`, already keyed by
- * (user, strategy, symbol, timeframe) in strategies/evidence.ts. No separate
- * confidence store exists or should be introduced — the performance journal
- * is a descriptive operator log, not a calibration input.
- */
-export async function calibratedConfidenceForGold(
-  userId: number,
-  strategyId: string,
-  timeframe: string,
-): Promise<StrategyDeployment | null> {
-  return getStrategyDeployment(userId, strategyId, DATA_SYMBOL, timeframe);
-}

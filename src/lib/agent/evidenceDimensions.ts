@@ -160,18 +160,6 @@ export function buildEvidenceDimensions(
     dimensions.push(dim("cost_impact", "unavailable", "لا مستويات بعد لحساب العائد الصافي."));
   }
 
-  const support = input.statisticalSupport ?? "unavailable";
-  dimensions.push(
-    dim(
-      "statistical_support",
-      support,
-      input.statisticalDetail?.trim() ||
-        (support === "unavailable"
-          ? "لا يتوفر دعم إحصائي — القرار مبني على التحليل المباشر."
-          : `الدعم الإحصائي: ${support}.`),
-    ),
-  );
-
   if (input.historicalCases && input.historicalCases.count > 0) {
     const { count, winRate } = input.historicalCases;
     dimensions.push(

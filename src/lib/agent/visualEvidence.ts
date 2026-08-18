@@ -7,10 +7,10 @@
  * the same multi-timeframe capture the MCP tool uses and hands it to the
  * decision call in the same interleaved form.
  *
- * Best-effort by contract. Capture renders the operator's own TradingView
- * layout in a headless browser (see chart/platformChartCapture.ts) and that is
- * not worth blocking a decision on: a missing view degrades the read rather
- * than killing the analysis.
+ * Best-effort by contract. A live chart tab can photograph the operator's
+ * TradingView widget; unattended runs get an honest QuickChart fallback that
+ * is never labelled as the user's chart. A missing live view degrades the
+ * read rather than killing the analysis.
  *
  * The degradation is only honest if it is STATED. This module returns what was
  * requested alongside what arrived, so "I did not see the 4h" reaches the model
@@ -95,6 +95,12 @@ export async function collectVisualEvidence(input: {
   timeoutMs?: number;
   /** Override the default timeframe set — used by the extra-frame round. */
   timeframes?: string[];
+  layoutId?: string;
+  /**
+   * True only when a live chart tab may answer. Cron/Telegram/worker leave
+   * this false so they never wait on a browser that is not there.
+   */
+  liveSession?: boolean;
 }): Promise<VisualEvidenceResult> {
   const startedAt = Date.now();
   const requested = input.timeframes ?? visualTimeframesFor(input.interval);
@@ -112,6 +118,8 @@ export async function collectVisualEvidence(input: {
       maxImages: input.maxImages ?? 3,
       imageTimeoutMs: input.timeoutMs,
       includeNumericContext: true,
+      layoutId: input.layoutId,
+      liveSession: input.liveSession === true,
     });
 
     const snapshots: VisualSnapshot[] = result.snapshots

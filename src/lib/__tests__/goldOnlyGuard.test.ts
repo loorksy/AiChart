@@ -89,8 +89,8 @@ test("no user-facing surface offers a second instrument", () => {
   assert.deepEqual(offenders, [], "an instrument the operator can pick is an instrument the platform must cover");
 });
 
-test("the backtest sweep and the candle store submit gold and nothing else", () => {
-  for (const file of ["strategies/backtestRunner.ts", "gold/candleStore.ts"]) {
+test("the candle store submits gold and nothing else", () => {
+  for (const file of ["gold/candleStore.ts"]) {
     const text = readFileSync(path.join(SRC, "lib", file), "utf8");
     assert.match(text, /DATA_SYMBOL/, `${file} must take its symbol from lib/gold`);
     for (const line of text.split("\n")) {

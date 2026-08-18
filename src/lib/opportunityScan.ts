@@ -125,6 +125,7 @@ export async function runOpportunityScan(
     try {
       const decision = await runUnifiedChartAgent({
         surface: "internal",
+        liveSession: false,
         userMessage: `راجع ${candidate.symbol} على ${candidate.interval} كفرصة سكالب. هذه مؤشرات أولية وليست قراراً: ${candidate.signals.join("، ")}. اختر BUY أو SELL أو WAIT من بيانات السوق الفعلية.`,
         chartContext: { symbol: candidate.symbol, interval: candidate.interval, dataSource: "oanda" },
         requestContext: { requestId: newId(), userId, emitActivity: () => {} },
