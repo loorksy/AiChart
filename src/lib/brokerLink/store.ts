@@ -45,6 +45,25 @@ export async function insertBrokerLink(row: {
   return saved;
 }
 
+export async function replaceBrokerLink(row: {
+  userId: number;
+  metaapiAccountId: string;
+  brokerId: string;
+  server: string;
+  state: string;
+}): Promise<BrokerLinkRow> {
+  await execute(
+    `UPDATE broker_links
+        SET metaapi_account_id = ?, broker_id = ?, server = ?, platform = 'mt5',
+            state = ?, login = NULL, updated_at = ${nowExpr()}
+      WHERE user_id = ?`,
+    [row.metaapiAccountId, row.brokerId, row.server, row.state, row.userId],
+  );
+  const saved = await getBrokerLink(row.userId);
+  if (!saved) throw new Error("broker_links replace did not persist");
+  return saved;
+}
+
 export async function updateBrokerLinkStatus(
   userId: number,
   patch: { state?: string; login?: string | null },

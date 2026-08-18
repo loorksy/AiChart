@@ -231,8 +231,15 @@ export const en = {
 
   "connect.broker.title": "Link account",
   "connect.broker.subtitle":
-    "Press Link. Broker, login, and password are entered on MetaAPI’s page — Lonora never sees them.",
+    "Press Link, pick your broker, then enter login and password in the MetaAPI form — Lonora never sees the password.",
   "connect.broker.connect": "Link",
+  "connect.broker.continue": "Continue",
+  "connect.broker.pick": "Choose your broker",
+  "connect.broker.search": "Search brokers",
+  "connect.broker.other": "Another broker",
+  "connect.broker.server": "MetaTrader server name",
+  "connect.broker.env.live": "Live",
+  "connect.broker.env.demo": "Demo",
   "connect.broker.unconfigured":
     "Broker linking is not enabled on the server yet. Add METAAPI_TOKEN in the admin keys panel.",
   "connect.broker.draft": "Finish the form on MetaAPI.",
@@ -240,6 +247,12 @@ export const en = {
   "connect.broker.error": "Could not open the linking page.",
   "connect.broker.needs_balance":
     "MetaAPI balance is required before linking can start.",
+  "connect.broker.modal.title": "Link account",
+  "connect.broker.modal.body":
+    "The form below belongs to MetaAPI. Lonora does not receive the password.",
+  "connect.broker.modal.open": "Open in a new window",
+  "connect.broker.modal.done": "Done",
+  "connect.broker.modal.close": "Close",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",

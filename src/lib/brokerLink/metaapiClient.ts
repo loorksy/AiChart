@@ -201,3 +201,23 @@ export async function readAccount(input: {
       typeof body.connectionStatus === "string" ? body.connectionStatus : null,
   };
 }
+
+export async function deleteAccount(input: {
+  token: string;
+  accountId: string;
+}): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${PROVISIONING_ORIGIN}/users/current/accounts/${encodeURIComponent(input.accountId)}`,
+    {
+      method: "DELETE",
+      headers: headers(input.token),
+    },
+    { timeoutMs: 20_000, label: "MetaAPI" },
+  );
+  if (res.status === 404 || res.status === 204 || res.ok) return;
+  const body = await readJson(res);
+  throw new MetaapiClientError(
+    res.status >= 400 && res.status < 600 ? res.status : 502,
+    errorMessage(body, "Could not replace the previous broker-link account."),
+  );
+}

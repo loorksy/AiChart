@@ -1,19 +1,34 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { handleError, requireUser } from "@/lib/api";
-import { DEFAULT_BROKER } from "@/lib/brokerLink/brokers";
+import {
+  brokerById,
+  brokerFromServer,
+  publicBroker,
+  type BrokerOption,
+} from "@/lib/brokerLink/brokers";
 import {
   createConfigurationLink,
   createDraftAccount,
+  deleteAccount,
   MetaapiClientError,
   readAccount,
 } from "@/lib/brokerLink/metaapiClient";
 import {
   getBrokerLink,
   insertBrokerLink,
+  replaceBrokerLink,
   updateBrokerLinkStatus,
 } from "@/lib/brokerLink/store";
 import { metaapiConfigured, metaapiRegion, metaapiToken } from "@/lib/brokerLink/token";
 import { startTrialClock } from "@/lib/subscription/entitlement";
+
+const PostBody = z
+  .object({
+    brokerId: z.string().min(1).max(80).optional(),
+    server: z.string().min(2).max(80).optional(),
+  })
+  .strict();
 
 function publicState(state: string): "draft" | "configured" {
   return state === "DRAFT" ? "draft" : "configured";
@@ -37,6 +52,40 @@ function publicBrokerError(err: MetaapiClientError): {
     code: "metaapi_error",
     status: err.status >= 400 && err.status < 500 ? err.status : 502,
   };
+}
+
+function resolveBroker(body: {
+  brokerId?: string;
+  server?: string;
+}): BrokerOption | null {
+  if (body.brokerId) {
+    const catalog = brokerById(body.brokerId);
+    if (catalog) return catalog;
+  }
+  if (body.server) return brokerFromServer(body.server);
+  return null;
+}
+
+async function persistDraft(input: {
+  userId: number;
+  token: string;
+  broker: BrokerOption;
+  existingId?: string;
+}) {
+  if (input.existingId) {
+    try {
+      await deleteAccount({ token: input.token, accountId: input.existingId });
+    } catch (err) {
+      if (!(err instanceof MetaapiClientError)) throw err;
+    }
+  }
+  const created = await createDraftAccount({
+    token: input.token,
+    userId: input.userId,
+    broker: input.broker,
+    region: await metaapiRegion(),
+  });
+  return created;
 }
 
 export async function GET(req: Request) {
@@ -69,17 +118,26 @@ export async function GET(req: Request) {
         }
       }
     }
+    const broker = row
+      ? brokerById(row.broker_id) ?? {
+          id: row.broker_id,
+          name: row.server,
+          server: row.server,
+          env: "live" as const,
+        }
+      : null;
     return NextResponse.json({
       configured,
       linked: Boolean(row),
       status: row ? publicState(row.state) : null,
+      broker: broker ? publicBroker(broker) : null,
     });
   } catch (err) {
     return handleError(err);
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const user = await requireUser();
     const token = await metaapiToken();
@@ -90,27 +148,54 @@ export async function POST() {
       );
     }
 
+    const json: unknown = await req.json().catch(() => ({}));
+    const parsed = PostBody.safeParse(json);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    }
+    const broker = resolveBroker(parsed.data);
+    if (!broker) {
+      return NextResponse.json(
+        { error: "Pick a broker from the list." },
+        { status: 400 },
+      );
+    }
+
     let row = await getBrokerLink(user.id);
-    if (!row) {
-      const created = await createDraftAccount({
-        token,
+    const needsNew =
+      !row || row.broker_id !== broker.id || row.server !== broker.server;
+    if (needsNew) {
+      const created = await persistDraft({
         userId: user.id,
-        broker: DEFAULT_BROKER,
-        region: await metaapiRegion(),
+        token,
+        broker,
+        existingId: row?.metaapi_account_id,
       });
-      try {
-        row = await insertBrokerLink({
+      if (!row) {
+        try {
+          row = await insertBrokerLink({
+            userId: user.id,
+            metaapiAccountId: created.id,
+            brokerId: broker.id,
+            server: broker.server,
+            state: created.state,
+          });
+        } catch {
+          row = await getBrokerLink(user.id);
+          if (!row) throw new Error("Could not persist the broker link.");
+        }
+      } else {
+        row = await replaceBrokerLink({
           userId: user.id,
           metaapiAccountId: created.id,
-          brokerId: DEFAULT_BROKER.id,
-          server: DEFAULT_BROKER.server,
+          brokerId: broker.id,
+          server: broker.server,
           state: created.state,
         });
-      } catch {
-        row = await getBrokerLink(user.id);
-        if (!row) throw new Error("Could not persist the broker link.");
       }
     }
+
+    if (!row) throw new Error("Could not persist the broker link.");
 
     const configurationLink = await createConfigurationLink({
       token,

@@ -230,14 +230,27 @@ export const ar: Record<TranslationKey, string> = {
 
   "connect.broker.title": "ربط الحساب",
   "connect.broker.subtitle":
-    "اضغط ربط. الوسيط ورقم الحساب وكلمة المرور تُدخل في صفحة MetaAPI — Lonora لا تراها.",
+    "اضغط ربط، اختر الوسيط، ثم أدخل رقم الحساب وكلمة المرور في نموذج MetaAPI — Lonora لا ترى كلمة المرور.",
   "connect.broker.connect": "ربط",
+  "connect.broker.continue": "متابعة",
+  "connect.broker.pick": "اختر الوسيط",
+  "connect.broker.search": "ابحث عن الوسيط",
+  "connect.broker.other": "وسيط آخر",
+  "connect.broker.server": "اسم السيرفر في MetaTrader",
+  "connect.broker.env.live": "حقيقي",
+  "connect.broker.env.demo": "تجريبي",
   "connect.broker.unconfigured":
     "الربط غير مفعّل بعد. أدخل METAAPI_TOKEN من لوحة المفاتيح.",
   "connect.broker.draft": "أكمل النموذج في صفحة MetaAPI.",
   "connect.broker.configured": "الحساب مربوط.",
   "connect.broker.error": "تعذر فتح صفحة الربط.",
   "connect.broker.needs_balance": "يلزم رصيد في MetaAPI قبل بدء الربط.",
+  "connect.broker.modal.title": "ربط الحساب",
+  "connect.broker.modal.body":
+    "النموذج أدناه يخص MetaAPI. Lonora لا تستلم كلمة المرور.",
+  "connect.broker.modal.open": "فتح في نافذة جديدة",
+  "connect.broker.modal.done": "تم",
+  "connect.broker.modal.close": "إغلاق",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",
