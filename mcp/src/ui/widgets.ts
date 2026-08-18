@@ -216,11 +216,12 @@ function genericCard(titleKey: string, _subtitleKey: string) {
 const LIVE_CHART_CSS = `
   html,body{background:transparent!important;padding:0;margin:0;height:100%}
   .tv-live{position:relative;width:100%;min-height:340px;height:380px;background:transparent;overflow:hidden}
-  .tv-live iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent}
+  .tv-live canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
   .tv-rail{position:absolute;z-index:2;top:10px;inset-inline-start:12px;display:flex;align-items:center;gap:10px;pointer-events:none}
   .tv-live-dot{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--up)}
   .tv-live-dot::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-inline-end:6px;vertical-align:middle;box-shadow:0 0 0 4px color-mix(in srgb, var(--up) 22%, transparent)}
   .tv-id{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.02em}
+  .tv-price{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
   .tv-hint{position:absolute;inset:0;display:none;place-items:center;color:var(--faint);font-size:12px;font-weight:700;padding:24px;text-align:center;background:transparent;z-index:1}
   .tv-hint.show{display:grid}
 `;
@@ -231,69 +232,319 @@ const liveChart = widgetHtml(
     <div class="tv-rail">
       <span class="tv-live-dot" id="live-tag">LIVE</span>
       <span class="tv-id" id="title">—</span>
+      <span class="tv-price" id="price-lbl">—</span>
     </div>
-    <iframe id="tv" title="TradingView" allowtransparency="true"></iframe>
+    <canvas id="cv"></canvas>
     <div id="hint" class="tv-hint"></div>
   </div>`,
   `
-  var ORIGIN = "${PLATFORM_ORIGIN}";
-  var S = { symbol:null, interval:"15m", layoutId:null, drawings:[], rec:null,
-            targets:[], studies:[], theme:"dark", locale:"ar", booted:false,
-            failures:0, timer:null, frameReady:false, embedUrl:null };
+  var S = { symbol:null, interval:"15m", layoutId:null, candles:[],
+            drawings:[], rec:null, targets:[], lastUpdate:0,
+            failures:0, timer:null, booted:false, warning:null };
 
   function canonSym(s){
     s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     return s.length >= 6 ? s.slice(0, 6) : s;
   }
-  function origin(){
-    try { return new URL(ORIGIN).origin; } catch (e) { return "https://aichart.lork.cloud"; }
-  }
-  function isBoundEmbed(url){
-    if (!url || typeof url !== "string") return false;
+  function nnum(v){ v = Number(v); return isFinite(v) ? v : null; }
+  function toMs(t){ t = Number(t); if (!isFinite(t) || t <= 0) return null; return t < 20000000000 ? t * 1000 : t; }
+  function cssVar(name, fallback){
     try {
-      var u = new URL(url);
-      return u.origin === origin() && u.pathname === "/embed/chart" && !!u.searchParams.get("token");
-    } catch (e) { return false; }
+      var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (e) { return fallback; }
   }
-  function embedSrc(){
-    var url = S.embedUrl;
-    if (!isBoundEmbed(url)) return "";
-    if (url.indexOf("theme=") < 0)
-      url += (url.indexOf("?") >= 0 ? "&" : "?") + "theme=" + encodeURIComponent(S.theme || "dark");
-    if (url.indexOf("locale=") < 0)
-      url += "&locale=" + encodeURIComponent(S.locale || "ar");
-    return url;
+  function theme(){
+    return {
+      up: cssVar("--up", "#2dd4bf"),
+      down: cssVar("--down", "#fb7185"),
+      gold: cssVar("--amber", "#f5c26b"),
+      info: cssVar("--info", "#60a5fa"),
+      muted: cssVar("--muted", "#9aa6b2"),
+      line: cssVar("--line", "rgba(148,163,184,.2)"),
+      surface: cssVar("--surface", "#131922"),
+      txt: cssVar("--txt", "#f8fafc")
+    };
   }
+  function normCandles(o){
+    o = o || {};
+    var arr = Array.isArray(o.candles) ? o.candles : (Array.isArray(o) ? o : []);
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {
+      var c = arr[i] || {};
+      var t = toMs(c.time != null ? c.time : (c.t != null ? c.t : c.openTime));
+      var op = nnum(c.open), hi = nnum(c.high), lo = nnum(c.low), cl = nnum(c.close);
+      if (t != null && op != null && hi != null && lo != null && cl != null) {
+        out.push({ t:t, o:op, h:hi, l:lo, c:cl });
+      }
+    }
+    out.sort(function(a,b){ return a.t - b.t; });
+    return out;
+  }
+
   function applyPayload(d){
     d = d || {};
-    var prevSym = S.symbol, prevIv = S.interval, prevLid = S.layoutId;
     if (d.symbol) S.symbol = canonSym(d.symbol);
     if (d.interval) S.interval = String(d.interval);
     if (d.layout_id) S.layoutId = d.layout_id;
-    if (d.id && (d.state || d.drawings_count != null || d.embed_url)) S.layoutId = d.id;
-    if (d.theme === "light" || d.theme === "dark") S.theme = d.theme;
-    if (d.locale) S.locale = String(d.locale);
+    if (d.id && (d.state || d.drawings_count != null)) S.layoutId = d.id;
     var st = (d.state && typeof d.state === "object") ? d.state : null;
     if (st) {
       if (Array.isArray(st.drawings)) S.drawings = st.drawings;
       if (st.recommendation !== undefined) S.rec = st.recommendation;
       if (Array.isArray(st.targets)) S.targets = st.targets;
-      if (Array.isArray(st.studies)) S.studies = st.studies;
     }
     if (Array.isArray(d.drawings)) S.drawings = d.drawings;
     if (d.recommendation !== undefined) S.rec = d.recommendation;
     if (Array.isArray(d.targets)) S.targets = d.targets;
-    if (Array.isArray(d.studies)) S.studies = d.studies;
-    if (isBoundEmbed(d.embed_url)) {
-      var identityChanged = S.symbol !== prevSym || S.interval !== prevIv || S.layoutId !== prevLid;
-      if (!S.embedUrl || identityChanged) S.embedUrl = d.embed_url;
+    var cc = null;
+    var ohl = d.ohlc;
+    if (ohl && ohl.data && typeof ohl.data === "object") ohl = ohl.data;
+    var flat = d.data && typeof d.data === "object" ? d.data : d;
+    if (ohl) {
+      cc = normCandles(ohl);
+      S.warning = ohl.warning || null;
+    } else if (Array.isArray(flat.candles)) {
+      cc = normCandles(flat);
+      S.warning = flat.warning || null;
     }
+    if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }
   }
+
+  function roleColor(th, dr){
+    if (dr.color && /^#[0-9a-fA-F]{3,8}$/.test(dr.color)) return dr.color;
+    var r = String(dr.semanticRole || dr.type || "").toLowerCase();
+    if (/support|demand|take_profit|target/.test(r)) return th.up;
+    if (/resistance|supply|stop/.test(r)) return th.down;
+    if (/entry|fib|forecast/.test(r)) return th.gold;
+    return th.info;
+  }
+  function decimalsFor(span){
+    if (span < 0.05) return 5;
+    if (span < 5) return 3;
+    if (span < 100) return 2;
+    return 1;
+  }
+  function chartLbl(key, val) {
+    return (window.AIC && window.AIC.t ? window.AIC.t(key) : key) + " " + val;
+  }
+  function fmtP(p, dec){ return Number(p).toFixed(dec); }
+
+  function draw(){
+    var cv = document.getElementById("cv");
+    if (!cv) return;
+    var dpr = window.devicePixelRatio || 1;
+    var W = cv.clientWidth, H = cv.clientHeight;
+    if (!W || !H) return;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    var g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    var cs = S.candles;
+    if (!cs.length) return;
+    var th = theme();
+    var UP = th.up, DOWN = th.down, GOLD = th.gold, INFO = th.info;
+    var MUTED = th.muted, LINE = th.line, SURFACE = th.surface, TXT = th.txt;
+
+    var padL = 6, padR = 56, padT = 36, padB = 20;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var N = Math.min(200, cs.length), i0 = cs.length - N;
+    var lo = Infinity, hi = -Infinity;
+    for (var i = i0; i < cs.length; i++) { if (cs[i].l < lo) lo = cs[i].l; if (cs[i].h > hi) hi = cs[i].h; }
+    var span0 = hi - lo || Math.abs(hi) * 0.001 || 1;
+    var extras = [];
+    if (S.rec) { extras.push(nnum(S.rec.entry), nnum(S.rec.stop_loss), nnum(S.rec.take_profit)); }
+    for (var e2 = 0; e2 < S.targets.length; e2++) extras.push(nnum(S.targets[e2]));
+    for (var e3 = 0; e3 < extras.length; e3++) {
+      var xv = extras[e3];
+      if (xv != null && xv > lo - span0 && xv < hi + span0) { if (xv < lo) lo = xv; if (xv > hi) hi = xv; }
+    }
+    var span = (hi - lo) || span0; lo -= span * 0.06; hi += span * 0.06; span = hi - lo;
+    var dec = decimalsFor(span);
+    var step = plotW / N;
+    function xFor(idx){ var ii = idx < i0 ? i0 : idx; return padL + (ii - i0 + 0.5) * step; }
+    function yFor(p){ return padT + (hi - p) / span * plotH; }
+    function idxForTime(t){
+      if (t == null) return null;
+      for (var k = cs.length - 1; k >= 0; k--) { if (cs[k].t <= t) return k; }
+      return 0;
+    }
+    function ptX(pt){
+      if (pt.barsAhead != null && isFinite(pt.barsAhead)) return xFor(cs.length - 1 + Number(pt.barsAhead));
+      var t = toMs(pt.time != null ? pt.time : pt.time_offset);
+      var ix = idxForTime(t);
+      return ix == null ? null : xFor(ix);
+    }
+
+    g.font = "10px system-ui, sans-serif"; g.textBaseline = "middle";
+    for (var gl = 0; gl <= 4; gl++) {
+      var gp = lo + span * gl / 4, gy = yFor(gp);
+      g.strokeStyle = LINE; g.globalAlpha = 0.55; g.beginPath();
+      g.moveTo(padL, gy); g.lineTo(W - padR, gy); g.stroke(); g.globalAlpha = 1;
+      g.fillStyle = MUTED; g.textAlign = "left";
+      g.fillText(fmtP(gp, dec), W - padR + 5, gy);
+    }
+    g.textAlign = "center"; g.fillStyle = MUTED;
+    for (var tl = 0; tl < 3; tl++) {
+      var ti = i0 + Math.round((N - 1) * tl / 2);
+      var d0 = new Date(cs[ti].t);
+      var lbl = ("0" + d0.getHours()).slice(-2) + ":" + ("0" + d0.getMinutes()).slice(-2);
+      g.fillText(lbl, xFor(ti), H - padB / 2);
+    }
+
+    function hline(p, color, dash, label){
+      var y = yFor(p);
+      if (y < padT - 4 || y > padT + plotH + 4) return;
+      g.strokeStyle = color; g.lineWidth = 1;
+      g.setLineDash(dash === "dashed" ? [5,4] : dash === "dotted" ? [2,3] : []);
+      g.beginPath(); g.moveTo(padL, y); g.lineTo(W - padR, y); g.stroke(); g.setLineDash([]);
+      if (label) {
+        g.font = "9px system-ui, sans-serif";
+        var tw = g.measureText(label).width + 8;
+        g.fillStyle = SURFACE; g.strokeStyle = color; g.globalAlpha = 0.95;
+        g.fillRect(padL + 2, y - 8, tw, 15); g.strokeRect(padL + 2, y - 8, tw, 15);
+        g.globalAlpha = 1; g.fillStyle = color; g.textAlign = "left";
+        g.fillText(label, padL + 6, y);
+        g.font = "10px system-ui, sans-serif";
+      }
+    }
+
+    for (var z = 0; z < S.drawings.length; z++) {
+      var dz = S.drawings[z] || {};
+      var tz = String(dz.type || "").toLowerCase();
+      if (!/zone|range_box|band|risk_reward/.test(tz)) continue;
+      var pts = Array.isArray(dz.points) ? dz.points : [];
+      var p1 = nnum(pts[0] && pts[0].price != null ? pts[0].price : dz.price);
+      var p2 = nnum(pts[1] && pts[1].price != null ? pts[1].price : dz.price2);
+      if (p1 == null || p2 == null) continue;
+      var zc = roleColor(th, dz);
+      var y1 = yFor(Math.max(p1, p2)), y2 = yFor(Math.min(p1, p2));
+      var zx1 = pts[0] ? ptX(pts[0]) : null, zx2 = pts[1] ? ptX(pts[1]) : null;
+      var rx = zx1 != null ? Math.min(zx1, zx2 != null ? zx2 : W - padR) : padL;
+      var rw = (zx2 != null ? Math.max(zx1 != null ? zx1 : padL, zx2) : W - padR) - rx;
+      if (rw < 8) { rx = padL; rw = plotW; }
+      g.fillStyle = zc; g.globalAlpha = 0.10; g.fillRect(rx, y1, rw, y2 - y1);
+      g.globalAlpha = 0.5; g.strokeStyle = zc; g.strokeRect(rx, y1, rw, y2 - y1);
+      g.globalAlpha = 1;
+      if (dz.label) { g.fillStyle = zc; g.textAlign = "left"; g.fillText(String(dz.label), rx + 4, y1 + 8); }
+    }
+
+    var cw = Math.max(1.5, step * 0.62);
+    for (var ci = i0; ci < cs.length; ci++) {
+      var c = cs[ci], x = xFor(ci), up = c.c >= c.o;
+      g.strokeStyle = g.fillStyle = up ? UP : DOWN;
+      g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, yFor(c.h)); g.lineTo(x, yFor(c.l)); g.stroke();
+      var yo = yFor(c.o), ycl = yFor(c.c);
+      var top = Math.min(yo, ycl), hgt = Math.max(1, Math.abs(ycl - yo));
+      g.fillRect(x - cw / 2, top, cw, hgt);
+    }
+
+    for (var di = 0; di < S.drawings.length; di++) {
+      var dr = S.drawings[di] || {};
+      var ty = String(dr.type || "").toLowerCase();
+      if (/zone|range_box|band|risk_reward/.test(ty)) continue;
+      var col = roleColor(th, dr);
+      var ps = Array.isArray(dr.points) ? dr.points : [];
+      var flatP = nnum(dr.price);
+      if (/price_line|hline|baseline/.test(ty) || (ps.length <= 1 && flatP != null)) {
+        var pv = ps.length && ps[0].price != null ? nnum(ps[0].price) : flatP;
+        if (pv != null) hline(pv, col, dr.style || "solid", dr.label ? String(dr.label) : null);
+        continue;
+      }
+      if (/fib/.test(ty)) {
+        var f1 = nnum(ps[0] && ps[0].price), f2 = nnum(ps[1] && ps[1].price);
+        if (f1 != null && f2 != null) {
+          var ratios = [0, 0.236, 0.382, 0.5, 0.618, 1];
+          for (var fr = 0; fr < ratios.length; fr++) {
+            hline(f1 + (f2 - f1) * ratios[fr], GOLD, fr === 0 || fr === 5 ? "solid" : "dotted",
+                  (ratios[fr] * 100).toFixed(1));
+          }
+        }
+        continue;
+      }
+      if (/marker|arrow|text|label/.test(ty)) {
+        var mp = ps[0];
+        if (mp && mp.price != null) {
+          var mx = ptX(mp), my = yFor(nnum(mp.price));
+          if (mx != null) {
+            g.fillStyle = col; g.beginPath(); g.arc(mx, my, 3.5, 0, 7); g.fill();
+            if (dr.label) { g.textAlign = "center"; g.fillText(String(dr.label), mx, my - 10); }
+          }
+        }
+        continue;
+      }
+      if (/position/.test(ty)) {
+        var meta = dr.meta || {};
+        var en = nnum(meta.entry), sl = nnum(meta.stopLoss), tp = nnum(meta.takeProfit);
+        if (en != null) hline(en, GOLD, "dashed", chartLbl("entry", fmtP(en, dec)));
+        if (sl != null) hline(sl, DOWN, "dashed", chartLbl("stop", fmtP(sl, dec)));
+        if (tp != null) hline(tp, UP, "dashed", chartLbl("target", fmtP(tp, dec)));
+        continue;
+      }
+      if (ps.length >= 2) {
+        g.strokeStyle = col; g.lineWidth = Number(dr.width) >= 1 ? Number(dr.width) : 1.5;
+        g.setLineDash(/forecast/.test(ty) || dr.style === "dashed" ? [5,4] : dr.style === "dotted" ? [2,3] : []);
+        g.beginPath();
+        var started = false;
+        for (var pi = 0; pi < ps.length; pi++) {
+          var lp = ps[pi];
+          if (lp == null || lp.price == null) continue;
+          var lx = ptX(lp), ly = yFor(nnum(lp.price));
+          if (lx == null) continue;
+          if (!started) { g.moveTo(lx, ly); started = true; } else { g.lineTo(lx, ly); }
+        }
+        if (started) g.stroke();
+        g.setLineDash([]); g.lineWidth = 1;
+        if (dr.label && ps[0] && ps[0].price != null) {
+          var lbx = ptX(ps[0]);
+          if (lbx != null) { g.fillStyle = col; g.textAlign = "left"; g.fillText(String(dr.label), lbx + 4, yFor(nnum(ps[0].price)) - 8); }
+        }
+      }
+    }
+
+    if (S.rec && typeof S.rec === "object") {
+      var re = nnum(S.rec.entry), rs = nnum(S.rec.stop_loss), rt = nnum(S.rec.take_profit);
+      if (re != null) hline(re, GOLD, "dashed", chartLbl("entry", fmtP(re, dec)));
+      if (rs != null) hline(rs, DOWN, "dashed", chartLbl("stop", fmtP(rs, dec)));
+      if (rt != null) hline(rt, UP, "dashed", chartLbl("target", fmtP(rt, dec)));
+      for (var tg = 0; tg < S.targets.length; tg++) {
+        var tv = nnum(S.targets[tg]);
+        if (tv != null && tv !== rt) hline(tv, UP, "dotted", chartLbl("target", String(tg + 1)));
+      }
+    }
+
+    var last = cs[cs.length - 1];
+    var lpY = yFor(last.c);
+    g.strokeStyle = last.c >= last.o ? UP : DOWN;
+    g.setLineDash([2,3]); g.beginPath(); g.moveTo(padL, lpY); g.lineTo(W - padR, lpY); g.stroke(); g.setLineDash([]);
+    g.fillStyle = last.c >= last.o ? UP : DOWN;
+    g.fillRect(W - padR + 1, lpY - 8, padR - 3, 16);
+    g.fillStyle = TXT; g.textAlign = "left"; g.font = "bold 10px system-ui, sans-serif";
+    g.fillText(fmtP(last.c, dec), W - padR + 5, lpY);
+  }
+
   function setTitle(){
     var fallback = window.AIC && window.AIC.t ? window.AIC.t("chartTitle") : "Chart";
     document.getElementById("title").textContent = S.symbol ? S.symbol + " · " + S.interval : fallback;
     var tag = document.getElementById("live-tag");
     tag.textContent = window.AIC && window.AIC.t ? window.AIC.t("connLive") : "LIVE";
+  }
+  function setPrice(){
+    var priceEl = document.getElementById("price-lbl");
+    var last = S.candles.length ? S.candles[S.candles.length - 1] : null;
+    if (last) {
+      var lo = last.l, hi = last.h;
+      for (var ci = 0; ci < S.candles.length; ci++) {
+        lo = Math.min(lo, S.candles[ci].l);
+        hi = Math.max(hi, S.candles[ci].h);
+      }
+      priceEl.textContent = fmtP(last.c, decimalsFor(hi - lo));
+      priceEl.className = "tv-price " + (last.c >= last.o ? "green" : "red");
+    } else {
+      priceEl.textContent = "—";
+      priceEl.className = "tv-price";
+    }
   }
   function setHint(txt){
     var hint = document.getElementById("hint");
@@ -301,53 +552,34 @@ const liveChart = widgetHtml(
     hint.className = "tv-hint show";
     hint.textContent = txt;
   }
-  function pushState(){
-    var f = document.getElementById("tv");
-    if (!f || !f.contentWindow) return;
-    try {
-      f.contentWindow.postMessage({
-        type: "aichart:live-chart",
-        symbol: S.symbol,
-        interval: S.interval,
-        theme: S.theme,
-        drawings: S.drawings,
-        recommendation: S.rec,
-        targets: S.targets,
-        studies: S.studies
-      }, origin());
-    } catch (e) {}
-  }
-  function mountFrame(){
-    var f = document.getElementById("tv");
-    var next = embedSrc();
-    if (!next) return;
-    if (f.getAttribute("src") === next) { pushState(); return; }
-    S.frameReady = false;
-    f.onload = function () { S.frameReady = true; pushState(); };
-    f.setAttribute("src", next);
-  }
   function refresh(){
-    setTitle();
-    if (!embedSrc()) {
-      setHint(window.AIC && window.AIC.t ? window.AIC.t("noBoundChart") : "Waiting for the linked account");
-      var f = document.getElementById("tv");
-      if (f) f.removeAttribute("src");
+    setTitle(); setPrice();
+    if (!S.symbol) {
+      setHint(window.AIC && window.AIC.t ? window.AIC.t("noSymbolHint") : "No symbol yet");
+    } else if (!S.candles.length) {
+      setHint(S.warning
+        ? String(S.warning)
+        : (window.AIC && window.AIC.t ? window.AIC.t("noCandles") : "No candles available"));
     } else {
       setHint("");
-      mountFrame();
     }
+    draw();
     if (window.AIC) window.AIC.notifySize();
   }
+
   function schedule(ms){
     clearTimeout(S.timer);
-    S.timer = setTimeout(tick, ms != null ? ms : (S.failures > 1 ? 12000 : 4000));
+    S.timer = setTimeout(tick, ms != null ? ms : (S.failures > 1 ? 10000 : 4000));
   }
   function tick(){
-    if (document.hidden || !window.AIC) { schedule(); return; }
-    if (!S.layoutId) { schedule(); return; }
-    window.AIC.callTool("get_chart_state", { layout_id: S.layoutId }).then(function (res) {
+    if (document.hidden || !S.symbol || !window.AIC) { schedule(); return; }
+    var args = { symbol: canonSym(S.symbol), interval: S.interval, limit: 200 };
+    var calls = [window.AIC.callTool("get_ohlc", args)];
+    if (S.layoutId) calls.push(window.AIC.callTool("get_chart_state", { layout_id: S.layoutId }));
+    Promise.all(calls).then(function (res) {
       S.failures = 0;
-      if (res && typeof res === "object") applyPayload(res);
+      if (res[0] && typeof res[0] === "object") applyPayload({ ohlc: res[0] });
+      if (res[1] && typeof res[1] === "object") applyPayload(res[1]);
       refresh();
       schedule();
     }).catch(function () {
@@ -358,23 +590,18 @@ const liveChart = widgetHtml(
 
   window.__aicReady = function (AIC) {
     AIC.applyStaticLabels();
-    var hostTheme = document.documentElement.getAttribute("data-theme") ||
-      (document.documentElement.classList.contains("dark") ? "dark" : "");
-    if (hostTheme === "light" || hostTheme === "dark") S.theme = hostTheme;
     AIC.onData(function (data) {
       applyPayload(data);
       refresh();
       if (!S.booted) {
         S.booted = true;
-        schedule(S.layoutId ? 4000 : 8000);
+        schedule(S.candles.length ? 4000 : 600);
       }
     });
     document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) {
-        pushState();
-        schedule(300);
-      }
+      if (!document.hidden) schedule(300);
     });
+    window.addEventListener("resize", draw);
   };
   `,
   LIVE_CHART_CSS,

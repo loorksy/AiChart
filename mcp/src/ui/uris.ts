@@ -11,8 +11,8 @@ const VERSIONED_WIDGET_PATHS: Record<string, string> = {
   "account-overview": "account-overview/v5",
   analysis: "analysis/v5",
   portfolio: "portfolio/v3",
-  "live-chart": "live-chart/v7",
-  "chart-drawn": "chart-drawn/v7",
+  "live-chart": "live-chart/v8",
+  "chart-drawn": "chart-drawn/v8",
 };
 
 /** Older URIs Claude may still request after a version bump — serve current HTML. */

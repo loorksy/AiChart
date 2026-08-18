@@ -12,7 +12,7 @@ import { loadConfig } from "../../config.js";
 import { createAiChartMcpServer } from "../../server/mcpServer.js";
 import { TOOL_CATALOG } from "../../tools/schemas/index.js";
 import type { ToolDefinition } from "../../tools/schemas/types.js";
-import { appsUri, liveChartCspOrigins, widgetHtmlByPublicPath } from "../index.js";
+import { appsUri, widgetHtmlByPublicPath } from "../index.js";
 import { WIDGETS } from "../widgets.js";
 
 // This is a self-contained in-memory audit (linked client/server transport). It
@@ -78,23 +78,18 @@ describe("MCP card tools integration audit", () => {
               `${tool.name} must use MCP Apps MIME`,
             );
             if (widget === "live-chart" || widget === "chart-drawn") {
-              const origins = liveChartCspOrigins();
               const contentsMeta = item._meta as {
                 ui?: {
-                  csp?: {
-                    frameDomains?: string[];
-                    connectDomains?: string[];
-                    resourceDomains?: string[];
-                  };
+                  prefersBorder?: boolean;
+                  csp?: Record<string, unknown>;
                 };
               };
+              assert.equal(contentsMeta.ui?.prefersBorder, false);
               assert.deepEqual(
-                contentsMeta.ui?.csp?.frameDomains,
-                origins,
-                `${tool.name} resources/read must declare frameDomains`,
+                contentsMeta.ui?.csp ?? {},
+                {},
+                `${tool.name} must not declare nested-iframe CSP`,
               );
-              assert.deepEqual(contentsMeta.ui?.csp?.connectDomains, origins);
-              assert.deepEqual(contentsMeta.ui?.csp?.resourceDomains, origins);
             }
           } catch (e) {
             status = `READ_FAIL:${e instanceof Error ? e.message : e}`;

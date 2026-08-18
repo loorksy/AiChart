@@ -104,7 +104,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_live_chart",
     domain: "charts",
     description:
-      "Shows a live TradingView chart card in chat (the same library as the Lonora workspace) with ticks updating in place plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch gold live inside the conversation. Not for a one-off static picture — capture_chart_snapshot is cheaper for that; use this only when the operator wants to keep watching. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
+      "Shows a live gold chart card in chat — candles from the linked account, ticks updating in place, plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch gold live inside the conversation. Not for a one-off static picture — capture_chart_snapshot is cheaper for that; use this only when the operator wants to keep watching. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
