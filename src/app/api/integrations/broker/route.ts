@@ -16,6 +16,7 @@ import {
   getBrokerLink,
   insertBrokerLink,
   replaceBrokerLink,
+  deleteBrokerLink,
   updateBrokerLinkStatus,
 } from "@/lib/brokerLink/store";
 import { metaapiConfigured, metaapiRegion, metaapiToken } from "@/lib/brokerLink/token";
@@ -207,6 +208,47 @@ export async function POST(req: Request) {
         { status: body.status },
       );
     }
+    return handleError(err);
+  }
+}
+
+/**
+ * Unlink removes the Lonora row AND deletes the MetaAPI cloud account so the
+ * broker replica is undeployed (not left connected 24/7 after the user leaves).
+ */
+export async function DELETE() {
+  try {
+    const user = await requireUser();
+    const row = await getBrokerLink(user.id);
+    if (!row) {
+      return NextResponse.json({ linked: false });
+    }
+
+    const token = await metaapiToken();
+    if (!token) {
+      return NextResponse.json(
+        { error: "Broker linking is not enabled on the server yet." },
+        { status: 503 },
+      );
+    }
+
+    try {
+      await deleteAccount({
+        token,
+        accountId: row.metaapi_account_id,
+      });
+    } catch (err) {
+      if (!(err instanceof MetaapiClientError)) throw err;
+      const body = publicBrokerError(err);
+      return NextResponse.json(
+        { error: body.error, code: body.code },
+        { status: body.status },
+      );
+    }
+
+    await deleteBrokerLink(user.id);
+    return NextResponse.json({ linked: false });
+  } catch (err) {
     return handleError(err);
   }
 }

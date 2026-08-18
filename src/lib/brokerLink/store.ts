@@ -80,6 +80,13 @@ export async function replaceBrokerLink(row: {
   return saved;
 }
 
+export async function deleteBrokerLink(userId: number): Promise<boolean> {
+  const result = await execute("DELETE FROM broker_links WHERE user_id = ?", [
+    userId,
+  ]);
+  return result.changes > 0;
+}
+
 export async function updateBrokerLinkStatus(
   userId: number,
   patch: { state?: string; login?: string | null },

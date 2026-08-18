@@ -249,6 +249,8 @@ export const en = {
   "connect.broker.auth_failed": "Login or password was rejected by the broker.",
   "connect.broker.server_not_found":
     "That server name was not found. Use the exact name from MetaTrader.",
+  "connect.broker.unlink": "Unlink",
+  "connect.broker.unlink_error": "Could not unlink the trading account.",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",

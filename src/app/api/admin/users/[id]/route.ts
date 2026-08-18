@@ -9,6 +9,9 @@ import {
   logAudit,
   updateAdminLimits,
 } from "@/lib/store";
+import { getBrokerLink } from "@/lib/brokerLink/store";
+import { deleteAccount, MetaapiClientError } from "@/lib/brokerLink/metaapiClient";
+import { metaapiToken } from "@/lib/brokerLink/token";
 import { DEFAULT_ACCESS_DAYS } from "@/lib/platformAccess";
 
 const schema = z.object({
@@ -102,6 +105,21 @@ export async function DELETE(
     if (!target) throw new ApiError(404, "المستخدم غير موجود.");
     if (target.role === "admin") {
       throw new ApiError(400, "لا يمكن حذف حساب إداري.");
+    }
+
+    const link = await getBrokerLink(userId);
+    if (link) {
+      const token = await metaapiToken();
+      if (token) {
+        try {
+          await deleteAccount({
+            token,
+            accountId: link.metaapi_account_id,
+          });
+        } catch (err) {
+          if (!(err instanceof MetaapiClientError)) throw err;
+        }
+      }
     }
 
     await deleteUser(userId);

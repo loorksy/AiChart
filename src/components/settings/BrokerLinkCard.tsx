@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Eye, EyeOff } from "lucide-react";
+import { Check, Eye, EyeOff, Unlink } from "lucide-react";
 import { Button } from "@/components/squareui/button";
 import { Input } from "@/components/squareui/input";
 import { Surface } from "@/components/foundation";
@@ -85,6 +85,23 @@ export function BrokerLinkCard() {
     }
   }, [login, password, refresh, server, t]);
 
+  const unlink = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/integrations/broker", { method: "DELETE" });
+      if (!res.ok) {
+        setError(t("connect.broker.unlink_error"));
+        return;
+      }
+      await refresh();
+    } catch {
+      setError(t("connect.broker.unlink_error"));
+    } finally {
+      setBusy(false);
+    }
+  }, [refresh, t]);
+
   if (!status) return null;
 
   const canSubmit =
@@ -106,6 +123,22 @@ export function BrokerLinkCard() {
         <h2 className="sr-only">{t("connect.broker.title")}</h2>
         <p className="text-sm text-muted-foreground">{t("connect.broker.subtitle")}</p>
       </div>
+
+      {status.linked && status.configured ? (
+        <div className="mx-auto w-full max-w-md">
+          <Button
+            type="button"
+            size="xl"
+            variant="outline"
+            className="w-full"
+            disabled={busy}
+            onClick={() => void unlink()}
+          >
+            <Unlink className="h-4 w-4" aria-hidden />
+            {t("connect.broker.unlink")}
+          </Button>
+        </div>
+      ) : null}
 
       {!status.configured ? (
         <p className="rounded-[var(--radius)] bg-muted/50 px-4 py-3 text-center text-sm text-muted-foreground">

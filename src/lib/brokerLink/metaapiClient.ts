@@ -188,6 +188,6 @@ export async function deleteAccount(input: {
   const body = await readJson(res);
   throw new MetaapiClientError(
     res.status >= 400 && res.status < 600 ? res.status : 502,
-    errorMessage(body, "Could not replace the previous broker-link account."),
+    errorMessage(body, "Could not remove the broker-link account at MetaAPI."),
   );
 }

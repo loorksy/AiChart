@@ -247,6 +247,8 @@ export const ar: Record<TranslationKey, string> = {
   "connect.broker.auth_failed": "رفض الوسيط رقم الحساب أو كلمة المرور.",
   "connect.broker.server_not_found":
     "اسم الخادم غير موجود. استخدم الاسم كما يظهر في MetaTrader.",
+  "connect.broker.unlink": "إلغاء الربط",
+  "connect.broker.unlink_error": "تعذر إلغاء ربط الحساب.",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",

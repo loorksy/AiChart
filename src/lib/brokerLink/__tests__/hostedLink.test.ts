@@ -171,3 +171,62 @@ describe("in-app MetaTrader form never stores the password", () => {
     assert.match(client, /password: input\.password/);
   });
 });
+
+describe("unlinking deletes the MetaAPI cloud account", () => {
+  it("DELETE undeploys MetaAPI before dropping the local broker_links row", () => {
+    const route = readFileSync(
+      path.join(SRC, "app/api/integrations/broker/route.ts"),
+      "utf8",
+    );
+    const card = readFileSync(
+      path.join(SRC, "components/settings/BrokerLinkCard.tsx"),
+      "utf8",
+    );
+    const client = readFileSync(
+      path.join(SRC, "lib/brokerLink/metaapiClient.ts"),
+      "utf8",
+    );
+    const store = readFileSync(
+      path.join(SRC, "lib/brokerLink/store.ts"),
+      "utf8",
+    );
+    assert.match(route, /export async function DELETE/);
+    const unlinkFn = route.slice(route.indexOf("export async function DELETE"));
+    assert.match(unlinkFn, /deleteAccount/);
+    assert.match(unlinkFn, /deleteBrokerLink/);
+    // Remote delete must run first — losing the stored account id without
+    // calling MetaAPI would leave a 24/7 replica running.
+    assert.ok(
+      unlinkFn.indexOf("deleteAccount") < unlinkFn.indexOf("deleteBrokerLink"),
+    );
+    assert.match(card, /method: "DELETE"/);
+    assert.match(card, /connect\.broker\.unlink/);
+    assert.match(store, /DELETE FROM broker_links/);
+    assert.match(client, /method: "DELETE"/);
+    assert.match(
+      client,
+      /\/users\/current\/accounts\/\$\{encodeURIComponent\(input\.accountId\)\}/,
+    );
+  });
+
+  it("deleteAccount sends DELETE to the provisioning API", async () => {
+    const calls: Array<{ url: string; method: string }> = [];
+    const restore = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        method: String(init?.method ?? "GET"),
+      });
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+    try {
+      const { deleteAccount } = await import("@/lib/brokerLink/metaapiClient");
+      await deleteAccount({ token: "tok", accountId: "acct-unlink" });
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]?.method, "DELETE");
+      assert.match(calls[0]?.url ?? "", /\/users\/current\/accounts\/acct-unlink$/);
+    } finally {
+      globalThis.fetch = restore;
+    }
+  });
+});
