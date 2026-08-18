@@ -270,7 +270,14 @@ export function getActiveProvider(): LLMProvider {
   // The user's per-request pick wins over the platform default.
   const picked = requestModel.getStore();
   if (picked) return picked.provider;
-  return parsePlatformProvider(getPlatformValue("AI_PROVIDER"));
+  const preferred = parsePlatformProvider(getPlatformValue("AI_PROVIDER"));
+  if (isProviderReady(preferred)) return preferred;
+  // A key on any other first-class provider is enough — the operator may
+  // paste TokenRouter (or Claude) without switching AI_PROVIDER off openai.
+  for (const p of LLM_PROVIDERS) {
+    if (p.id !== preferred && isProviderReady(p.id)) return p.id;
+  }
+  return preferred;
 }
 
 /** Active model for the active provider (with safe defaults). */
@@ -336,19 +343,25 @@ export function getProviderApiKey(provider: LLMProvider = "openai"): string | un
 }
 
 export function isLLMConfigured(): boolean {
-  return isProviderReady(getActiveProvider());
+  return LLM_PROVIDERS.some((p) => isProviderReady(p.id));
 }
 
 /**
  * Accurate LLM-configured check for server components: `getPlatformValue`
  * (sync) only sees the cache + env, so a DB-stored key reads as missing on a
  * cold render. This awaits the DB, avoiding a false "AI off".
+ *
+ * True when ANY first-class provider is ready. The platform default
+ * (`AI_PROVIDER`) may still be openai while the operator only pasted a
+ * TokenRouter key — the user picker and the fallback in `getActiveProvider`
+ * then route to that key. Requiring the default provider specifically is
+ * what showed "AI is not enabled" with V4 Pro already selected.
  */
 export async function isLLMConfiguredAsync(): Promise<boolean> {
-  const provider = parsePlatformProvider(
-    await getPlatformValueAsync("AI_PROVIDER"),
+  const flags = await Promise.all(
+    LLM_PROVIDERS.map((p) => isProviderReadyAsync(p.id)),
   );
-  return isProviderReadyAsync(provider);
+  return flags.some(Boolean);
 }
 
 function compatModelId(model: string): string {

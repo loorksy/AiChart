@@ -13,7 +13,7 @@ import {
   getChartLayoutById,
 } from "@/lib/store";
 import {
-  isLLMConfigured,
+  isLLMConfiguredAsync,
   resolveUserModelSelection,
   withRequestModel,
 } from "@/lib/llm";
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
-    if (!isLLMConfigured()) {
+    if (!(await isLLMConfiguredAsync())) {
       return NextResponse.json({ error: "الذكاء الاصطناعي غير مفعّل على الخادم." }, { status: 503 });
     }
 

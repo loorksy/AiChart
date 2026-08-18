@@ -85,6 +85,8 @@ describe("OpenRouter provider (test gateway)", () => {
 
   it("activates OpenRouter as platform default when key is present", () => {
     clearPlatformConfigCache();
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
     process.env.AI_PROVIDER = "openrouter";
     process.env.OPENROUTER_API_KEY = "sk-or-test";
     process.env.OPENROUTER_MODEL = "openai/gpt-4o-mini";

@@ -92,6 +92,9 @@ describe("TokenRouter provider (DeepSeek V4 Pro catalogue)", () => {
 
   it("activates TokenRouter as platform default when key is present", () => {
     clearPlatformConfigCache();
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
     process.env.AI_PROVIDER = "tokenrouter";
     process.env.TOKENROUTER_API_KEY = "sk-tr-test";
     process.env.TOKENROUTER_MODEL = DEFAULT_TOKENROUTER_MODEL;
@@ -106,6 +109,23 @@ describe("TokenRouter provider (DeepSeek V4 Pro catalogue)", () => {
     clearPlatformConfigCache();
     assert.equal(getActiveProvider(), "tokenrouter");
     assert.equal(isLLMConfigured(), false);
+  });
+
+  it("is configured when only TokenRouter has a key, even if AI_PROVIDER is openai", () => {
+    clearPlatformConfigCache();
+    delete process.env.AI_PROVIDER;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    process.env.TOKENROUTER_API_KEY = "sk-tr-test";
+    delete process.env.TOKENROUTER_ENABLED;
+
+    assert.equal(parsePlatformProvider(process.env.AI_PROVIDER), "openai");
+    assert.equal(isProviderReady("openai"), false);
+    assert.equal(isProviderReady("tokenrouter"), true);
+    assert.equal(isLLMConfigured(), true);
+    assert.equal(getActiveProvider(), "tokenrouter");
+    assert.equal(getActiveModel(), DEFAULT_TOKENROUTER_MODEL);
   });
 
   it("resolveUserModelSelection accepts the catalogue id when ready", async () => {
