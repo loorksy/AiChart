@@ -240,7 +240,7 @@ const liveChart = widgetHtml(
   `
   var S = { symbol:null, interval:"15m", layoutId:null, candles:[],
             drawings:[], rec:null, targets:[], lastUpdate:0,
-            failures:0, timer:null, booted:false, warning:null };
+            failures:0, timer:null, booted:false, warning:null, drawTries:0 };
 
   function canonSym(s){
     s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -272,15 +272,22 @@ const liveChart = widgetHtml(
   }
   function parseRgb(c){
     c = String(c || "").trim();
-    var hx = c.match(/^#([0-9a-f]{3,8})$/i);
-    if (hx) {
-      var h = hx[1];
-      if (h.length === 3 || h.length === 4)
-        return [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)];
-      return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+    if (c.charAt(0) !== "#") return null;
+    var h = c.slice(1);
+    if (h.length === 3 || h.length === 4) {
+      return [
+        parseInt(h.charAt(0)+h.charAt(0), 16),
+        parseInt(h.charAt(1)+h.charAt(1), 16),
+        parseInt(h.charAt(2)+h.charAt(2), 16)
+      ];
     }
-    var rgb = c.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
-    if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+    if (h.length === 6 || h.length === 8) {
+      return [
+        parseInt(h.slice(0,2), 16),
+        parseInt(h.slice(2,4), 16),
+        parseInt(h.slice(4,6), 16)
+      ];
+    }
     return null;
   }
   function inkOn(bg){
@@ -368,7 +375,12 @@ const liveChart = widgetHtml(
     if (!cv) return;
     var dpr = window.devicePixelRatio || 1;
     var W = cv.clientWidth, H = cv.clientHeight;
-    if (!W || !H) return;
+    if (!W || !H) {
+      S.drawTries = (S.drawTries || 0) + 1;
+      if (S.drawTries < 40 && window.requestAnimationFrame) window.requestAnimationFrame(draw);
+      return;
+    }
+    S.drawTries = 0;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     var g = cv.getContext("2d");
     g.setTransform(dpr, 0, 0, dpr, 0, 0);

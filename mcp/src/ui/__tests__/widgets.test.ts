@@ -37,8 +37,8 @@ describe("MCP UI resources", () => {
   it("paints the live chart in-document so Claude CSP cannot block a nested iframe", () => {
     const origin = publicAssetOrigin();
     const meta = uiMetaFor("live-chart");
-    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v10");
-    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v10");
+    assert.equal(appsUri("live-chart"), "ui://aichart/live-chart/v11");
+    assert.equal(appsUri("chart-drawn"), "ui://aichart/chart-drawn/v11");
     assert.deepEqual(meta["openai/widgetCSP"], {
       connect_domains: [origin],
       resource_domains: [origin],
@@ -99,6 +99,20 @@ describe("MCP UI resources", () => {
       assert.ok(html.includes("window.AIC"), `${name} must inline the AIC runtime`);
       assert.ok(!/<(script|link)[^>]+(src|href)=/i.test(html), `${name} must not reference external assets`);
       assert.ok(html.includes('name="color-scheme"'), `${name} must declare color-scheme so the host backdrop stays transparent`);
+    }
+  });
+
+  it("inline widget scripts are valid JavaScript after template interpolation", () => {
+    for (const [name, html] of Object.entries(WIDGETS) as [string, string][]) {
+      const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+      assert.ok(scripts.length >= 1, `${name} missing inline script`);
+      for (const [i, src] of scripts.entries()) {
+        try {
+          new Function(src);
+        } catch (err) {
+          assert.fail(`${name} script[${i}] failed to parse: ${err}`);
+        }
+      }
     }
   });
 });
