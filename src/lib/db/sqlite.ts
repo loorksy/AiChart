@@ -15,7 +15,7 @@ import type { DbRow, ExecuteResult } from "./types";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
-const SCHEMA_VERSION = "2026-08-18-drop-cloud-broker-v1";
+const SCHEMA_VERSION = "2026-08-18-broker-hosted-link-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -285,6 +285,19 @@ const SCHEMA = `
     code       TEXT PRIMARY KEY,
     user_id    INTEGER NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS broker_links (
+    user_id             INTEGER PRIMARY KEY,
+    metaapi_account_id  TEXT NOT NULL UNIQUE,
+    broker_id           TEXT NOT NULL,
+    server              TEXT NOT NULL,
+    platform            TEXT NOT NULL DEFAULT 'mt5',
+    state               TEXT NOT NULL DEFAULT 'DRAFT',
+    login               TEXT,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -1831,10 +1844,23 @@ function migrate(db: Database.Database) {
   `);
 
   db.exec(`
-    DELETE FROM dynamic_pages WHERE slug = 'docs-mt5-linking';
-    DELETE FROM platform_config WHERE key IN (
-      'METAAPI_TOKEN', 'METAAPI_REGION', 'METAAPI_ACCOUNT_ID'
+    CREATE TABLE IF NOT EXISTS broker_links (
+      user_id             INTEGER PRIMARY KEY,
+      metaapi_account_id  TEXT NOT NULL UNIQUE,
+      broker_id           TEXT NOT NULL,
+      server              TEXT NOT NULL,
+      platform            TEXT NOT NULL DEFAULT 'mt5',
+      state               TEXT NOT NULL DEFAULT 'DRAFT',
+      login               TEXT,
+      created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+  `);
+
+  db.exec(`
+    DELETE FROM dynamic_pages WHERE slug = 'docs-mt5-linking';
+    DELETE FROM platform_config WHERE key IN ('METAAPI_ACCOUNT_ID');
   `);
 }
 

@@ -214,7 +214,7 @@ export const en = {
 
   // Connections / MCP
   "connect.title": "Connections",
-  "connect.subtitle": "MCP · Telegram alerts",
+  "connect.subtitle": "Broker account · MCP · Telegram alerts",
   "connect.mcp.title": "Claude MCP",
   "connect.mcp.subtitle": "Connect an authorized AI client to Lonora tools",
   "connect.mcp.step1": "Open Claude Connectors",
@@ -228,6 +228,28 @@ export const en = {
     "Finish email and password on Complete profile before signing in from Claude.",
   "connect.mcp.complete_profile": "Complete profile",
   "connect.mcp.paid_only": "MCP connection requires an active paid subscription.",
+
+  "connect.broker.title": "Broker account",
+  "connect.broker.subtitle":
+    "Pick your broker, then enter the account number and password on MetaAPI’s page. Lonora never sees the password.",
+  "connect.broker.pick": "Choose your broker",
+  "connect.broker.env.live": "Live",
+  "connect.broker.env.demo": "Demo",
+  "connect.broker.connect": "Continue to credentials",
+  "connect.broker.continue": "Enter credentials",
+  "connect.broker.refresh": "Refresh status",
+  "connect.broker.unconfigured":
+    "Broker linking is not enabled on the server yet. Add METAAPI_TOKEN in the admin keys panel.",
+  "connect.broker.draft": "Waiting for account credentials",
+  "connect.broker.configured": "Account linked",
+  "connect.broker.login": "Account {login}",
+  "connect.broker.modal.title": "Enter credentials on MetaAPI",
+  "connect.broker.modal.body":
+    "The form below belongs to MetaAPI. Lonora does not receive the password.",
+  "connect.broker.modal.open": "Open in a new window",
+  "connect.broker.modal.done": "I’ve finished",
+  "connect.broker.modal.close": "Close",
+  "connect.broker.error": "Could not start broker linking.",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",

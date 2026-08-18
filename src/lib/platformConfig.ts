@@ -203,6 +203,24 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "practice | live",
   },
   {
+    key: "METAAPI_TOKEN",
+    label: "MetaAPI token (broker linking)",
+    labelEn: "METAAPI_TOKEN",
+    group: "markets",
+    secret: true,
+    plainStorage: false,
+    placeholder: "from metaapi.cloud",
+  },
+  {
+    key: "METAAPI_REGION",
+    label: "MetaAPI region (optional)",
+    labelEn: "METAAPI_REGION",
+    group: "markets",
+    secret: false,
+    plainStorage: false,
+    placeholder: "london | new-york | singapore",
+  },
+  {
     // V2-A4: Google Sign-In — paste the OAuth client and flip the toggle.
     key: "GOOGLE_AUTH_ENABLED",
     label: "تفعيل تسجيل الدخول عبر Google",

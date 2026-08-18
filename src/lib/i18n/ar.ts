@@ -213,7 +213,7 @@ export const ar: Record<TranslationKey, string> = {
 
   // Connections / MCP
   "connect.title": "الاتصالات",
-  "connect.subtitle": "MCP · تنبيهات Telegram",
+  "connect.subtitle": "حساب الوسيط · MCP · تنبيهات Telegram",
   "connect.mcp.title": "Claude MCP",
   "connect.mcp.subtitle": "اربط عميلاً مصرّحاً بأدوات Lonora",
   "connect.mcp.step1": "افتح Claude Connectors",
@@ -227,6 +227,28 @@ export const ar: Record<TranslationKey, string> = {
     "أكمل البريد وكلمة المرور من إكمال الملف قبل تسجيل الدخول من Claude.",
   "connect.mcp.complete_profile": "إكمال الملف",
   "connect.mcp.paid_only": "ربط MCP يتطلب اشتراكًا مدفوعًا نشطًا.",
+
+  "connect.broker.title": "حساب الوسيط",
+  "connect.broker.subtitle":
+    "اختر الوسيط ثم أدخل رقم الحساب وكلمة المرور في صفحة MetaAPI. Lonora لا تستلم كلمة المرور.",
+  "connect.broker.pick": "اختر الوسيط",
+  "connect.broker.env.live": "حقيقي",
+  "connect.broker.env.demo": "تجريبي",
+  "connect.broker.connect": "متابعة لإدخال البيانات",
+  "connect.broker.continue": "إدخال البيانات",
+  "connect.broker.refresh": "تحديث الحالة",
+  "connect.broker.unconfigured":
+    "ربط الوسيط غير مُفعّل على الخادم بعد. أضف METAAPI_TOKEN من لوحة المفاتيح.",
+  "connect.broker.draft": "بانتظار إدخال بيانات الحساب",
+  "connect.broker.configured": "الحساب مربوط",
+  "connect.broker.login": "رقم الحساب {login}",
+  "connect.broker.modal.title": "أدخل البيانات في MetaAPI",
+  "connect.broker.modal.body":
+    "النموذج أدناه يخص MetaAPI. Lonora لا تستلم كلمة المرور.",
+  "connect.broker.modal.open": "فتح في نافذة جديدة",
+  "connect.broker.modal.done": "أنهيت الإدخال",
+  "connect.broker.modal.close": "إغلاق",
+  "connect.broker.error": "تعذّر بدء ربط الوسيط.",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",

@@ -30,7 +30,7 @@ import { adaptSql, normalizeRow } from "./sql";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _pool: Pool | null = null;
-export const SCHEMA_VERSION = "2026-08-18-drop-cloud-broker-v1";
+export const SCHEMA_VERSION = "2026-08-18-broker-hosted-link-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -287,6 +287,18 @@ const SCHEMA = `
     code       TEXT PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE TABLE IF NOT EXISTS broker_links (
+    user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    metaapi_account_id  TEXT NOT NULL UNIQUE,
+    broker_id           TEXT NOT NULL,
+    server              TEXT NOT NULL,
+    platform            TEXT NOT NULL DEFAULT 'mt5',
+    state               TEXT NOT NULL DEFAULT 'DRAFT',
+    login               TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   CREATE TABLE IF NOT EXISTS conversations (
@@ -1726,9 +1738,23 @@ async function migratePg(client: PoolClient) {
   await client.query(`DROP TABLE IF EXISTS metaapi_deploy_sessions CASCADE`).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS mt_presence CASCADE`).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS symbol_catalogue CASCADE`).catch(() => {});
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS broker_links (
+      user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      metaapi_account_id  TEXT NOT NULL UNIQUE,
+      broker_id           TEXT NOT NULL,
+      server              TEXT NOT NULL,
+      platform            TEXT NOT NULL DEFAULT 'mt5',
+      state               TEXT NOT NULL DEFAULT 'DRAFT',
+      login               TEXT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+
   await client.query(`DELETE FROM dynamic_pages WHERE slug = 'docs-mt5-linking'`).catch(() => {});
   await client.query(
-    `DELETE FROM platform_config WHERE key IN ('METAAPI_TOKEN', 'METAAPI_REGION', 'METAAPI_ACCOUNT_ID')`,
+    `DELETE FROM platform_config WHERE key IN ('METAAPI_ACCOUNT_ID')`,
   ).catch(() => {});
 }
 

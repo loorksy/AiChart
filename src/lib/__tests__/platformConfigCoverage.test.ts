@@ -53,12 +53,9 @@ test("every platform-config key the code reads has a field in the panel", () => 
 test("the keys the operator was told to add are settable", () => {
   // The exact keys whose absence stranded the operator, pinned by name so a
   // refactor that drops one fails here rather than in production.
-  //
-  // METAAPI_TOKEN was one of them and is no longer: nothing reads it. The
-  // platform holds no broker account and places no orders, so a panel field
-  // for it would strand the operator in the other direction — a credential
-  // they were invited to enter and nothing would ever use.
-  for (const key of ["OANDA_API_TOKEN"]) {
+  // METAAPI_TOKEN is the operator token for hosted broker-account linking.
+  // Analysis still reads OANDA; this key never places orders.
+  for (const key of ["OANDA_API_TOKEN", "METAAPI_TOKEN"]) {
     const field = PLATFORM_CONFIG_FIELDS.find((f) => f.key === key);
     assert.ok(field, `${key} must be settable from the platform panel`);
   }
@@ -70,11 +67,11 @@ test("credentials are stored encrypted, plain values are not", () => {
     // savePlatformConfig: encrypt = secret && !plainStorage
     return f.secret && !f.plainStorage;
   };
-  for (const key of ["OANDA_API_TOKEN"]) {
+  for (const key of ["OANDA_API_TOKEN", "METAAPI_TOKEN"]) {
     assert.equal(encrypted(key), true, `${key} must be encrypted at rest`);
   }
   // Non-secrets stay readable so the migration that marks them plain=1 agrees.
-  for (const key of ["OANDA_ENV"]) {
+  for (const key of ["OANDA_ENV", "METAAPI_REGION"]) {
     assert.equal(encrypted(key), false, `${key} is not a secret`);
   }
 });

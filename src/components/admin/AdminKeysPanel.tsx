@@ -49,7 +49,7 @@ const GROUPS: { id: ConfigField["group"]; title: string; description: string }[]
   {
     id: "markets",
     title: "بيانات السوق والوسطاء",
-    description: "مفاتيح الأنابيب التي تصل الأسعار — OANDA.",
+    description: "مفاتيح الأنابيب التي تصل الأسعار — OANDA. ربط الوسطاء عبر MetaAPI.",
   },
   { id: "telegram", title: "تليجرام", description: "البوت وقنوات الإشعار." },
   {
