@@ -2,8 +2,8 @@
  * Unified LLM layer. First-class providers: OpenAI (OpenAI-compatible client),
  * Anthropic Claude (native Messages API), OpenRouter (OpenAI-compatible
  * gateway at https://openrouter.ai — test-only, admin-toggleable), and
- * TokenRouter (OpenAI-compatible gateway at https://api.tokenrouter.com/v1
- * with a closed DeepSeek V4 Pro catalogue).
+ * TokenRouter (OpenAI-compatible gateway at https://api.tokenrouter.com/v1;
+ * the admin picks one route via TOKENROUTER_MODEL).
  * The operator picks the provider + model from the admin keys panel
  * (AI_PROVIDER / AI_MODEL / ANTHROPIC_MODEL / OPENROUTER_* / TOKENROUTER_*);
  * every chat/analysis call routes through the active provider.
@@ -78,6 +78,16 @@ export async function resolveUserModelSelection(
 ): Promise<RequestModelSelection | null> {
   const parsed = parseModelRef(ref);
   if (!parsed) return null;
+  // TokenRouter is one admin-picked route. A stored DeepSeek pick must follow
+  // TOKENROUTER_MODEL the moment the operator changes it — otherwise the
+  // composer stays on V4 Pro after the keys panel already shows Qwen.
+  if (parsed.provider === "tokenrouter") {
+    if (!(await isProviderReadyAsync("tokenrouter"))) return null;
+    const offered =
+      (await getPlatformValueAsync("TOKENROUTER_MODEL"))?.trim() ||
+      DEFAULT_TOKENROUTER_MODEL;
+    return { provider: "tokenrouter", model: offered };
+  }
   if (!(await isOfferedModelRef(parsed))) return null;
   return (await isProviderReadyAsync(parsed.provider)) ? parsed : null;
 }
@@ -90,20 +100,23 @@ export async function resolveUserModelSelection(
 export async function isOfferedModelRef(
   parsed: RequestModelSelection,
 ): Promise<boolean> {
+  if (parsed.provider === "tokenrouter") {
+    if (!(await isProviderReadyAsync("tokenrouter"))) return false;
+    const offered =
+      (await getPlatformValueAsync("TOKENROUTER_MODEL"))?.trim() ||
+      DEFAULT_TOKENROUTER_MODEL;
+    return parsed.model === offered;
+  }
   if (isAllowedModelRef(`${parsed.provider}/${parsed.model}`)) return true;
   // OpenRouter is a live gateway: any well-formed route id is offered once the
-  // operator's key is ready (and not explicitly disabled). TokenRouter stays
-  // on the closed catalogue above — it is not a live-all gateway.
+  // operator's key is ready (and not explicitly disabled). TokenRouter is one
+  // admin-picked route (TOKENROUTER_MODEL), not a live-all catalogue.
   if (parsed.provider === "openrouter") {
     if (!(await isProviderReadyAsync("openrouter"))) return false;
     return /^[A-Za-z0-9._:/-]{1,120}$/.test(parsed.model);
   }
   const configuredField =
-    parsed.provider === "anthropic"
-      ? "ANTHROPIC_MODEL"
-      : parsed.provider === "tokenrouter"
-        ? "TOKENROUTER_MODEL"
-        : "AI_MODEL";
+    parsed.provider === "anthropic" ? "ANTHROPIC_MODEL" : "AI_MODEL";
   const configured = (await getPlatformValueAsync(configuredField))?.trim();
   return Boolean(configured) && configured === parsed.model;
 }

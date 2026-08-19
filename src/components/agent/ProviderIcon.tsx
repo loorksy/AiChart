@@ -59,6 +59,15 @@ function OpenRouterMark({ size, className }: { size: number; className?: string 
   );
 }
 
+/** Compact Qwen mark for TokenRouter Qwen routes (currentColor, no raw hex). */
+function QwenMark({ size, className }: { size: number; className?: string }) {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M12 2.2a9.8 9.8 0 100 19.6 9.8 9.8 0 000-19.6zm0 3.1c1.7 0 3.2.7 4.3 1.8L12 11.4 7.7 7.1A6.05 6.05 0 0112 5.3zm-6.1 6.7c0-1.4.5-2.7 1.2-3.8L12 13.1v5.6A6.1 6.1 0 015.9 12zm7.3 6.7v-5.6l4.9-4.9A6.1 6.1 0 0118.1 18z" />
+    </Svg>
+  );
+}
+
 /** lobehub/lobe-icons `deepseek.svg` path (MIT). Used for TokenRouter's DeepSeek route. */
 function DeepSeekMark({ size, className }: { size: number; className?: string }) {
   return (
@@ -71,16 +80,21 @@ function DeepSeekMark({ size, className }: { size: number; className?: string })
 /** Render a provider's mark by id; unknown providers render nothing. */
 export function ProviderIcon({
   provider,
+  model,
   size = 14,
   className,
 }: {
   provider: string;
+  model?: string;
   size?: number;
   className?: string;
 }) {
   if (provider === "anthropic") return <AnthropicMark size={size} className={className} />;
   if (provider === "openai") return <OpenAiMark size={size} className={className} />;
   if (provider === "openrouter") return <OpenRouterMark size={size} className={className} />;
-  if (provider === "tokenrouter") return <DeepSeekMark size={size} className={className} />;
+  if (provider === "tokenrouter") {
+    if (model && /qwen/i.test(model)) return <QwenMark size={size} className={className} />;
+    return <DeepSeekMark size={size} className={className} />;
+  }
   return null;
 }

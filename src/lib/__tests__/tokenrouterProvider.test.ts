@@ -6,6 +6,8 @@ import {
   isAllowedModelRef,
   isReasoningModel,
   modelAcceptsVision,
+  tokenRouterModelLabel,
+  tokenRouterOfferedModel,
 } from "@/lib/modelCatalog";
 import {
   getActiveModel,
@@ -58,13 +60,20 @@ describe("TokenRouter provider (DeepSeek V4 Pro catalogue)", () => {
     assert.equal(parseModelRef("unknown/foo"), null);
   });
 
-  it("offers only the closed DeepSeek catalogue — not live-all routes", () => {
+  it("static allow-list stays DeepSeek; the live offer follows TOKENROUTER_MODEL", () => {
     assert.equal(isAllowedModelRef(DEEPSEEK_REF), true);
     assert.equal(
       isAllowedModelRef("tokenrouter/deepseek/deepseek-v3-0324"),
       false,
     );
     assert.equal(isAllowedModelRef("openrouter/openai/gpt-4o-mini"), false);
+    assert.equal(tokenRouterOfferedModel(null), DEFAULT_TOKENROUTER_MODEL);
+    assert.equal(
+      tokenRouterOfferedModel("qwen/qwen3.8-max-free"),
+      "qwen/qwen3.8-max-free",
+    );
+    assert.equal(tokenRouterModelLabel("qwen/qwen3.8-max-free"), "Qwen 3.8 Max");
+    assert.equal(tokenRouterModelLabel(DEFAULT_TOKENROUTER_MODEL), "DeepSeek V4 Pro");
   });
 
   it("classifies DeepSeek V4 as a reasoning model for token headroom", () => {
@@ -150,14 +159,48 @@ describe("TokenRouter provider (DeepSeek V4 Pro catalogue)", () => {
       provider: "tokenrouter",
       model: DEFAULT_TOKENROUTER_MODEL,
     });
-    assert.equal(
-      await resolveUserModelSelection("tokenrouter/not-in-catalogue"),
-      null,
+    assert.deepEqual(
+      await resolveUserModelSelection("tokenrouter/qwen/qwen3.8-max-free"),
+      {
+        provider: "tokenrouter",
+        model: DEFAULT_TOKENROUTER_MODEL,
+      },
     );
     assert.equal(
       await isOfferedModelRef({
         provider: "tokenrouter",
         model: DEFAULT_TOKENROUTER_MODEL,
+      }),
+      true,
+    );
+  });
+
+  it("follows TOKENROUTER_MODEL immediately — a stored DeepSeek pick becomes Qwen", async () => {
+    clearPlatformConfigCache();
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    process.env.AI_PROVIDER = "tokenrouter";
+    process.env.TOKENROUTER_API_KEY = "sk-tr-test";
+    process.env.TOKENROUTER_MODEL = "qwen/qwen3.8-max-free";
+    delete process.env.TOKENROUTER_ENABLED;
+
+    assert.equal(getActiveModel(), "qwen/qwen3.8-max-free");
+    assert.deepEqual(await resolveUserModelSelection(DEEPSEEK_REF), {
+      provider: "tokenrouter",
+      model: "qwen/qwen3.8-max-free",
+    });
+    assert.equal(
+      await isOfferedModelRef({
+        provider: "tokenrouter",
+        model: DEFAULT_TOKENROUTER_MODEL,
+      }),
+      false,
+    );
+    assert.equal(
+      await isOfferedModelRef({
+        provider: "tokenrouter",
+        model: "qwen/qwen3.8-max-free",
       }),
       true,
     );

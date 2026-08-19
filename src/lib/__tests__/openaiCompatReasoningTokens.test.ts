@@ -37,6 +37,7 @@ describe("openaiCompat gives reasoning-family models real token headroom", () =>
     assert.match(CATALOG_SRC, /\/\^o\\d\/\.test\(id\)/);
     assert.match(CATALOG_SRC, /\/\^gpt-5\/\.test\(id\)/);
     assert.match(CATALOG_SRC, /\/\^deepseek-v4\/\.test\(id\)/);
+    assert.match(CATALOG_SRC, /\/\^qwen3\\\.8\/\.test\(id\)/);
   });
 
   it("tokenLimitBody floors reasoning models well above the 4096 flat cap", () => {

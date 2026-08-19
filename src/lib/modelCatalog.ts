@@ -44,6 +44,26 @@ export const TOKENROUTER_MODEL_CHOICES: ModelChoice[] = [
   { id: DEFAULT_TOKENROUTER_MODEL, label: "DeepSeek V4 Pro" },
 ];
 
+/** The single TokenRouter route the platform offers right now. */
+export function tokenRouterOfferedModel(adminModel?: string | null): string {
+  const trimmed = adminModel?.trim();
+  return trimmed || DEFAULT_TOKENROUTER_MODEL;
+}
+
+/** Composer / admin label for a TokenRouter route id. */
+export function tokenRouterModelLabel(id: string): string {
+  const trimmed = id.trim();
+  const known = TOKENROUTER_MODEL_CHOICES.find((m) => m.id === trimmed);
+  if (known) return known.label;
+  const leaf = trimmed.split("/").pop() ?? trimmed;
+  const pretty = leaf
+    .replace(/-free$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b([a-z])/g, (ch) => ch.toUpperCase())
+    .replace(/\bQwen(\d)/i, "Qwen $1");
+  return pretty || trimmed;
+}
+
 const ALLOWED_REFS = new Set<string>([
   ...OPENAI_MODEL_CHOICES.map((m) => `openai/${m.id}`),
   ...ANTHROPIC_MODEL_CHOICES.map((m) => `anthropic/${m.id}`),
@@ -68,7 +88,7 @@ export function shortModelLabel(label: string): string {
       /^(OpenAI|Anthropic|Google|Meta|Mistral|DeepSeek|xAI|Qwen|OpenRouter|Amazon|Microsoft|Cohere|Perplexity)\s*[:·|-]\s*/i,
       "",
     )
-    .replace(/^(Claude|OpenAI|Anthropic|DeepSeek)\s+/i, "")
+    .replace(/^(Claude|OpenAI|Anthropic|DeepSeek|Qwen)\s+/i, "")
     .trim();
   return stripped || trimmed;
 }
@@ -84,7 +104,12 @@ export function shortModelLabel(label: string): string {
  */
 export function isReasoningModel(model: string): boolean {
   const id = model.trim().toLowerCase().split("/").pop() ?? "";
-  return /^o\d/.test(id) || /^gpt-5/.test(id) || /^deepseek-v4/.test(id);
+  return (
+    /^o\d/.test(id) ||
+    /^gpt-5/.test(id) ||
+    /^deepseek-v4/.test(id) ||
+    /^qwen3\.8/.test(id)
+  );
 }
 
 /**

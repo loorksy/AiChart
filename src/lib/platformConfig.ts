@@ -129,7 +129,7 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     group: "ai",
     secret: false,
     plainStorage: false,
-    placeholder: "deepseek/deepseek-v4-pro-0813-free",
+    placeholder: "qwen/qwen3.8-max-free",
   },
   {
     // Both quick-model keys are optional: llm.ts falls back to the deep model

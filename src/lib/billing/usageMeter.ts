@@ -51,6 +51,7 @@ const SEED_PRICES: Array<[provider: string, model: string, inUsd: number, outUsd
   ["openrouter", "anthropic/claude-sonnet-4", 3, 15],
   ["openrouter", "google/gemini-2.0-flash-001", 0.1, 0.4],
   ["tokenrouter", "deepseek/deepseek-v4-pro-0813-free", 0, 0],
+  ["tokenrouter", "qwen/qwen3.8-max-free", 0, 0],
 ];
 
 let seeded = false;

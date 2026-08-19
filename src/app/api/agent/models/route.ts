@@ -6,7 +6,8 @@ import {
   ANTHROPIC_MODEL_CHOICES,
   DEFAULT_TOKENROUTER_MODEL,
   OPENAI_MODEL_CHOICES,
-  TOKENROUTER_MODEL_CHOICES,
+  tokenRouterModelLabel,
+  tokenRouterOfferedModel,
 } from "@/lib/modelCatalog";
 import {
   isOpenRouterEnabledAsync,
@@ -33,8 +34,8 @@ export interface AgentModelOption {
  * OpenAI/Anthropic stay on the curated catalogue. OpenRouter is a test
  * gateway: when the key is present and not explicitly disabled, the live
  * openrouter.ai catalogue is fetched so the operator can trial any route.
- * TokenRouter is a closed catalogue (DeepSeek V4 Pro) offered when the key
- * is present and not explicitly disabled.
+ * TokenRouter offers the single route the admin set (TOKENROUTER_MODEL,
+ * default DeepSeek V4 Pro) when the key is present and not disabled.
  * Never exposes key material.
  */
 export async function GET() {
@@ -126,15 +127,14 @@ export async function GET() {
       }
     }
 
+    const offeredTokenRouter = tokenRouterOfferedModel(defaultTokenRouterModel);
     if (tokenrouterKey && tokenrouterEnabled) {
-      options.push(
-        ...TOKENROUTER_MODEL_CHOICES.map((m) => ({
-          ref: `tokenrouter/${m.id}`,
-          provider: "tokenrouter" as const,
-          model: m.id,
-          label: m.label,
-        })),
-      );
+      options.push({
+        ref: `tokenrouter/${offeredTokenRouter}`,
+        provider: "tokenrouter",
+        model: offeredTokenRouter,
+        label: tokenRouterModelLabel(offeredTokenRouter),
+      });
     }
 
     const settings = await getSettings(user.id);
@@ -147,12 +147,25 @@ export async function GET() {
             // same pick the engine's auto-resolution makes.
             `openrouter/${defaultOpenRouterModel?.trim() || firstFreeOpenRouterModel || "openai/gpt-4o-mini"}`
           : provider === "tokenrouter"
-            ? `tokenrouter/${defaultTokenRouterModel?.trim() || DEFAULT_TOKENROUTER_MODEL}`
+            ? `tokenrouter/${offeredTokenRouter}`
             : `openai/${defaultOpenAiModel?.trim() || "gpt-4.1"}`;
+
+    let selected = settings.preferred_model_ref ?? null;
+    const selectedParsed = selected?.startsWith("tokenrouter/")
+      ? selected
+      : null;
+    if (
+      selectedParsed &&
+      tokenrouterKey &&
+      tokenrouterEnabled &&
+      !options.some((o) => o.ref === selected)
+    ) {
+      selected = `tokenrouter/${offeredTokenRouter}`;
+    }
 
     return NextResponse.json({
       models: options,
-      selected: settings.preferred_model_ref ?? null,
+      selected,
       platformDefault,
       configured: options.length > 0,
     });

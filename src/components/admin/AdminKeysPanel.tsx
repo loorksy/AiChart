@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
 
-import { TOKENROUTER_MODEL_CHOICES } from "@/lib/modelCatalog";
+import { DEFAULT_TOKENROUTER_MODEL } from "@/lib/modelCatalog";
 import { OpenAIModelPicker } from "@/components/admin/OpenAIModelPicker";
 import { Button } from "@/components/squareui/button";
 import { Input } from "@/components/squareui/input";
@@ -205,8 +205,7 @@ export function AdminKeysPanel() {
   const currentTokenRouterModel =
     draft.TOKENROUTER_MODEL ??
     tokenrouterModelField?.value ??
-    TOKENROUTER_MODEL_CHOICES[0]?.id ??
-    "deepseek/deepseek-v4-pro-0813-free";
+    DEFAULT_TOKENROUTER_MODEL;
 
   const aiExtraFields = fields.filter(
     (f) =>
@@ -454,7 +453,10 @@ export function AdminKeysPanel() {
                       >
                         api.tokenrouter.com/v1
                       </a>
-                      . Closed catalogue: DeepSeek V4 Pro. Paste a key to enable;
+                      . Paste a key and the route id users should see (for
+                      example{" "}
+                      <code dir="ltr">qwen/qwen3.8-max-free</code>
+                      ). Changing the route updates the composer immediately;
                       the kill-switch disables it without deleting the key.
                     </p>
                     {tokenrouterEnabledField && (
@@ -486,28 +488,16 @@ export function AdminKeysPanel() {
                         }
                         htmlFor="TOKENROUTER_MODEL"
                       >
-                        <select
+                        <Input
                           id="TOKENROUTER_MODEL"
                           dir="ltr"
                           className="admin-input focus-ring tap-target h-10 w-full text-sm"
                           value={currentTokenRouterModel}
+                          placeholder={DEFAULT_TOKENROUTER_MODEL}
                           onChange={(e) =>
                             setDraftValue("TOKENROUTER_MODEL", e.target.value)
                           }
-                        >
-                          {TOKENROUTER_MODEL_CHOICES.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label} — {m.id}
-                            </option>
-                          ))}
-                          {!TOKENROUTER_MODEL_CHOICES.some(
-                            (m) => m.id === currentTokenRouterModel,
-                          ) && (
-                            <option value={currentTokenRouterModel}>
-                              {currentTokenRouterModel}
-                            </option>
-                          )}
-                        </select>
+                        />
                       </Field>
                     )}
                   </div>

@@ -41,6 +41,9 @@ function ComposerModelChip() {
 
   const activeRef = data.selected ?? data.platformDefault;
   const provider = activeRef?.split("/")[0] ?? "openai";
+  const model = activeRef?.includes("/")
+    ? activeRef.slice(activeRef.indexOf("/") + 1)
+    : undefined;
 
   return (
     <div className="relative shrink-0">
@@ -53,7 +56,12 @@ function ComposerModelChip() {
         aria-label={activeLabel ?? "model"}
         className={cn("metal-chip max-w-40", open && "text-foreground")}
       >
-        <ProviderIcon provider={provider} size={13} className="shrink-0 opacity-80" />
+        <ProviderIcon
+          provider={provider}
+          model={model}
+          size={13}
+          className="shrink-0 opacity-80"
+        />
         <span className="truncate text-xs font-medium" dir="ltr">
           {activeLabel}
         </span>

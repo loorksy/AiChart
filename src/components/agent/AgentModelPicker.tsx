@@ -43,9 +43,9 @@ export function useAgentModels(enabled: boolean) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!enabled || data) return;
+    if (!enabled) return;
     let alive = true;
-    void (async () => {
+    const load = async () => {
       try {
         const res = await fetch("/api/agent/models", { cache: "no-store" });
         if (!res.ok) return;
@@ -54,11 +54,17 @@ export function useAgentModels(enabled: boolean) {
       } catch {
         /* the section simply stays hidden */
       }
-    })();
+    };
+    void load();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange", onVis);
     };
-  }, [enabled, data]);
+  }, [enabled]);
 
   const choose = useCallback(async (ref: string | null) => {
     setSaving(true);
@@ -151,7 +157,7 @@ export function ModelChoiceList({
       {Object.entries(grouped).map(([provider, options]) => (
         <div key={provider}>
           <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <ProviderIcon provider={provider} size={12} />
+            <ProviderIcon provider={provider} model={options[0]?.model} size={12} />
             {PROVIDER_LABEL[provider] ?? provider}
           </p>
           {options.map((m) => (
@@ -166,6 +172,7 @@ export function ModelChoiceList({
               <span className="flex min-w-0 items-center gap-1.5">
                 <ProviderIcon
                   provider={provider}
+                  model={m.model}
                   size={13}
                   className="text-muted-foreground"
                 />
