@@ -107,10 +107,8 @@ export function buildAgentFallbackResult(
 /**
  * A greeting / account-help / general question whose LLM call failed.
  *
- * The previous general-answer path swallowed every throw into a static
- * "try again" sentence and wrapped it as `descriptive_only` — so a
- * TokenRouter 503 looked like a successful descriptive chat reply. That
- * must stay an operational blocker with the real taxonomy code.
+ * Provider faults must stay an operational blocker with the real taxonomy
+ * code — never a `descriptive_only` "try again" card.
  */
 export function resultForGeneralQuestionFailure(
   error: unknown,

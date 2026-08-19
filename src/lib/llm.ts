@@ -1,11 +1,7 @@
 /**
- * Unified LLM layer. First-class providers: OpenAI (OpenAI-compatible client),
- * Anthropic Claude (native Messages API), OpenRouter (OpenAI-compatible
- * gateway at https://openrouter.ai — test-only, admin-toggleable), and
- * TokenRouter (OpenAI-compatible gateway at https://api.tokenrouter.com/v1;
- * the admin picks one route via TOKENROUTER_MODEL).
- * The operator picks the provider + model from the admin keys panel
- * (AI_PROVIDER / AI_MODEL / ANTHROPIC_MODEL / OPENROUTER_* / TOKENROUTER_*);
+ * Unified LLM layer. First-class providers: OpenAI (OpenAI-compatible client)
+ * and Anthropic Claude (native Messages API). The operator picks the provider
+ * + model from the admin keys panel (AI_PROVIDER / AI_MODEL / ANTHROPIC_MODEL);
  * every chat/analysis call routes through the active provider.
  */
 
@@ -22,15 +18,13 @@ import {
 import {
   callOpenAICompat,
   callOpenAICompatStream,
-  listOpenRouterFreeModels,
   type OpenAICompatTarget,
 } from "./openaiCompat";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { DEFAULT_TOKENROUTER_MODEL, isAllowedModelRef } from "./modelCatalog";
+import { isAllowedModelRef } from "./modelCatalog";
 import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
 import { recordLLMUsage } from "./billing/usageMeter";
 import { createLogger } from "./logger";
-import { getPublicAppUrl } from "./appUrl";
 
 const llmLog = createLogger("llm");
 
@@ -69,25 +63,15 @@ export function currentRequestModel(): RequestModelSelection | undefined {
  *
  * Returns null — meaning "use the platform default" — when the preference is
  * unset, malformed, outside the curated model catalogue, or names a provider
- * that is not ready (missing key, or OpenRouter disabled). A user must never
- * be able to point the platform at a provider it cannot authenticate against,
- * nor at a model the platform has not committed to.
+ * that is not ready (missing key). A user must never be able to point the
+ * platform at a provider it cannot authenticate against, nor at a model the
+ * platform has not committed to.
  */
 export async function resolveUserModelSelection(
   ref?: string | null,
 ): Promise<RequestModelSelection | null> {
   const parsed = parseModelRef(ref);
   if (!parsed) return null;
-  // TokenRouter is one admin-picked route. A stored DeepSeek pick must follow
-  // TOKENROUTER_MODEL the moment the operator changes it — otherwise the
-  // composer stays on V4 Pro after the keys panel already shows Qwen.
-  if (parsed.provider === "tokenrouter") {
-    if (!(await isProviderReadyAsync("tokenrouter"))) return null;
-    const offered =
-      (await getPlatformValueAsync("TOKENROUTER_MODEL"))?.trim() ||
-      DEFAULT_TOKENROUTER_MODEL;
-    return { provider: "tokenrouter", model: offered };
-  }
   if (!(await isOfferedModelRef(parsed))) return null;
   return (await isProviderReadyAsync(parsed.provider)) ? parsed : null;
 }
@@ -100,21 +84,7 @@ export async function resolveUserModelSelection(
 export async function isOfferedModelRef(
   parsed: RequestModelSelection,
 ): Promise<boolean> {
-  if (parsed.provider === "tokenrouter") {
-    if (!(await isProviderReadyAsync("tokenrouter"))) return false;
-    const offered =
-      (await getPlatformValueAsync("TOKENROUTER_MODEL"))?.trim() ||
-      DEFAULT_TOKENROUTER_MODEL;
-    return parsed.model === offered;
-  }
   if (isAllowedModelRef(`${parsed.provider}/${parsed.model}`)) return true;
-  // OpenRouter is a live gateway: any well-formed route id is offered once the
-  // operator's key is ready (and not explicitly disabled). TokenRouter is one
-  // admin-picked route (TOKENROUTER_MODEL), not a live-all catalogue.
-  if (parsed.provider === "openrouter") {
-    if (!(await isProviderReadyAsync("openrouter"))) return false;
-    return /^[A-Za-z0-9._:/-]{1,120}$/.test(parsed.model);
-  }
   const configuredField =
     parsed.provider === "anthropic" ? "ANTHROPIC_MODEL" : "AI_MODEL";
   const configured = (await getPlatformValueAsync(configuredField))?.trim();
@@ -129,154 +99,47 @@ export function parseModelRef(ref?: string | null): RequestModelSelection | null
   const provider = raw.slice(0, slash);
   const model = raw.slice(slash + 1).trim();
   if (!model) return null;
-  if (
-    provider !== "openai" &&
-    provider !== "anthropic" &&
-    provider !== "openrouter" &&
-    provider !== "tokenrouter"
-  ) {
+  if (provider !== "openai" && provider !== "anthropic") {
     return null;
   }
   return { provider, model };
 }
 
-export type LLMProvider = "openai" | "anthropic" | "openrouter" | "tokenrouter";
+export type LLMProvider = "openai" | "anthropic";
 
 export const LLM_PROVIDERS: { id: LLMProvider; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "anthropic", label: "Anthropic (Claude)" },
-  { id: "openrouter", label: "OpenRouter (اختبار)" },
-  { id: "tokenrouter", label: "TokenRouter" },
 ];
 
 const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
-  tokenrouter: "TOKENROUTER_API_KEY",
 };
 
 const DEFAULT_MODEL = "gpt-4.1";
 
 /**
- * Last-resort OpenRouter route, used only when the free catalogue cannot be
- * fetched. Normal resolution auto-picks a live FREE route (the admin supplies
- * a key and nothing else — see resolveOpenRouterAutoModel).
- */
-const DEFAULT_OPENROUTER_MODEL = "openai/gpt-4o-mini";
-
-const OPENROUTER_AUTO_TTL_MS = 6 * 60 * 60 * 1000;
-let openRouterAutoModel: { id: string; at: number } | null = null;
-
-export function resetOpenRouterAutoModelForTests(): void {
-  openRouterAutoModel = null;
-}
-
-/**
- * Auto-pick a FREE OpenRouter route when neither the request nor the operator
- * named one. Newest free route wins (the list is already newest-first), cached
- * so the catalogue is not re-fetched per call. Falls back to the static
- * default only when the catalogue is unreachable or has no free routes —
- * failing the call outright would take the whole provider down over a
- * catalogue hiccup.
- */
-async function resolveOpenRouterAutoModel(): Promise<string> {
-  if (
-    openRouterAutoModel &&
-    Date.now() - openRouterAutoModel.at < OPENROUTER_AUTO_TTL_MS
-  ) {
-    return openRouterAutoModel.id;
-  }
-  const key = getProviderApiKey("openrouter")?.trim();
-  if (!key) return DEFAULT_OPENROUTER_MODEL;
-  try {
-    const free = await listOpenRouterFreeModels(key);
-    // OpenRouter's own free auto-router beats any local heuristic — the
-    // gateway routes each request to the best free model it currently has.
-    // Only when that route is absent fall back to the newest free model.
-    const gatewayRouter = free.find((m) => /^openrouter\/(free|auto)/i.test(m.id));
-    const picked = gatewayRouter?.id ?? free[0]?.id;
-    if (picked) {
-      openRouterAutoModel = { id: picked, at: Date.now() };
-      return picked;
-    }
-  } catch (err) {
-    llmLog.warn("openrouter.auto_model.failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-  return DEFAULT_OPENROUTER_MODEL;
-}
-
-/**
- * The model the call will actually use. Async because the OpenRouter
- * auto-pick may need one catalogue fetch; every other path is the sync
- * resolution unchanged.
+ * The model the call will actually use.
  */
 async function modelForTierAsync(tier: ModelTier): Promise<string> {
-  const model = modelForTier(tier);
-  if (
-    getActiveProvider() === "openrouter" &&
-    !requestModel.getStore() &&
-    model === DEFAULT_OPENROUTER_MODEL
-  ) {
-    return resolveOpenRouterAutoModel();
-  }
-  return model;
-}
-
-function isExplicitlyDisabled(raw?: string | null): boolean {
-  const v = raw?.trim().toLowerCase();
-  return v === "0" || v === "false" || v === "off" || v === "no";
-}
-
-/**
- * OpenRouter is available once a key exists unless the admin explicitly turns
- * it off. Unset/blank means enabled — matching "paste key → it works", with an
- * admin kill-switch still available.
- */
-export function isOpenRouterEnabled(): boolean {
-  return !isExplicitlyDisabled(getPlatformValue("OPENROUTER_ENABLED"));
-}
-
-export async function isOpenRouterEnabledAsync(): Promise<boolean> {
-  return !isExplicitlyDisabled(await getPlatformValueAsync("OPENROUTER_ENABLED"));
-}
-
-/**
- * TokenRouter is available once a key exists unless the admin explicitly turns
- * it off. Unset/blank means enabled — matching "paste key → it works".
- */
-export function isTokenRouterEnabled(): boolean {
-  return !isExplicitlyDisabled(getPlatformValue("TOKENROUTER_ENABLED"));
-}
-
-export async function isTokenRouterEnabledAsync(): Promise<boolean> {
-  return !isExplicitlyDisabled(await getPlatformValueAsync("TOKENROUTER_ENABLED"));
+  return modelForTier(tier);
 }
 
 export function parsePlatformProvider(raw?: string | null): LLMProvider {
   const v = raw?.trim();
   if (v === "anthropic") return "anthropic";
-  if (v === "openrouter") return "openrouter";
-  if (v === "tokenrouter") return "tokenrouter";
   return "openai";
 }
 
-/** Key present, and (for gateways) the admin enable toggle is on. */
+/** Key present for this first-class provider. */
 export function isProviderReady(provider: LLMProvider): boolean {
-  if (!getProviderApiKey(provider)?.trim()) return false;
-  if (provider === "openrouter") return isOpenRouterEnabled();
-  if (provider === "tokenrouter") return isTokenRouterEnabled();
-  return true;
+  return Boolean(getProviderApiKey(provider)?.trim());
 }
 
 export async function isProviderReadyAsync(provider: LLMProvider): Promise<boolean> {
   const key = (await getPlatformValueAsync(PROVIDER_KEY_FIELD[provider]))?.trim();
-  if (!key) return false;
-  if (provider === "openrouter") return isOpenRouterEnabledAsync();
-  if (provider === "tokenrouter") return isTokenRouterEnabledAsync();
-  return true;
+  return Boolean(key);
 }
 
 export function getActiveProvider(): LLMProvider {
@@ -285,8 +148,8 @@ export function getActiveProvider(): LLMProvider {
   if (picked) return picked.provider;
   const preferred = parsePlatformProvider(getPlatformValue("AI_PROVIDER"));
   if (isProviderReady(preferred)) return preferred;
-  // A key on any other first-class provider is enough — the operator may
-  // paste TokenRouter (or Claude) without switching AI_PROVIDER off openai.
+  // A key on the other first-class provider is enough — the operator may
+  // paste Claude without switching AI_PROVIDER off openai.
   for (const p of LLM_PROVIDERS) {
     if (p.id !== preferred && isProviderReady(p.id)) return p.id;
   }
@@ -300,12 +163,6 @@ export function getActiveModel(): string {
   const provider = getActiveProvider();
   if (provider === "anthropic") {
     return getPlatformValue("ANTHROPIC_MODEL")?.trim() || DEFAULT_ANTHROPIC_MODEL;
-  }
-  if (provider === "openrouter") {
-    return getPlatformValue("OPENROUTER_MODEL")?.trim() || DEFAULT_OPENROUTER_MODEL;
-  }
-  if (provider === "tokenrouter") {
-    return getPlatformValue("TOKENROUTER_MODEL")?.trim() || DEFAULT_TOKENROUTER_MODEL;
   }
   return getPlatformValue("AI_MODEL")?.trim() || DEFAULT_MODEL;
 }
@@ -334,12 +191,6 @@ export function getQuickModel(): string {
   if (provider === "anthropic") {
     return getPlatformValue("ANTHROPIC_QUICK_MODEL")?.trim() || getDeepModel();
   }
-  if (provider === "openrouter") {
-    return getPlatformValue("OPENROUTER_QUICK_MODEL")?.trim() || getDeepModel();
-  }
-  if (provider === "tokenrouter") {
-    return getPlatformValue("TOKENROUTER_QUICK_MODEL")?.trim() || getDeepModel();
-  }
   return getPlatformValue("AI_QUICK_MODEL")?.trim() || getDeepModel();
 }
 
@@ -366,9 +217,9 @@ export function isLLMConfigured(): boolean {
  *
  * True when ANY first-class provider is ready. The platform default
  * (`AI_PROVIDER`) may still be openai while the operator only pasted a
- * TokenRouter key — the user picker and the fallback in `getActiveProvider`
+ * Claude key — the user picker and the fallback in `getActiveProvider`
  * then route to that key. Requiring the default provider specifically is
- * what showed "AI is not enabled" with V4 Pro already selected.
+ * what showed "AI is not enabled" with Claude already selected.
  */
 export async function isLLMConfiguredAsync(): Promise<boolean> {
   const flags = await Promise.all(
@@ -393,53 +244,6 @@ function openaiCompatTarget(model: string): OpenAICompatTarget {
     model: compatModelId(model),
     resilienceKey: "openai",
   };
-}
-
-function openRouterCompatTarget(model: string): OpenAICompatTarget {
-  if (!isOpenRouterEnabled()) {
-    throw new Error(
-      "OpenRouter معطّل من لوحة الإدارة. فعّل OPENROUTER_ENABLED للاختبارات.",
-    );
-  }
-  const apiKey = getProviderApiKey("openrouter");
-  if (!apiKey) {
-    throw new Error("مفتاح OpenRouter غير مُعدّ. أضِفه من لوحة المفاتيح.");
-  }
-  // OpenRouter model ids keep the upstream vendor prefix (openai/…, anthropic/…).
-  return {
-    baseUrl: "https://openrouter.ai/api/v1",
-    apiKey,
-    model,
-    resilienceKey: "openrouter",
-    headers: {
-      "HTTP-Referer": getPublicAppUrl(),
-      "X-Title": "AiChart",
-    },
-  };
-}
-
-function tokenRouterCompatTarget(model: string): OpenAICompatTarget {
-  if (!isTokenRouterEnabled()) {
-    throw new Error(
-      "TokenRouter is disabled in the admin panel. Set TOKENROUTER_ENABLED to use it.",
-    );
-  }
-  const apiKey = getProviderApiKey("tokenrouter");
-  if (!apiKey) {
-    throw new Error("TokenRouter API key is not configured. Add it from the keys panel.");
-  }
-  return {
-    baseUrl: "https://api.tokenrouter.com/v1",
-    apiKey,
-    model,
-    resilienceKey: "tokenrouter",
-  };
-}
-
-function compatTargetFor(provider: LLMProvider, model: string): OpenAICompatTarget {
-  if (provider === "openrouter") return openRouterCompatTarget(model);
-  if (provider === "tokenrouter") return tokenRouterCompatTarget(model);
-  return openaiCompatTarget(model);
 }
 
 /**
@@ -494,7 +298,7 @@ export async function callLLM(
         ? // Native Messages API — the platform's internal wire shape already IS
           // Anthropic's, so no translation layer is needed on this path.
           await callAnthropic({ ...params, model, signal: opts?.signal })
-        : await callOpenAICompat(compatTargetFor(provider, model), {
+        : await callOpenAICompat(openaiCompatTarget(model), {
             ...params,
             system: flattenSystem(params.system),
             signal: opts?.signal,
@@ -524,7 +328,7 @@ export async function callLLMStream(
             handlers,
           )
         : await callOpenAICompatStream(
-            compatTargetFor(provider, model),
+            openaiCompatTarget(model),
             { ...params, system: flattenSystem(params.system), signal: opts?.signal },
             handlers,
           );

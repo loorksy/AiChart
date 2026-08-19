@@ -142,9 +142,9 @@ describe("fallback results carry the contract", () => {
     assert.equal(result.envelope?.operational_status, "ok");
   });
 
-  it("a TokenRouter 503 on a greeting is an operational blocker, not descriptive_only", () => {
+  it("a provider 503 on a greeting is an operational blocker, not descriptive_only", () => {
     const result = resultForGeneralQuestionFailure(
-      new Error('HTTP 503 من TokenRouter: openai_error'),
+      new Error("HTTP 503: openai_error"),
       [],
       "ar",
       { traceId: "greet-1" },

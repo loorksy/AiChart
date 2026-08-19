@@ -655,9 +655,8 @@ export async function runFinalDecisionSynthesizer(
   // question. Same images, same interleaving, same rules on both surfaces now.
   const visualBlocks = buildVisualBlocks(input.visualSnapshots ?? []);
   // The degradation contract (visualEvidence.ts): a missing view degrades the
-  // read, it never kills the analysis. Text-only models (DeepSeek V4) skip
-  // images on the first attempt — sending them 400s and wasted the retry.
-  // A vision model that still rejects images drops them on the second try.
+  // read, it never kills the analysis. Models that reject images drop them
+  // on a later attempt rather than killing the run.
   let includeVisuals = modelAcceptsVision(getActiveModel());
   const callModel =
     deps.callModel ??

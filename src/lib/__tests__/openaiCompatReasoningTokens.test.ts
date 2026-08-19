@@ -36,8 +36,6 @@ describe("openaiCompat gives reasoning-family models real token headroom", () =>
     assert.match(CATALOG_SRC, /export function isReasoningModel/);
     assert.match(CATALOG_SRC, /\/\^o\\d\/\.test\(id\)/);
     assert.match(CATALOG_SRC, /\/\^gpt-5\/\.test\(id\)/);
-    assert.match(CATALOG_SRC, /\/\^deepseek-v4\/\.test\(id\)/);
-    assert.match(CATALOG_SRC, /\/\^qwen3\\\.8\/\.test\(id\)/);
   });
 
   it("tokenLimitBody floors reasoning models well above the 4096 flat cap", () => {
@@ -62,18 +60,6 @@ describe("openaiCompat gives reasoning-family models real token headroom", () =>
     assert.ok(
       Number(floorMatch[1]) > 4096,
       "the floor must exceed the flat cap it replaces, or reasoning models see no benefit",
-    );
-  });
-
-  it("gives DeepSeek V4 a higher floor than the generic reasoning minimum", () => {
-    assert.match(SRC, /function reasoningTokenFloor/);
-    assert.match(SRC, /DEEPSEEK_REASONING_MIN_TOKENS/);
-    const deepseek = SRC.match(/const DEEPSEEK_REASONING_MIN_TOKENS = (\d+)/);
-    const generic = SRC.match(/const REASONING_MIN_TOKENS = (\d+)/);
-    assert.ok(deepseek && generic);
-    assert.ok(
-      Number(deepseek[1]) > Number(generic[1]),
-      "DeepSeek thinking is hungrier than o-series; the floor must be higher",
     );
   });
 });

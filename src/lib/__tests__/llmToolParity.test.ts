@@ -11,8 +11,8 @@ import type { ToolDef } from "@/lib/anthropic";
 
 /**
  * Proves the card-rendering tool (render_cards) and any tool flow through the
- * provider-agnostic conversion used for openai/google/openrouter — so cards work
- * with ANY model from ANY provider, not just one.
+ * provider-agnostic conversion used for OpenAI-compatible chat — so cards work
+ * with any offered model, not just one.
  */
 const RENDER_CARDS: ToolDef = {
   name: "render_cards",
@@ -103,7 +103,7 @@ describe("openAICompatTokenLimitField", () => {
     assert.equal(openAICompatTokenLimitField("gpt-5"), "max_completion_tokens");
   });
 
-  it("dropUnsupportedVision strips images for DeepSeek V4 and keeps them for GPT", () => {
+  it("dropUnsupportedVision keeps images for the offered multimodal catalogue", () => {
     const messages: Message[] = [
       {
         role: "user",
@@ -116,11 +116,6 @@ describe("openAICompatTokenLimitField", () => {
         ],
       },
     ];
-    const stripped = dropUnsupportedVision("deepseek/deepseek-v4-pro-0813-free", messages);
-    assert.equal(stripped.length, 1);
-    assert.ok(Array.isArray(stripped[0]!.content));
-    assert.deepEqual(stripped[0]!.content, [{ type: "text", text: "read this" }]);
-
     const kept = dropUnsupportedVision("gpt-4.1", messages);
     assert.equal(
       Array.isArray(kept[0]!.content) ? kept[0]!.content.length : 0,
@@ -128,7 +123,7 @@ describe("openAICompatTokenLimitField", () => {
     );
   });
 
-  it("keeps max_tokens for gpt-4o and OpenRouter-style ids", () => {
+  it("keeps max_tokens for gpt-4o and unrecognised ids", () => {
     assert.equal(openAICompatTokenLimitField("gpt-4o"), "max_tokens");
     assert.equal(openAICompatTokenLimitField("anthropic/claude-3.5-sonnet"), "max_tokens");
     // Anything unrecognised falls through to max_tokens, which is why the

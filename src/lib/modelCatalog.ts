@@ -30,44 +30,9 @@ export const ANTHROPIC_MODEL_CHOICES: ModelChoice[] = [
   { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
 ];
 
-// OpenRouter has NO static catalogue on purpose: the admin pastes a key and
-// every FREE route on openrouter.ai is offered automatically (see
-// listOpenRouterFreeModels + the live-gateway branch of isOfferedModelRef).
-// A hardcoded list here would go stale the day OpenRouter rotates its free
-// tier, and a paid route sneaking in would bill the operator silently.
-
-/** TokenRouter is a closed catalogue: one DeepSeek V4 Pro free route. */
-export const DEFAULT_TOKENROUTER_MODEL =
-  "deepseek/deepseek-v4-pro-0813-free";
-
-export const TOKENROUTER_MODEL_CHOICES: ModelChoice[] = [
-  { id: DEFAULT_TOKENROUTER_MODEL, label: "DeepSeek V4 Pro" },
-];
-
-/** The single TokenRouter route the platform offers right now. */
-export function tokenRouterOfferedModel(adminModel?: string | null): string {
-  const trimmed = adminModel?.trim();
-  return trimmed || DEFAULT_TOKENROUTER_MODEL;
-}
-
-/** Composer / admin label for a TokenRouter route id. */
-export function tokenRouterModelLabel(id: string): string {
-  const trimmed = id.trim();
-  const known = TOKENROUTER_MODEL_CHOICES.find((m) => m.id === trimmed);
-  if (known) return known.label;
-  const leaf = trimmed.split("/").pop() ?? trimmed;
-  const pretty = leaf
-    .replace(/-free$/i, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b([a-z])/g, (ch) => ch.toUpperCase())
-    .replace(/\bQwen(\d)/i, "Qwen $1");
-  return pretty || trimmed;
-}
-
 const ALLOWED_REFS = new Set<string>([
   ...OPENAI_MODEL_CHOICES.map((m) => `openai/${m.id}`),
   ...ANTHROPIC_MODEL_CHOICES.map((m) => `anthropic/${m.id}`),
-  ...TOKENROUTER_MODEL_CHOICES.map((m) => `tokenrouter/${m.id}`),
 ]);
 
 /** Is this "provider/model" ref one the platform offers? */
@@ -84,17 +49,14 @@ export function shortModelLabel(label: string): string {
   const trimmed = label.trim();
   if (!trimmed) return trimmed;
   const stripped = trimmed
-    .replace(
-      /^(OpenAI|Anthropic|Google|Meta|Mistral|DeepSeek|xAI|Qwen|OpenRouter|Amazon|Microsoft|Cohere|Perplexity)\s*[:·|-]\s*/i,
-      "",
-    )
-    .replace(/^(Claude|OpenAI|Anthropic|DeepSeek|Qwen)\s+/i, "")
+    .replace(/^(OpenAI|Anthropic|Google|Meta|Mistral|xAI|Amazon|Microsoft|Cohere)\s*[:·|-]\s*/i, "")
+    .replace(/^(Claude|OpenAI|Anthropic)\s+/i, "")
     .trim();
   return stripped || trimmed;
 }
 
 /**
- * o-series, gpt-5, and DeepSeek V4 models "think" before answering — reasoning tokens
+ * o-series and gpt-5 models "think" before answering — reasoning tokens
  * spend wall-clock time and completion budget before the visible answer
  * starts, the same way Claude 5-family extended thinking does. Callers that
  * size a completion-token cap or a stage deadline for a fast/non-reasoning
@@ -104,20 +66,13 @@ export function shortModelLabel(label: string): string {
  */
 export function isReasoningModel(model: string): boolean {
   const id = model.trim().toLowerCase().split("/").pop() ?? "";
-  return (
-    /^o\d/.test(id) ||
-    /^gpt-5/.test(id) ||
-    /^deepseek-v4/.test(id) ||
-    /^qwen3\.8/.test(id)
-  );
+  return /^o\d/.test(id) || /^gpt-5/.test(id);
 }
 
 /**
  * Whether this model accepts image_url / vision parts on the chat path.
- * DeepSeek V4 (TokenRouter) is text-only — sending a chart PNG 400s with
- * "is not a multimodal model" and burned the first synthesizer attempt.
+ * The platform catalogue is multimodal-only.
  */
-export function modelAcceptsVision(model: string): boolean {
-  const id = model.trim().toLowerCase().split("/").pop() ?? "";
-  return !/^deepseek-v4/.test(id);
+export function modelAcceptsVision(_model: string): boolean {
+  return true;
 }

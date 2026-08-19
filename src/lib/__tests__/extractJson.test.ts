@@ -14,7 +14,7 @@ describe("extractJson recovers model replies that are not bare JSON", () => {
     );
   });
 
-  it("strips DeepSeek <think> wrappers and reads the object after them", () => {
+  it("strips <think> wrappers and reads the object after them", () => {
     const raw = `<think>I will weigh both sides...</think>\n{"direction":"buy","planType":"immediate"}`;
     assert.equal(
       extractJson(raw),

@@ -1,5 +1,5 @@
 import { decryptSecret, encryptSecret, maskKey } from "./crypto";
-import { initDb, loadPlatformConfigRows, queryOne, transaction } from "./db";
+import { execute, initDb, loadPlatformConfigRows, queryOne, transaction } from "./db";
 
 export interface ConfigFieldMeta {
   key: string;
@@ -56,7 +56,7 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     group: "ai",
     secret: false,
     plainStorage: false,
-    placeholder: "openai | anthropic | openrouter | tokenrouter",
+    placeholder: "openai | anthropic",
   },
   {
     key: "ANTHROPIC_API_KEY",
@@ -74,62 +74,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     secret: false,
     plainStorage: false,
     placeholder: "claude-opus-5",
-  },
-  {
-    // Test gateway kill-switch. Unset = on (key alone is enough to use it);
-    // set to 0 to disable without deleting the key.
-    key: "OPENROUTER_ENABLED",
-    label: "تفعيل OpenRouter (للاختبارات — أوقف لإلغائه)",
-    labelEn: "OPENROUTER_ENABLED",
-    group: "ai",
-    secret: false,
-    plainStorage: false,
-    type: "toggle",
-  },
-  {
-    key: "OPENROUTER_API_KEY",
-    label: "مفتاح OpenRouter",
-    labelEn: "OPENROUTER_API_KEY",
-    group: "ai",
-    secret: true,
-    plainStorage: false,
-  },
-  {
-    key: "OPENROUTER_MODEL",
-    label: "نموذج OpenRouter",
-    labelEn: "OPENROUTER_MODEL",
-    group: "ai",
-    secret: false,
-    plainStorage: false,
-    placeholder: "openai/gpt-4o-mini",
-  },
-  {
-    // Kill-switch. Unset = on (key alone is enough to use it); set to 0 to
-    // disable without deleting the key.
-    key: "TOKENROUTER_ENABLED",
-    label: "Enable TokenRouter (kill-switch — off to disable without deleting the key)",
-    labelEn: "TOKENROUTER_ENABLED",
-    group: "ai",
-    secret: false,
-    plainStorage: false,
-    type: "toggle",
-  },
-  {
-    key: "TOKENROUTER_API_KEY",
-    label: "TokenRouter API key",
-    labelEn: "TOKENROUTER_API_KEY",
-    group: "ai",
-    secret: true,
-    plainStorage: false,
-  },
-  {
-    key: "TOKENROUTER_MODEL",
-    label: "TokenRouter model",
-    labelEn: "TOKENROUTER_MODEL",
-    group: "ai",
-    secret: false,
-    plainStorage: false,
-    placeholder: "qwen/qwen3.8-max-free",
   },
   {
     // Both quick-model keys are optional: llm.ts falls back to the deep model
@@ -150,24 +94,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     secret: false,
     plainStorage: false,
     placeholder: "اتركه فارغاً لاستخدام النموذج الأساسي",
-  },
-  {
-    key: "OPENROUTER_QUICK_MODEL",
-    label: "نموذج OpenRouter السريع (اختياري)",
-    labelEn: "OPENROUTER_QUICK_MODEL",
-    group: "ai",
-    secret: false,
-    plainStorage: false,
-    placeholder: "اتركه فارغاً لاستخدام النموذج الأساسي",
-  },
-  {
-    key: "TOKENROUTER_QUICK_MODEL",
-    label: "TokenRouter quick model (optional)",
-    labelEn: "TOKENROUTER_QUICK_MODEL",
-    group: "ai",
-    secret: false,
-    plainStorage: false,
-    placeholder: "Leave blank to use the deep model",
   },
   {
     key: "TELEGRAM_BOT_TOKEN",
@@ -384,8 +310,47 @@ export async function refreshPlatformConfigCacheInternal(
 
 export async function refreshPlatformConfigCache(): Promise<void> {
   await initDb();
+  await purgeRetiredGatewayConfig();
   clearPlatformConfigCache();
   populateFromRows(await loadPlatformConfigRows());
+}
+
+const RETIRED_GATEWAY_KEYS = [
+  "OPENROUTER_ENABLED",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_MODEL",
+  "OPENROUTER_QUICK_MODEL",
+  "TOKENROUTER_ENABLED",
+  "TOKENROUTER_API_KEY",
+  "TOKENROUTER_MODEL",
+  "TOKENROUTER_QUICK_MODEL",
+] as const;
+
+let retiredGatewaysPurged = false;
+
+/** Drop leftover OpenRouter / TokenRouter rows so they cannot surface again. */
+async function purgeRetiredGatewayConfig(): Promise<void> {
+  if (retiredGatewaysPurged) return;
+  retiredGatewaysPurged = true;
+  const placeholders = RETIRED_GATEWAY_KEYS.map(() => "?").join(", ");
+  try {
+    await execute(
+      `DELETE FROM platform_config WHERE key IN (${placeholders})`,
+      [...RETIRED_GATEWAY_KEYS],
+    );
+    await execute(
+      `UPDATE platform_config SET value = 'openai' WHERE key = 'AI_PROVIDER' AND value IN ('openrouter', 'tokenrouter')`,
+    );
+    await execute(
+      `UPDATE trading_settings SET preferred_model_ref = NULL WHERE preferred_model_ref LIKE 'openrouter/%' OR preferred_model_ref LIKE 'tokenrouter/%'`,
+    );
+    await execute(
+      `DELETE FROM model_prices WHERE provider IN ('openrouter', 'tokenrouter')`,
+    );
+  } catch {
+    // First-boot schemas may not have every table yet; the next refresh retries.
+    retiredGatewaysPurged = false;
+  }
 }
 
 function decodeRaw(key: string, value: string, plain: number): string | null {

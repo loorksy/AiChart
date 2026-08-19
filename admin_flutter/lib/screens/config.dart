@@ -32,16 +32,13 @@ class _ConfigScreenState extends State<ConfigScreen> {
   };
 
   /// Model fields are not admin decisions on this platform: the END USER
-  /// picks from the curated multimodal trios (OpenAI/Claude), and OpenRouter
-  /// serves its live FREE catalogue automatically once a key exists. The keys
+  /// picks from the curated multimodal trios (OpenAI/Claude). The keys
   /// stay; the model dropdowns/text fields go.
   static const _hiddenModelKeys = {
     'AI_MODEL',
     'ANTHROPIC_MODEL',
-    'OPENROUTER_MODEL',
     'AI_QUICK_MODEL',
     'ANTHROPIC_QUICK_MODEL',
-    'OPENROUTER_QUICK_MODEL',
   };
 
   @override

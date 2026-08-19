@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
 
-import { DEFAULT_TOKENROUTER_MODEL } from "@/lib/modelCatalog";
 import { OpenAIModelPicker } from "@/components/admin/OpenAIModelPicker";
 import { Button } from "@/components/squareui/button";
 import { Input } from "@/components/squareui/input";
@@ -71,8 +70,6 @@ const ANTHROPIC_MODELS: { id: string; label: string }[] = [
 const PROVIDERS: { id: string; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "anthropic", label: "Anthropic (Claude)" },
-  { id: "openrouter", label: "OpenRouter (اختبار)" },
-  { id: "tokenrouter", label: "TokenRouter" },
 ];
 
 export function AdminKeysPanel() {
@@ -125,15 +122,6 @@ export function AdminKeysPanel() {
     for (const [key, value] of Object.entries(draft)) {
       if (value.trim()) patch[key] = value.trim();
     }
-    // Pasting an OpenRouter key should make the gateway usable immediately —
-    // only skip auto-enable when the operator explicitly set the kill-switch
-    // to off in this same save.
-    if (patch.OPENROUTER_API_KEY && patch.OPENROUTER_ENABLED !== "0") {
-      patch.OPENROUTER_ENABLED = "1";
-    }
-    if (patch.TOKENROUTER_API_KEY && patch.TOKENROUTER_ENABLED !== "0") {
-      patch.TOKENROUTER_ENABLED = "1";
-    }
     if (Object.keys(patch).length === 0) {
       setMsg({
         type: "err",
@@ -183,29 +171,10 @@ export function AdminKeysPanel() {
   const providerField = fields.find((f) => f.key === "AI_PROVIDER");
   const anthropicKeyField = fields.find((f) => f.key === "ANTHROPIC_API_KEY");
   const anthropicModelField = fields.find((f) => f.key === "ANTHROPIC_MODEL");
-  const openrouterEnabledField = fields.find((f) => f.key === "OPENROUTER_ENABLED");
-  const openrouterKeyField = fields.find((f) => f.key === "OPENROUTER_API_KEY");
-  const openrouterModelField = fields.find((f) => f.key === "OPENROUTER_MODEL");
-  const tokenrouterEnabledField = fields.find((f) => f.key === "TOKENROUTER_ENABLED");
-  const tokenrouterKeyField = fields.find((f) => f.key === "TOKENROUTER_API_KEY");
-  const tokenrouterModelField = fields.find((f) => f.key === "TOKENROUTER_MODEL");
   const providerRaw = draft.AI_PROVIDER ?? providerField?.value ?? "openai";
-  const activeProvider =
-    providerRaw === "anthropic" ||
-    providerRaw === "openrouter" ||
-    providerRaw === "tokenrouter"
-      ? providerRaw
-      : "openai";
+  const activeProvider = providerRaw === "anthropic" ? providerRaw : "openai";
   const currentAnthropicModel =
     draft.ANTHROPIC_MODEL ?? anthropicModelField?.value ?? "claude-opus-5";
-  const currentOpenRouterModel =
-    draft.OPENROUTER_MODEL ??
-    openrouterModelField?.value ??
-    "openai/gpt-4o-mini";
-  const currentTokenRouterModel =
-    draft.TOKENROUTER_MODEL ??
-    tokenrouterModelField?.value ??
-    DEFAULT_TOKENROUTER_MODEL;
 
   const aiExtraFields = fields.filter(
     (f) =>
@@ -214,13 +183,7 @@ export function AdminKeysPanel() {
       f.key !== "AI_MODEL" &&
       f.key !== "AI_PROVIDER" &&
       f.key !== "ANTHROPIC_API_KEY" &&
-      f.key !== "ANTHROPIC_MODEL" &&
-      f.key !== "OPENROUTER_ENABLED" &&
-      f.key !== "OPENROUTER_API_KEY" &&
-      f.key !== "OPENROUTER_MODEL" &&
-      f.key !== "TOKENROUTER_ENABLED" &&
-      f.key !== "TOKENROUTER_API_KEY" &&
-      f.key !== "TOKENROUTER_MODEL",
+      f.key !== "ANTHROPIC_MODEL",
   );
 
   if (loading && fields.length === 0) {
@@ -388,119 +351,6 @@ export function AdminKeysPanel() {
                       </select>
                     </Field>
                   )}
-
-                  <div className="space-y-3 rounded-lg border border-border/70 bg-muted/30 px-3 py-3">
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">OpenRouter</span>
-                      {" — "}
-                      بوابة اختبار عبر{" "}
-                      <a
-                        href="https://openrouter.ai/"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline underline-offset-2"
-                        dir="ltr"
-                      >
-                        openrouter.ai
-                      </a>
-                      . بعد حفظ المفتاح تُجلب النماذج مباشرة من OpenRouter، ويمكن
-                      إيقاف التفعيل في أي وقت دون حذف المفتاح.
-                    </p>
-                    {openrouterEnabledField && (
-                      <ConfigFieldRow
-                        f={{
-                          ...openrouterEnabledField,
-                          // Unset = enabled (opt-out kill-switch).
-                          value: openrouterEnabledField.value ?? "1",
-                        }}
-                        draft={draft}
-                        setDraftValue={setDraftValue}
-                      />
-                    )}
-                    {openrouterKeyField && (
-                      <ConfigFieldRow
-                        f={openrouterKeyField}
-                        draft={draft}
-                        setDraftValue={setDraftValue}
-                      />
-                    )}
-                    {openrouterKeyField && (
-                      <OpenAIModelPicker
-                        apiKeyDraft={draft.OPENROUTER_API_KEY ?? ""}
-                        apiKeyConfigured={openrouterKeyField.configured}
-                        currentModel={currentOpenRouterModel}
-                        draftModel={draft.OPENROUTER_MODEL ?? ""}
-                        onSelectModel={(id) => setDraftValue("OPENROUTER_MODEL", id)}
-                        endpoint="/api/admin/config/openrouter-models"
-                        title="نموذج OpenRouter الافتراضي"
-                        emptyHint="أدخل مفتاح OpenRouter أعلاه لجلب النماذج المتاحة ديناميكياً."
-                        loadingHint="جارٍ جلب النماذج من OpenRouter…"
-                      />
-                    )}
-                  </div>
-
-                  <div className="space-y-3 rounded-lg border border-border/70 bg-muted/30 px-3 py-3">
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">TokenRouter</span>
-                      {" — "}
-                      OpenAI-compatible gateway at{" "}
-                      <a
-                        href="https://tokenrouter.com/"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline underline-offset-2"
-                        dir="ltr"
-                      >
-                        api.tokenrouter.com/v1
-                      </a>
-                      . Paste a key and the route id users should see (for
-                      example{" "}
-                      <code dir="ltr">qwen/qwen3.8-max-free</code>
-                      ). Changing the route updates the composer immediately;
-                      the kill-switch disables it without deleting the key.
-                    </p>
-                    {tokenrouterEnabledField && (
-                      <ConfigFieldRow
-                        f={{
-                          ...tokenrouterEnabledField,
-                          value: tokenrouterEnabledField.value ?? "1",
-                        }}
-                        draft={draft}
-                        setDraftValue={setDraftValue}
-                      />
-                    )}
-                    {tokenrouterKeyField && (
-                      <ConfigFieldRow
-                        f={tokenrouterKeyField}
-                        draft={draft}
-                        setDraftValue={setDraftValue}
-                      />
-                    )}
-                    {tokenrouterModelField && (
-                      <Field
-                        label={
-                          <>
-                            TokenRouter model
-                            <span className="ms-2 text-[10px] text-muted-foreground" dir="ltr">
-                              TOKENROUTER_MODEL
-                            </span>
-                          </>
-                        }
-                        htmlFor="TOKENROUTER_MODEL"
-                      >
-                        <Input
-                          id="TOKENROUTER_MODEL"
-                          dir="ltr"
-                          className="admin-input focus-ring tap-target h-10 w-full text-sm"
-                          value={currentTokenRouterModel}
-                          placeholder={DEFAULT_TOKENROUTER_MODEL}
-                          onChange={(e) =>
-                            setDraftValue("TOKENROUTER_MODEL", e.target.value)
-                          }
-                        />
-                      </Field>
-                    )}
-                  </div>
 
                   {agentModel && (
                     <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">

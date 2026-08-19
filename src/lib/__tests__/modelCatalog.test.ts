@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { parseModelRef } from "@/lib/llm";
 import { shortModelLabel } from "@/lib/modelCatalog";
 
 describe("shortModelLabel", () => {
@@ -14,7 +15,14 @@ describe("shortModelLabel", () => {
   it("leaves names that already have no company prefix", () => {
     assert.equal(shortModelLabel("GPT-5.6 Luna Pro"), "GPT-5.6 Luna Pro");
     assert.equal(shortModelLabel("Fable 5"), "Fable 5");
-    assert.equal(shortModelLabel("DeepSeek V4 Pro"), "V4 Pro");
-    assert.equal(shortModelLabel("Qwen 3.8 Max"), "3.8 Max");
+  });
+});
+
+describe("retired gateway refs are not selectable", () => {
+  it("parseModelRef only accepts openai and anthropic", () => {
+    assert.equal(parseModelRef("openai/gpt-4.1")?.provider, "openai");
+    assert.equal(parseModelRef("anthropic/claude-opus-5")?.provider, "anthropic");
+    assert.equal(parseModelRef("openrouter/openai/gpt-4o-mini"), null);
+    assert.equal(parseModelRef("tokenrouter/qwen/qwen3.8-max-free"), null);
   });
 });

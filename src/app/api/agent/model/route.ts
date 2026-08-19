@@ -20,12 +20,6 @@ export async function GET(req: NextRequest) {
     const providerConfigured: Record<string, { configured: boolean }> = {
       openai: { configured: Boolean(getProviderApiKey("openai")) },
       anthropic: { configured: Boolean(getProviderApiKey("anthropic")) },
-      openrouter: {
-        configured: Boolean(getProviderApiKey("openrouter")),
-      },
-      tokenrouter: {
-        configured: Boolean(getProviderApiKey("tokenrouter")),
-      },
     };
     return NextResponse.json({
       provider,

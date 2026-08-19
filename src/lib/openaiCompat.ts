@@ -30,9 +30,7 @@ export interface OpenAICompatTarget {
   /** Extra optional HTTP headers for the upstream API */
   headers?: Record<string, string>;
   /**
-   * Circuit-breaker key. Defaults to "openai" for the OpenAI endpoint;
-   * OpenRouter (and any other gateway) must use its own key so an outage
-   * there does not trip the OpenAI breaker.
+   * Circuit-breaker key. Defaults to "openai" for the OpenAI endpoint.
    */
   resilienceKey?: string;
 }
@@ -120,10 +118,9 @@ function toOAMessages(system: string, messages: Message[]): OAMessage[] {
 }
 
 /**
- * Drop image blocks before they hit a text-only gateway. DeepSeek V4 via
- * TokenRouter 400s on image_url ("is not a multimodal model"); stripping
- * here keeps every OpenAI-compat caller (decision, browse, chat) from
- * burning an attempt on a chart PNG the model cannot read.
+ * Drop image blocks before they hit a text-only model. The platform
+ * catalogue is multimodal, so this is a no-op for offered ids; kept so a
+ * stray text-only id cannot burn an attempt on a chart PNG.
  */
 export function dropUnsupportedVision(model: string, messages: Message[]): Message[] {
   if (modelAcceptsVision(model)) return messages;
@@ -134,7 +131,7 @@ export function dropUnsupportedVision(model: string, messages: Message[]): Messa
   });
 }
 
-/** Model id without OpenRouter vendor prefix (e.g. openai/gpt-4.1 → gpt-4.1). */
+/** Model id without a vendor prefix (e.g. openai/gpt-4.1 → gpt-4.1). */
 function bareModelId(model: string): string {
   const trimmed = model.trim().toLowerCase();
   const slash = trimmed.lastIndexOf("/");
@@ -143,7 +140,7 @@ function bareModelId(model: string): string {
 
 /**
  * Newer OpenAI chat models reject `max_tokens` and require `max_completion_tokens`.
- * Claude-via-OpenRouter keeps using `max_tokens`, which is also the fallback.
+ * Unrecognised ids keep using `max_tokens`, which is also the fallback.
  */
 export function openAICompatTokenLimitField(
   model: string,
@@ -167,12 +164,9 @@ export function openAICompatTokenLimitField(
  */
 const REASONING_MIN_TOKENS = 8192;
 const REASONING_MAX_TOKENS = 16000;
-/** DeepSeek V4 spends more of the completion budget on thinking than o-series. */
-const DEEPSEEK_REASONING_MIN_TOKENS = 12000;
 
-function reasoningTokenFloor(model: string): number {
-  const id = bareModelId(model);
-  return /^deepseek-v4/.test(id) ? DEEPSEEK_REASONING_MIN_TOKENS : REASONING_MIN_TOKENS;
+function reasoningTokenFloor(_model: string): number {
+  return REASONING_MIN_TOKENS;
 }
 
 function tokenLimitBody(
@@ -193,16 +187,14 @@ function tokenLimitBody(
  * TTFT budget instead of stalling for tens of seconds.
  */
 function reasoningBody(model: string): Record<string, unknown> {
-  // OpenAI-style effort is only valid on o-series / gpt-5. Other reasoning
-  // models (DeepSeek V4 via TokenRouter) still get token headroom from
-  // isReasoningModel, but must not receive a field their gateway rejects.
+  // OpenAI-style effort is only valid on o-series / gpt-5.
   const id = bareModelId(model);
   if (/^o\d/.test(id) || /^gpt-5/.test(id)) return { reasoning_effort: "low" };
   return {};
 }
 
 // Exported for provider-parity tests: proves any tool (e.g. render_cards)
-// converts to the OpenAI-compatible function shape used by openai/google/openrouter.
+// converts to the OpenAI-compatible function shape used by openai.
 export function toOATools(tools?: ToolDef[]) {
   if (!tools || tools.length === 0) return undefined;
   return tools.map((t) => ({
@@ -229,8 +221,8 @@ export function fromOAChoice(choice: {
 }): { content: ContentBlock[]; stop_reason: string } {
   const blocks: ContentBlock[] = [];
   const msg = choice.message;
-  // DeepSeek V4 (and some other reasoning gateways) put the visible answer
-  // in `reasoning_content` when `content` is empty or still thinking.
+  // Some reasoning models put the visible answer in `reasoning_content`
+  // when `content` is empty or still thinking.
   const text = (msg?.content ?? "").trim() || (msg?.reasoning_content ?? "").trim();
 
   if (text) {
@@ -673,96 +665,4 @@ export async function listOpenAIChatModels(
     .filter((m) => include.test(m.id) && !exclude.test(m.id))
     .map((m) => ({ id: m.id, display_name: m.id }))
     .sort((a, b) => b.id.localeCompare(a.id));
-}
-
-type OpenRouterModelRow = {
-  id?: string;
-  name?: string;
-  created?: number;
-  architecture?: {
-    modality?: string;
-    input_modalities?: string[];
-    output_modalities?: string[];
-  };
-  pricing?: {
-    prompt?: string;
-    completion?: string;
-  };
-};
-
-/**
- * A route costs nothing when OpenRouter says so. Both signals are checked —
- * the `:free` id suffix is the documented convention, but the pricing object
- * is the billing truth, and a route missing both must be assumed paid.
- */
-function isOpenRouterFreeRow(m: OpenRouterModelRow): boolean {
-  if (m.id?.trim().toLowerCase().endsWith(":free")) return true;
-  const p = m.pricing;
-  if (!p) return false;
-  return Number(p.prompt ?? "1") === 0 && Number(p.completion ?? "1") === 0;
-}
-
-async function fetchOpenRouterRows(
-  apiKey: string,
-): Promise<OpenRouterModelRow[]> {
-  const res = await fetchWithTimeout(
-    "https://openrouter.ai/api/v1/models",
-    {
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      cache: "no-store",
-    },
-    { timeoutMs: httpTimeoutMs(), label: "OpenRouter models" },
-  );
-  if (!res.ok) throw new Error(await readError(res, "OpenRouter"));
-  const data = (await res.json()) as { data?: OpenRouterModelRow[] };
-  const exclude = /embed|whisper|tts|moderation|image-edit|upscal/i;
-  return (data.data ?? []).filter((m) => {
-    const id = m.id?.trim();
-    if (!id || exclude.test(id)) return false;
-    const outs = m.architecture?.output_modalities ?? [];
-    const modality = m.architecture?.modality ?? "";
-    // Prefer text-producing models; if OpenRouter omits architecture, keep it.
-    if (outs.length > 0) return outs.includes("text");
-    if (modality) return modality.includes("text");
-    return true;
-  });
-}
-
-function toCompatInfo(rows: OpenRouterModelRow[]): CompatModelInfo[] {
-  return rows
-    .map((m) => ({
-      id: m.id!.trim(),
-      display_name: (m.name ?? m.id)!.trim(),
-      created: m.created,
-    }))
-    .sort(
-      (a, b) =>
-        (b.created ?? 0) - (a.created ?? 0) || a.id.localeCompare(b.id),
-    );
-}
-
-/**
- * Live catalogue from https://openrouter.ai/api/v1/models.
- * Keeps text-capable chat routes; drops image/audio-only endpoints.
- */
-export async function listOpenRouterModels(
-  apiKey: string,
-): Promise<CompatModelInfo[]> {
-  return toCompatInfo(await fetchOpenRouterRows(apiKey));
-}
-
-/**
- * The FREE subset of the live catalogue — the only OpenRouter models the
- * platform offers. The admin pastes a key; nobody picks routes by hand, and
- * a paid route can never be served by accident (OmniRoute-style gateway).
- */
-export async function listOpenRouterFreeModels(
-  apiKey: string,
-): Promise<CompatModelInfo[]> {
-  return toCompatInfo(
-    (await fetchOpenRouterRows(apiKey)).filter(isOpenRouterFreeRow),
-  );
 }

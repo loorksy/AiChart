@@ -29,7 +29,7 @@ const SPRING = "cubic-bezier(0.175, 0.885, 0.32, 1.275)";
 /**
  * The model chip — the user's own model choice, visible in the composer row
  * (Claude-style) instead of buried in the options menu. Real catalogue only:
- * the list is /api/agent/models (curated trios + live free OpenRouter routes)
+ * the list is /api/agent/models (curated OpenAI + Claude trios)
  * and the pick persists to the user's settings.
  */
 function ComposerModelChip() {

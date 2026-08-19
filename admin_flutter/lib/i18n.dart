@@ -99,12 +99,10 @@ class L {
     'aiKeysOnlyNote': {
       'ar':
           'المفاتيح فقط تُضبط هنا — المستخدم يختار نموذجه من المحادثة: '
-              '3 نماذج OpenAI و3 نماذج Claude متعددة الوسائط، '
-              'وكل نماذج OpenRouter المجانية تلقائياً بمجرد وضع المفتاح.',
+              '3 نماذج OpenAI و3 نماذج Claude متعددة الوسائط.',
       'en':
           'Keys only — each user picks their own model in chat: '
-              '3 multimodal OpenAI models, 3 multimodal Claude models, '
-              'and every free OpenRouter model automatically once a key is set.'
+              '3 multimodal OpenAI models and 3 multimodal Claude models.'
     },
     'language': {'ar': 'English', 'en': 'العربية'},
     'sessionExpired': {
