@@ -36,12 +36,18 @@ describe("orchestrator widens the general-question deadline for reasoning models
     assert.match(body, /AGENT_TIMEOUTS\.general \* 2/);
   });
 
-  it("all three general-question call sites use the helper, not the raw constant", () => {
+  it("drawing and greeting paths use the helper, not the raw constant", () => {
     const callSites = [...SRC.matchAll(/(?<!function )generalStageTimeoutMs\(\)/g)];
     assert.equal(
       callSites.length,
-      3,
-      "explain_chart_drawings, general-only, and account-help must all use the widened deadline",
+      2,
+      "explain_chart_drawings and settleGeneralAnswer must both use the widened deadline",
+    );
+    assert.match(SRC, /settleGeneralAnswer\(/);
+    assert.equal(
+      (SRC.match(/answerGeneralQuestion\(/g) ?? []).length,
+      2,
+      "general-only and account-help must both go through settleGeneralAnswer",
     );
     assert.doesNotMatch(
       SRC,

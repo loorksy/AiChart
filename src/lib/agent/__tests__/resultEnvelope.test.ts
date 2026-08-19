@@ -7,7 +7,11 @@ import {
   executionValidatedEnvelope,
   operationalBlockerEnvelope,
 } from "@/lib/agent/resultEnvelope";
-import { buildAgentFallbackResult, buildInformationalResult } from "@/lib/agent/fallback";
+import {
+  buildAgentFallbackResult,
+  buildInformationalResult,
+  resultForGeneralQuestionFailure,
+} from "@/lib/agent/fallback";
 
 describe("operational blocker envelope", () => {
   it("always states explicitly that no recommendation was issued", () => {
@@ -136,5 +140,23 @@ describe("fallback results carry the contract", () => {
     const result = buildInformationalResult("ملخص عام");
     assert.equal(result.envelope?.outcome_class, "descriptive_only");
     assert.equal(result.envelope?.operational_status, "ok");
+  });
+
+  it("a TokenRouter 503 on a greeting is an operational blocker, not descriptive_only", () => {
+    const result = resultForGeneralQuestionFailure(
+      new Error('HTTP 503 من TokenRouter: openai_error'),
+      [],
+      "ar",
+      { traceId: "greet-1" },
+    );
+    assert.equal(result.envelope?.outcome_class, "operational_blocker");
+    assert.equal(result.envelope?.failure_code, "provider_unavailable");
+    assert.equal(result.envelope?.failure_stage, "general");
+    assert.equal(result.envelope?.retryable, true);
+    assert.equal(result.envelope?.trace_id, "greet-1");
+    assert.match(result.summary, /مزوّد الخدمة غير متاح مؤقتاً/);
+    assert.doesNotMatch(result.summary, /تعذّر معالجة السؤال حالياً/);
+    assert.doesNotMatch(result.summary, /openai_error/);
+    assert.doesNotMatch(result.summary, /HTTP 503/);
   });
 });

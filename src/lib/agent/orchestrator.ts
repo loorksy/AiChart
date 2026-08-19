@@ -34,8 +34,13 @@ import { handleUserDrawingCommand } from "./drawingCommands/handleUserDrawingCom
 import { withTimeout, withDeadline, createRunBudget, AGENT_TIMEOUTS } from "./timeout";
 import { getQuickModel } from "@/lib/llm";
 import { isReasoningModel } from "@/lib/modelCatalog";
-import { buildInformationalResult, buildAgentFallbackResult } from "./fallback";
 import {
+  buildInformationalResult,
+  buildAgentFallbackResult,
+  resultForGeneralQuestionFailure,
+} from "./fallback";
+import {
+  classifyAgentError,
   failureCodeFromSynthesizerKind,
   ledgerSilentTimeout,
   stageFailureFromError,
@@ -188,6 +193,39 @@ function generalStageTimeoutMs(): number {
   return isReasoningModel(getQuickModel())
     ? AGENT_TIMEOUTS.general * 2
     : AGENT_TIMEOUTS.general;
+}
+
+/**
+ * Run a general (non-market) LLM answer under the same deadline as the other
+ * greeting paths. A thrown provider fault becomes an operational blocker —
+ * never a `descriptive_only` "try again" card.
+ */
+async function settleGeneralAnswer(
+  work: Promise<string>,
+  collected: AgentFinalResult["activityEvents"],
+  locale: AppLocale,
+  requestId: string | undefined,
+): Promise<AgentFinalResult> {
+  try {
+    const summary = await withTimeout(work, generalStageTimeoutMs(), null);
+    if (summary == null) {
+      return buildAgentFallbackResult(
+        "General answer exceeded its deadline.",
+        collected,
+        locale,
+        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: requestId },
+      );
+    }
+    return buildInformationalResult(summary, collected, { traceId: requestId });
+  } catch (error) {
+    const classified = classifyAgentError(error);
+    log.warn("agent.general.failed", {
+      requestId,
+      code: classified.code,
+      detail: classified.detail.slice(0, 300),
+    });
+    return resultForGeneralQuestionFailure(error, collected, locale, { traceId: requestId });
+  }
 }
 
 /**
@@ -566,20 +604,12 @@ async function runUnifiedChartAgentInner(
   // agent stays silent unless it is actually running a tool; it never narrates
   // "preparing a general answer".
   if (isGeneralOnly(intents)) {
-    const summary = await withTimeout(
+    return settleGeneralAnswer(
       answerGeneralQuestion(userMessage, input.conversationContext, ctx.emitAnswerText),
-      generalStageTimeoutMs(),
-      null,
+      collected,
+      locale,
+      ctx.requestId,
     );
-    if (summary == null) {
-      return buildAgentFallbackResult(
-        "General answer exceeded its deadline.",
-        collected,
-        locale,
-        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: ctx.requestId },
-      );
-    }
-    return buildInformationalResult(summary, collected, { traceId: ctx.requestId });
   }
 
   const wantMarket = needsMarketContext(intents);
@@ -683,20 +713,12 @@ async function runUnifiedChartAgentInner(
 
   if (!wantMarket) {
     // Account-only or platform-help without market context.
-    const summary = await withTimeout(
+    return settleGeneralAnswer(
       answerGeneralQuestion(userMessage, input.conversationContext, ctx.emitAnswerText),
-      generalStageTimeoutMs(),
-      null,
+      collected,
+      locale,
+      ctx.requestId,
     );
-    if (summary == null) {
-      return buildAgentFallbackResult(
-        "General answer exceeded its deadline.",
-        collected,
-        locale,
-        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: ctx.requestId },
-      );
-    }
-    return buildInformationalResult(summary, collected, { traceId: ctx.requestId });
   }
 
   // --- Market fleet ---

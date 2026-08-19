@@ -14,6 +14,7 @@ import {
 } from "./confidenceSemantics";
 import type { AgentActivityEvent, AgentFinalResult } from "./types";
 import {
+  classifyAgentError,
   isRetryableFailureCode,
   userMessageForFailure,
   type AgentFailureCode,
@@ -101,6 +102,30 @@ export function buildAgentFallbackResult(
     activityEvents,
     drawings: [],
   };
+}
+
+/**
+ * A greeting / account-help / general question whose LLM call failed.
+ *
+ * The previous general-answer path swallowed every throw into a static
+ * "try again" sentence and wrapped it as `descriptive_only` — so a
+ * TokenRouter 503 looked like a successful descriptive chat reply. That
+ * must stay an operational blocker with the real taxonomy code.
+ */
+export function resultForGeneralQuestionFailure(
+  error: unknown,
+  activityEvents: AgentActivityEvent[] = [],
+  locale: AppLocale = "ar",
+  options: { traceId?: string } = {},
+): AgentFinalResult {
+  const classified = classifyAgentError(error);
+  return buildAgentFallbackResult(classified.detail, activityEvents, locale, {
+    failureStage: "general",
+    failureCode: classified.code,
+    retryable: classified.retryable,
+    traceId: options.traceId,
+    detail: classified.detail,
+  });
 }
 
 /** Informational answer to a general (non-trading) question. */

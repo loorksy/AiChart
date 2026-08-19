@@ -62,6 +62,26 @@ describe("orchestrator envelope wiring", () => {
     assert.match(orchestrator, /failureCode:\s*"insufficient_data"/);
   });
 
+  it("a greeting provider outage is classified, never swallowed as descriptive_only", () => {
+    assert.match(orchestrator, /function settleGeneralAnswer/);
+    assert.match(orchestrator, /resultForGeneralQuestionFailure/);
+    assert.match(orchestrator, /log\.warn\("agent\.general\.failed"/);
+    const generalAnswer = readFileSync(
+      new URL("../generalAnswer.ts", import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      generalAnswer,
+      /تعذّر معالجة السؤال حالياً/,
+      "provider faults must propagate, not become a fake greeting",
+    );
+    assert.doesNotMatch(
+      generalAnswer,
+      /catch\s*\{/,
+      "a bare catch that swallows the throw is how 503s became descriptive_only",
+    );
+  });
+
   it("silent stage deadlines are ledgered for every fleet member and news", () => {
     for (const stage of ["structure", "liquidity", "supply_demand", "multi_timeframe", "news"]) {
       assert.ok(

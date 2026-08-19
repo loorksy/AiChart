@@ -24,6 +24,12 @@ describe("classifyAgentError", () => {
     const unavailable = classifyAgentError(new Error("HTTP 503 service overloaded"));
     assert.equal(unavailable.code, "provider_unavailable");
     assert.equal(unavailable.retryable, true);
+
+    const tokenRouter = classifyAgentError(
+      new Error("HTTP 503 من TokenRouter: openai_error"),
+    );
+    assert.equal(tokenRouter.code, "provider_unavailable");
+    assert.equal(tokenRouter.retryable, true);
   });
 
   it("recognises network, timeout, and cancellation separately", () => {
