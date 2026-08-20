@@ -171,6 +171,12 @@ const planContractFields = {
 
 const recommendationSharedFields = {
   symbol: zSymbol,
+  /**
+   * The analysis this plan came from (run_market_analysis result's
+   * analysis_id). The platform checks the RECORDED gate chain under this id
+   * before writing — a buy/sell publish without a fresh analysis is refused.
+   */
+  analysis_id: z.string().min(4).max(64).optional(),
   // Optional — the model's own judgement. Never a statistically calibrated figure.
   confidence: zConfidence.optional(),
   rationale: z.string().min(10),

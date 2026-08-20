@@ -3,7 +3,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
-import { saveCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
+import {
+  completePlanEvidence,
+  saveCompletePlan,
+  seedPassedGateChain,
+} from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-opportunity-"));
 process.env.DB_PATH = join(dir, "opportunity.db");
@@ -69,6 +73,10 @@ describe("opportunity_created is emitted once and deduped on re-run", () => {
 describe("every creation producer shares the same dedupe", () => {
   it("announces once through saveRecommendation and stays silent on retry", async () => {
     const { saveRecommendation } = await import("@/lib/store");
+    // Each save is its own analysis: the write boundary demands a fresh,
+    // recorded gate chain plus a sourced evidence card per recommendation.
+    await seedPassedGateChain(userId, "opportunity-analysis-1", "GBPUSD");
+    await seedPassedGateChain(userId, "opportunity-analysis-2", "GBPUSD");
     const first = await saveRecommendation(userId, {
       symbol: "GBPUSD",
       action: "sell",
@@ -77,6 +85,8 @@ describe("every creation producer shares the same dedupe", () => {
       stop_loss: 1.275,
       take_profit: 1.26,
       ...saveCompletePlan(),
+      analysis_id: "opportunity-analysis-1",
+      evidence: completePlanEvidence(),
       source: "agent",
     });
     const second = await saveRecommendation(userId, {
@@ -87,6 +97,8 @@ describe("every creation producer shares the same dedupe", () => {
       stop_loss: 1.275,
       take_profit: 1.26,
       ...saveCompletePlan(),
+      analysis_id: "opportunity-analysis-2",
+      evidence: completePlanEvidence(),
       source: "agent",
     });
     // Two rows, but each birth key is unique — one alert per recommendation id.

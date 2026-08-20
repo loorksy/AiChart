@@ -233,6 +233,102 @@ export async function createCanonicalRecommendation(
     }
   }
 
+  // Phase-4 hard checks at the ONE write choke point (legacy imports are
+  // history, not new claims). The agent loop is non-deterministic — a model
+  // can skip a tool call — so these live HERE, in code, before the write.
+  let resolvedEntryType: string | null = input.entryType ?? null;
+  if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
+    const seed = input.initialRevision;
+
+    // 1. Entry-fill semantics are explicit on every plan, and the known fatal
+    //    incoherence (close-decided activation arming a touch-filled entry at
+    //    the rule's own level) is refused by the write itself.
+    const { isEntryType, resolveEntryType, validateEntryCoherence } = await import(
+      "../entrySemantics"
+    );
+    const resolverInput = {
+      declared: input.entryType,
+      planType: (input.planType ?? null) as
+        | "immediate"
+        | "anticipatory"
+        | "conditional"
+        | null,
+      activationRule: seed?.activationRule ?? null,
+      retestZone: null,
+    };
+    // An EXPLICITLY declared fill type is graded as declared: a caller that
+    // says "limit_touch" against a close-decided rule wrote the known fatal
+    // pair, and the write REJECTS it rather than silently rewriting intent.
+    // Absent/legacy spellings resolve to the honest type first.
+    const declaredRaw = (input.entryType ?? "").toLowerCase();
+    const entryType = isEntryType(declaredRaw)
+      ? declaredRaw
+      : resolveEntryType(resolverInput);
+    resolvedEntryType = resolveEntryType(resolverInput);
+    if (
+      typeof input.entry === "number" &&
+      Number.isFinite(input.entry) &&
+      typeof input.stopLoss === "number" &&
+      Number.isFinite(input.stopLoss) &&
+      targets.length > 0
+    ) {
+      const problems = validateEntryCoherence({
+        direction,
+        entryType,
+        entry: input.entry,
+        stopLoss: input.stopLoss,
+        targets,
+        activationRule: seed?.activationRule ?? null,
+      });
+      if (problems.length) {
+        throw new RecommendationLifecycleError(
+          "RECOMMENDATION_INVALID_INPUT",
+          `entry coherence: ${problems.map((p) => `${p.code}: ${p.detail}`).join("; ")}`,
+        );
+      }
+    }
+
+    // 2. Every factor carries its evidence — a graded, sourced dimension card.
+    const { assertFactorEvidence, FactorEvidenceError } = await import(
+      "../factorEvidence"
+    );
+    try {
+      assertFactorEvidence(seed?.evidence ?? null);
+    } catch (error) {
+      if (error instanceof FactorEvidenceError) {
+        throw new RecommendationLifecycleError(
+          "RECOMMENDATION_INVALID_INPUT",
+          error.message,
+        );
+      }
+      throw error;
+    }
+
+    // 3. The gate record: a fresh, complete, non-vetoed chain must exist for
+    //    this analysis. Missing, incomplete, vetoed, or stale ⇒ rejection.
+    const gateRecords = await import("../gateRecords");
+    try {
+      await gateRecords.assertGateRecordsAllowCreation({
+        userId: input.userId,
+        analysisId: input.analysisId,
+        symbol: input.symbol,
+      });
+    } catch (error) {
+      if (
+        error instanceof gateRecords.GateRecordMissingError ||
+        error instanceof gateRecords.GateRecordIncompleteError ||
+        error instanceof gateRecords.GateRecordStaleError ||
+        error instanceof gateRecords.GateRecordVetoError
+      ) {
+        throw new RecommendationLifecycleError(
+          "RECOMMENDATION_GATES_INCOMPLETE",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   const now = input.createdAt ?? Date.now();
   const expiresAt = input.expiresAt ?? now + 4 * 60 * 60 * 1000;
   const createdAtExpression =
@@ -273,7 +369,7 @@ export async function createCanonicalRecommendation(
         input.statusReason ?? "created",
         input.source ?? "web",
         input.engineVersion ?? "aichart-phase4-v1",
-        input.entryType ?? null,
+        resolvedEntryType,
         input.legacyTrackingId ?? null,
         input.rationale ?? null,
         input.factors?.length ? JSON.stringify(input.factors) : null,

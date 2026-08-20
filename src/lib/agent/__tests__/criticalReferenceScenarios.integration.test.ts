@@ -74,6 +74,12 @@ async function createPlan(over?: {
 }) {
   seq += 1;
   const entry = over?.entry ?? 4340.5;
+  // Production writes only after the gate chain ran and was recorded; the
+  // fixture records the same authorization through the real recorder.
+  const { seedPassedGateChain } = await import(
+    "@/lib/recommendations/__tests__/fixtures/completePlan"
+  );
+  await seedPassedGateChain(userId, `critical-analysis-${seq}`, "XAUUSD");
   return canonical.createCanonicalRecommendation({
     ...canonicalCompletePlan({
       planType: over?.planType ?? "immediate",

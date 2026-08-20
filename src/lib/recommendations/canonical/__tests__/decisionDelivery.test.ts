@@ -54,12 +54,17 @@ async function planRow(trackingId: string) {
   return rows[0];
 }
 
-function create(id: string, over: Record<string, unknown> = {}) {
+async function create(id: string, over: Record<string, unknown> = {}) {
+  const { seedPassedGateChain, completePlanEvidence } = await import(
+    "@/lib/recommendations/__tests__/fixtures/completePlan"
+  );
+  await seedPassedGateChain(userId, "an-1", "EURUSD");
   return store.createTrackedRecommendation({
     id,
     userId,
     chatId: "chat-1",
     analysisId: "an-1",
+    evidence: completePlanEvidence(),
     symbol: "EURUSD",
     interval: "5m",
     direction: "buy",
@@ -137,6 +142,7 @@ describe("the three layers reach storage", () => {
       evidence: {
         evidenceDimensions: [
           { key: "historical_cases", grade: "unavailable", detail: "لا حالات مشابهة" },
+          { key: "structure", grade: "strong", detail: "بنية صاعدة فوق 1.09", value: 1.09 },
         ],
       },
     });

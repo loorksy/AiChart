@@ -12,7 +12,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
-import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
+import {
+  completePlanEvidence,
+  gatedCompletePlan,
+} from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-revisions-"));
 process.env.DB_PATH = join(dir, "revisions.db");
@@ -43,13 +46,14 @@ async function newRecommendation(initialRevision?: {
 }) {
   const lifecycle = await import("@/lib/recommendations/canonical");
   return lifecycle.createCanonicalRecommendation({
-    ...canonicalCompletePlan({
+    ...(await gatedCompletePlan(owner, {
       planType: "conditional",
+      analysisId: `analysis-${Math.floor(performance.now() * 1000)}`,
+      symbol: "XAUUSD",
       evidence: initialRevision?.evidence ?? null,
       evidenceSnapshot: initialRevision?.evidenceSnapshot ?? null,
-    }),
+    })),
     userId: owner,
-    analysisId: `analysis-${Math.floor(performance.now() * 1000)}`,
     sessionId: "session-1",
     chatId: "chat-1",
     symbol: "XAUUSD",
@@ -78,7 +82,7 @@ describe("effective recommendation revisions", () => {
     // Creation seeds revision 1 with the plan and the evidence behind it, so a
     // revision always has a predecessor to supersede.
     const rec = await newRecommendation({
-      evidence: { atr: 2, zone: [3990, 3994] },
+      evidence: { ...completePlanEvidence(), atr: 2, zone: [3990, 3994] },
       evidenceSnapshot: { schemaVersion: 1, modelContext: { atr: 2 }, visualSnapshots: [] },
     });
 

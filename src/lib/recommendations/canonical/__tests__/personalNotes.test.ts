@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
-import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
+import { gatedCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-personal-notes-"));
 process.env.DB_PATH = join(dir, "notes.db");
@@ -67,7 +67,7 @@ async function resolvedPlan(input: {
     entry: 4000,
     stopLoss: 3980,
     targets: [4040],
-    ...canonicalCompletePlan(),
+    ...(await gatedCompletePlan(userId, { symbol: input.symbol })),
     executionState: "valid_now",
     status: "active",
     source: "test",

@@ -68,12 +68,12 @@ before(async () => {
      ON CONFLICT (user_id) DO UPDATE SET plan_status = 'active'`,
     [userId],
   );
-  const { canonicalCompletePlan } = await import(
+  const { gatedCompletePlan } = await import(
     "@/lib/recommendations/__tests__/fixtures/completePlan"
   );
   const lifecycle = await import("@/lib/recommendations/canonical");
   await lifecycle.createCanonicalRecommendation({
-    ...canonicalCompletePlan(),
+    ...(await gatedCompletePlan(userId)),
     userId,
     symbol: "XAUUSD",
     market: "forex",
@@ -129,12 +129,15 @@ describe("resident host", () => {
     await host1.shutdown("restart-sim");
 
     // A second recommendation lands while "down".
-    const { canonicalCompletePlan } = await import(
+    const { gatedCompletePlan } = await import(
       "@/lib/recommendations/__tests__/fixtures/completePlan"
     );
     const lifecycle = await import("@/lib/recommendations/canonical");
     await lifecycle.createCanonicalRecommendation({
-      ...canonicalCompletePlan(),
+      ...(await gatedCompletePlan(userId, {
+        analysisId: "resident-restart-2",
+        symbol: "XAUUSD",
+      })),
       userId,
       symbol: "XAUUSD",
       market: "forex",
@@ -145,7 +148,6 @@ describe("resident host", () => {
       targets: [4040, 4030, 4020],
       risk: { source: "recorded" },
       confidence: 66,
-      analysisId: "resident-restart-2",
       sessionId: "resident-restart-2",
       source: "resident-test",
     });

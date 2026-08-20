@@ -63,9 +63,14 @@ before(async () => {
 
 async function conditionalPlan() {
   const lifecycle = await import("@/lib/recommendations/canonical");
+  const { seedPassedGateChain } = await import(
+    "@/lib/recommendations/__tests__/fixtures/completePlan"
+  );
+  const analysisId = `reeval-${tag}-${Math.random()}`;
+  await seedPassedGateChain(owner, analysisId, "XAUUSD");
   return lifecycle.createCanonicalRecommendation({
     userId: owner,
-    analysisId: `reeval-${tag}-${Math.random()}`,
+    analysisId,
     symbol: "XAUUSD",
     market: "forex",
     timeframe: "15m",
@@ -87,7 +92,11 @@ async function conditionalPlan() {
       invalidationRule: "إغلاق تحت 3990 يلغي الفكرة.",
       alternativeScenario: "كسر 3990 يقلب المشهد هبوطًا.",
       validityCandles: 12,
-      evidence: { evidenceDimensions: [{ key: "structure", grade: "strong", detail: "بنية صاعدة" }] },
+      evidence: {
+        evidenceDimensions: [
+          { key: "structure", grade: "strong", detail: "بنية صاعدة فوق 3990" },
+        ],
+      },
       evidenceSnapshot: snapshotFixture(),
       evidenceSourceSurface: "platform",
     },

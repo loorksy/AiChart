@@ -82,10 +82,15 @@ before(async () => {
 
 async function newRecommendation(snapshot: Record<string, unknown> | null) {
   const lifecycle = await import("@/lib/recommendations/canonical");
+  const { seedPassedGateChain } = await import(
+    "@/lib/recommendations/__tests__/fixtures/completePlan"
+  );
   counter += 1;
+  const analysisId = `evidence-${tag}-${counter}`;
+  await seedPassedGateChain(owner, analysisId, "XAUUSD");
   return lifecycle.createCanonicalRecommendation({
     userId: owner,
-    analysisId: `evidence-${counter}`,
+    analysisId,
     symbol: "XAUUSD",
     market: "forex",
     timeframe: "1h",
@@ -105,7 +110,11 @@ async function newRecommendation(snapshot: Record<string, unknown> | null) {
       invalidationRule: "إغلاق شمعة تحت 3980 يلغي الفكرة",
       alternativeScenario: "كسر 3980 يفتح مسارًا هابطًا",
       validityCandles: 12,
-      evidence: { evidenceDimensions: [{ key: "structure", grade: "strong", detail: "بنية صاعدة" }] },
+      evidence: {
+        evidenceDimensions: [
+          { key: "structure", grade: "strong", detail: "بنية صاعدة فوق 3980" },
+        ],
+      },
       evidenceSnapshot: snapshot,
       evidenceSourceSurface: "platform",
     },

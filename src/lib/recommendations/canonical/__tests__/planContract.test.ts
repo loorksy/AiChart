@@ -230,9 +230,16 @@ describe("the canonical creator enforces the contract", () => {
     const { getEffectiveRevision } = await import(
       "@/lib/recommendations/canonical/revisions"
     );
+    const { completePlanEvidence, seedPassedGateChain } = await import(
+      "@/lib/recommendations/__tests__/fixtures/completePlan"
+    );
     const db = await import("@/lib/db");
+    // The accept path stores for real, so it must satisfy the full write
+    // boundary: a recorded gate chain and a sourced evidence card.
+    await seedPassedGateChain(owner, "plan-contract-accept", "XAUUSD");
     const created = await createCanonicalRecommendation({
       ...baseCreate(),
+      analysisId: "plan-contract-accept",
       planType: "conditional",
       executionState: "awaiting_activation",
       initialRevision: {
@@ -241,6 +248,7 @@ describe("the canonical creator enforces the contract", () => {
         invalidationRule: "إغلاق تحت 3980 يلغي الفكرة",
         alternativeScenario: "كسر 3980 يفتح بيعًا نحو 3950",
         validityCandles: 12,
+        evidence: completePlanEvidence(),
       },
     });
     const effective = await getEffectiveRevision(owner, created.recommendationId);

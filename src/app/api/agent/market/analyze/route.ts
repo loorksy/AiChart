@@ -193,6 +193,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       reply: result.summary,
+      // The recorded gate chain's key: create_recommendation must echo this
+      // back or the write is refused (gate records are checked in code).
+      analysis_id: result.analysisId ?? null,
       recommendation: mapped,
       ...(mapped
         ? {}

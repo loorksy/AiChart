@@ -741,6 +741,29 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_channel_bindings_user
     ON channel_bindings (user_id);
 
+  -- Gate records: every gate run writes a timestamped verdict row. The
+  -- canonical creator REFUSES a buy/sell write whose analysis has no fresh,
+  -- complete, non-vetoed set — enforcement in code, not in a prompt.
+  CREATE TABLE IF NOT EXISTS gate_records (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    analysis_id   TEXT NOT NULL,
+    symbol        TEXT NOT NULL,
+    gate_id       TEXT NOT NULL,
+    gate_name     TEXT NOT NULL,
+    status        TEXT NOT NULL,
+    reason_ar     TEXT,
+    evidence_json TEXT,
+    chain_allowed INTEGER NOT NULL DEFAULT 0,
+    started_at    INTEGER NOT NULL,
+    finished_at   INTEGER NOT NULL,
+    created_at    INTEGER NOT NULL,
+    UNIQUE (user_id, analysis_id, gate_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_gate_records_analysis
+    ON gate_records (user_id, analysis_id);
+
   CREATE TABLE IF NOT EXISTS tracked_recommendations (
     id                  TEXT PRIMARY KEY,
     user_id             INTEGER NOT NULL,

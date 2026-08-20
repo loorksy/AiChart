@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { describe, it, test } from "node:test";
-import { trackedCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
+import {
+  gatedTrackedPlan,
+  trackedCompletePlan,
+} from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -74,10 +77,23 @@ test("sweep: non-terminal filtering, idempotency, and safe no-op", async () => {
     expiresAt: now + 4 * 3600_000,
   };
 
-  // Two active (pending) + one already-terminal recommendation.
-  await store.createTrackedRecommendation({ ...baseRec, id: "pending-1", status: "pending_entry", outcome: "pending" });
-  await store.createTrackedRecommendation({ ...baseRec, id: "pending-2", symbol: "EURUSD", status: "triggered", outcome: "pending", triggeredAt: now });
-  await store.createTrackedRecommendation({ ...baseRec, id: "terminal-1", status: "tp1_hit", outcome: "win_tp1" });
+  // Two active (pending) + one already-terminal recommendation. Each create
+  // carries its own recorded gate-chain authorization for its symbol.
+  await store.createTrackedRecommendation({
+    ...baseRec,
+    ...(await gatedTrackedPlan(userId, { analysisId: "sweep-pending-1", symbol: "XAUUSD" })),
+    id: "pending-1", status: "pending_entry", outcome: "pending",
+  });
+  await store.createTrackedRecommendation({
+    ...baseRec,
+    ...(await gatedTrackedPlan(userId, { analysisId: "sweep-pending-2", symbol: "EURUSD" })),
+    id: "pending-2", symbol: "EURUSD", status: "triggered", outcome: "pending", triggeredAt: now,
+  });
+  await store.createTrackedRecommendation({
+    ...baseRec,
+    ...(await gatedTrackedPlan(userId, { analysisId: "sweep-terminal-1", symbol: "XAUUSD" })),
+    id: "terminal-1", status: "tp1_hit", outcome: "win_tp1",
+  });
 
   // Only the two non-terminal (outcome=pending) recs are swept.
   const first = await runRecommendationSweep();

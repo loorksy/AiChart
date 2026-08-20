@@ -50,10 +50,18 @@ before(async () => {
   );
 });
 
+let planSequence = 0;
+
 /** A live plan with an effective revision, created the way the platform does. */
 async function livePlan(): Promise<number> {
+  const { seedPassedGateChain, completePlanEvidence } = await import(
+    "@/lib/recommendations/__tests__/fixtures/completePlan"
+  );
+  const analysisId = `cycle-analysis-${Date.now()}-${++planSequence}`;
+  await seedPassedGateChain(userId, analysisId, "XAUUSD");
   const rec = await repository.createCanonicalRecommendation({
     userId,
+    analysisId,
     symbol: "XAUUSD",
     market: "forex",
     timeframe: "5m",
@@ -72,7 +80,7 @@ async function livePlan(): Promise<number> {
       invalidationRule: "إغلاق تحت 3980",
       alternativeScenario: "كسر 3980 يقلب المشهد",
       validityCandles: 8,
-      evidence: { atr: 4 },
+      evidence: { ...completePlanEvidence(), atr: 4 },
     },
   });
   return rec.recommendationId;

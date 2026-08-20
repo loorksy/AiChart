@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import type { RecommendationOutcomeType } from "@/lib/recommendations/canonical";
-import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
+import {
+  completePlanEvidence,
+  gatedCompletePlan,
+  seedPassedGateChain,
+} from "@/lib/recommendations/__tests__/fixtures/completePlan";
 import { trackedCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-phase4-"));
@@ -45,9 +49,8 @@ describe("canonical recommendation lifecycle", () => {
   it("enforces strict transitions, tenant ownership, outcomes, learning events and replay", async () => {
     const lifecycle = await import("@/lib/recommendations/canonical");
     const recommendation = await lifecycle.createCanonicalRecommendation({
-      ...canonicalCompletePlan(),
+      ...(await gatedCompletePlan(owner, { analysisId: "analysis-1", symbol: "XAUUSD" })),
       userId: owner,
-      analysisId: "analysis-1",
       sessionId: "session-1",
       chatId: "chat-1",
       symbol: "XAUUSD",
@@ -216,7 +219,7 @@ describe("canonical recommendation lifecycle", () => {
   it("records every supported outcome and emits the corresponding append-only event", async () => {
     const lifecycle = await import("@/lib/recommendations/canonical");
     const recommendation = await lifecycle.createCanonicalRecommendation({
-      ...canonicalCompletePlan(),
+      ...(await gatedCompletePlan(owner, { symbol: "EURUSD" })),
       userId: owner,
       symbol: "EURUSD",
       market: "forex",
@@ -270,11 +273,14 @@ describe("canonical adapters, lessons, Gold versions and analytics", () => {
   it("writes tracked recommendations only through the canonical table", async () => {
     const db = await import("@/lib/db");
     const adapter = await import("@/lib/recommendations/recommendationStore");
+    await seedPassedGateChain(owner, "adapter-analysis-1", "GBPUSD");
     const created = await adapter.createTrackedRecommendation({
       ...trackedCompletePlan(),
       id: "legacy-adapter-id",
       userId: owner,
       chatId: "adapter-session",
+      analysisId: "adapter-analysis-1",
+      evidence: completePlanEvidence(),
       symbol: "GBPUSD",
       interval: "1h",
       direction: "sell",
@@ -347,7 +353,7 @@ describe("canonical adapters, lessons, Gold versions and analytics", () => {
     );
     for (let index = 0; index < 20; index += 1) {
       const recommendation = await lifecycle.createCanonicalRecommendation({
-      ...canonicalCompletePlan(),
+      ...(await gatedCompletePlan(learner, { symbol: index % 2 ? "XAUUSD" : "XAUEUR" })),
         userId: learner,
         symbol: index % 2 ? "XAUUSD" : "XAUEUR",
         market: "forex",

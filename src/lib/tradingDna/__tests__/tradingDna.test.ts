@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import type { BacktestEvidenceReference } from "@/lib/tradingDna";
-import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
+import { gatedCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const directory = mkdtempSync(join(tmpdir(), "aichart-phase5-"));
 process.env.DB_PATH = join(directory, "phase5.db");
@@ -61,18 +61,25 @@ before(async () => {
   const lifecycle = await import("@/lib/recommendations/canonical");
   for (let index = 0; index < 10; index += 1) {
     const won = index < 7;
+    const symbol = index < 8 ? "XAUUSD" : "EURUSD";
     const recommendation = await lifecycle.createCanonicalRecommendation({
-      ...canonicalCompletePlan(),
+      ...(await gatedCompletePlan(owner, {
+        analysisId: `phase5-analysis-${index}`,
+        symbol,
+      })),
       userId: owner,
-      analysisId: `phase5-analysis-${index}`,
       sessionId: `phase5-session-${index}`,
-      symbol: index < 8 ? "XAUUSD" : "EURUSD",
+      symbol,
       market: "forex",
       timeframe: index % 3 === 0 ? "15m" : "1h",
       direction: won ? "buy" : "sell",
       entry: 2300 + index,
-      stopLoss: 2290 + index,
-      targets: [2310 + index, 2320 + index, 2330 + index],
+      // Coherent levels per side — the write boundary now rejects a sell
+      // whose stop sits below its entry, which this fixture used to do.
+      stopLoss: won ? 2290 + index : 2310 + index,
+      targets: won
+        ? [2310 + index, 2320 + index, 2330 + index]
+        : [2290 + index, 2280 + index, 2270 + index],
       risk: { source: "recorded" },
       confidence: won ? 78 : 82,
       strategyId: "trend-breakout",

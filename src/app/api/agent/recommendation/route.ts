@@ -43,6 +43,7 @@ import {
 import { parityKeyFor, recordDecisionForParity } from "@/lib/agent/parityLog";
 import { createHash } from "node:crypto";
 import { createLogger } from "@/lib/logger";
+import { t } from "@/lib/i18n";
 import {
   applyVisualConfidencePenalty,
   buildVisualConfirmationAudit,
@@ -74,6 +75,13 @@ const schema = z
   .object({
     symbol: z.string().min(1),
     action: z.enum(["buy", "sell", "wait"]),
+    /**
+     * The analysis this plan came from (returned by the analyze endpoint).
+     * The write boundary checks the RECORDED gate chain under this id — a
+     * buy/sell create without a fresh, complete, non-vetoed record is
+     * refused in code, so publishing without analyzing first cannot work.
+     */
+    analysis_id: z.string().min(4).max(64).optional(),
     /**
      * How the plan is entered — the contract's second layer. Optional in the
      * SCHEMA so a legacy client is not broken at parse time, then required for a
@@ -417,6 +425,56 @@ export async function POST(req: NextRequest) {
     const rec = await saveRecommendation(userId, {
       symbol: normalizedSymbol,
       action: body.action,
+      analysis_id: body.analysis_id ?? null,
+      // The route's own measurements as the sourced evidence card: the write
+      // refuses factors with no measurable basis.
+      evidence: {
+        evidenceDimensions: [
+          {
+            key: "signal_strength",
+            grade:
+              displayedConfidence >= 70
+                ? "strong"
+                : displayedConfidence >= 45
+                  ? "moderate"
+                  : "weak",
+            detail: t("ar", "mcp.evidence.confidence", {
+              value: String(displayedConfidence),
+            }),
+            value: displayedConfidence,
+          },
+          ...(tradability
+            ? [
+                {
+                  key: "entry_reachability",
+                  grade:
+                    tradability.tradability === "now"
+                      ? ("strong" as const)
+                      : tradability.tradability === "soon"
+                        ? ("moderate" as const)
+                        : ("weak" as const),
+                  detail: t("ar", "mcp.evidence.tradability", {
+                    value: String(
+                      tradability.entryDistanceAtr ?? tradability.entryDistance ?? 0,
+                    ),
+                  }),
+                  value: tradability.entryDistanceAtr ?? undefined,
+                },
+              ]
+            : []),
+          {
+            key: "visual_confirmation",
+            grade:
+              visualConfirmation === "confirmed"
+                ? ("strong" as const)
+                : ("unavailable" as const),
+            detail: t("ar", "mcp.evidence.visual", {
+              value: String(timeframesReviewed?.length ?? 0),
+            }),
+            value: timeframesReviewed?.length ?? 0,
+          },
+        ],
+      },
       plan_type: body.plan_type ?? null,
       execution_state: executionState,
       entry_low: entryLow,

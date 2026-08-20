@@ -1523,6 +1523,26 @@ async function runUnifiedChartAgentInner(
     });
     gateChain = await runGateChain(gates);
 
+    // Phase-4: every gate run writes a timestamped record. The canonical
+    // creator refuses a write with no fresh, complete, non-vetoed set — so
+    // this record, not the in-memory verdict array, is what authorizes
+    // persistence. Recorded for refusals too: a veto is evidence.
+    if (ctx.userId != null) {
+      const { recordGateChain } = await import("@/lib/recommendations/gateRecords");
+      await recordGateChain({
+        userId: ctx.userId,
+        analysisId,
+        symbol: market.symbol,
+        verdicts: gateChain.verdicts,
+        chainAllowed: gateChain.allowed,
+      }).catch((error) => {
+        log.warn("gate record persist failed", {
+          requestId: ctx.requestId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+
     for (const verdict of gateChain.verdicts) {
       trackedCtx.emitActivity({
         type: "analysis",

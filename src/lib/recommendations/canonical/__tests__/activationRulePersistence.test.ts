@@ -49,7 +49,12 @@ before(async () => {
 
 async function newRecommendation(activationRule?: ActivationRule | null) {
   const lifecycle = await import("@/lib/recommendations/canonical");
+  const { seedPassedGateChain, completePlanEvidence } = await import(
+    "@/lib/recommendations/__tests__/fixtures/completePlan"
+  );
   counter += 1;
+  const analysisId = `analysis-${counter}`;
+  await seedPassedGateChain(owner, analysisId, "XAUUSD");
   // A conditional plan REQUIRES a rule under the contract, so the no-rule case
   // is an immediate plan — the only honest plan type without one.
   const conditional = activationRule != null;
@@ -64,9 +69,10 @@ async function newRecommendation(activationRule?: ActivationRule | null) {
       invalidationRule: "إغلاق 15m تحت 3980 يلغي الفكرة",
       alternativeScenario: "فشل الكسر يفتح بيعًا نحو 3970",
       validityCandles: 12,
+      evidence: completePlanEvidence(),
     },
     userId: owner,
-    analysisId: `analysis-${counter}`,
+    analysisId,
     symbol: "XAUUSD",
     market: "forex",
     timeframe: "15m",
