@@ -56,7 +56,7 @@ export function PricingCards({
       });
       const data = (await res.json()) as { ok: boolean; url?: string; message?: string };
       if (data.ok && data.url) {
-        window.location.href = data.url;
+        window.location.assign(data.url);
         return;
       }
       setError(data.message ?? "تعذّر بدء الدفع — حاول مجدداً.");

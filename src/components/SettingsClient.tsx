@@ -121,7 +121,7 @@ export default function SettingsClient({
       return;
     }
     leave();
-  }, [dirty, leave]);
+  }, [dirty, leave, setConfirmingDiscard]);
 
   useEffect(() => {
     if (embedMode) return;

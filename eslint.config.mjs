@@ -23,6 +23,10 @@ const eslintConfig = defineConfig([
     "public/charting_library/**",
   ]),
   {
+    // Same scope as eslint-config-next's plugin registration: an unscoped
+    // object would also match files (e.g. *.cjs) the react-hooks plugin is
+    // not registered for, and ESLint then rejects the whole config.
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     // --- Explicit, intentional lint policy ---------------------------------
     // Correctness rules stay BLOCKING (error): react-hooks/rules-of-hooks,
     // react-hooks/refs (no render-time ref access), react-hooks/immutability

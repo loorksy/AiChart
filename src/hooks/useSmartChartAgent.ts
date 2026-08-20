@@ -252,7 +252,11 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
     }
   }, [claimRecovered, opts.locale]);
 
-  recoverLoopRef.current = recoverLoop;
+  // Refs may not be written during render; every reader runs post-await in
+  // event/stream handlers, so an effect-time write is always fresh enough.
+  useEffect(() => {
+    recoverLoopRef.current = recoverLoop;
+  }, [recoverLoop]);
 
   useEffect(() => {
     const onWake = () => {
