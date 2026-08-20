@@ -1,9 +1,15 @@
 /**
  * Telegram Bot API client + message builders. Uses the platform bot token
  * (TELEGRAM_BOT_TOKEN). Degrades gracefully when not configured.
+ *
+ * Transport is grammY's `Api` client: every Bot API request — text, edits,
+ * photo uploads — goes through one library instead of hand-rolled fetch and
+ * FormData. The channel adapter (src/lib/channels/telegram) builds on the
+ * same client, so the whole surface speaks Telegram through grammY.
  */
 
 import dns from "node:dns";
+import { Api, GrammyError, InputFile } from "grammy";
 import { getPublicAppUrl } from "./appUrl";
 import { createLogger } from "./logger";
 import { splitTelegramMessage } from "./telegram/html";
@@ -20,8 +26,6 @@ import {
 dns.setDefaultResultOrder("ipv4first");
 
 const log = createLogger("telegram");
-
-const API = "https://api.telegram.org";
 
 /**
  * Telegram deep links are `t.me/<username>` — a pasted leading @ becomes
@@ -70,13 +74,9 @@ export async function getTelegramLoginConfig(): Promise<{
   }
 
   try {
-    const res = await fetch(`${API}/bot${token}/getMe`, { cache: "no-store" });
-    const data = (await res.json()) as {
-      ok: boolean;
-      result?: { username: string };
-    };
-    if (data.ok && data.result?.username) {
-      cachedUsername = data.result.username;
+    const me = await new Api(token).getMe();
+    if (me.username) {
+      cachedUsername = me.username;
       return { telegramConfigured: true, botUsername: cachedUsername };
     }
   } catch {
@@ -92,12 +92,26 @@ function token(): string {
   return t;
 }
 
+// The bot token lives in platform config and can be rotated from the admin
+// panel, so the grammY client is cached per token value rather than once.
+let cachedClient: { token: string; api: Api } | null = null;
+
+/** The shared grammY Api client for the platform bot. */
+export function telegramApi(): Api {
+  const current = token();
+  if (!cachedClient || cachedClient.token !== current) {
+    cachedClient = { token: current, api: new Api(current) };
+  }
+  return cachedClient.api;
+}
+
 async function call(method: string, body: Record<string, unknown>): Promise<unknown> {
   return callOnce(method, body, true);
 }
 
 /**
- * One Bot API request, with exactly one retry on 429.
+ * One Bot API request through grammY's raw client, with exactly one retry
+ * on 429.
  *
  * Telegram rate-limits per chat (~1 edit/sec) and answers 429 with
  * `parameters.retry_after` seconds. The live-progress reporter throttles
@@ -105,42 +119,47 @@ async function call(method: string, body: Record<string, unknown>): Promise<unkn
  * can still trip it — honoring retry_after once turns a dropped message into
  * a slightly late one. Capped at 15s so a hostile retry_after cannot pin the
  * webhook handler; a second 429 propagates like any other failure.
+ *
+ * grammY detects an `InputFile` anywhere in the payload and switches to a
+ * multipart upload itself, so photo/voice buffers ride the same path.
  */
 async function callOnce(
   method: string,
   body: Record<string, unknown>,
   allowRetry: boolean,
 ): Promise<unknown> {
-  const res = await fetch(`${API}/bot${token()}/${method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  const data = (await res.json().catch(() => ({}))) as {
-    ok: boolean;
-    description?: string;
-    result?: unknown;
-    parameters?: { retry_after?: number };
-  };
-  if (!data.ok && res.status === 429 && allowRetry) {
-    const waitSec = Math.min(Math.max(data.parameters?.retry_after ?? 1, 1), 15);
-    await new Promise((resolve) => setTimeout(resolve, waitSec * 1_000));
-    return callOnce(method, body, false);
-  }
-  if (!data.ok) {
+  const raw = telegramApi().raw as unknown as Record<
+    string,
+    (payload: Record<string, unknown>) => Promise<unknown>
+  >;
+  try {
+    return await raw[method]!(body);
+  } catch (error) {
+    if (
+      error instanceof GrammyError &&
+      error.error_code === 429 &&
+      allowRetry
+    ) {
+      const waitSec = Math.min(
+        Math.max(error.parameters?.retry_after ?? 1, 1),
+        15,
+      );
+      await new Promise((resolve) => setTimeout(resolve, waitSec * 1_000));
+      return callOnce(method, body, false);
+    }
+    const description =
+      error instanceof GrammyError ? error.description : undefined;
     // #region agent log
     const { debugSessionLog } = await import("./debugSessionLog");
     debugSessionLog({
       location: "telegram.ts:call",
       message: "telegram api error",
       hypothesisId: "E",
-      data: { method, description: data.description?.slice(0, 120) },
+      data: { method, description: description?.slice(0, 120) },
     });
     // #endregion
-    throw new Error(data.description || `Telegram error: ${method}`);
+    throw new Error(description || `Telegram error: ${method}`);
   }
-  return data.result;
 }
 
 export type InlineButton =
@@ -329,39 +348,15 @@ export async function sendPhotoBuffer(
   buttons?: InlineButton[][],
   opts?: { replyToMessageId?: number },
 ): Promise<void> {
-  const form = new FormData();
-  form.append("chat_id", String(chatId));
-  form.append(
-    "photo",
-    new Blob([new Uint8Array(buffer)], { type: "image/png" }),
-    "chart.png",
-  );
-  if (caption) {
-    form.append("caption", caption);
-    form.append("parse_mode", "HTML");
-  }
-  if (buttons) {
-    form.append(
-      "reply_markup",
-      JSON.stringify({ inline_keyboard: buttons }),
-    );
-  }
-  if (opts?.replyToMessageId != null) {
-    form.append("reply_to_message_id", String(opts.replyToMessageId));
-  }
-
-  const res = await fetch(`${API}/bot${token()}/sendPhoto`, {
-    method: "POST",
-    body: form,
-    cache: "no-store",
+  await call("sendPhoto", {
+    chat_id: chatId,
+    photo: new InputFile(new Uint8Array(buffer), "chart.png"),
+    ...(caption ? { caption, parse_mode: "HTML" } : {}),
+    ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+    ...(opts?.replyToMessageId != null
+      ? { reply_to_message_id: opts.replyToMessageId }
+      : {}),
   });
-  const data = (await res.json().catch(() => ({}))) as {
-    ok: boolean;
-    description?: string;
-  };
-  if (!data.ok) {
-    throw new Error(data.description || "Telegram sendPhoto failed");
-  }
 }
 
 export async function sendVoice(
@@ -369,30 +364,11 @@ export async function sendVoice(
   buffer: Buffer,
   caption?: string,
 ): Promise<void> {
-  const form = new FormData();
-  form.append("chat_id", String(chatId));
-  form.append(
-    "voice",
-    new Blob([new Uint8Array(buffer)], { type: "audio/ogg" }),
-    "voice.ogg",
-  );
-  if (caption) {
-    form.append("caption", caption);
-    form.append("parse_mode", "HTML");
-  }
-
-  const res = await fetch(`${API}/bot${token()}/sendVoice`, {
-    method: "POST",
-    body: form,
-    cache: "no-store",
+  await call("sendVoice", {
+    chat_id: chatId,
+    voice: new InputFile(new Uint8Array(buffer), "voice.ogg"),
+    ...(caption ? { caption, parse_mode: "HTML" } : {}),
   });
-  const data = (await res.json().catch(() => ({}))) as {
-    ok: boolean;
-    description?: string;
-  };
-  if (!data.ok) {
-    throw new Error(data.description || "Telegram sendVoice failed");
-  }
 }
 
 let cachedUsername: string | null = null;

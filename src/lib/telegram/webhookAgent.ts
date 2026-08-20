@@ -370,14 +370,30 @@ export function parseTelegramStart(
   return null;
 }
 
+export type TelegramHandleOutcome =
+  | "linked"
+  | "answered"
+  | "unlinked"
+  | "ignored"
+  | "failed"
+  | "queued";
+
+/** The mechanics half of a turn: either answered here, or ready for the agent. */
+export type TelegramPreparedTurn =
+  | { kind: "handled"; outcome: "linked" | "answered" | "unlinked" }
+  | { kind: "agent"; userId: number; text: string };
+
 /**
  * A tap on an agent-authored option. Answer the spinner first (Telegram
  * otherwise shows a hang), strip the buttons, then treat the stored prompt
- * as the next user turn.
+ * as the next user turn. `onMessage` decides where that turn runs: the
+ * default handles it in-process; the channel adapter passes a publisher
+ * that enqueues it as a resident `user_message` event instead.
  */
 export async function handleTelegramCallback(
   callback: TelegramCallback,
-): Promise<"linked" | "answered" | "unlinked" | "ignored" | "failed"> {
+  onMessage: (message: TelegramMessage) => Promise<TelegramHandleOutcome> = handleTelegramMessage,
+): Promise<TelegramHandleOutcome> {
   if (callback.data.startsWith(MODEL_CALLBACK_PREFIX)) {
     return handleModelCallback(callback);
   }
@@ -405,7 +421,7 @@ export async function handleTelegramCallback(
     await editMessageReplyMarkup(callback.chatId, callback.messageId).catch(() => {});
   }
 
-  return handleTelegramMessage({
+  return onMessage({
     updateId: callback.updateId,
     chatId: callback.chatId,
     text: resolved.prompt,
@@ -415,94 +431,144 @@ export async function handleTelegramCallback(
 }
 
 /**
- * Handle one message.
+ * The channel-mechanics half of one message: linking, the chart photo, the
+ * model menu — everything that is about the CHANNEL rather than the market.
+ * Returns either the outcome it already delivered, or the agent turn it
+ * prepared (resolved user + final prompt) for whoever runs it: in-process
+ * (`handleTelegramMessage`) or through the resident event queue (the
+ * channel adapter).
+ */
+export async function prepareTelegramTurn(
+  message: TelegramMessage,
+): Promise<TelegramPreparedTurn> {
+  const optionPrompt = resolveOptionReply(
+    telegramSessionId(message.chatId),
+    message.text,
+  );
+  const incoming = optionPrompt ?? message.text;
+
+  // `/start CODE` — the deep link the platform mints. This is the caller
+  // `consumeLinkCode` never had.
+  const startMatch = parseTelegramStart(incoming);
+  if (startMatch) {
+    const code = startMatch.code;
+    if (!code) {
+      await sendMessage(message.chatId, LINK_PROMPT);
+      return { kind: "handled", outcome: "unlinked" };
+    }
+    const userId = await consumeLinkCode(code);
+    if (userId == null) {
+      await sendMessage(
+        message.chatId,
+        t("ar", "tg.link_code_invalid"),
+      );
+      return { kind: "handled", outcome: "unlinked" };
+    }
+    await setTelegramChatId(userId, message.chatId);
+    await logAudit(userId, "telegram_linked", `chat=${message.chatId}`);
+    await deliverReply({
+      chatId: message.chatId,
+      text: telegramLinkedWelcome(),
+      replyToMessageId: message.messageId,
+    });
+    return { kind: "handled", outcome: "linked" };
+  }
+
+  const userId = await getUserByTelegramChatId(message.chatId);
+  if (userId == null) {
+    await sendMessage(message.chatId, LINK_PROMPT);
+    return { kind: "handled", outcome: "unlinked" };
+  }
+
+  // Explicit commands are the ONE mechanical path: /chart produces a photo
+  // (which the agent cannot send as prose); the other menu commands expand
+  // to the Arabic prompt they stand for and ride to the agent like any
+  // typed message. Everything else — greetings, identity questions — goes
+  // to the agent UNCLASSIFIED: the orchestrator routes conversational vs
+  // market itself and generates the reply live. The phrase lists and canned
+  // paragraphs that used to answer here were a bot's reflexes, not an
+  // agent's.
+  const command = resolveTelegramCommand(incoming);
+  if (command?.kind === "chart_photo") {
+    await sendChatAction(message.chatId, "upload_photo").catch(() => {});
+    const buffer = await buildChartSnapshotBufferForMarket(
+      userId,
+      DATA_SYMBOL,
+      "15m",
+      "forex",
+    );
+    if (!buffer) {
+      await sendMessage(message.chatId, telegramChartFailed(), undefined, {
+        replyToMessageId: message.messageId,
+      }).catch(() => {});
+      return { kind: "handled", outcome: "answered" };
+    }
+    const closed = !getSessionStatus(DATA_SYMBOL).isOpen;
+    await dismissPersistentKeyboardOnce(message.chatId);
+    await sendPhotoBuffer(
+      message.chatId,
+      buffer,
+      telegramChartCaption(closed),
+      undefined,
+      { replyToMessageId: message.messageId },
+    );
+    return { kind: "handled", outcome: "answered" };
+  }
+  if (command?.kind === "model_menu") {
+    await sendModelMenu(userId, message.chatId, message.messageId);
+    return { kind: "handled", outcome: "answered" };
+  }
+  const turnMessage = command?.kind === "prompt" ? command.message : incoming;
+  return { kind: "agent", userId, text: turnMessage };
+}
+
+/**
+ * Handle one message in-process: channel mechanics, then the agent turn.
  *
  * Returns a short outcome label for the caller's log. Never throws: an update
  * that fails must still be acknowledged, or Telegram retries it forever.
  */
 export async function handleTelegramMessage(
   message: TelegramMessage,
-): Promise<"linked" | "answered" | "unlinked" | "ignored" | "failed"> {
+): Promise<TelegramHandleOutcome> {
   try {
-    const optionPrompt = resolveOptionReply(
-      telegramSessionId(message.chatId),
-      message.text,
-    );
-    const incoming = optionPrompt ?? message.text;
+    const prepared = await prepareTelegramTurn(message);
+    if (prepared.kind === "handled") return prepared.outcome;
+    return await runTelegramAgentTurn({
+      userId: prepared.userId,
+      chatId: message.chatId,
+      text: prepared.text,
+      messageId: message.messageId,
+    });
+  } catch (error) {
+    log.error("telegram.handle_failed", {
+      chatId: message.chatId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await sendMessage(
+      message.chatId,
+      t("ar", "tg.analysis_failed"),
+    ).catch(() => {});
+    return "failed";
+  }
+}
 
-    // `/start CODE` — the deep link the platform mints. This is the caller
-    // `consumeLinkCode` never had.
-    const startMatch = parseTelegramStart(incoming);
-    if (startMatch) {
-      const code = startMatch.code;
-      if (!code) {
-        await sendMessage(message.chatId, LINK_PROMPT);
-        return "unlinked";
-      }
-      const userId = await consumeLinkCode(code);
-      if (userId == null) {
-        await sendMessage(
-          message.chatId,
-          t("ar", "tg.link_code_invalid"),
-        );
-        return "unlinked";
-      }
-      await setTelegramChatId(userId, message.chatId);
-      await logAudit(userId, "telegram_linked", `chat=${message.chatId}`);
-      await deliverReply({
-        chatId: message.chatId,
-        text: telegramLinkedWelcome(),
-        replyToMessageId: message.messageId,
-      });
-      return "linked";
-    }
-
-    const userId = await getUserByTelegramChatId(message.chatId);
-    if (userId == null) {
-      await sendMessage(message.chatId, LINK_PROMPT);
-      return "unlinked";
-    }
-
-    // Explicit commands are the ONE mechanical path: /chart produces a photo
-    // (which the agent cannot send as prose); the other menu commands expand
-    // to the Arabic prompt they stand for and ride to the agent like any
-    // typed message. Everything else — greetings, identity questions — goes
-    // to the agent UNCLASSIFIED: the orchestrator routes conversational vs
-    // market itself and generates the reply live. The phrase lists and canned
-    // paragraphs that used to answer here were a bot's reflexes, not an
-    // agent's.
-    const command = resolveTelegramCommand(incoming);
-    if (command?.kind === "chart_photo") {
-      await sendChatAction(message.chatId, "upload_photo").catch(() => {});
-      const buffer = await buildChartSnapshotBufferForMarket(
-        userId,
-        DATA_SYMBOL,
-        "15m",
-        "forex",
-      );
-      if (!buffer) {
-        await sendMessage(message.chatId, telegramChartFailed(), undefined, {
-          replyToMessageId: message.messageId,
-        }).catch(() => {});
-        return "answered";
-      }
-      const closed = !getSessionStatus(DATA_SYMBOL).isOpen;
-      await dismissPersistentKeyboardOnce(message.chatId);
-      await sendPhotoBuffer(
-        message.chatId,
-        buffer,
-        telegramChartCaption(closed),
-        undefined,
-        { replyToMessageId: message.messageId },
-      );
-      return "answered";
-    }
-    if (command?.kind === "model_menu") {
-      await sendModelMenu(userId, message.chatId, message.messageId);
-      return "answered";
-    }
-    const turnMessage = command?.kind === "prompt" ? command.message : incoming;
-
+/**
+ * One full-parity agent turn on the Telegram channel, for a user already
+ * resolved by the channel mechanics above. This is the function the resident
+ * runner calls when a `user_message` event arrives from the Telegram
+ * adapter — the same turn whether the update reached us through the webhook
+ * directly or through the event queue.
+ */
+export async function runTelegramAgentTurn(input: {
+  userId: number;
+  chatId: string;
+  text: string;
+  messageId?: number;
+}): Promise<"answered" | "failed"> {
+  const { userId, chatId, text: turnMessage, messageId } = input;
+  const message = { chatId, messageId };
+  try {
     // ── Shared turn context: per-chat memory and session ─────────────────
     //
     // The bot was stateless between turns: no sessionId (the orchestrator

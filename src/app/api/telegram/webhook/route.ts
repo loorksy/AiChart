@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/logger";
-import {
-  alreadyHandled,
-  handleTelegramCallback,
-  handleTelegramMessage,
-  parseTelegramCallback,
-  parseTelegramUpdate,
-} from "@/lib/telegram/webhookAgent";
+import { dispatchTelegramUpdate } from "@/lib/channels/telegram/adapter";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -14,7 +8,8 @@ export const maxDuration = 300;
 const log = createLogger("api.telegram.webhook");
 
 /**
- * The inbound half of the Telegram surface.
+ * The inbound half of the Telegram surface — a thin door in front of the
+ * channel adapter.
  *
  * Everything here is shaped by one fact about Telegram: it redelivers an update
  * until it receives a 200, on its own schedule. So:
@@ -24,13 +19,14 @@ const log = createLogger("api.telegram.webhook");
  *    anyone; it just asks Telegram to send the same broken update again, and
  *    again.
  *  - **The secret token is verified before anything else.** The webhook URL is
- *    guessable and this endpoint runs the whole decision engine; without the
+ *    guessable and this endpoint feeds the whole decision engine; without the
  *    header check, anyone could spend the platform's model budget by POSTing to
  *    it. Telegram sends the token it was registered with in
  *    `X-Telegram-Bot-Api-Secret-Token`.
- *  - **Updates are deduped before work starts**, because a 40-second analysis
- *    is long enough for Telegram to retry mid-flight, and the second run would
- *    store a second recommendation for one question.
+ *  - **The adapter dedupes before work starts** (Telegram retries mid-flight),
+ *    answers channel mechanics itself, and publishes agent turns as resident
+ *    `user_message` events — the resident host runs the analysis and replies
+ *    through the channel sender, so a long turn never races the retry clock.
  *
  * The unauthorized case is the one exception to answering 200: a caller who
  * failed the secret check is not Telegram, so there is no retry loop to avoid
@@ -57,23 +53,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignored: "unparseable" });
   }
 
-  const callback = parseTelegramCallback(body);
-  const message = callback ? null : parseTelegramUpdate(body);
-  if (!callback && !message) {
-    return NextResponse.json({ ok: true, ignored: "unsupported_update" });
-  }
-  const updateId = (callback ?? message)!.updateId;
-  if (alreadyHandled(updateId)) {
-    return NextResponse.json({ ok: true, ignored: "duplicate" });
-  }
-
-  const outcome = callback
-    ? await handleTelegramCallback(callback)
-    : await handleTelegramMessage(message!);
+  const outcome = await dispatchTelegramUpdate(body);
   log.info("telegram.webhook.handled", {
-    updateId,
-    outcome,
-    kind: callback ? "callback" : "message",
+    kind: outcome.kind,
+    detail:
+      outcome.kind === "ignored"
+        ? outcome.reason
+        : outcome.kind === "handled"
+          ? outcome.action
+          : "user_message_queued",
   });
-  return NextResponse.json({ ok: true, outcome });
+  if (outcome.kind === "ignored") {
+    return NextResponse.json({ ok: true, ignored: outcome.reason });
+  }
+  return NextResponse.json({
+    ok: true,
+    outcome: outcome.kind === "agent" ? "queued" : outcome.action,
+  });
 }

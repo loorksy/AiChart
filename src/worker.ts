@@ -16,6 +16,7 @@ dns.setDefaultResultOrder("ipv4first");
 import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
+import { registerAllChannelSenders } from "./lib/channels/registry";
 import { initDb } from "./lib/db";
 import { createLogger } from "./lib/logger";
 import { shutdownQueue, startWorker } from "./lib/queue";
@@ -35,6 +36,9 @@ async function main(): Promise<void> {
     healthPort: Number(process.env.RESIDENT_HEALTH_PORT || 8791),
     maxUptimeMs: Number(process.env.RESIDENT_MAX_UPTIME_MS || 24 * 60 * 60 * 1000),
   });
+  // Outbound channels (Telegram today): how user_message events queued by
+  // the web process get their replies delivered from this process.
+  registerAllChannelSenders(host);
   await host.start();
 
   // Legacy job tier (embeddings, post-mortems) — same process, same lifetime.

@@ -51,7 +51,7 @@ describe("resident agent runner", () => {
       healthPort: null, maxUptimeMs: 0, sweepEveryMs: 0, candleSyncEveryMs: 0,
     });
     const sent: { text: string; replyTo?: string }[] = [];
-    host.registerSender("telegram", {
+    host.registerSender("web", {
       sendText: async (_c, text, opts) => {
         sent.push({ text, replyTo: opts?.replyTo });
       },
@@ -60,7 +60,7 @@ describe("resident agent runner", () => {
     await bus.publish({
       kind: "user_message",
       userId,
-      channel: { type: "telegram", id: "777" },
+      channel: { type: "web", id: "777" },
       text: "حلّل الذهب",
       messageRef: "m9",
       enqueuedAt: Date.now(),
@@ -79,7 +79,7 @@ describe("resident agent runner", () => {
 
     // The channel is now bound to the user (channel !== session).
     const sessions = await import("@/lib/resident/sessions");
-    assert.equal(await sessions.resolveChannel("telegram", "777"), userId);
+    assert.equal(await sessions.resolveChannel("web", "777"), userId);
     await host.shutdown("test");
   });
 
@@ -94,7 +94,7 @@ describe("resident agent runner", () => {
       healthPort: null, maxUptimeMs: 0, sweepEveryMs: 0, candleSyncEveryMs: 0,
     });
     const sent: string[] = [];
-    host.registerSender("telegram", {
+    host.registerSender("web", {
       sendText: async (_c, text) => {
         sent.push(text);
       },
@@ -103,7 +103,7 @@ describe("resident agent runner", () => {
     await bus.publish({
       kind: "user_message",
       userId,
-      channel: { type: "telegram", id: "777" },
+      channel: { type: "web", id: "777" },
       text: "حلّل",
       enqueuedAt: Date.now(),
     });

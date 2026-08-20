@@ -59,26 +59,58 @@ export function contextToModelMessages(
   return out;
 }
 
+/** The Telegram presenter's full-parity turn (progress bubble, cards, photos). */
+export type TelegramTurnRunner = (input: {
+  userId: number;
+  chatId: string;
+  text: string;
+  messageId?: number;
+}) => Promise<"answered" | "failed">;
+
 export interface ResidentAgentRunnerOptions {
   /** Injectable loop for tests. Defaults to the real AI-SDK loop. */
   loop?: typeof runAgentLoop;
   maxSteps?: number;
   deadlineMs?: number;
+  /** Injectable Telegram turn for tests. Defaults to the real presenter. */
+  telegramTurn?: TelegramTurnRunner;
 }
 
 export class ResidentAgentRunner extends BaselineRunner {
   private readonly loop: typeof runAgentLoop;
   private readonly maxSteps?: number;
   private readonly deadlineMs?: number;
+  private readonly telegramTurn?: TelegramTurnRunner;
 
   constructor(options: ResidentAgentRunnerOptions = {}) {
     super();
     this.loop = options.loop ?? runAgentLoop;
     this.maxSteps = options.maxSteps;
     this.deadlineMs = options.deadlineMs;
+    this.telegramTurn = options.telegramTurn;
   }
 
   override async onUserMessage(event: UserMessageEvent, ctx: AgentRunContext): Promise<void> {
+    // Telegram gets the presenter's full-parity turn — the same live
+    // progress bubble, derived cards, suggestion buttons, and chart photos
+    // the direct webhook path produces — so riding the event queue never
+    // degrades the answer. The presenter reports failures to the user
+    // itself and returns a label instead of throwing; rethrowing here would
+    // make the bus re-run a whole analysis whose apology was already sent.
+    if (event.channel.type === "telegram") {
+      const turn =
+        this.telegramTurn ??
+        (await import("@/lib/telegram/webhookAgent")).runTelegramAgentTurn;
+      const messageId = Number(event.messageRef);
+      const outcome = await turn({
+        userId: event.userId,
+        chatId: event.channel.id,
+        text: event.text,
+        messageId: Number.isFinite(messageId) ? messageId : undefined,
+      });
+      log.info("telegram user_message answered", { outcome });
+      return;
+    }
     const sender = ctx.sender(event.channel.type);
     const requestId = newId();
     const threadId = channelThreadId(event.channel);

@@ -203,12 +203,15 @@ describe("cards carry links, never actions", () => {
 });
 
 describe("the webhook route survives Telegram's retry contract", () => {
-  it("verifies the secret token before doing any work", () => {
+  const adapterSource = readFileSync(
+    path.join(SRC, "lib", "channels", "telegram", "adapter.ts"),
+    "utf8",
+  );
+
+  it("verifies the secret token before dispatching any update", () => {
     const check = routeSource.indexOf("x-telegram-bot-api-secret-token");
-    const work = routeSource.indexOf("handleTelegramMessage(");
-    const callback = routeSource.indexOf("handleTelegramCallback(");
+    const work = routeSource.indexOf("dispatchTelegramUpdate(");
     assert.ok(check > 0 && check < work, "the engine must not run for an unverified caller");
-    assert.ok(check < callback);
   });
 
   it("refuses to serve at all without a configured secret", () => {
@@ -218,18 +221,28 @@ describe("the webhook route survives Telegram's retry contract", () => {
     assert.match(routeSource, /webhook secret is not configured/);
   });
 
-  it("dedupes before running the engine, not after", () => {
-    const dedupe = routeSource.indexOf("alreadyHandled(");
-    const work = routeSource.indexOf("handleTelegramMessage(");
-    const callback = routeSource.indexOf("handleTelegramCallback(");
+  it("dedupes in the adapter before mechanics run or an event is queued", () => {
+    // The adapter's one try block is where mechanics and the queue publish
+    // live; the dedupe check must come before it, or a Telegram retry
+    // mid-analysis would run the engine twice for one question.
+    const dedupe = adapterSource.indexOf("alreadyHandled(");
+    const work = adapterSource.indexOf("try {");
     assert.ok(dedupe > 0 && dedupe < work);
-    assert.ok(dedupe < callback);
   });
 
   it("acknowledges a malformed or unsupported update instead of erroring", () => {
     // A non-200 asks Telegram to redeliver the same broken update forever.
     assert.match(routeSource, /ignored: "unparseable"/);
-    assert.match(routeSource, /ignored: "unsupported_update"/);
+    assert.match(adapterSource, /reason: "unsupported_update"/);
+  });
+
+  it("routes agent turns through the resident event queue, not in-route", () => {
+    assert.match(adapterSource, /publishResidentEvent\(/);
+    assert.match(routeSource, /from "@\/lib\/channels\/telegram\/adapter"/);
+    // Zero agent logic in the adapter: the brain stays behind the presenter
+    // and the resident runner — the adapter never imports the orchestrator.
+    assert.doesNotMatch(adapterSource, /runUnifiedChartAgent/);
+    assert.doesNotMatch(adapterSource, /from "@\/lib\/agent\/orchestrator"/);
   });
 });
 
