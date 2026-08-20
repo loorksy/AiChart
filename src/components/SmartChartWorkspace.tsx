@@ -885,6 +885,10 @@ function SmartChartWorkspaceInner({
             {!chatEnabled && !capture && headerActions.length > 0 && (
               <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-end px-2">
                 <div className="pointer-events-auto flex flex-wrap justify-end gap-1">
+                  {/* eslint-disable-next-line react-hooks/refs -- false positive:
+                      the map only forwards action.onClick as a prop; the ref
+                      inside handleAnalyzeClick is read in a deferred event
+                      handler, never during render. */}
                   {headerActions.map((action) => (
                     <button
                       key={action.id}
