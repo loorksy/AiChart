@@ -1,9 +1,14 @@
 /**
- * Dedicated background worker process. Run separately from the Next.js web
- * server (pm2 app `aichart-worker` / `npm run worker`) so long-running jobs
- * (embeddings, post-mortems) scale independently and never block requests.
+ * The resident agent process (pm2 app `aichart-worker` / `npm run worker`).
  *
- * Requires REDIS_URL. With it unset this exits early (web runs jobs inline).
+ * No longer a cron executor: one long-lived host boots, loads warm state
+ * once, and then wakes on events from the unified queue — user messages,
+ * scheduled ticks, market events. The legacy BullMQ job worker (embeddings,
+ * post-mortems) runs inside the same process so the system stays ONE
+ * resident process.
+ *
+ * Requires REDIS_URL for the durable stream; without it the bus runs
+ * in-memory (dev only — events do not survive a restart).
  */
 import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
@@ -14,23 +19,36 @@ loadEnvConfig(process.cwd());
 import { initDb } from "./lib/db";
 import { createLogger } from "./lib/logger";
 import { shutdownQueue, startWorker } from "./lib/queue";
+import { createEventBus } from "./lib/resident/bus";
+import { ResidentHost } from "./lib/resident/host";
+import { BaselineRunner } from "./lib/resident/baselineRunner";
 
 const log = createLogger("worker");
 
 async function main(): Promise<void> {
   await initDb();
+
+  const host = new ResidentHost({
+    bus: createEventBus(),
+    runner: new BaselineRunner(),
+    concurrency: Number(process.env.RESIDENT_CONCURRENCY || 8),
+    healthPort: Number(process.env.RESIDENT_HEALTH_PORT || 8791),
+    maxUptimeMs: Number(process.env.RESIDENT_MAX_UPTIME_MS || 24 * 60 * 60 * 1000),
+  });
+  await host.start();
+
+  // Legacy job tier (embeddings, post-mortems) — same process, same lifetime.
   await startWorker();
 
-  log.info("worker process ready");
+  log.info("resident agent process ready");
 
-  // Graceful shutdown: stop accepting jobs and drain in-flight ones so an
-  // orchestrator restart/scale-down never kills a job mid-execution.
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info("shutting down", { signal });
     try {
+      await host.shutdown(signal);
       await shutdownQueue();
     } finally {
       process.exit(0);
@@ -41,7 +59,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log.error("worker bootstrap failed", {
+  log.error("resident bootstrap failed", {
     error: err instanceof Error ? err.message : String(err),
   });
   process.exit(1);

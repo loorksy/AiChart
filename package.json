@@ -31,7 +31,8 @@
     "test:provider-release": "tsx scripts/validate-provider-release.ts",
     "test:redis-release": "tsx scripts/validate-redis-release.ts",
     "test:live": "echo \"No live external-provider tests are enabled by default. Set the relevant provider env (e.g. OPENAI_API_KEY, MT5_BRIDGE_URL) and run the targeted suite.\" && exit 0",
-    "test:ci": "npm run test:context && npm run test:memory && npm run test:skills && npm run test:tools && npm run test:trace && npm run test:research && npm run test:recommendations && npm run test:entry-coherence && npm run test:gates && npm run test:guards && npm run test:vision && npm run test:telegram-parity && npm run test:trading-dna && npm run test:unit && npm run test:decision-authority && npm run test:integration"
+    "test:ci": "npm run test:resident && npm run test:context && npm run test:memory && npm run test:skills && npm run test:tools && npm run test:trace && npm run test:research && npm run test:recommendations && npm run test:entry-coherence && npm run test:gates && npm run test:guards && npm run test:vision && npm run test:telegram-parity && npm run test:trading-dna && npm run test:unit && npm run test:decision-authority && npm run test:integration",
+    "test:resident": "tsx --test --test-force-exit src/lib/resident/__tests__/*.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
