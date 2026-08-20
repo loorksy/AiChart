@@ -14,7 +14,7 @@ export function modelRefFromPlatform(model?: string): string {
 // Same-provider fallback: drop to a cheaper/faster sibling model on failure.
 const SAME_PROVIDER_ALT: Partial<Record<LLMProvider, string>> = {
   openai: "openai/gpt-4.1-mini",
-  anthropic: "anthropic/claude-opus-4-8",
+  anthropic: "anthropic/claude-sonnet-5",
 };
 
 const SYNC_PROVIDERS: LLMProvider[] = ["openai", "anthropic"];

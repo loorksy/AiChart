@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
 
 import { OpenAIModelPicker } from "@/components/admin/OpenAIModelPicker";
+import {
+  ANTHROPIC_MODEL_CHOICES,
+  PLATFORM_DEFAULT_MODEL_ID,
+} from "@/lib/modelCatalog";
 import { Button } from "@/components/squareui/button";
 import { Input } from "@/components/squareui/input";
 import {
@@ -59,11 +63,9 @@ const GROUPS: { id: ConfigField["group"]; title: string; description: string }[]
   },
 ];
 
-/** Fixed Claude catalog offered by the platform (id → label). */
+/** Fixed Claude catalog offered by the platform — the shared curated list. */
 const ANTHROPIC_MODELS: { id: string; label: string }[] = [
-  { id: "claude-fable-5", label: "Claude Fable 5" },
-  { id: "claude-opus-5", label: "Claude Opus 5" },
-  { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
+  ...ANTHROPIC_MODEL_CHOICES,
   { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
 ];
 
@@ -171,10 +173,10 @@ export function AdminKeysPanel() {
   const providerField = fields.find((f) => f.key === "AI_PROVIDER");
   const anthropicKeyField = fields.find((f) => f.key === "ANTHROPIC_API_KEY");
   const anthropicModelField = fields.find((f) => f.key === "ANTHROPIC_MODEL");
-  const providerRaw = draft.AI_PROVIDER ?? providerField?.value ?? "openai";
-  const activeProvider = providerRaw === "anthropic" ? providerRaw : "openai";
+  const providerRaw = draft.AI_PROVIDER ?? providerField?.value ?? "anthropic";
+  const activeProvider = providerRaw === "openai" ? providerRaw : "anthropic";
   const currentAnthropicModel =
-    draft.ANTHROPIC_MODEL ?? anthropicModelField?.value ?? "claude-opus-5";
+    draft.ANTHROPIC_MODEL ?? anthropicModelField?.value ?? PLATFORM_DEFAULT_MODEL_ID;
 
   const aiExtraFields = fields.filter(
     (f) =>

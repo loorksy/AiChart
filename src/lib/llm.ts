@@ -128,8 +128,10 @@ async function modelForTierAsync(tier: ModelTier): Promise<string> {
 
 export function parsePlatformProvider(raw?: string | null): LLMProvider {
   const v = raw?.trim();
-  if (v === "anthropic") return "anthropic";
-  return "openai";
+  if (v === "openai") return "openai";
+  // Unset (or anything unrecognized) means the platform default: Anthropic,
+  // whose default model (Sonnet 4.6) is the platform's default brain.
+  return "anthropic";
 }
 
 /** Key present for this first-class provider. */

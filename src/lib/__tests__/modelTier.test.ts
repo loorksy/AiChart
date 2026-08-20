@@ -6,13 +6,21 @@ import { clearPlatformConfigCache } from "@/lib/platformConfig";
 describe("model tiers (item 15: fast/deep split)", () => {
   const origModel = process.env.AI_MODEL;
   const origQuick = process.env.AI_QUICK_MODEL;
+  const origProvider = process.env.AI_PROVIDER;
 
-  beforeEach(() => clearPlatformConfigCache());
+  // These cases exercise the OpenAI tier env vars; the platform default
+  // provider is Anthropic, so pin the provider the fixtures configure.
+  beforeEach(() => {
+    process.env.AI_PROVIDER = "openai";
+    clearPlatformConfigCache();
+  });
   afterEach(() => {
     if (origModel === undefined) delete process.env.AI_MODEL;
     else process.env.AI_MODEL = origModel;
     if (origQuick === undefined) delete process.env.AI_QUICK_MODEL;
     else process.env.AI_QUICK_MODEL = origQuick;
+    if (origProvider === undefined) delete process.env.AI_PROVIDER;
+    else process.env.AI_PROVIDER = origProvider;
     clearPlatformConfigCache();
   });
 

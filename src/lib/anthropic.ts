@@ -12,7 +12,7 @@ import {
 } from "./externalFetch";
 import { getPlatformValue } from "./platformConfig";
 
-export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
+export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
 // Single source of truth for the offered models lives in the leaf catalogue —
 // the picker, the settings validator, and this client must never disagree.

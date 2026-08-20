@@ -77,6 +77,7 @@ function ComposerModelChip() {
         <ModelChoiceList
           models={data.models}
           selected={data.selected}
+          platformDefault={data.platformDefault}
           saving={saving}
           onChoose={(ref) => {
             void choose(ref);

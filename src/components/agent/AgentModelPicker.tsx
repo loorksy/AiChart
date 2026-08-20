@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
-import { useLocale } from "@/hooks/useLocale";
 import { ProviderIcon } from "@/components/agent/ProviderIcon";
 import { shortModelLabel } from "@/lib/modelCatalog";
 
@@ -103,15 +102,20 @@ const ROW_CLASS = "composer-sheet-item";
 export function ModelChoiceList({
   models,
   selected,
+  platformDefault,
   saving,
   onChoose,
 }: {
   models: ModelOption[];
   selected: string | null;
+  /** Ref that serves when the user made no explicit pick — shown by its real name. */
+  platformDefault: string;
   saving: boolean;
   onChoose: (ref: string | null) => void;
 }) {
-  const { t } = useLocale();
+  // No abstract "platform default" row: the default model appears in the list
+  // under its own name, pre-checked, and the user just picks another to change.
+  const effective = selected ?? platformDefault;
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -142,16 +146,6 @@ export function ModelChoiceList({
           />
         </div>
       )}
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => onChoose(null)}
-        data-active={!selected}
-        className={ROW_CLASS}
-      >
-        <span>{t("model.platform_default")}</span>
-        {!selected && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
-      </button>
       {Object.entries(grouped).map(([provider, options]) => (
         <div key={provider}>
           <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -164,7 +158,7 @@ export function ModelChoiceList({
               type="button"
               disabled={saving}
               onClick={() => onChoose(m.ref)}
-              data-active={selected === m.ref}
+              data-active={effective === m.ref}
               className={ROW_CLASS}
             >
               <span className="flex min-w-0 items-center gap-1.5">
@@ -178,7 +172,7 @@ export function ModelChoiceList({
                   {shortModelLabel(m.label)}
                 </span>
               </span>
-              {selected === m.ref && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+              {effective === m.ref && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
             </button>
           ))}
         </div>

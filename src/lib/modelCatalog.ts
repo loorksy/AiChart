@@ -23,12 +23,20 @@ export const OPENAI_MODEL_CHOICES: ModelChoice[] = [
   { id: "gpt-4.1", label: "GPT-4.1" },
 ];
 
-/** Exactly three multimodal Claude models, mirroring the OpenAI trio. */
+/** Multimodal (text+vision) Claude models. Sonnet 4.6 is the platform default. */
 export const ANTHROPIC_MODEL_CHOICES: ModelChoice[] = [
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
   { id: "claude-fable-5", label: "Claude Fable 5" },
   { id: "claude-opus-5", label: "Claude Opus 5" },
   { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
 ];
+
+/**
+ * The model that serves when neither the admin nor the user picked one.
+ * Multimodal, so the vision/chart-image paths work out of the box.
+ */
+export const PLATFORM_DEFAULT_MODEL_ID = "claude-sonnet-4-6";
+export const PLATFORM_DEFAULT_MODEL_REF = `anthropic/${PLATFORM_DEFAULT_MODEL_ID}`;
 
 const ALLOWED_REFS = new Set<string>([
   ...OPENAI_MODEL_CHOICES.map((m) => `openai/${m.id}`),
