@@ -38,6 +38,7 @@ export type BrokerErrorCode =
   | "metaapi_balance"
   | "metaapi_auth"
   | "metaapi_server"
+  | "metaapi_config"
   | "metaapi_error";
 
 function publicBrokerError(err: MetaapiClientError): {
@@ -46,6 +47,15 @@ function publicBrokerError(err: MetaapiClientError): {
   status: number;
 } {
   const msg = err.message.toLowerCase();
+  // A 401 here is the PLATFORM token being rejected by MetaAPI — reporting it
+  // as the user's broker credentials sends them to reset the wrong password.
+  if (err.status === 401) {
+    return {
+      error: "Broker linking is temporarily unavailable — the platform's MetaAPI token was rejected.",
+      code: "metaapi_config",
+      status: 503,
+    };
+  }
   if (/top up|high reliability|insufficient (funds|balance)/.test(msg)) {
     return {
       error: "MetaAPI balance is required before linking can start.",
@@ -93,14 +103,22 @@ export async function GET(req: Request) {
           });
           await updateBrokerLinkStatus(user.id, {
             state: live.state,
-            login: live.login,
+            // A transiently missing login must not wipe the stored one.
+            login: live.login ?? row.login,
           });
           if (live.state !== "DRAFT") {
             await startTrialClock(user.id);
           }
           row = await getBrokerLink(user.id);
         } catch (err) {
-          if (!(err instanceof MetaapiClientError)) throw err;
+          // The cloud account is gone at MetaAPI — a stale local link would
+          // report "configured" forever. Drop it so the user can relink.
+          if (err instanceof MetaapiClientError && err.status === 404) {
+            await deleteBrokerLink(user.id).catch(() => {});
+            row = null;
+          }
+          // Refresh is best-effort: a timeout or transport error must never
+          // fail the read of what we already know.
         }
       }
     }
@@ -173,8 +191,11 @@ export async function POST(req: Request) {
           token,
           accountId: existing.metaapi_account_id,
         });
-      } catch (err) {
-        if (!(err instanceof MetaapiClientError)) throw err;
+      } catch {
+        // Best-effort cleanup of the replaced account: the new link is
+        // already persisted, and failing the request now would leave the
+        // user unsure whether linking worked. (The stale account keeps
+        // billing until removed — surfaced in logs by the client label.)
       }
     }
 
@@ -191,8 +212,8 @@ export async function POST(req: Request) {
         await startTrialClock(user.id);
       }
       row = (await getBrokerLink(user.id)) ?? row;
-    } catch (err) {
-      if (!(err instanceof MetaapiClientError)) throw err;
+    } catch {
+      // Best-effort status probe — the link row is already stored.
     }
 
     return NextResponse.json({

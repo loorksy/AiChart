@@ -58,7 +58,7 @@ describe("MetaAPI client forwards credentials once and never trades", () => {
       assert.equal(payload.platform, "mt5");
       assert.equal(payload.server, "ICMarketsSC-MT5");
       assert.equal(payload.magic, LONORA_MAGIC);
-      assert.equal(payload.type, "cloud-g1");
+      assert.equal(payload.type, "cloud-g2");
       assert.equal(payload.reliability, "regular");
     } finally {
       globalThis.fetch = restore;

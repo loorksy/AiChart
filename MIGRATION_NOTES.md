@@ -1,3 +1,42 @@
+## Round 3 — retired LLM gateways, silent notifications, surfaces with their own models
+
+**OpenRouter and TokenRouter are gone** (commit `0ab12eb` and follow-ups). The
+provider union is `openai | anthropic`, the curated catalog carries only those
+two, and the admin routes/icons for the gateways were deleted. Operators
+upgrading a live database get an automatic, idempotent purge on the first
+config refresh (`purgeRetiredGatewayConfig` in `src/lib/platformConfig.ts`):
+the eight retired `platform_config` rows (`OPENROUTER_*`, `TOKENROUTER_*`) are
+deleted, an `AI_PROVIDER` still set to a retired gateway is rewritten to
+`openai`, stored user model preferences shaped `openrouter/*` / `tokenrouter/*`
+are nulled (those users fall back to the platform default), and the gateways'
+`model_prices` rows are removed. Historical `usage_events` rows keep their
+original provider string — they are spend history, not configuration.
+
+**The platform default model is Claude Sonnet 4.6** (`claude-sonnet-4-6`,
+multimodal). The composer's model picker no longer offers an abstract
+"platform default" row: the default model appears under its own name,
+pre-checked, and the user changes it by picking another.
+
+**All notification channels were removed** — web push (VAPID/`web-push`),
+the in-app notification center, and unsolicited Telegram sends (lifecycle
+alerts, the weekly report, scan announcements). The lifecycle pipeline
+survives as a pure ledger: dedupe keys are still claimed in `alert_dedupe`,
+so sweeps and re-evaluation admission behave exactly as before — nothing is
+delivered. `alert_log` and `push_subscriptions` tables stay in place as
+history; no code writes to them anymore.
+
+**Telegram is its own agent surface**: `surface: "telegram"` in the
+orchestrator and parity log, a per-user `telegram_model_ref` column on
+`trading_settings` (auto-added on both SQLite and Postgres), a `/model`
+command with an inline keyboard, and metered LLM spend. Same brain, same
+tools — a separate surface with its own model pick.
+
+**MetaAPI hardening**: new accounts are created as `cloud-g2` (cloud-g1 is
+retired upstream), a rejected platform token reports as a 503 configuration
+error instead of "wrong broker password", refresh probes are best-effort and
+can no longer wipe the stored login or fail the request on a timeout, and a
+404 from MetaAPI on refresh unlinks the stale local row.
+
 
 ## Round 2, Phase A — the orphans, and the 404s hiding behind them
 

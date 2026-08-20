@@ -21,6 +21,7 @@ function errorKey(code?: string): TranslationKey {
   if (code === "metaapi_balance") return "connect.broker.needs_balance";
   if (code === "metaapi_auth") return "connect.broker.auth_failed";
   if (code === "metaapi_server") return "connect.broker.server_not_found";
+  if (code === "metaapi_config") return "connect.broker.not_configured";
   return "connect.broker.error";
 }
 

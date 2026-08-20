@@ -243,6 +243,7 @@ export const ar: Record<TranslationKey, string> = {
   "connect.broker.configured": "الحساب مربوط.",
   "connect.broker.error": "تعذر ربط الحساب.",
   "connect.broker.needs_balance": "يلزم رصيد في MetaAPI قبل بدء الربط.",
+  "connect.broker.not_configured": "ربط الوسيط غير متاح مؤقتاً — رُفض مفتاح MetaAPI الخاص بالمنصة. راجع الإدارة.",
   "connect.broker.auth_failed": "رفض الوسيط رقم الحساب أو كلمة المرور.",
   "connect.broker.server_not_found":
     "اسم الخادم غير موجود. استخدم الاسم كما يظهر في MetaTrader.",

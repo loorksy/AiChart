@@ -245,6 +245,7 @@ export const en = {
   "connect.broker.error": "Could not link the trading account.",
   "connect.broker.needs_balance":
     "MetaAPI balance is required before linking can start.",
+  "connect.broker.not_configured": "Broker linking is temporarily unavailable — the platform's MetaAPI token was rejected. Contact the admin.",
   "connect.broker.auth_failed": "Login or password was rejected by the broker.",
   "connect.broker.server_not_found":
     "That server name was not found. Use the exact name from MetaTrader.",

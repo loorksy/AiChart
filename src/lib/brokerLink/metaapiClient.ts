@@ -56,11 +56,11 @@ function retryWaitMs(res: Response): number {
   if (!raw) return 8_000;
   const seconds = Number(raw);
   if (Number.isFinite(seconds) && seconds >= 0) {
-    return Math.min(seconds * 1000, 60_000);
+    return Math.min(seconds * 1000, 15_000);
   }
   const when = Date.parse(raw);
   if (Number.isFinite(when)) {
-    return Math.min(Math.max(when - Date.now(), 2_000), 60_000);
+    return Math.min(Math.max(when - Date.now(), 2_000), 15_000);
   }
   return 8_000;
 }
@@ -100,14 +100,16 @@ export async function createTradingAccount(input: {
     server: input.server,
     platform: BROKER_PLATFORM,
     magic: LONORA_MAGIC,
-    type: "cloud-g1",
+    type: "cloud-g2",
     reliability: "regular",
     metadata: { lonoraUserId: String(input.userId) },
   };
   const region = input.region?.trim();
   if (region) payload.region = region;
 
-  for (let attempt = 0; attempt < 8; attempt++) {
+  // Bounded: 4 tries with the Retry-After wait capped at 15s keeps the
+  // worst case near the route's own patience instead of many minutes.
+  for (let attempt = 0; attempt < 4; attempt++) {
     const res = await fetchWithTimeout(
       `${PROVISIONING_ORIGIN}/users/current/accounts`,
       {
