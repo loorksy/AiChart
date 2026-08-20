@@ -8,7 +8,12 @@ const flags = readFileSync(new URL("../../featureFlags.ts", import.meta.url), "u
 
 test("context v2 stays flag-gated so an explicit 0 preserves the legacy route path", () => {
   assert.match(flags, /agentContextV2:\s*\(\)\s*=>\s*flag\("AGENT_CONTEXT_V2",\s*true\)/);
-  assert.ok(route.indexOf("if (FEATURES.agentContextV2())") < route.indexOf("getMessages(user.id, sessionId"));
+  // The history read moved into the user-session builder (channel !== session);
+  // the pinned property is unchanged: the flag gate precedes the history read.
+  assert.ok(
+    route.indexOf("if (FEATURES.agentContextV2())") <
+      route.indexOf("buildSessionConversationContext("),
+  );
 });
 
 test("context remains a language aid and is not passed to market or risk agents", () => {

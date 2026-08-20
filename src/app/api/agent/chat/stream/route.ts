@@ -45,16 +45,20 @@ import { unfinishedStages, type AgentStageEvent } from "@/lib/agent/stageEvents"
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
-import { appendMessage, getMessages } from "@/lib/agent/chatHistory/chatStore";
+import { appendMessage } from "@/lib/agent/chatHistory/chatStore";
 import { refreshChatMetaAfterAssistantTurn } from "@/lib/agent/chatHistory/refreshChatMeta";
 import { stripInternalFieldsFromClientResult } from "@/lib/agent/userSafeOutbound";
 import {
-  adaptAuthorizedChatHistory,
   buildAgentConversationContext,
   type AgentConversationContext,
   type SafeRecommendationContext,
   resolveActiveRecommendationContext,
 } from "@/lib/agent/context";
+import {
+  bindChannel,
+  buildSessionConversationContext,
+  maybeSummarizeResidentSession,
+} from "@/lib/resident/sessions";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -334,33 +338,26 @@ export async function POST(req: NextRequest) {
     let conversationContext: AgentConversationContext | undefined;
     if (FEATURES.agentContextV2()) {
       try {
-        const [persisted, recalled] = await Promise.all([
-          getMessages(user.id, sessionId, 160),
-          recallAgentMemoryForContext({
-            userId: user.id,
-            query: resolvedMessage,
-            symbol: body.chartContext?.symbol,
-            timeframe: body.chartContext?.interval,
-            locale: body.locale ?? "ar",
-            memoryLimit: 5,
-            lessonLimit: 3,
-          }),
-        ]);
-        const adapted = adaptAuthorizedChatHistory({
-          authenticatedUserId: user.id,
-          ownerUserId: user.id,
-          authorizedChatId: sessionId,
-          messages: persisted,
-        });
-        conversationContext = buildAgentConversationContext({
+        // channel !== session: the web thread binds into the USER's one
+        // session, so context includes turns from every channel (Telegram
+        // included) plus the rolling cross-channel summary.
+        await bindChannel("web", String(user.id), user.id);
+        const recalled = await recallAgentMemoryForContext({
           userId: user.id,
-          chatId: sessionId,
+          query: resolvedMessage,
+          symbol: body.chartContext?.symbol,
+          timeframe: body.chartContext?.interval,
+          locale: body.locale ?? "ar",
+          memoryLimit: 5,
+          lessonLimit: 3,
+        });
+        conversationContext = await buildSessionConversationContext({
+          userId: user.id,
           sessionId,
           userMessage: resolvedMessage,
           locale: body.locale ?? "ar",
           chartContext: body.chartContext,
           activeRecommendation: recommendationContextFromChart(body.chartContext),
-          persistedMessages: adapted,
           recalledMemories: recalled.memories,
           tradeLessons: recalled.tradeLessons,
           tokenBudget: 2_400,
@@ -763,6 +760,9 @@ async function persistStreamAssistant(
       interval: refs.interval,
     });
     void refreshChatMetaAfterAssistantTurn(userId, chatId);
+    // Fold older cross-channel turns into the rolling session summary once
+    // they pile up — summarize, never truncate blindly. Best-effort.
+    void maybeSummarizeResidentSession(userId).catch(() => {});
   } catch (error) {
     log.warn("agent.stream.persist_failed", {
       error: error instanceof Error ? error.message : String(error),

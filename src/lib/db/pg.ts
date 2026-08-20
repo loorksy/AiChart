@@ -712,6 +712,34 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat
     ON agent_chat_messages (chat_id, created_at);
 
+  -- Cross-channel session read: one user's turns across every chat, in time order.
+  CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_user_time
+    ON agent_chat_messages (user_id, created_at);
+
+  -- The resident session: ONE per user, owning the rolling cross-channel
+  -- summary. channel != session — channels only bind into it.
+  CREATE TABLE IF NOT EXISTS resident_sessions (
+    user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    summary            TEXT,
+    summary_through_ms BIGINT NOT NULL DEFAULT 0,
+    summarized_turns   INTEGER NOT NULL DEFAULT 0,
+    created_at         BIGINT NOT NULL,
+    updated_at         BIGINT NOT NULL
+  );
+
+  -- (channel_type, channel_identifier) -> user. Any message from any channel
+  -- resolves to the same user session through this table.
+  CREATE TABLE IF NOT EXISTS channel_bindings (
+    channel_type TEXT NOT NULL,
+    channel_id   TEXT NOT NULL,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at   BIGINT NOT NULL,
+    PRIMARY KEY (channel_type, channel_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_channel_bindings_user
+    ON channel_bindings (user_id);
+
   CREATE TABLE IF NOT EXISTS tracked_recommendations (
     id                  TEXT PRIMARY KEY,
     user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

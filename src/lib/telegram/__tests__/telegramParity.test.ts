@@ -279,10 +279,12 @@ describe("the professional turn: progress, memory, and the right theatre", () =>
   });
 
   it("remembers the conversation like the web chat does", () => {
-    // Same store, same builder, same token budget — one memory, two
-    // transports. The session key is the chat's own stable id.
+    // Same store, same builder, same token budget — ONE user session, two
+    // transports (channel !== session). The chat keeps its stable id for
+    // appends; context comes from the user's cross-channel session.
     assert.match(agentSource, /telegramSessionId\(message\.chatId\)/);
-    assert.match(agentSource, /buildAgentConversationContext/);
+    assert.match(agentSource, /bindChannel\("telegram", message\.chatId, userId\)/);
+    assert.match(agentSource, /buildSessionConversationContext/);
     assert.match(agentSource, /tokenBudget: 2_400/);
     assert.match(agentSource, /appendMessage/);
     assert.match(agentSource, /ensureChat/);

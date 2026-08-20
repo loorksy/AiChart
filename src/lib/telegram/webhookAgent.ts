@@ -55,12 +55,13 @@ import {
 import { escapeTelegramHtml, TELEGRAM_TEXT_LIMIT } from "@/lib/telegram/html";
 import { updateSessionFromMessage } from "@/lib/agent/sessionMemory";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
+import { type AgentConversationContext } from "@/lib/agent/context";
 import {
-  adaptAuthorizedChatHistory,
-  buildAgentConversationContext,
-  type AgentConversationContext,
-} from "@/lib/agent/context";
-import { appendMessage, ensureChat, getMessages } from "@/lib/agent/chatHistory/chatStore";
+  bindChannel,
+  buildSessionConversationContext,
+  maybeSummarizeResidentSession,
+} from "@/lib/resident/sessions";
+import { appendMessage, ensureChat } from "@/lib/agent/chatHistory/chatStore";
 import type { AgentFinalResult } from "@/lib/agent/types";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
 import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
@@ -513,6 +514,9 @@ export async function handleTelegramMessage(
     const session = updateSessionFromMessage(sessionId, turnMessage);
     let conversationContext: AgentConversationContext | undefined;
     try {
+      // channel !== session: this chat binds into the USER's one session, so
+      // a conversation started on the web continues here with full context.
+      await bindChannel("telegram", message.chatId, userId);
       await ensureChat({
         id: sessionId,
         userId,
@@ -520,31 +524,21 @@ export async function handleTelegramMessage(
         interval: "15m",
         title: t("ar", "tg.chat_title"),
       });
-      const [persisted, recalled] = await Promise.all([
-        getMessages(userId, sessionId, 160),
-        recallAgentMemoryForContext({
-          userId,
-          query: turnMessage,
-          symbol: DATA_SYMBOL,
-          timeframe: "15m",
-          locale: "ar",
-          memoryLimit: 5,
-          lessonLimit: 3,
-        }),
-      ]);
-      conversationContext = buildAgentConversationContext({
+      const recalled = await recallAgentMemoryForContext({
         userId,
-        chatId: sessionId,
+        query: turnMessage,
+        symbol: DATA_SYMBOL,
+        timeframe: "15m",
+        locale: "ar",
+        memoryLimit: 5,
+        lessonLimit: 3,
+      });
+      conversationContext = await buildSessionConversationContext({
+        userId,
         sessionId,
         userMessage: turnMessage,
         locale: "ar",
         chartContext: { symbol: DATA_SYMBOL, interval: "15m" },
-        persistedMessages: adaptAuthorizedChatHistory({
-          authenticatedUserId: userId,
-          ownerUserId: userId,
-          authorizedChatId: sessionId,
-          messages: persisted,
-        }),
         recalledMemories: recalled.memories,
         tradeLessons: recalled.tradeLessons,
         tokenBudget: 2_400,
@@ -576,6 +570,9 @@ export async function handleTelegramMessage(
           error: error instanceof Error ? error.message : String(error),
         });
       }
+      // Rolling summarization keeps the cross-channel session bounded without
+      // blind truncation. Best-effort: a failure defers to the next turn.
+      void maybeSummarizeResidentSession(userId, { locale: "ar" }).catch(() => {});
     };
 
     // ── Conversational turns: the right theatre ──────────────────────────

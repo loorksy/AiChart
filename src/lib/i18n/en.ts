@@ -894,6 +894,7 @@ export const en = {
   "rec.card.buy": "Buy recommendation",
   "rec.card.sell": "Sell recommendation",
   "rec.card.read_details": "Read details",
+  "session.summarizer.system": "You summarize a conversation between a trader and a gold-analysis agent. Write a concise summary (under 250 words) preserving: what the user asked, what the agent decided and why, any levels/recommendations with their numbers, and any user preferences. Add nothing new.",
   "tg.model_menu_title": "Choose the model that answers on Telegram:",
   "tg.model_current": "Current model: {name}",
   "tg.model_changed": "{name} now answers this chat.",

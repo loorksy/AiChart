@@ -240,6 +240,25 @@ export async function getMessages(
 }
 
 /**
+ * The resident session's read: one user's turns across EVERY chat (web,
+ * telegram, future channels), newest window, restored to time order. The
+ * user_id column on messages makes this a single indexed scan — no join.
+ */
+export async function getRecentMessagesForUser(
+  userId: number,
+  opts: { sinceMs?: number; limit?: number } = {},
+): Promise<AgentChatMessageRecord[]> {
+  const rows = await query<MessageRow>(
+    `SELECT * FROM agent_chat_messages
+      WHERE user_id = ? AND created_at > ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?`,
+    [userId, Math.max(0, opts.sinceMs ?? 0), Math.max(1, Math.min(opts.limit ?? 160, 2000))],
+  );
+  return rows.map(toMessage).reverse();
+}
+
+/**
  * Append a message to a chat the user owns. Updates updatedAt and a temporary
  * preview. AI title/hook generation runs asynchronously after assistant turns
  * (see refreshChatMetaAfterAssistantTurn) — never from the raw first message.

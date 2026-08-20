@@ -47,6 +47,29 @@ function safeAssistantContext(message: AgentChatMessageRecord): string {
   return [...new Set(lines)].join("\n");
 }
 
+/**
+ * Session-scope variant: the caller already read messages scoped BY USER
+ * (getRecentMessagesForUser), so ownership is the read's guarantee and no
+ * single-chat filter applies — this is what lets a conversation started on
+ * one channel continue on another.
+ */
+export function adaptOwnedSessionHistory(
+  messages: readonly AgentChatMessageRecord[],
+): RawContextMessage[] {
+  return messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    kind: "conversation" as const,
+    content: message.role === "assistant" ? safeAssistantContext(message) : message.content,
+    createdAt: message.createdAt,
+    symbol: message.symbol,
+    timeframe: message.interval,
+    recommendationId: message.recommendationId,
+    analysisId: message.analysisId,
+    source: "history" as const,
+  }));
+}
+
 /** Converts an already-authorized chat into a DB-independent context contract. */
 export function adaptAuthorizedChatHistory(input: AuthorizedChatHistoryInput): RawContextMessage[] {
   if (input.authenticatedUserId !== input.ownerUserId) {
