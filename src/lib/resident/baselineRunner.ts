@@ -66,11 +66,13 @@ export class BaselineRunner implements AgentRunner {
     }
   }
 
-  async onUserMessage(event: UserMessageEvent): Promise<void> {
+  async onUserMessage(event: UserMessageEvent, _ctx: AgentRunContext): Promise<void> {
+    void _ctx;
     throw new AgentLoopNotWiredError(`user_message (channel ${event.channel.type})`);
   }
 
-  async onMarketEvent(event: MarketEvent): Promise<void> {
+  async onMarketEvent(event: MarketEvent, _ctx: AgentRunContext): Promise<void> {
+    void _ctx;
     throw new AgentLoopNotWiredError(`market_event (${event.event})`);
   }
 }

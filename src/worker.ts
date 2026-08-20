@@ -21,7 +21,7 @@ import { createLogger } from "./lib/logger";
 import { shutdownQueue, startWorker } from "./lib/queue";
 import { createEventBus } from "./lib/resident/bus";
 import { ResidentHost } from "./lib/resident/host";
-import { BaselineRunner } from "./lib/resident/baselineRunner";
+import { ResidentAgentRunner } from "./lib/resident/residentAgentRunner";
 
 const log = createLogger("worker");
 
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
 
   const host = new ResidentHost({
     bus: createEventBus(),
-    runner: new BaselineRunner(),
+    runner: new ResidentAgentRunner(),
     concurrency: Number(process.env.RESIDENT_CONCURRENCY || 8),
     healthPort: Number(process.env.RESIDENT_HEALTH_PORT || 8791),
     maxUptimeMs: Number(process.env.RESIDENT_MAX_UPTIME_MS || 24 * 60 * 60 * 1000),
