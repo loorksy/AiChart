@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Cable, Moon, Save, Sparkles, Sun, User, X } from "lucide-react";
+import { Cable, Moon, Sparkles, Sun, User, X } from "lucide-react";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
 import { TelegramLinkCard } from "@/components/settings/TelegramLinkCard";
 import { BrokerLinkCard } from "@/components/settings/BrokerLinkCard";
@@ -12,7 +12,6 @@ import { AgentMemoryPanel } from "@/components/settings/AgentMemoryPanel";
 
 import { Surface } from "@/components/foundation";
 import { Button, buttonVariants } from "@/components/squareui/button";
-import { Checkbox } from "@/components/squareui/checkbox";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { useLocale } from "@/hooks/useLocale";
 import {
@@ -35,7 +34,6 @@ type TabId = SettingsSectionId | "subscription";
  */
 const TAB_ICONS = {
   profile: User,
-  alerts: Bell,
   appearance: Sun,
   integrations: Cable,
   skills: Sparkles,
@@ -87,10 +85,7 @@ export default function SettingsClient({
     initialTab && tabs.some((item) => item.id === initialTab) ? initialTab : tabs[0]?.id ?? "profile",
   );
   const tab = embedMode ? (controlledTab ?? uncontrolledTab) : pathTab;
-  const [settings, setSettings] = useState(initialSettings);
-  const [saved, setSaved] = useState(initialSettings);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  void initialSettings;
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const tabListRef = useRef<HTMLElement | null>(null);
   const { theme, setTheme } = useTheme();
@@ -102,10 +97,9 @@ export default function SettingsClient({
    * tabs must not be what discards them. Reporting dirtiness upward lets a host
    * refuse to leave on top of unsaved input.
    */
-  const dirty =
-    Boolean(settings.alerts_enabled) !== Boolean(saved.alerts_enabled) ||
-    Boolean(settings.alert_trades) !== Boolean(saved.alert_trades) ||
-    Boolean(settings.alert_signals) !== Boolean(saved.alert_signals);
+  // Every remaining section lands its edits through its own Save action, so
+  // nothing can be left half-entered when switching tabs.
+  const dirty = false;
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -131,31 +125,6 @@ export default function SettingsClient({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [embedMode, requestClose]);
-
-  async function save(patch: Record<string, unknown>) {
-    setSaving(true);
-    setMessage(null);
-    try {
-      const response = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? t("settings.save_failed"));
-      if (data.settings) {
-        setSettings(data.settings as TradingSettings);
-        setSaved(data.settings as TradingSettings);
-      } else {
-        setSaved(settings);
-      }
-      setMessage(t("settings.saved"));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("settings.save_failed"));
-    } finally {
-      setSaving(false);
-    }
-  }
 
   const onTabKeyDown = (event: React.KeyboardEvent) => {
     const forward = dir === "rtl" ? "ArrowLeft" : "ArrowRight";
@@ -254,51 +223,10 @@ export default function SettingsClient({
 
       {tab === "integrations" && (
         <div className="space-y-4">
+          <TelegramLinkCard />
           <BrokerLinkCard />
           <McpConnectCard />
         </div>
-      )}
-
-      {tab === "alerts" && (
-        <>
-          <TelegramLinkCard />
-          <Surface padding="lg" className="space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">{t("settings.tab.alerts")}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t("settings.alerts.description")}
-              </p>
-            </div>
-            {([
-              ["alerts_enabled", "settings.alerts.enabled"],
-              ["alert_trades", "settings.alerts.trades"],
-              ["alert_signals", "settings.alerts.signals"],
-            ] as const).map(([key, label]) => (
-              <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-[var(--radius)] bg-muted/50 px-4 transition-colors hover:bg-muted/70">
-                <span className="text-sm font-medium">{t(label)}</span>
-                <Checkbox
-                  checked={Boolean(settings[key])}
-                  onCheckedChange={(checked) =>
-                    setSettings((current) => ({ ...current, [key]: checked ? 1 : 0 }))
-                  }
-                />
-              </label>
-            ))}
-            <Button
-              size="xl"
-              disabled={saving}
-              onClick={() => void save({ alerts_enabled: Boolean(settings.alerts_enabled), alert_trades: Boolean(settings.alert_trades), alert_signals: Boolean(settings.alert_signals) })}
-            >
-              <Save className="h-4 w-4" aria-hidden />
-              {saving ? t("settings.saving") : t("settings.alerts.save")}
-            </Button>
-            {message && (
-              <p role="status" className="text-sm text-muted-foreground">
-                {message}
-              </p>
-            )}
-          </Surface>
-        </>
       )}
 
       {tab === "skills" && <UserSkillsPanel />}

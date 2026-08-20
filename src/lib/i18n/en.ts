@@ -595,7 +595,6 @@ export const en = {
   "settings.tab.account": "Account",
   "settings.tab.appearance": "Appearance",
   "settings.tab.connections": "Connections",
-  "settings.tab.alerts": "Alerts",
   "settings.account.description": "Sign-in and profile information.",
   "settings.email": "Email",
   "settings.status": "Status",
@@ -614,11 +613,6 @@ export const en = {
   "settings.memory.source.daily_summary": "From the daily summary",
   "settings.appearance.description": "Applied immediately across every screen.",
   "settings.theme.system": "System",
-  "settings.alerts.description": "Choose which events you want to receive.",
-  "settings.alerts.enabled": "Enable alerts",
-  "settings.alerts.trades": "Trade updates",
-  "settings.alerts.signals": "New recommendations",
-  "settings.alerts.save": "Save alerts",
   "settings.trading.only_setting": "The only trading setting",
   "settings.trading.description":
     "The maximum percentage of equity that may be lost at the trade stop. It never changes the direction or the plan.",
@@ -958,13 +952,6 @@ export const en = {
   "ev.grade.unavailable": "Unavailable",
 
   // Notification center
-  "alerts.title": "Notifications",
-  "alerts.open": "Open notifications",
-  "alerts.empty": "No notifications yet.",
-  "alerts.mark_all": "Mark all read",
-  "alerts.prefs": "Alert preferences",
-  "alerts.reconnecting": "Reconnecting…",
-  "alerts.error": "Could not load notifications.",
 
   // Performance journal
   "nav.journal": "Journal",

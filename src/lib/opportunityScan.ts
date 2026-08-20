@@ -15,7 +15,6 @@ import {
 import { scanForexSymbol, type OpportunityCandidate } from "./monitor";
 import { runUnifiedChartAgent } from "./agent/orchestrator";
 import { newId } from "./agent/activity";
-import { dispatchAlert, type DeliveryResult } from "./alerts";
 import { normalizeInterval } from "./intervals";
 import type { Recommendation, TradingSettings, AdminLimits } from "./types";
 import type { MarketType } from "./markets/types";
@@ -39,7 +38,6 @@ export interface OpportunityScanResult {
     recommendation: Recommendation | null;
     reply: string;
   };
-  telegram?: { technical?: DeliveryResult; final?: DeliveryResult };
   errors: string[];
 }
 
@@ -111,15 +109,6 @@ export async function runOpportunityScan(
   const top = result.candidates.slice(0, 3);
   let best: Recommendation | null = null;
   let reply = "";
-  let finalDelivery: DeliveryResult | undefined;
-  result.telegram = {
-    technical: await dispatchAlert(userId, {
-      type: "signal",
-      title: `مرشح للمراجعة — ${top[0].symbol}`,
-      text: `رصد المسح أدلة أولية على ${top[0].symbol}. يجري الآن تقييمها بواسطة مساعد Lonora.`,
-      symbol: top[0].symbol,
-    }),
-  };
 
   for (const candidate of top) {
     try {
@@ -146,10 +135,8 @@ export async function runOpportunityScan(
           confidence: Math.round(decision.confidence * 100),
           timeframe: candidate.interval,
         } as Recommendation;
-        // runUnifiedChartAgent already persisted this recommendation and announced it
-        // exactly once through the lifecycle notifier's dedupe path (opportunity_created).
-        // Sending a second, undeduped alert here would double-notify the user for one
-        // opportunity — see docs/UNIFIED_AGENT_COMPLETION_AUDIT.md single-announcer contract.
+        // runUnifiedChartAgent already persisted this recommendation and recorded
+        // it exactly once through the lifecycle ledger's dedupe path.
         break;
       }
     } catch (error) {
@@ -157,15 +144,6 @@ export async function runOpportunityScan(
     }
   }
 
-  if (!best && reply) {
-    finalDelivery = await dispatchAlert(userId, {
-      type: "signal",
-      title: `لا توجد فرصة حالية — ${top[0].symbol}`,
-      text: reply,
-      symbol: top[0].symbol,
-    });
-  }
-  result.telegram.final = finalDelivery;
   result.deepAnalysis = {
     symbol: best?.symbol ?? top[0].symbol,
     recommendation: best,

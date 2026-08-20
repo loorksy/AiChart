@@ -12,7 +12,6 @@ export const SETTINGS_ROOT = "/console/settings" as const;
 
 export const SETTINGS_SECTIONS = [
   { id: "profile", slug: "account", labelKey: "settings.tab.account" },
-  { id: "alerts", slug: "alerts", labelKey: "settings.tab.alerts" },
   { id: "appearance", slug: "appearance", labelKey: "settings.tab.appearance" },
   { id: "integrations", slug: "connections", labelKey: "settings.tab.connections" },
   { id: "skills", slug: "skills", labelKey: "skills.title" },

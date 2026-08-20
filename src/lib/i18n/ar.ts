@@ -580,7 +580,6 @@ export const ar: Record<TranslationKey, string> = {
   "settings.tab.account": "الحساب",
   "settings.tab.appearance": "المظهر",
   "settings.tab.connections": "الاتصالات",
-  "settings.tab.alerts": "التنبيهات",
   "settings.account.description": "بيانات الدخول والملف الشخصي.",
   "settings.email": "البريد الإلكتروني",
   "settings.status": "الحالة",
@@ -599,11 +598,6 @@ export const ar: Record<TranslationKey, string> = {
   "settings.memory.source.daily_summary": "من الملخص اليومي",
   "settings.appearance.description": "يُطبّق فوراً على جميع الشاشات.",
   "settings.theme.system": "حسب الجهاز",
-  "settings.alerts.description": "اختر الأحداث التي تريد استلامها.",
-  "settings.alerts.enabled": "تفعيل التنبيهات",
-  "settings.alerts.trades": "تحديثات الصفقات",
-  "settings.alerts.signals": "التوصيات الجديدة",
-  "settings.alerts.save": "حفظ التنبيهات",
   "settings.trading.only_setting": "الإعداد الوحيد للتداول",
   "settings.trading.description":
     "النسبة القصوى من Equity التي يمكن خسارتها عند وقف الصفقة. لا تغيّر قرار BUY أو SELL أو WAIT.",
@@ -943,13 +937,6 @@ export const ar: Record<TranslationKey, string> = {
   "ev.grade.unavailable": "غير متاح",
 
   // Notification center
-  "alerts.title": "الإشعارات",
-  "alerts.open": "فتح الإشعارات",
-  "alerts.empty": "لا إشعارات بعد.",
-  "alerts.mark_all": "تحديد الكل كمقروء",
-  "alerts.prefs": "تفضيلات التنبيهات",
-  "alerts.reconnecting": "جارٍ إعادة الاتصال…",
-  "alerts.error": "تعذّر تحميل الإشعارات.",
 
   // Performance journal
   "nav.journal": "سجل الأداء",

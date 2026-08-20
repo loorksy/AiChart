@@ -203,25 +203,6 @@ export interface SemanticMemory {
   strategy_id?: string | null;
 }
 
-export type AlertType =
-  | "trade_executed"
-  | "trade_closed"
-  | "trade_failed"
-  | "signal";
-
-export interface AlertLog {
-  id: number;
-  user_id: number;
-  type: AlertType;
-  title: string;
-  body: string | null;
-  symbol: string | null;
-  image_url?: string | null;
-  delivered: number;
-  read_at: string | null;
-  created_at: string;
-}
-
 /** Per-symbol contract spec reported by the broker. */
 export interface EaSymbolSpec {
   symbol: string;

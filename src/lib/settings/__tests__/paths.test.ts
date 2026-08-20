@@ -18,7 +18,6 @@ describe("settings paths", () => {
   it("gives every section its own URL under /console/settings", () => {
     assert.equal(SETTINGS_ROOT, "/console/settings");
     assert.equal(settingsPath("profile"), "/console/settings/account");
-    assert.equal(settingsPath("alerts"), "/console/settings/alerts");
     assert.equal(settingsPath("appearance"), "/console/settings/appearance");
     assert.equal(settingsPath("integrations"), "/console/settings/connections");
     assert.equal(settingsPath("skills"), "/console/settings/skills");

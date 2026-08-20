@@ -4,7 +4,6 @@
  */
 
 import dns from "node:dns";
-import { getTelegramChatId } from "./store";
 import { getPublicAppUrl } from "./appUrl";
 import { createLogger } from "./logger";
 import { splitTelegramMessage } from "./telegram/html";
@@ -147,22 +146,6 @@ async function callOnce(
 export type InlineButton =
   | { text: string; callback_data: string }
   | { text: string; url: string };
-
-/** Best-effort notification to a user's linked Telegram (no-op if unlinked). */
-export async function notifyUser(
-  userId: number,
-  text: string,
-  buttons?: InlineButton[][],
-): Promise<void> {
-  if (!isTelegramConfigured()) return;
-  const chatId = await getTelegramChatId(userId);
-  if (!chatId) return;
-  try {
-    await sendMessage(chatId, text, buttons);
-  } catch (e) {
-    console.error("[telegram] notify failed", e);
-  }
-}
 
 export async function sendMessage(
   chatId: string | number,
@@ -381,42 +364,6 @@ export async function sendPhotoBuffer(
   }
 }
 
-/** Sends a chart screenshot with optional caption to a linked user. */
-export async function notifyUserPhoto(
-  userId: number,
-  photoUrl: string,
-  caption?: string,
-  buttons?: InlineButton[][],
-): Promise<void> {
-  if (!isTelegramConfigured()) return;
-  const chatId = await getTelegramChatId(userId);
-  if (!chatId) return;
-  try {
-    await sendPhoto(chatId, photoUrl, caption, buttons);
-  } catch (e) {
-    console.error("[telegram] photo notify failed", e);
-    if (caption) await notifyUser(userId, caption, buttons);
-  }
-}
-
-/** Sends PNG bytes directly (avoids long QuickChart URLs). */
-export async function notifyUserPhotoBuffer(
-  userId: number,
-  buffer: Buffer,
-  caption?: string,
-  buttons?: InlineButton[][],
-): Promise<void> {
-  if (!isTelegramConfigured()) return;
-  const chatId = await getTelegramChatId(userId);
-  if (!chatId) return;
-  try {
-    await sendPhotoBuffer(chatId, buffer, caption, buttons);
-  } catch (e) {
-    console.error("[telegram] photo buffer notify failed", e);
-    if (caption) await notifyUser(userId, caption, buttons);
-  }
-}
-
 export async function sendVoice(
   chatId: string | number,
   buffer: Buffer,
@@ -445,23 +392,6 @@ export async function sendVoice(
   };
   if (!data.ok) {
     throw new Error(data.description || "Telegram sendVoice failed");
-  }
-}
-
-/** Sends synthesized voice clip to a linked user. */
-export async function notifyUserVoice(
-  userId: number,
-  buffer: Buffer,
-  caption?: string,
-): Promise<void> {
-  if (!isTelegramConfigured()) return;
-  const chatId = await getTelegramChatId(userId);
-  if (!chatId) return;
-  try {
-    await sendVoice(chatId, buffer, caption);
-  } catch (e) {
-    console.error("[telegram] voice notify failed", e);
-    if (caption) await notifyUser(userId, caption);
   }
 }
 

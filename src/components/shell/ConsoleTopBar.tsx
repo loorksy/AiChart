@@ -3,7 +3,6 @@
 import { CandlestickChart, PanelLeft, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { NotificationCenter } from "@/components/agent/NotificationCenter";
 import { BalanceChip } from "@/components/shell/BalanceChip";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { useLocale } from "@/hooks/useLocale";
@@ -166,7 +165,6 @@ export function ConsoleTopBar({
               />
             </button>
           )}
-          <NotificationCenter />
           <SidebarProfileMenu variant="topbar" displayName={displayName} />
         </div>
         {canScrollEnd && (

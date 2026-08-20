@@ -1,22 +1,19 @@
 /**
- * Delivery for recommendation lifecycle events
- * (docs/UNIFIED_AGENT_PLAN.md §14).
+ * The lifecycle event LEDGER.
  *
- * The sweep has always computed activation, targets, stops, and expiry — and
- * then said nothing. Connecting it is only half the job: a monitor that runs
- * every few minutes will happily repeat itself forever, and an operator who
- * gets five messages about the same candle stops reading all of them.
+ * This module used to deliver lifecycle events to the operator's phone
+ * (Telegram, web push, and the in-app feed). The platform no longer sends
+ * notifications of any kind, but the sweep, the re-evaluation cycle, and the
+ * economic-event monitor still need what delivery enforced as a side effect:
+ * exactly-once admission per real change. So the pipeline survives without
+ * its transport —
+ *  1. one RECORD per real change, enforced by a persisted dedupe key;
+ *  2. the per-symbol rate accounting and the silent/flag windows keep their
+ *     counters so every sweep's accounting still adds up.
  *
- * So delivery is governed by three rules:
- *  1. one message per real change, enforced by a persisted dedupe key;
- *  2. simultaneous changes to one plan arrive as a single grouped message;
- *  3. chatter is rate-capped per symbol, and terminal events are exempt —
- *     "your stop was hit" must never be dropped for being the sixth message.
+ * "delivered" in NotifyResult now means "recorded as a fresh event".
  */
 import { execute, queryOne } from "@/lib/db";
-import { dispatchAlert } from "@/lib/alerts";
-import { createLogger } from "@/lib/logger";
-import { lifecycleCard, lifecycleEventLabel } from "@/lib/telegramCards";
 import {
   opportunityCreatedEvent,
   type LifecycleEvent,
@@ -24,10 +21,11 @@ import {
 } from "./lifecycleEvents";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { metrics } from "@/lib/metrics";
+import { createLogger } from "@/lib/logger";
 
-const log = createLogger("lifecycle-notify");
+const log = createLogger("lifecycle-ledger");
 
-/** Non-terminal alerts per symbol per window. Terminal events ignore this. */
+/** Non-terminal records per symbol per window. Terminal events ignore this. */
 const RATE_LIMIT_PER_SYMBOL = 4;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 
@@ -97,16 +95,9 @@ async function symbolAlertCount(input: {
 }
 
 export interface NotifyOptions {
-  /**
-   * Record the events and suppress sending. Used for the first rollout window
-   * so the real message volume can be measured before anyone's phone is
-   * involved.
-   */
+  /** Claim dedupe keys but count the group as suppressed rather than fresh. */
   silent?: boolean;
-  /**
-   * Optional chart path for Telegram PNG cards (`/api/agent/chart/:id` or
-   * `/api/chart-image/:id`). Capture failures fall back to text in alerts.ts.
-   */
+  /** Kept for call-site compatibility; nothing renders a photo any more. */
   photoUrl?: string | null;
 }
 
@@ -190,52 +181,23 @@ export async function notifyLifecycleEvents(
       }
     }
 
-    const title = groupTitle(fresh);
-    const text = lifecycleCard(fresh);
-    const photoUrl =
-      options.photoUrl ?? resolveLifecyclePhotoUrl(fresh);
-    const delivery = await dispatchAlert(userId, {
-      type: "signal",
-      title,
-      text,
-      symbol: fresh[0]!.symbol,
-      photoUrl,
-    }).catch((error: unknown) => {
-      log.warn("lifecycle.alert.failed", {
-        userId,
-        symbol: fresh[0]!.symbol,
-        error: error instanceof Error ? error.name : "unknown",
-      });
-      return null;
-    });
-    if (delivery) result.delivered += 1;
+    // The claim above already persisted the record; a fresh group counts as
+    // one recorded change. Nothing is sent anywhere — by design.
+    result.delivered += 1;
   }
 
   return result;
 }
 
 /**
- * Announce a plan's creation through the SAME dedupe/rate-limit/flag pipeline
+ * Record a plan's creation through the SAME dedupe/rate-limit/flag pipeline
  * as every other lifecycle event (plan §8 C.1).
  *
  * Called at canonical creation time with revision 1 — the revision the plan is
- * born with — so re-running the persist path, or the legacy chart alert firing
- * for the same plan, says nothing the second time. This is delivery only: it
- * decides nothing and never touches the recommendation.
+ * born with — so re-running the persist path stays a no-op the second time.
+ * This is bookkeeping only: it decides nothing and never touches the
+ * recommendation.
  */
-/**
- * Prefer an explicit photo URL; otherwise use the recommendation id when it is
- * a numeric row id so creation alerts can attach a platform chart PNG.
- */
-function resolveLifecyclePhotoUrl(
-  events: readonly LifecycleEvent[],
-): string | null {
-  const created = events.find((event) => event.type === "opportunity_created");
-  const id = created?.recommendationId ?? events[0]?.recommendationId;
-  if (id && /^\d+$/.test(id)) return `/api/agent/chart/${id}`;
-  return null;
-}
-
 export async function announceOpportunityCreated(
   userId: number,
   input: {
@@ -250,21 +212,5 @@ export async function announceOpportunityCreated(
   },
   options: NotifyOptions = {},
 ): Promise<NotifyResult> {
-  const photoUrl =
-    input.photoUrl ??
-    options.photoUrl ??
-    (/^\d+$/.test(input.recommendationId)
-      ? `/api/agent/chart/${input.recommendationId}`
-      : null);
-  return notifyLifecycleEvents(
-    userId,
-    [opportunityCreatedEvent(input)],
-    { ...options, photoUrl },
-  );
-}
-
-function groupTitle(events: LifecycleEvent[]): string {
-  const symbol = events[0]!.symbol;
-  if (events.length === 1) return `${symbol} · ${lifecycleEventLabel(events[0]!.type)}`;
-  return `${symbol} · ${events.length} تحديثات على التوصية`;
+  return notifyLifecycleEvents(userId, [opportunityCreatedEvent(input)], options);
 }

@@ -38,7 +38,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # invariants (hidden WAIT, wrong-mode execution, unexplained parity), 7-day
 # revision/re-evaluation activity from the tables, and process counters, then
 # sends one Telegram message per operator. GET the same path for a preview.
-0 18 * * 0 root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/weekly-report >/dev/null 2>&1
 
 # Historical case memory — nightly at 03:20 UTC, after the backtest sweep.
 # Walks the gold candle store and records what the market looked like at each

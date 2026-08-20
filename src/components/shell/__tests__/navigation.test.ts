@@ -58,7 +58,7 @@ test("shell mounts conversations for traders; admin uses admin nav", () => {
   assert.doesNotMatch(shell, /glass-panel/);
 });
 
-test("both consoles share one top bar: account, alerts, nav", () => {
+test("both consoles share one top bar: account and nav", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /<ConsoleTopBar/);
   assert.doesNotMatch(shell, /needsPageMenu/);
@@ -76,7 +76,6 @@ test("both consoles share one top bar: account, alerts, nav", () => {
   const order = [
     "mobile-menu-trigger",
     "topbar-scroll",
-    "NotificationCenter",
     "SidebarProfileMenu",
   ];
   let cursor = -1;

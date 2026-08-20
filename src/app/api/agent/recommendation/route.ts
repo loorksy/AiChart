@@ -534,7 +534,6 @@ export async function POST(req: NextRequest) {
         : null,
     };
     const attached = await attachChartToRecommendation(userId, enriched, {
-      notify: false,
       drawings,
     });
     enriched = attached.rec;

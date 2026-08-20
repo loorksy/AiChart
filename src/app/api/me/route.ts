@@ -9,7 +9,6 @@ import {
   getSettings,
   getLimits,
   getTodayUsage,
-  countUnreadAlerts,
 } from "@/lib/store";
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
 import { getAdminRole, permissionsForRole } from "@/lib/adminRoles";
@@ -64,6 +63,5 @@ export async function GET() {
       limit,
       remaining: Math.max(0, limit - used),
     },
-    unreadAlerts: await countUnreadAlerts(user.id),
   });
 }
