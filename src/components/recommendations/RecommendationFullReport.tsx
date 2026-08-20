@@ -1,32 +1,47 @@
 "use client";
 
 /**
- * Active recommendations with their full explainable state (Group 9).
+ * The recommendation's full explainable report, on its own page.
  *
- * Each card shows the three-layer plan from the effective revision — direction,
- * plan type, execution state, revision number, entry zone, activation
- * condition, validity, invalidation rule, alternative scenario — plus the
- * evidence card dimension by dimension (never one blended score), the decision
- * trace (hypotheses / chosen-because / plan-type-because), the last
- * re-evaluation trigger, and the last automatic-execution skip.
+ * The signals list deliberately shows only the compact verdict card; every
+ * deeper layer — the three-layer plan (direction, plan type, execution state),
+ * the revision number, entry zone, activation condition, validity,
+ * invalidation rule, alternative scenario, the evidence card dimension by
+ * dimension (never one blended score), the decision trace, the last
+ * re-evaluation trigger and the last automatic-execution skip — renders here.
+ *
+ * Active plans arrive enriched (ActiveRecommendationView); closed/history
+ * plans carry only the tracked shape, so every enriched section guards its
+ * own presence.
  */
-import { useCallback, useEffect, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
   Clock3,
   Eye,
-  RefreshCw,
   ScrollText,
   ShieldCheck,
   SkipForward,
-  TriangleAlert,
 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import type { ActiveRecommendationView } from "@/app/api/recommendations/active/route";
+import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import type { DimensionGrade, EvidenceDimension } from "@/lib/agent/evidenceDimensions";
+
+/** Active-only enrichments; absent on closed/history plans. */
+type Enrichment = Pick<
+  ActiveRecommendationView,
+  | "activationCondition"
+  | "tradability"
+  | "evidence"
+  | "decisionTrace"
+  | "lastReevaluation"
+  | "lastExecutionSkip"
+>;
+
+export type FullReportRecommendation = TrackedRecommendation & Partial<Enrichment>;
 
 const GRADE_CLASSES: Record<DimensionGrade, string> = {
   strong: "text-buy",
@@ -52,7 +67,7 @@ const EXEC_STATE_CLASSES: Record<string, string> = {
 
 /** Both spellings the revision bundles use for the dimension list. */
 function dimensionsOf(
-  evidence: { evidenceDimensions?: unknown; dimensions?: unknown } | null,
+  evidence: { evidenceDimensions?: unknown; dimensions?: unknown } | null | undefined,
 ): EvidenceDimension[] {
   if (!evidence) return [];
   const raw = evidence.evidenceDimensions ?? evidence.dimensions;
@@ -69,7 +84,7 @@ interface TraceHypothesis {
   opposing?: string[];
 }
 
-function traceOf(trace: Record<string, unknown> | null): {
+function traceOf(trace: Record<string, unknown> | null | undefined): {
   hypotheses: TraceHypothesis[];
   chosenBecause: string | null;
   planTypeBecause: string | null;
@@ -98,7 +113,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function ActiveRecommendationDetailCard({ rec }: { rec: ActiveRecommendationView }) {
+export function RecommendationFullReport({ rec }: { rec: FullReportRecommendation }) {
   const { t, dir, locale } = useLocale();
   const dims = dimensionsOf(rec.evidence);
   const trace = traceOf(rec.decisionTrace);
@@ -121,7 +136,7 @@ function ActiveRecommendationDetailCard({ rec }: { rec: ActiveRecommendationView
   return (
     <div
       dir={dir}
-      data-testid="active-recommendation-card"
+      data-testid="recommendation-full-report"
       className="rounded-xl border border-border bg-card p-3"
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -240,12 +255,12 @@ function ActiveRecommendationDetailCard({ rec }: { rec: ActiveRecommendationView
                     <span className="text-foreground">{h.scenario}</span>
                     {h.supporting?.length ? (
                       <span className="ms-1 text-buy">
-                        {t("rec.detail.trace.supporting")}: {h.supporting.join("، ")}
+                        {t("rec.detail.trace.supporting")}: {h.supporting.join(" · ")}
                       </span>
                     ) : null}
                     {h.opposing?.length ? (
                       <span className="ms-1 text-sell">
-                        {t("rec.detail.trace.opposing")}: {h.opposing.join("، ")}
+                        {t("rec.detail.trace.opposing")}: {h.opposing.join(" · ")}
                       </span>
                     ) : null}
                   </li>
@@ -291,104 +306,5 @@ function ActiveRecommendationDetailCard({ rec }: { rec: ActiveRecommendationView
         </p>
       ) : null}
     </div>
-  );
-}
-
-export function ActiveRecommendationsPanel() {
-  const { t, dir } = useLocale();
-  const [recs, setRecs] = useState<ActiveRecommendationView[] | null>(null);
-  const [error, setError] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/recommendations/active", { cache: "no-store" });
-      if (!res.ok) throw new Error("load failed");
-      const json = (await res.json()) as { recommendations?: ActiveRecommendationView[] };
-      setRecs(json.recommendations ?? []);
-      setError(false);
-    } catch {
-      setError(true);
-      setRecs((prev) => prev ?? []);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  return (
-    <section dir={dir} data-testid="active-recommendations-panel">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">
-          {t("rec.page.active")}
-          {recs?.length ? ` (${recs.length})` : ""}
-        </h2>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            void load().finally(() => setBusy(false));
-          }}
-          className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} aria-hidden />
-          {t("rec.page.refresh")}
-        </button>
-      </div>
-
-      {error ? (
-        <p className="mb-2 flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
-          <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
-          {t("rec.active.error")}
-        </p>
-      ) : null}
-
-      {recs == null ? null : recs.length === 0 ? (
-        <p className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-          {t("rec.active.empty")}
-        </p>
-      ) : (
-        (() => {
-          // Watch items are market views whose entry was graded unreachable —
-          // they live in their OWN section so an actionable list never shows a
-          // plan the operator cannot act on (tradability budget, Phase 1).
-          const watch = recs.filter((r) => r.tradability?.verdict === "watch_only");
-          const actionable = recs.filter((r) => r.tradability?.verdict !== "watch_only");
-          return (
-            <>
-              {actionable.length ? (
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {actionable.map((rec) => (
-                    <ActiveRecommendationDetailCard key={rec.id} rec={rec} />
-                  ))}
-                </div>
-              ) : (
-                <p className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-                  {t("rec.active.empty")}
-                </p>
-              )}
-              {watch.length ? (
-                <div className="mt-4" data-testid="watch-recommendations-section">
-                  <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                    <Eye className="h-4 w-4" aria-hidden />
-                    {t("rec.page.watch")} ({watch.length})
-                  </h3>
-                  <p className="mb-2 text-[11px] text-muted-foreground">
-                    {t("rec.watch.note")}
-                  </p>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {watch.map((rec) => (
-                      <ActiveRecommendationDetailCard key={rec.id} rec={rec} />
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </>
-          );
-        })()
-      )}
-    </section>
   );
 }

@@ -284,7 +284,10 @@ describe("the phone gets the same answer", () => {
 
   it("answers a refusal without dressing it as a plan", () => {
     const text = renderCardsForTelegram(deriveCards(minimalResult()));
-    assert.ok(text.includes("انتظار"));
+    // A refusal is "no recommendation", never a WAIT verdict — the platform
+    // decision layer only answers buy or sell.
+    assert.ok(text.includes("لا توصية"));
+    assert.ok(!text.includes("انتظار"));
     assert.ok(!text.includes("الدخول"), "a refusal must carry no entry price");
   });
 

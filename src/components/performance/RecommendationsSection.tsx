@@ -1,12 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { AlertTriangle, ListChecks, RefreshCw } from "lucide-react";
 import { Button } from "@/components/squareui/button";
 import { useLocale } from "@/hooks/useLocale";
-import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
-import { ActiveRecommendationsPanel } from "@/components/recommendations/ActiveRecommendationsPanel";
+import { CompactSignalCard } from "@/components/recommendations/CompactSignalCard";
 import { EmptyState, SectionHeader, Surface } from "@/components/foundation";
 import { SkeletonBlock } from "@/components/ui/skeleton";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
@@ -113,11 +111,19 @@ export function RecommendationsSection() {
         </Surface>
       ) : null}
 
-      {/* Active plans render with their full explainable state (revision,
-          evidence dimensions, decision trace, triggers). */}
+      {/* The list is verdict-only: compact BUY/SELL cards in the agent's card
+          language. The full explainable report (evidence, trace, lifecycle)
+          lives on each card's standalone details page. */}
       {active.length > 0 && (
         <div className="mb-4">
-          <ActiveRecommendationsPanel />
+          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+            {t("rec.page.active")} ({active.length})
+          </h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            {active.map((r) => (
+              <CompactSignalCard key={r.id} rec={r} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -128,13 +134,7 @@ export function RecommendationsSection() {
           </h3>
           <div className="grid gap-3 md:grid-cols-2">
             {history.map((r) => (
-              <Link
-                key={r.id}
-                href={`/recommendations/${r.id}`}
-                className="block rounded-[var(--radius-lg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <RecommendationTrackerCard rec={r} />
-              </Link>
+              <CompactSignalCard key={r.id} rec={r} />
             ))}
           </div>
         </div>

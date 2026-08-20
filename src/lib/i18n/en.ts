@@ -89,7 +89,6 @@ export const en = {
   "bt.rolling_win_rate": "Win rate across trades (window 20)",
   "bt.curves_unavailable": "Curve data is not available for this backtest yet.",
   "model.picker_title": "Choose the AI model",
-  "model.platform_default": "Default (platform setting)",
 
   // Connected broker account
   "account.type.demo": "Demo account",
@@ -546,7 +545,7 @@ export const en = {
 
   "decision.buy": "Buy",
   "decision.sell": "Sell",
-  "decision.wait": "Wait",
+  "decision.wait": "No recommendation",
   "decision.informational": "Info",
   "decision.action_required": "Action required",
 
@@ -719,8 +718,8 @@ export const en = {
   "a11y.skip_to_content": "Skip to main content",
 
   // --- Parts 16-18: recommendation tracker + statistics ---
-  "rec.status.pending_entry": "Pending entry",
-  "rec.lifecycle.waiting_entry": "Waiting for entry",
+  "rec.status.pending_entry": "Activates at the entry zone",
+  "rec.lifecycle.waiting_entry": "Activates at the entry zone",
   "rec.lifecycle.active_now": "Active trade now",
   "rec.row.current_price": "Current",
   "rec.market_view": "Market view — no executable levels yet",
@@ -752,7 +751,7 @@ export const en = {
   "rec.copied": "Copied",
 
   "rec.tip.title": "Smart Tip",
-  "rec.tip.pending": "Waiting for price to reach the entry zone.",
+  "rec.tip.pending": "Activates when price reaches the entry zone.",
   "rec.tip.triggered": "The trade is active and tracked automatically.",
   "rec.tip.tp1": "After TP1 is reached, consider moving stop loss to breakeven.",
   "rec.tip.tp2": "After TP2, lock partial profit and trail the rest.",
@@ -899,10 +898,11 @@ export const en = {
   "rec.active.error": "Could not load active recommendations.",
   "rec.card.buy": "Buy recommendation",
   "rec.card.sell": "Sell recommendation",
+  "rec.card.read_details": "Read details",
   "rec.badge.hit": "Hit",
   "rec.badge.pending": "Not reached",
   "rec.footer.valid_now": "The recommendation is live now.",
-  "rec.footer.awaiting_activation": "Waiting for the activation conditions.",
+  "rec.footer.awaiting_activation": "Activates once the entry condition is met.",
   "rec.footer.expired": "The recommendation expired before completing.",
   "rec.footer.invalidated": "The recommendation was invalidated by a structure change.",
   "rec.footer.blocked": "Blocked by an execution obstacle — not a market verdict.",
@@ -925,7 +925,7 @@ export const en = {
   "rec.setup_type.breakout_retest": "Breakout retest",
   "rec.detail.execution_state": "Execution state",
   "rec.exec_state.valid_now": "Valid now",
-  "rec.exec_state.awaiting_activation": "Awaiting activation",
+  "rec.exec_state.awaiting_activation": "Conditional on activation",
   "rec.exec_state.expired": "Expired",
   "rec.exec_state.invalidated": "Invalidated",
   "rec.exec_state.blocked": "Blocked",

@@ -88,7 +88,6 @@ export const ar: Record<TranslationKey, string> = {
   "bt.rolling_win_rate": "نسبة النجاح عبر الصفقات (نافذة 20)",
   "bt.curves_unavailable": "بيانات المنحنى غير متاحة لهذا الاختبار حالياً.",
   "model.picker_title": "اختر نموذج الذكاء الاصطناعي",
-  "model.platform_default": "الافتراضي (إعداد المنصة)",
 
   // حساب الوسيط المربوط
   "account.type.demo": "حساب تجريبي",
@@ -531,7 +530,7 @@ export const ar: Record<TranslationKey, string> = {
 
   "decision.buy": "شراء",
   "decision.sell": "بيع",
-  "decision.wait": "انتظار",
+  "decision.wait": "لا توصية",
   "decision.informational": "معلومة",
   "decision.action_required": "يتطلب إجراء",
 
@@ -704,8 +703,8 @@ export const ar: Record<TranslationKey, string> = {
   "a11y.skip_to_content": "الانتقال إلى المحتوى الرئيسي",
 
   // --- Parts 16-18: recommendation tracker + statistics ---
-  "rec.status.pending_entry": "بانتظار الدخول",
-  "rec.lifecycle.waiting_entry": "بانتظار الدخول",
+  "rec.status.pending_entry": "تُفعَّل عند منطقة الدخول",
+  "rec.lifecycle.waiting_entry": "تُفعَّل عند منطقة الدخول",
   "rec.lifecycle.active_now": "صفقة نشطة الآن",
   "rec.row.current_price": "السعر الحالي",
   "rec.market_view": "رؤية سوقية — لا مستويات قابلة للتنفيذ بعد",
@@ -737,7 +736,7 @@ export const ar: Record<TranslationKey, string> = {
   "rec.copied": "تم النسخ",
 
   "rec.tip.title": "نصيحة ذكية",
-  "rec.tip.pending": "بانتظار وصول السعر إلى منطقة الدخول.",
+  "rec.tip.pending": "تُفعَّل عند وصول السعر إلى منطقة الدخول.",
   "rec.tip.triggered": "الصفقة نشطة وتُتابَع تلقائياً.",
   "rec.tip.tp1": "بعد وصول TP1، حرّك وقف الخسارة إلى نقطة الدخول لحماية الصفقة.",
   "rec.tip.tp2": "بعد TP2، ثبّت جزءاً من الربح وتابع البقية.",
@@ -884,10 +883,11 @@ export const ar: Record<TranslationKey, string> = {
   "rec.active.error": "تعذّر تحميل التوصيات النشطة.",
   "rec.card.buy": "توصية شراء",
   "rec.card.sell": "توصية بيع",
+  "rec.card.read_details": "قراءة التفاصيل",
   "rec.badge.hit": "تحقق",
   "rec.badge.pending": "لم يتحقق",
   "rec.footer.valid_now": "التوصية نشطة الآن.",
-  "rec.footer.awaiting_activation": "بانتظار تحقق شروط التفعيل.",
+  "rec.footer.awaiting_activation": "تُفعَّل عند تحقق شرط الدخول.",
   "rec.footer.expired": "انتهت صلاحية التوصية قبل اكتمالها.",
   "rec.footer.invalidated": "أُبطلت التوصية بعد تغيّر البنية السعرية.",
   "rec.footer.blocked": "متوقفة لعائق تنفيذي — ليس حكمًا على السوق.",
@@ -910,7 +910,7 @@ export const ar: Record<TranslationKey, string> = {
   "rec.setup_type.breakout_retest": "اختراق وإعادة اختبار",
   "rec.detail.execution_state": "حالة التنفيذ",
   "rec.exec_state.valid_now": "صالح الآن",
-  "rec.exec_state.awaiting_activation": "بانتظار التفعيل",
+  "rec.exec_state.awaiting_activation": "مشروطة بالتفعيل",
   "rec.exec_state.expired": "منتهي",
   "rec.exec_state.invalidated": "ملغى",
   "rec.exec_state.blocked": "محجوب",

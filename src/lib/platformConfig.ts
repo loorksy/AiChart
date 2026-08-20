@@ -73,7 +73,7 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     group: "ai",
     secret: false,
     plainStorage: false,
-    placeholder: "claude-opus-5",
+    placeholder: "claude-sonnet-4-6",
   },
   {
     // Both quick-model keys are optional: llm.ts falls back to the deep model

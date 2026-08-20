@@ -51,7 +51,7 @@ function deriveDisplayState(rec: TrackedRecommendation): DisplayState {
 
 /**
  * Chip tones per state — mirrors the canonical EXEC_STATE_CLASSES in
- * ActiveRecommendationsPanel (DESIGN.md §4: copy those, don't reinvent).
+ * RecommendationFullReport (DESIGN.md §4: copy those, don't reinvent).
  */
 const PILL_CLASSES: Record<DisplayState, string> = {
   valid_now: "border-buy/45 bg-buy/10 text-buy",
