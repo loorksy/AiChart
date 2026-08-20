@@ -1,13 +1,34 @@
 {
   "botCommands": [
-    { "command": "qaima", "description": "القائمة" },
-    { "command": "tawsia", "description": "توصية الذهب" },
-    { "command": "chart", "description": "صورة الشارت" },
-    { "command": "status", "description": "حالة السوق" }
+    {
+      "command": "qaima",
+      "description": "القائمة"
+    },
+    {
+      "command": "tawsia",
+      "description": "توصية الذهب"
+    },
+    {
+      "command": "chart",
+      "description": "صورة الشارت"
+    },
+    {
+      "command": "status",
+      "description": "حالة السوق"
+    },
+    {
+      "command": "model",
+      "description": "اختيار النموذج"
+    }
   ],
   "replyKeyboard": [
-    ["توصية الذهب", "صورة الشارت"],
-    ["حالة السوق"]
+    [
+      "توصية الذهب",
+      "صورة الشارت"
+    ],
+    [
+      "حالة السوق"
+    ]
   ],
   "menuActions": {
     "qaima": "القائمة",
@@ -30,6 +51,8 @@
     "iadadat": "القائمة",
     "forex": "أعطني توصية على الذهب",
     "demo": "القائمة",
-    "live": "القائمة"
+    "live": "القائمة",
+    "model": "اختيار النموذج",
+    "اختيار النموذج": "اختيار النموذج"
   }
 }

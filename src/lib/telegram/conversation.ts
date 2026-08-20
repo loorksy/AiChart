@@ -17,10 +17,11 @@
  */
 import { DISPLAY_NAME_AR } from "@/lib/gold";
 import { t } from "@/lib/i18n";
-import { CHART_ACTION, resolveUserMenuInput } from "@/lib/telegramCommands";
+import { CHART_ACTION, MODEL_ACTION, resolveUserMenuInput } from "@/lib/telegramCommands";
 
 export type TelegramCommand =
   | { kind: "chart_photo" }
+  | { kind: "model_menu" }
   | { kind: "prompt"; message: string };
 
 /**
@@ -32,6 +33,10 @@ export function resolveTelegramCommand(raw: string): TelegramCommand | null {
   const mapped = resolveUserMenuInput(trimmed);
   if (mapped === CHART_ACTION || trimmed === CHART_ACTION) {
     return { kind: "chart_photo" };
+  }
+  // Mechanical like /chart: the model menu renders a keyboard, not prose.
+  if (mapped === MODEL_ACTION || trimmed === MODEL_ACTION) {
+    return { kind: "model_menu" };
   }
   if (mapped) return { kind: "prompt", message: mapped };
   return null;

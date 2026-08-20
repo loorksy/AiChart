@@ -335,7 +335,7 @@ export interface UnifiedAgentInput {
    * not of a second decision path. Labelling it is what lets the parity log show
    * that a decision made through MCP and one made in chat came from one engine.
    */
-  surface?: "platform" | "mcp" | "internal";
+  surface?: "platform" | "mcp" | "internal" | "telegram";
   /**
    * A re-evaluation runs the identical evidence and decision pipeline, but it
    * must not create a second recommendation or recursively enqueue research.

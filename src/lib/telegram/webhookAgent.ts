@@ -21,10 +21,21 @@ import { DATA_SYMBOL } from "@/lib/gold";
 import { getPublicAppUrl } from "@/lib/appUrl";
 import {
   consumeLinkCode,
+  getSettings,
   getUserByTelegramChatId,
   logAudit,
   setTelegramChatId,
+  updateSettings,
 } from "@/lib/store";
+import { resolveUserModelSelection, withRequestModel } from "@/lib/llm";
+import { withUsageContext } from "@/lib/billing/usageMeter";
+import { getPlatformValueAsync } from "@/lib/platformConfig";
+import {
+  ANTHROPIC_MODEL_CHOICES,
+  OPENAI_MODEL_CHOICES,
+  PLATFORM_DEFAULT_MODEL_REF,
+  shortModelLabel,
+} from "@/lib/modelCatalog";
 import {
   answerCallbackQuery,
   dismissPersistentKeyboardOnce,
@@ -188,8 +199,106 @@ export function resetTelegramDedupe(): void {
 }
 
 /** Like OpenClaw's "Open Report" — a link on a recommendation, not a standing menu. */
-function reportLinkButtons(): InlineButton[][] {
-  return [[{ text: t("ar", "tg.open_report"), url: `${getPublicAppUrl()}/chat` }]];
+function reportLinkButtons(recommendationId?: number | string | null): InlineButton[][] {
+  const url = recommendationId
+    ? `${getPublicAppUrl()}/recommendations/${recommendationId}`
+    : `${getPublicAppUrl()}/chat`;
+  return [[{ text: t("ar", "tg.open_report"), url }]];
+}
+
+/**
+ * The Telegram surface's own model pick.
+ *
+ * Telegram is a separate agent surface: same brain, same tools, its own
+ * model. The pick is stored per user (`telegram_model_ref`), independent of
+ * the platform composer's `preferred_model_ref`, and applied at this
+ * boundary with `withRequestModel` exactly like the web routes do.
+ */
+const MODEL_CALLBACK_PREFIX = "mdl:";
+
+async function offeredTelegramModels(): Promise<{ ref: string; label: string }[]> {
+  const [openaiKey, anthropicKey] = await Promise.all([
+    getPlatformValueAsync("OPENAI_API_KEY"),
+    getPlatformValueAsync("ANTHROPIC_API_KEY"),
+  ]);
+  const offered: { ref: string; label: string }[] = [];
+  if (anthropicKey) {
+    offered.push(
+      ...ANTHROPIC_MODEL_CHOICES.map((m) => ({
+        ref: `anthropic/${m.id}`,
+        label: shortModelLabel(m.label),
+      })),
+    );
+  }
+  if (openaiKey) {
+    offered.push(
+      ...OPENAI_MODEL_CHOICES.map((m) => ({
+        ref: `openai/${m.id}`,
+        label: shortModelLabel(m.label),
+      })),
+    );
+  }
+  return offered;
+}
+
+async function sendModelMenu(
+  userId: number,
+  chatId: string,
+  replyToMessageId?: number,
+): Promise<void> {
+  const [settings, offered] = await Promise.all([
+    getSettings(userId),
+    offeredTelegramModels(),
+  ]);
+  if (!offered.length) {
+    await sendMessage(chatId, t("ar", "tg.model_none"), undefined, { replyToMessageId });
+    return;
+  }
+  const current = settings.telegram_model_ref ?? PLATFORM_DEFAULT_MODEL_REF;
+  const currentLabel =
+    offered.find((m) => m.ref === current)?.label ??
+    shortModelLabel(current.split("/").pop() ?? current);
+  const rows: InlineButton[][] = offered.map((m) => [
+    {
+      text: `${m.ref === current ? "✅ " : ""}${m.label}`,
+      callback_data: `${MODEL_CALLBACK_PREFIX}${m.ref}`,
+    },
+  ]);
+  const text = [
+    t("ar", "tg.model_menu_title"),
+    t("ar", "tg.model_current", { name: currentLabel }),
+  ].join("\n");
+  await sendMessage(chatId, text, rows, { replyToMessageId });
+}
+
+/** A tap on a model button: validate against the curated catalog, store, confirm. */
+async function handleModelCallback(
+  callback: TelegramCallback,
+): Promise<"answered" | "unlinked" | "ignored"> {
+  const userId = await getUserByTelegramChatId(callback.chatId);
+  if (userId == null) {
+    await answerCallbackQuery(callback.callbackId, t("ar", "tg.link_prompt")).catch(() => {});
+    return "unlinked";
+  }
+  const ref = callback.data.slice(MODEL_CALLBACK_PREFIX.length);
+  const selection = await resolveUserModelSelection(ref).catch(() => null);
+  if (!selection) {
+    await answerCallbackQuery(callback.callbackId, t("ar", "tg.model_invalid")).catch(() => {});
+    return "ignored";
+  }
+  await updateSettings(userId, { telegram_model_ref: ref });
+  await logAudit(userId, "telegram_model", ref);
+  const label = shortModelLabel(selection.model);
+  await answerCallbackQuery(callback.callbackId, t("ar", "tg.model_changed", { name: label })).catch(
+    () => {},
+  );
+  const confirmation = t("ar", "tg.model_changed", { name: label });
+  try {
+    await editMessageText(callback.chatId, callback.messageId, confirmation);
+  } catch {
+    await editMessageReplyMarkup(callback.chatId, callback.messageId).catch(() => {});
+  }
+  return "answered";
 }
 
 /**
@@ -268,6 +377,9 @@ export function parseTelegramStart(
 export async function handleTelegramCallback(
   callback: TelegramCallback,
 ): Promise<"linked" | "answered" | "unlinked" | "ignored" | "failed"> {
+  if (callback.data.startsWith(MODEL_CALLBACK_PREFIX)) {
+    return handleModelCallback(callback);
+  }
   const resolved = resolveInlineOption(callback.data, callback.chatId);
   if (!resolved) {
     await answerCallbackQuery(callback.callbackId, t("ar", "tg.option_expired")).catch(
@@ -384,6 +496,10 @@ export async function handleTelegramMessage(
       );
       return "answered";
     }
+    if (command?.kind === "model_menu") {
+      await sendModelMenu(userId, message.chatId, message.messageId);
+      return "answered";
+    }
     const turnMessage = command?.kind === "prompt" ? command.message : incoming;
 
     // ── Shared turn context: per-chat memory and session ─────────────────
@@ -479,13 +595,22 @@ export async function handleTelegramMessage(
     );
     await reporter.start();
 
-    const result = await runUnifiedChartAgent({
-      surface: "platform",
+    // Telegram is its own surface with its own per-user model pick — the
+    // same brain and tools answer, selected through the same validation the
+    // web composer uses. An unset/unavailable pick falls back to the
+    // platform default inside the LLM layer.
+    const modelSelection = await resolveUserModelSelection(
+      (await getSettings(userId).catch(() => null))?.telegram_model_ref,
+    ).catch(() => null);
+    const requestId = newId();
+    const result = await withUsageContext({ userId, kind: "analysis", requestId }, () =>
+      withRequestModel(modelSelection, () => runUnifiedChartAgent({
+      surface: "telegram",
       liveSession: false,
       userMessage: turnMessage,
       chartContext: { symbol: DATA_SYMBOL, interval: "15m", dataSource: "oanda" },
       requestContext: {
-        requestId: newId(),
+        requestId,
         userId,
         // Both narration channels reach the bubble: stages tick the task
         // checklist; visible activity sentences — authored by the specialist
@@ -503,7 +628,7 @@ export async function handleTelegramMessage(
       account: null,
       canExecute: false,
       locale: "ar",
-    });
+    })));
     // Stop the clocks BEFORE finalize: a trailing progress edit landing after
     // the answer would overwrite it.
     reporter.finish();
@@ -552,7 +677,7 @@ export async function handleTelegramMessage(
     }).catch(() => []);
     const extraButtons =
       result.decision === "buy" || result.decision === "sell"
-        ? reportLinkButtons()
+        ? reportLinkButtons(result.recommendationId)
         : undefined;
 
     await deliverReply({

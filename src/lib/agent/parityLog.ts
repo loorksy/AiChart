@@ -25,7 +25,7 @@ import { metrics } from "@/lib/metrics";
 
 const log = createLogger("agent:parity");
 
-export type DecisionSurface = "platform" | "mcp";
+export type DecisionSurface = "platform" | "mcp" | "telegram";
 
 /** Why two decisions on one moment differ. */
 export type DifferenceClass =
