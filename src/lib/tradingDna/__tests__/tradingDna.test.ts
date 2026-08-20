@@ -128,7 +128,9 @@ describe("Trading DNA evidence and metrics", () => {
     });
     assert.equal(generated.snapshot.userId, owner);
     assert.equal(generated.snapshot.version, 1);
-    assert.equal(generated.persona.persona, "trend");
+    // Canonical evidence records a single strategy ("direct_analysis"), so the
+    // persona derives from recorded holding times: 1-10h averages within a day.
+    assert.equal(generated.persona.persona, "intraday");
     assert.ok(generated.persona.confidence > 0);
     for (const key of [
       "risk_tolerance",

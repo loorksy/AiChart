@@ -39,7 +39,7 @@ describe("content seeding", () => {
     assert.ok(blog.length >= 2);
 
     const corpus = await content.docsCorpus();
-    assert.ok(corpus.includes("ربط MT5"), "corpus carries the docs");
+    assert.ok(corpus.includes("الشارت الذكي"), "corpus carries the docs");
   });
 });
 

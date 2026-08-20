@@ -102,7 +102,7 @@ export const REFERENCE_SCENARIO_COVERAGE: ScenarioCoverageOwner[] = [
   {
     scenarioId: "no_matching_strategy",
     testFile: "src/lib/agent/__tests__/doctrineScenarios.test.ts",
-    testName: "no matching strategy → plan stands, labelled as unsupported",
+    testName: "does not claim statistical support for a recommendation",
     kinds: ["contract"],
     executableAssertion: true,
     requiresIntegration: false,
