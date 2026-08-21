@@ -1,11 +1,13 @@
 import { query } from "@/lib/db";
+import { WIN_RATE_SAMPLE_FLOOR } from "@/lib/recommendations/recommendationStats";
 
 export interface AnalyticsGroup {
   key: string;
   total: number;
   wins: number;
   losses: number;
-  winRate: number;
+  /** 0..100; null below the sample-size floor — counts only, no percentage. */
+  winRate: number | null;
   averageR: number;
 }
 
@@ -13,8 +15,10 @@ export interface CanonicalRecommendationAnalytics {
   total: number;
   wins: number;
   losses: number;
-  winRate: number;
-  lossRate: number;
+  /** 0..100; null below the sample-size floor — counts only, no percentage. */
+  winRate: number | null;
+  /** 0..100; null below the sample-size floor — counts only, no percentage. */
+  lossRate: number | null;
   averageR: number;
   profitFactor: number | null;
   expectancy: number;
@@ -101,7 +105,10 @@ function group(items: Summary[], key: (item: Summary) => string): AnalyticsGroup
         total: values.length,
         wins,
         losses,
-        winRate: completed ? (wins / completed) * 100 : 0,
+        // A percentage from a handful of trades reads as knowledge the data
+        // does not contain. Below the floor: counts only, never a rate.
+        winRate:
+          completed >= WIN_RATE_SAMPLE_FLOOR ? (wins / completed) * 100 : null,
         averageR: mean(values.map((value) => value.r)),
       };
     })
@@ -132,8 +139,8 @@ export async function computeCanonicalRecommendationAnalytics(
     total: items.length,
     wins,
     losses,
-    winRate: completed ? (wins / completed) * 100 : 0,
-    lossRate: completed ? (losses / completed) * 100 : 0,
+    winRate: completed >= WIN_RATE_SAMPLE_FLOOR ? (wins / completed) * 100 : null,
+    lossRate: completed >= WIN_RATE_SAMPLE_FLOOR ? (losses / completed) * 100 : null,
     averageR: mean(items.map((item) => item.r)),
     profitFactor: negative > 0 ? positive / negative : positive > 0 ? null : 0,
     expectancy: mean(items.map((item) => item.r)),

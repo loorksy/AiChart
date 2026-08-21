@@ -55,8 +55,12 @@ describe("L2 scenario block", () => {
       resolve(process.cwd(), "src/lib/recommendations/canonical/analytics.ts"),
       "utf8",
     );
-    // The producer's formula, verbatim: a percent on 0-100.
-    assert.match(analytics, /winRate: completed \? \(wins \/ completed\) \* 100 : 0/);
+    // The producer's formula, verbatim: a percent on 0-100 — and null below
+    // the sample-size floor, which the consumer renders as counts only.
+    assert.match(
+      analytics,
+      /completed >= WIN_RATE_SAMPLE_FLOOR \? \(wins \/ completed\) \* 100 : null/,
+    );
 
     // So the consumer must render that number as-is.
     const block = buildScenarioBlock({

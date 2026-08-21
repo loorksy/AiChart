@@ -1,3 +1,4 @@
+import { WIN_RATE_SAMPLE_FLOOR } from "@/lib/recommendations/recommendationStats";
 import {
   evidenceFromBundle,
   mergeEvidence,
@@ -185,11 +186,14 @@ function winLossMetric(bundle: TradingDnaEvidenceBundle): TradingDnaMetric {
   const wins = recommendations.filter((item) => result.get(item.recommendationId) === "win").length;
   const losses = recommendations.length - wins;
   const evidence = evidenceForRecommendations(recommendations, bundle);
-  if (recommendations.length < 3) {
+  // The repo-wide sample-size floor: a win-rate percentage below it is a
+  // claim the data does not support, so the metric stays insufficient and
+  // the report shows counts through other metrics instead.
+  if (recommendations.length < WIN_RATE_SAMPLE_FLOOR) {
     return insufficient(
       "win_loss_behavior",
       recommendations.length,
-      3,
+      WIN_RATE_SAMPLE_FLOOR,
       "Canonical success/failure learning events per completed recommendation",
       evidence,
     );

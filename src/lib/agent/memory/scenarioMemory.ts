@@ -15,6 +15,7 @@
  * so nothing here can invent a number.
  */
 import { query } from "@/lib/db";
+import { t } from "@/lib/i18n";
 import {
   archiveSemanticMemory,
   insertSemanticMemory,
@@ -54,20 +55,29 @@ const WEAK_SCENARIO_WIN_PCT = 35;
 export function buildScenarioBlock(group: AnalyticsGroup): string {
   // analytics.group() already returns a percent ((wins / completed) * 100),
   // so this only rounds it. Scaling again turned a 60% record into "6000%".
-  const winPct = Math.round(group.winRate);
+  // Below the sample-size floor the analytics return null — the block then
+  // carries counts only, because a percentage from a handful of trades is a
+  // claim the data does not support.
+  const winPct = group.winRate == null ? null : Math.round(group.winRate);
   const avgR = Math.round(group.averageR * 100) / 100;
+  const counts = {
+    total: String(group.total),
+    wins: String(group.wins),
+    losses: String(group.losses),
+  };
   const lines = [
-    `ملف ${group.key} (من نتائج توصياتك المكتملة):`,
-    `- ${group.total} توصية مكتملة: ${group.wins} رابحة و${group.losses} خاسرة (نسبة النجاح ${winPct}%).`,
-    `- متوسط العائد المحقق ${avgR}R.`,
+    t("ar", "scenario.block.title", { symbol: group.key }),
+    winPct == null
+      ? t("ar", "scenario.block.counts_only", counts)
+      : t("ar", "scenario.block.with_rate", { ...counts, pct: String(winPct) }),
+    t("ar", "scenario.block.avg_r", { r: String(avgR) }),
   ];
   if (
     group.total >= SCENARIO_MIN_OBSERVATIONS &&
+    group.winRate != null &&
     group.winRate <= WEAK_SCENARIO_WIN_PCT
   ) {
-    lines.push(
-      `- سجلّك على هذا الرمز أضعف من المعتاد — دليل يستحق وزناً عند بناء خطة جديدة عليه.`,
-    );
+    lines.push(t("ar", "scenario.block.weak"));
   }
   return lines.join("\n");
 }

@@ -138,7 +138,6 @@
   "src/lib/agent/marketContext/buildAgentMarketContext.ts": 3,
   "src/lib/agent/marketContext/buildMarketNarrative.ts": 24,
   "src/lib/agent/marketContext/marketSyncGuard.ts": 5,
-  "src/lib/agent/memory/scenarioMemory.ts": 4,
   "src/lib/agent/parityLog.ts": 7,
   "src/lib/agent/quickPrompts.ts": 3,
   "src/lib/agent/recommendation/evaluateRecommendationStatus.ts": 7,
