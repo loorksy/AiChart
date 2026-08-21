@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Cable, Moon, Sparkles, Sun, User, X } from "lucide-react";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
+import { NotificationPrefsCard } from "@/components/settings/NotificationPrefsCard";
 import { TelegramLinkCard } from "@/components/settings/TelegramLinkCard";
 import { BrokerLinkCard } from "@/components/settings/BrokerLinkCard";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
@@ -224,6 +225,7 @@ export default function SettingsClient({
       {tab === "integrations" && (
         <div className="space-y-4">
           <TelegramLinkCard />
+          <NotificationPrefsCard />
           <BrokerLinkCard />
           <McpConnectCard />
         </div>
