@@ -360,27 +360,22 @@ export type ChartSnapshotBridgeResult = {
 
 function snapshotHonestyMeta(res: ChartSnapshotBridgeResult): Record<string, unknown> {
   const drawingsIncluded = res.drawings_included === true;
-  const fallback =
-    Boolean(res.fallback_reason) || res.image_source === "quickchart_fallback";
+  // The old image-source fallback check is gone: the live capture path never returns
+  // fallback_reason (a 503 failure is caught before this function ever runs), so it was dead.
   return {
     drawings_included: drawingsIncluded,
     studies_included: res.studies_included === true,
     fallback_reason: res.fallback_reason ?? null,
-    ...(fallback
+    ...(!drawingsIncluded
       ? {
           note:
-            "This image is NOT the operator's TradingView chart. Do not describe it as the user's chart. visual_confirmation must be not_checked.",
+            "drawings_included is false — visual_confirmation must be not_checked. Do not report confirmed against this picture.",
         }
-      : !drawingsIncluded
-        ? {
-            note:
-              "drawings_included is false — visual_confirmation must be not_checked. Do not report confirmed against this picture.",
-          }
-        : {}),
+      : {}),
   };
 }
 
-/** Handles JSON from POST /api/agent/chart/snapshot (platform, MT5, or QuickChart). */
+/** Handles JSON from POST /api/agent/chart/snapshot (platform or MT5). */
 export async function resolveChartSnapshotResponse(
   bridge: BridgeClient,
   res: ChartSnapshotBridgeResult,

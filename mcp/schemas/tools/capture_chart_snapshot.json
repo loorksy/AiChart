@@ -29,7 +29,7 @@
       "type": "string"
     },
     "include_drawings": {
-      "description": "Include drawings already rendered on the live TradingView chart (default true). When false the same TradingView path captures a clean chart — never a QuickChart substitute.",
+      "description": "Include drawings already rendered on the live TradingView chart (default true). When false the same live TradingView path captures a clean, undrawn chart.",
       "type": "boolean"
     },
     "include_studies": {
