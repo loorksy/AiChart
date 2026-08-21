@@ -80,10 +80,19 @@ export function buildGates(input: GateInputs): GateBuildResult {
   const gates: GateDefinition[] = [
     {
       id: "G1",
-      // An install with no calendar provider is a deployment gap, not a live
-      // outage; a configured provider that failed IS one and blocks.
-      required: input.newsProviderConfigured,
+      // ALWAYS required (owner decision): a news window that cannot be
+      // verified blocks publication regardless of WHY it cannot be verified.
+      // An install with no calendar provider used to pass here as a
+      // "deployment gap"; it now refuses by name, telling the operator the
+      // fix is configuration — never a silent pass on an unchecked calendar.
       run: async () => {
+        if (!input.newsProviderConfigured) {
+          return {
+            status: "unavailable",
+            reasonAr: t("ar", "gate.news.no_provider"),
+            evidence: { configured: false },
+          };
+        }
         if (!input.news) {
           return {
             status: "unavailable",

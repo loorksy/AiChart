@@ -166,7 +166,7 @@ describe("§16 critical reference scenarios", () => {
     assert.equal(stored.executionState, "awaiting_activation");
   });
 
-  it("calendar_provider_absent invents no events and still stores a plan", async () => {
+  it("calendar_provider_absent invents no events and refuses publication by name", async () => {
     const { newsProviderConfigured } = await import("@/lib/agent/news/newsProvider");
     const { runNewsMacroAgent } = await import("@/lib/agent/agents/newsMacroAgent");
     const { buildGates } = await import("@/lib/agent/gates/buildGates");
@@ -202,14 +202,33 @@ describe("§16 critical reference scenarios", () => {
     const result = await runGateChain(gates);
     const g1 = result.verdicts.find((verdict) => verdict.id === "G1");
     assert.equal(g1?.status, "unavailable", "an absent provider is reported, not passed off as clear");
-    assert.equal(
-      result.allowed,
-      true,
-      "an install with no calendar is a deployment gap, not a live hazard — it must not silence the platform",
-    );
+    // Owner decision: a news window that CANNOT be verified blocks publication
+    // — an unconfigured calendar included. The refusal names the gate and the
+    // fix (configure a provider), never a silent pass on an unchecked window.
+    assert.equal(result.allowed, false, "no provider → the platform refuses to publish");
+    assert.equal(result.vetoedBy?.id, "G1");
+    assert.match(result.vetoedBy?.reasonAr ?? "", /مزوّد/);
 
-    const plan = await createPlan();
-    assert.ok(plan.recommendationId > 0, "the plan still stores");
+    // And the write boundary honors the refused chain: recording it and then
+    // attempting the write is rejected — publication is impossible, not just
+    // discouraged.
+    const { recordGateChain, assertGateRecordsAllowCreation, GateRecordIncompleteError } =
+      await import("@/lib/recommendations/gateRecords");
+    await recordGateChain({
+      userId,
+      analysisId: "critical-no-provider",
+      symbol: "XAUUSD",
+      chainAllowed: result.allowed,
+      verdicts: result.verdicts,
+    });
+    await assert.rejects(
+      assertGateRecordsAllowCreation({
+        userId,
+        analysisId: "critical-no-provider",
+        symbol: "XAUUSD",
+      }),
+      (error: Error) => error instanceof GateRecordIncompleteError,
+    );
   });
 
   it("corrupt_market_data returns an operational block without a recommendation", async () => {

@@ -142,7 +142,7 @@ export const REFERENCE_SCENARIO_COVERAGE: ScenarioCoverageOwner[] = [
   {
     scenarioId: "calendar_provider_absent",
     testFile: "src/lib/agent/__tests__/criticalReferenceScenarios.integration.test.ts",
-    testName: "calendar_provider_absent invents no events and still stores a plan",
+    testName: "calendar_provider_absent invents no events and refuses publication by name",
     kinds: ["integration", "calendar", "database"],
     executableAssertion: true,
     requiresIntegration: true,

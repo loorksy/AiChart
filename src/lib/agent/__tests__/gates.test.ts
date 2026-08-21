@@ -124,6 +124,48 @@ describe("gate chain ordering and short-circuiting", () => {
   });
 });
 
+describe("G1 — an unverifiable news window refuses publication", () => {
+  const gateInputs = (configured: boolean) => ({
+    now: Date.now(),
+    news: null,
+    newsProviderConfigured: configured,
+    structure: null,
+    liquidity: null,
+    supplyDemand: null,
+    mtf: null,
+    atr: 4,
+    plan: {
+      direction: "buy" as const,
+      entryType: "limit_touch" as const,
+      entry: 4340.5,
+      stopLoss: 4334.5,
+      targets: [4352.5],
+    },
+    fetchLivePrice: async () => 4340.9,
+  });
+
+  it("no provider configured → the chain refuses, names G1, and names the fix", async () => {
+    const { buildGates } = await import("../gates/buildGates");
+    const { gates } = buildGates(gateInputs(false));
+    const result = await runGateChain(gates);
+    assert.equal(result.allowed, false, "an unchecked calendar never passes as a checked one");
+    assert.equal(result.vetoedBy?.id, "G1");
+    assert.equal(result.vetoedBy?.status, "unavailable");
+    // The reason is actionable: it names the missing provider, so the
+    // operator learns the fix is configuration, not waiting for the market.
+    assert.match(result.vetoedBy?.reasonAr ?? "", /مزوّد/);
+    assert.match(refusalSummaryAr(result) ?? "", /مزوّد/);
+  });
+
+  it("provider configured but the calendar did not answer → still refuses", async () => {
+    const { buildGates } = await import("../gates/buildGates");
+    const { gates } = buildGates(gateInputs(true));
+    const result = await runGateChain(gates);
+    assert.equal(result.allowed, false);
+    assert.equal(result.vetoedBy?.id, "G1");
+  });
+});
+
 describe("G1 — the news blackout window", () => {
   const T = Date.parse("2026-08-05T12:00:00Z");
   const cpi = { title: "US CPI", time: T, impact: "high" as const, currency: "USD" };

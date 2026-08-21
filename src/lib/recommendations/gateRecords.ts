@@ -163,8 +163,10 @@ export async function assertGateRecordsAllowCreation(
     throw new GateRecordVetoError(veto.gate_id, veto.gate_name, veto.reason_ar);
   }
 
-  // The chain's own allow decision covers required-unavailable policy (e.g. a
-  // configured news provider that failed is blocking; none configured is not).
+  // The chain's own allow decision covers required-unavailable policy. The
+  // news gate blocks whenever the window could not be verified — a failed
+  // provider AND an unconfigured one alike (owner decision): an unchecked
+  // calendar never authorizes a write.
   const allowed = rows.every(
     (row) => row.chain_allowed === true || Number(row.chain_allowed) === 1,
   );

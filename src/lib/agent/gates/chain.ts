@@ -30,14 +30,12 @@ export interface GateDefinition {
    * Whether THIS run's `unavailable` verdict blocks, overriding the static
    * table.
    *
-   * The distinction it exists for is between a provider that is DOWN and one
-   * that was never deployed. "The news feed we rely on stopped answering
-   * mid-analysis" is a live hazard: something changed and the plan would walk
-   * into it blind. "No news feed has ever been configured on this install" is a
-   * standing, admin-visible gap — treating it as a live hazard would make the
-   * platform permanently silent while telling the operator a falsehood about
-   * what just happened. The verdict is still reported honestly as
-   * `unavailable`; only whether it blocks is narrowed.
+   * Used today only to mark relic gates non-blocking (G5). The news gate
+   * deliberately does NOT narrow itself any more: by owner decision, a news
+   * window that cannot be verified blocks publication whether the provider
+   * failed mid-analysis or was never configured — the refusal names which,
+   * and the unconfigured case tells the operator the fix is configuration.
+   * An unchecked calendar never passes as a checked one.
    */
   required?: boolean;
 }

@@ -332,6 +332,7 @@ export const en = {
   "gate.refusal.veto": "No recommendation right now: {label}{detail}.",
   "gate.news.blocked":
     "High-impact news ({event}) — recommendations are blocked for {minutes} minutes.",
+  "gate.news.no_provider": "The news-block window cannot be verified: no economic-calendar provider is configured on this platform. No recommendation will be published until a provider is enabled (Forex Factory calendar or an FMP key) — an admin action, not a market wait.",
   "gate.news.calendar_timeout": "Could not reach the news calendar within the timeout.",
   "gate.news.window_unconfirmed": "The news window cannot be confirmed right now.",
   "gate.news.high_impact_window": "High-impact news window.",

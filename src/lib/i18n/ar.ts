@@ -330,6 +330,7 @@ export const ar: Record<TranslationKey, string> = {
   "gate.refusal.veto": "لا توجد توصية الآن: {label}{detail}.",
   "gate.news.blocked":
     "خبر عالي التأثير ({event}) — التوصيات محجوبة لمدة {minutes} دقيقة.",
+  "gate.news.no_provider": "لا يمكن التحقق من نافذة حظر الأخبار: لا مزوّد تقويم اقتصادي مهيأ على المنصة. لن تُنشر توصية قبل تفعيل مزوّد (تقويم Forex Factory أو مفتاح FMP) — هذا إجراء إداري وليس انتظار سوق.",
   "gate.news.calendar_timeout": "تعذّر الوصول إلى تقويم الأخبار خلال المهلة.",
   "gate.news.window_unconfirmed": "لا يمكن تأكيد نافذة الأخبار حالياً.",
   "gate.news.high_impact_window": "نافذة خبر عالي التأثير.",
