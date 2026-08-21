@@ -8,9 +8,11 @@
  * decision call in the same interleaved form.
  *
  * Best-effort by contract. A live chart tab can photograph the operator's
- * TradingView widget; unattended runs get an honest QuickChart fallback that
- * is never labelled as the user's chart. A missing live view degrades the
- * read rather than killing the analysis.
+ * TradingView widget — the ONLY accepted image source. Unattended runs
+ * (Telegram, cron, worker) get NO image: no rendered substitute, no stored
+ * snapshot — the frames are reported missing and the analysis proceeds on
+ * numbers alone, publishing normally. A missing live view degrades the read
+ * rather than killing the analysis.
  *
  * The degradation is only honest if it is STATED. This module returns what was
  * requested alongside what arrived, so "I did not see the 4h" reaches the model
@@ -55,6 +57,13 @@ export interface VisualEvidenceResult {
   requested: string[];
   /** Views we asked for and did not get — reported, never implied away. */
   missing: { timeframe: string; reason: string }[];
+  /**
+   * True ONLY when at least one snapshot came from TradingView's client
+   * capture WITH the drawings actually rendered — the sole basis on which
+   * `visual_confirmation` may ever read `confirmed`. Everything else is
+   * `not_checked`, including every browserless run.
+   */
+  visuallyVerified: boolean;
   elapsedMs: number;
 }
 
@@ -108,7 +117,7 @@ export async function collectVisualEvidence(input: {
     // An unscoped run has no layout to render, so it is not a capture failure —
     // nothing was ever requested, and reporting frames as "missing" would tell
     // the model its eyes failed when they were never opened.
-    return { snapshots: [], requested: [], missing: [], elapsedMs: 0 };
+    return { snapshots: [], requested: [], missing: [], visuallyVerified: false, elapsedMs: 0 };
   }
 
   try {
@@ -127,13 +136,24 @@ export async function collectVisualEvidence(input: {
       .map((snapshot) => ({
         timeframe: snapshot.timeframe,
         imageBase64: snapshot.image_base64,
+        zoomImageBase64: snapshot.images.find((image) => image.label === "zoom")
+          ?.image_base64,
         numericContext: snapshot.numeric_context,
       }));
+    // The only path to "confirmed": TradingView's own client capture with
+    // the drawings actually in the frame. drawings_included is measured at
+    // capture time, never assumed.
+    const visuallyVerified = result.snapshots.some(
+      (snapshot) =>
+        snapshot.image_source === "tradingview_capture" &&
+        snapshot.drawings_included === true,
+    );
 
     log.debug("visual.captured", {
       symbol: input.symbol,
       captured: snapshots.length,
       missing: result.missing_timeframes.length,
+      visuallyVerified,
       elapsedMs: result.elapsed_ms,
     });
 
@@ -141,6 +161,7 @@ export async function collectVisualEvidence(input: {
       snapshots,
       requested,
       missing: result.missing_timeframes,
+      visuallyVerified,
       elapsedMs: Date.now() - startedAt,
     };
   } catch (error) {
@@ -158,6 +179,7 @@ export async function collectVisualEvidence(input: {
         timeframe,
         reason: "capture_failed",
       })),
+      visuallyVerified: false,
       elapsedMs: Date.now() - startedAt,
     };
   }

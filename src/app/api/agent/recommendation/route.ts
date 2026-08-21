@@ -429,6 +429,13 @@ export async function POST(req: NextRequest) {
       // The route's own measurements as the sourced evidence card: the write
       // refuses factors with no measurable basis.
       evidence: {
+        // The machine-readable visual basis (Phase 8): the same coerced state
+        // the audit records, kept where the report view reads evidence — so
+        // the transparency line shows the truth for MCP-created plans too.
+        visualReview: {
+          visual_confirmation: visualConfirmation,
+          timeframes_reviewed: timeframesReviewed,
+        },
         evidenceDimensions: [
           {
             key: "signal_strength",

@@ -443,6 +443,7 @@ function SmartChartWorkspaceInner({
       includeStudies?: boolean;
       symbol?: string;
       interval?: string;
+      shots?: { label: string; candles: number }[];
     }) => {
       const ack = await fetch("/api/chart/live-capture", {
         method: "POST",
@@ -459,6 +460,8 @@ function SmartChartWorkspaceInner({
         includeStudies: request.includeStudies !== false,
         symbol: request.symbol,
         interval: request.interval,
+        // The server names both windows of the two-shot pair; the tab obeys.
+        shots: request.shots,
       });
       if (!shot) return;
       await fetch("/api/chart/live-capture", {
@@ -468,7 +471,10 @@ function SmartChartWorkspaceInner({
           action: "upload",
           request_id: request.id,
           layout_id: layoutId,
-          image_base64: shot.pngBase64,
+          images: shot.images.map((image) => ({
+            label: image.label,
+            image_base64: image.pngBase64,
+          })),
           drawings_rendered: shot.drawingsRendered,
           studies_rendered: shot.studiesRendered,
         }),
@@ -490,6 +496,7 @@ function SmartChartWorkspaceInner({
             includeStudies?: boolean;
             symbol?: string;
             interval?: string;
+            shots?: { label: string; candles: number }[];
           }>;
         };
         for (const request of data.requests ?? []) {

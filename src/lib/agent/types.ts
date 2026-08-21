@@ -225,6 +225,16 @@ export interface AgentOption {
 export interface AgentFinalResult {
   decision: AgentDecision;
   /**
+   * The visual basis of this analysis (Phase 8 transparency): `confirmed`
+   * ONLY when a TradingView client capture with drawings rendered backed the
+   * run; every other case — including every browserless run — is
+   * `not_checked`. Rendered on every recommendation, in both states.
+   */
+  visualReview?: {
+    state: "confirmed" | "contradicted" | "not_checked";
+    timeframes: string[];
+  };
+  /**
    * The resolved execution-cost evidence for this analysis, in the serialized
    * wire shape (unit-named keys, explicit source and fallback). Deferred #16:
    * the MCP surface consumes this from the analyze response.

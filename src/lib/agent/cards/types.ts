@@ -62,6 +62,7 @@ export const CARD_ORDER = [
   "invalidation",
   "alternative_scenario",
   "gate_checklist",
+  "visual_review",
   "key_reasons",
   "public_reasoning",
   "decision_trace",
@@ -83,7 +84,8 @@ export const CARD_ORDER = [
 export type CardKind = (typeof CARD_ORDER)[number];
 
 /** What the plan asks for, pinned so a silent drop is a test failure. */
-export const EXPECTED_CARD_TYPES = 23;
+// 24 = the original 23 plus the visual_review transparency card (Phase 8).
+export const EXPECTED_CARD_TYPES = 24;
 
 /**
  * The market is closed and this answer is a next-open scenario.
@@ -160,6 +162,18 @@ export interface GateChecklistCard {
   verdicts: GateVerdict[];
   allowed: boolean;
   vetoedBy?: string;
+}
+
+/**
+ * The always-shown visual-basis line (Phase 8 transparency): whether the
+ * agent reviewed its own TradingView chart with drawings, or read numbers
+ * alone. Emitted for EVERY recommendation, in both states — absence of a
+ * visual review is stated, never implied.
+ */
+export interface VisualReviewCard {
+  kind: "visual_review";
+  state: "confirmed" | "contradicted" | "not_checked";
+  timeframes: string[];
 }
 
 export interface KeyReasonsCard {
@@ -273,6 +287,7 @@ export type AgentCard =
   | InvalidationCard
   | AlternativeScenarioCard
   | GateChecklistCard
+  | VisualReviewCard
   | KeyReasonsCard
   | PublicReasoningCard
   | DecisionTraceCard

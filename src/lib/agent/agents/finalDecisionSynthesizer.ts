@@ -242,7 +242,10 @@ export type FinalDecisionModelOutput = z.infer<typeof FinalDecisionModelSchema>;
 /** One captured chart plus the numbers for the same timeframe. */
 export interface VisualSnapshot {
   timeframe: string;
+  /** The wide CONTEXT shot of the two-shot pair. */
   imageBase64: string;
+  /** The zoomed DETAIL shot (~90 candles) of the same live chart. */
+  zoomImageBase64?: string;
   numericContext?: unknown;
 }
 
@@ -1424,6 +1427,7 @@ export function buildVisualBlocks(snapshots: VisualSnapshot[]): ContentBlock[] {
       type: "text",
       text: JSON.stringify({
         chart_timeframe: snapshot.timeframe,
+        shot: "context",
         numeric_context: snapshot.numericContext ?? null,
         note: "Shape only — quote levels from the numeric evidence, never from the pixels.",
       }),
@@ -1436,6 +1440,26 @@ export function buildVisualBlocks(snapshots: VisualSnapshot[]): ContentBlock[] {
         data: snapshot.imageBase64,
       },
     });
+    // The zoomed half of the two-shot pair: same chart, ~90 candles, where
+    // candle shape (rejection wick, engulfing body) is actually readable.
+    if (snapshot.zoomImageBase64) {
+      blocks.push({
+        type: "text",
+        text: JSON.stringify({
+          chart_timeframe: snapshot.timeframe,
+          shot: "zoom",
+          note: "Zoomed detail of the SAME chart above — recent candle shape only.",
+        }),
+      });
+      blocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/png",
+          data: snapshot.zoomImageBase64,
+        },
+      });
+    }
   }
   return blocks;
 }

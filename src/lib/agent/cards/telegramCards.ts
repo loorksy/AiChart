@@ -24,6 +24,7 @@
  */
 import { GATE_LABELS_AR } from "../gates/chain";
 import { t } from "@/lib/i18n";
+import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency";
 import { escapeTelegramHtml as esc } from "@/lib/telegram/html";
 import {
   assertNeverCard,
@@ -215,6 +216,16 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
     // The diagnostic set returns above; these cases exist so the union stays
     // exhaustive if that policy ever changes.
+    // The visual-basis line: always rendered, both states — the phone must
+    // never show a plan without saying whether the agent's eyes were open.
+    case "visual_review":
+      return esc(
+        visualTransparencyLine({
+          state: card.state,
+          timeframesReviewed: card.timeframes,
+        }),
+      );
+
     case "decision_trace":
     case "evidence_timeline":
     case "research_evidence":

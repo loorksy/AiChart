@@ -46,14 +46,25 @@ const jsonUploadSchema = z.object({
   action: z.literal("upload"),
   request_id: z.string().min(4).max(80),
   layout_id: z.string().regex(/^[A-Za-z0-9]{8,16}$/),
-  image_base64: z.string().min(32),
+  /** The two-shot pair, labeled. The validator refuses a missing shot. */
+  images: z
+    .array(
+      z.object({
+        label: z.enum(["context", "zoom"]),
+        image_base64: z.string().min(32),
+      }),
+    )
+    .min(1)
+    .max(4),
   drawings_rendered: z.number().int().min(0).max(64),
   studies_rendered: z.number().int().min(0).max(32),
 });
 
 /**
- * POST: ack a request, or upload the PNG (JSON base64 or multipart
- * `preparedImage` — the TradingView snapshot_url field name).
+ * POST: ack a request, or upload the PNGs (JSON base64 pair, or multipart
+ * `preparedImage` — the TradingView snapshot_url field name; a multipart
+ * single file counts as the context shot only, and the two-shot validator
+ * decides whether that completes the request).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -85,7 +96,7 @@ export async function POST(req: NextRequest) {
         requestId,
         userId: user.id,
         layoutId,
-        buffer,
+        images: [{ label: "context", buffer }],
         drawingsRendered: Number.isFinite(drawingsRendered) ? drawingsRendered : 0,
         studiesRendered: Number.isFinite(studiesRendered) ? studiesRendered : 0,
       });
@@ -116,20 +127,24 @@ export async function POST(req: NextRequest) {
     if (!layout) {
       return NextResponse.json({ error: "layout not found" }, { status: 404 });
     }
-    let buffer: Buffer;
-    try {
-      buffer = Buffer.from(upload.data.image_base64, "base64");
-    } catch {
-      return NextResponse.json({ error: "upload_failed" }, { status: 400 });
-    }
-    if (!isPng(buffer)) {
-      return NextResponse.json({ error: "upload_failed" }, { status: 400 });
+    const images: { label: string; buffer: Buffer }[] = [];
+    for (const image of upload.data.images) {
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(image.image_base64, "base64");
+      } catch {
+        return NextResponse.json({ error: "upload_failed" }, { status: 400 });
+      }
+      if (!isPng(buffer)) {
+        return NextResponse.json({ error: "upload_failed" }, { status: 400 });
+      }
+      images.push({ label: image.label, buffer });
     }
     const done = completeLiveCapture({
       requestId: upload.data.request_id,
       userId: user.id,
       layoutId: upload.data.layout_id,
-      buffer,
+      images,
       drawingsRendered: upload.data.drawings_rendered,
       studiesRendered: upload.data.studies_rendered,
     });

@@ -118,7 +118,8 @@ function loadTvScript(): Promise<void> {
 }
 
 export type TvChartSnapshotResult = {
-  pngBase64: string;
+  /** One PNG per requested shot of the two-shot pair (context, zoom). */
+  images: { label: string; pngBase64: string }[];
   drawingsRendered: number;
   studiesRendered: number;
 };
@@ -126,16 +127,18 @@ export type TvChartSnapshotResult = {
 export type TvChartHandle = {
   capturePng: () => Promise<ChatImagePayload | null>;
   /**
-   * Agent live-capture: PNG of the rendered widget via takeClientScreenshot.
-   * When includeDrawings/includeStudies are false the matching layers are
-   * hidden for the shot and restored afterwards — still TradingView, never
-   * a server-side redraw.
+   * Agent live-capture: PNGs of the rendered widget via
+   * takeClientScreenshot — the two-shot pair (wide context + zoomed detail)
+   * from the SAME live chart. When includeDrawings/includeStudies are false
+   * the matching layers are hidden for the shots and restored afterwards —
+   * still TradingView, never a server-side redraw.
    */
   captureSnapshot: (opts?: {
     includeDrawings?: boolean;
     includeStudies?: boolean;
     symbol?: string;
     interval?: string;
+    shots?: { label: string; candles: number }[];
   }) => Promise<TvChartSnapshotResult | null>;
   currentSymbol: () => string;
   latestCandle: () => TvLatestCandle | null;
@@ -350,17 +353,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         } catch {
           previousRange = null;
         }
-        const barSec = Math.max(1, barDurationSec(opts?.interval ?? interval));
-        const rangeTo = Math.floor(Date.now() / 1000) + barSec;
-        const rangeFrom = rangeTo - CHART_CAPTURE_CANDLES * barSec;
-        try {
-          await chart.setVisibleRange({ from: rangeFrom, to: rangeTo });
-        } catch {
-          /* keep current zoom if the library refuses the range */
-        }
-
-        await new Promise((r) => window.setTimeout(r, 200));
-
         let drawingsRendered = 0;
         let studiesRendered = 0;
         try {
@@ -378,22 +370,43 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             : 0;
         }
 
-        const src = await w.takeClientScreenshot();
-        const maxW = 1280;
-        const scale = src.width > maxW ? maxW / src.width : 1;
-        const width = Math.max(1, Math.round(src.width * scale));
-        const height = Math.max(1, Math.round(src.height * scale));
-        const out = document.createElement("canvas");
-        out.width = width;
-        out.height = height;
-        const ctx = out.getContext("2d");
-        if (!ctx) return null;
-        ctx.fillStyle = "#0f1115";
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(src, 0, 0, width, height);
-        const pngBase64 = out.toDataURL("image/png").split(",")[1];
-        if (!pngBase64) return null;
-        return { pngBase64, drawingsRendered, studiesRendered };
+        // The two-shot rule: one wide context frame, one zoomed detail
+        // frame, from the SAME live widget. The server names the windows;
+        // this loop only obeys them.
+        const shots =
+          opts?.shots?.length
+            ? opts.shots
+            : [{ label: "context", candles: CHART_CAPTURE_CANDLES }];
+        const barSec = Math.max(1, barDurationSec(opts?.interval ?? interval));
+        const images: { label: string; pngBase64: string }[] = [];
+        for (const shot of shots) {
+          const rangeTo = Math.floor(Date.now() / 1000) + barSec;
+          const rangeFrom = rangeTo - Math.max(10, shot.candles) * barSec;
+          try {
+            await chart.setVisibleRange({ from: rangeFrom, to: rangeTo });
+          } catch {
+            /* keep current zoom if the library refuses the range */
+          }
+          await new Promise((r) => window.setTimeout(r, 200));
+          const src = await w.takeClientScreenshot();
+          const maxW = 1280;
+          const scale = src.width > maxW ? maxW / src.width : 1;
+          const width = Math.max(1, Math.round(src.width * scale));
+          const height = Math.max(1, Math.round(src.height * scale));
+          const out = document.createElement("canvas");
+          out.width = width;
+          out.height = height;
+          const ctx = out.getContext("2d");
+          if (!ctx) return null;
+          ctx.fillStyle = "#0f1115";
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(src, 0, 0, width, height);
+          const pngBase64 = out.toDataURL("image/png").split(",")[1];
+          if (!pngBase64) return null;
+          images.push({ label: shot.label, pngBase64 });
+        }
+        if (!images.length) return null;
+        return { images, drawingsRendered, studiesRendered };
       } catch {
         return null;
       } finally {

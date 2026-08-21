@@ -66,6 +66,10 @@ import type { AgentFinalResult } from "@/lib/agent/types";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
 import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
+import {
+  CHART_CONTEXT_CANDLES,
+  CHART_ZOOM_CANDLES,
+} from "@/lib/chart/captureWindow";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
   resolveTelegramCommand,
@@ -491,13 +495,19 @@ export async function prepareTelegramTurn(
   const command = resolveTelegramCommand(incoming);
   if (command?.kind === "chart_photo") {
     await sendChatAction(message.chatId, "upload_photo").catch(() => {});
-    const buffer = await buildChartSnapshotBufferForMarket(
-      userId,
-      DATA_SYMBOL,
-      "15m",
-      "forex",
-    );
-    if (!buffer) {
+    // The two-shot rule applies to user-requested charts too: a wide context
+    // frame and a zoomed detail frame, rendered from platform candles (no
+    // browser exists here, so these are data renders — captioned as charts
+    // of the data, never presented as a TradingView review).
+    const [contextShot, zoomShot] = await Promise.all([
+      buildChartSnapshotBufferForMarket(userId, DATA_SYMBOL, "15m", "forex", {
+        limit: CHART_CONTEXT_CANDLES,
+      }),
+      buildChartSnapshotBufferForMarket(userId, DATA_SYMBOL, "15m", "forex", {
+        limit: CHART_ZOOM_CANDLES,
+      }),
+    ]);
+    if (!contextShot) {
       await sendMessage(message.chatId, telegramChartFailed(), undefined, {
         replyToMessageId: message.messageId,
       }).catch(() => {});
@@ -507,11 +517,18 @@ export async function prepareTelegramTurn(
     await dismissPersistentKeyboardOnce(message.chatId);
     await sendPhotoBuffer(
       message.chatId,
-      buffer,
+      contextShot,
       telegramChartCaption(closed),
       undefined,
       { replyToMessageId: message.messageId },
     );
+    if (zoomShot) {
+      await sendPhotoBuffer(
+        message.chatId,
+        zoomShot,
+        t("ar", "tg.chart_zoom_caption"),
+      ).catch(() => {});
+    }
     return { kind: "handled", outcome: "answered" };
   }
   if (command?.kind === "model_menu") {

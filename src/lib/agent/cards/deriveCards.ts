@@ -127,6 +127,18 @@ export function deriveCards(result: AgentFinalResult): AgentCard[] {
     });
   }
 
+  // The visual-basis line rides EVERY recommendation, in both states. This
+  // is the one deliberate exception to the empty-card rule: "no chart was
+  // reviewed" is itself the fact the operator must see, so absence of data
+  // here produces the not_checked card rather than no card.
+  if (rec && (rec.action === "buy" || rec.action === "sell")) {
+    cards.push({
+      kind: "visual_review",
+      state: result.visualReview?.state ?? "not_checked",
+      timeframes: result.visualReview?.timeframes ?? [],
+    });
+  }
+
   if (result.keyReasons?.length) {
     cards.push({ kind: "key_reasons", reasons: result.keyReasons });
   }

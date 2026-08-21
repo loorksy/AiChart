@@ -31,12 +31,7 @@ import {
   summarizeGeometry,
   type GeometrySummary,
 } from "@/lib/chart/geometry";
-import {
-  chartSnapshotCacheKey,
-  getCachedChartSnapshot,
-  setCachedChartSnapshot,
-  type ChartSnapshotSource,
-} from "./snapshotCache";
+import { type ChartSnapshotSource } from "./snapshotCache";
 
 /** Balanced default: precise entry, immediate context, trend, big picture. */
 export const DEFAULT_VISUAL_TIMEFRAMES = ["15m", "1h", "4h", "1d"] as const;
@@ -154,6 +149,8 @@ export type CaptureTimeframeResult =
   | {
       ok: true;
       imageBase64: string;
+      /** Both shots of the two-shot pair (context, zoom). */
+      images: { label: string; image_base64: string }[];
       source: ChartSnapshotSource;
       capturedAt: number;
       fromCache: boolean;
@@ -164,8 +161,13 @@ export type CaptureTimeframeResult =
   | { ok: false; reason: string };
 
 /**
- * One timeframe → one PNG. Prefers a live TradingView takeClientScreenshot
- * when a tab is open; otherwise an honest QuickChart fallback.
+ * One timeframe → the two-shot TradingView pair, or a named failure.
+ *
+ * TradingView's client-side snapshot in a live browser session is the ONLY
+ * image source. No cache is consulted and none is written: serving a stored
+ * snapshot as this run's eyes is exactly the stale-substitute the vision
+ * contract forbids. A browserless caller gets `{ ok: false }` and the
+ * analysis proceeds on numbers alone.
  */
 export async function captureTimeframeImage(
   userId: number,
@@ -175,28 +177,6 @@ export async function captureTimeframeImage(
     MIN_IMAGE_TIMEOUT_MS,
     Math.min(MAX_IMAGE_TIMEOUT_MS, input.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS),
   );
-  const cacheKey = chartSnapshotCacheKey(
-    userId,
-    input.symbol,
-    input.interval,
-    input.market,
-  );
-
-  if (!input.skipCache && input.liveSession !== true) {
-    const cached = getCachedChartSnapshot(cacheKey);
-    if (cached) {
-      return {
-        ok: true,
-        imageBase64: cached.imageBase64,
-        source: cached.source,
-        capturedAt: cached.capturedAt,
-        fromCache: true,
-        drawings_included: false,
-        studies_included: false,
-        fallback_reason: cached.source === "quickchart_fallback" ? "no_live_session" : undefined,
-      };
-    }
-  }
 
   const captured = await withDeadline(
     captureChartImage({
@@ -215,24 +195,15 @@ export async function captureTimeframeImage(
   if (captured === TIMED_OUT) {
     return { ok: false, reason: "capture_timeout" };
   }
-  if (!captured) {
-    return { ok: false, reason: "chart_render_unavailable" };
-  }
-  const capturedAt = Date.now();
-  // Unattended callers reuse only a QuickChart fallback. A live TradingView
-  // PNG must not be served later as if it were a no-session capture.
-  if (captured.image_source === "quickchart_fallback") {
-    setCachedChartSnapshot(cacheKey, {
-      imageBase64: captured.image_base64,
-      source: captured.image_source,
-      capturedAt,
-    });
+  if (!captured.ok) {
+    return { ok: false, reason: captured.reason };
   }
   return {
     ok: true,
     imageBase64: captured.image_base64,
+    images: captured.images,
     source: captured.image_source,
-    capturedAt,
+    capturedAt: Date.now(),
     fromCache: false,
     drawings_included: captured.drawings_included,
     studies_included: captured.studies_included,
@@ -480,6 +451,8 @@ export interface TimeframeSnapshot {
   timeframe: string;
   content_type: "image/png";
   image_base64: string;
+  /** The two-shot pair (context, zoom) this timeframe was captured as. */
+  images: { label: string; image_base64: string }[];
   captured_at: string;
   image_source: ChartSnapshotSource;
   from_cache: boolean;
@@ -526,7 +499,8 @@ export interface MultiTimeframeCaptureResult {
  */
 export const VISUAL_EVIDENCE_GUARDRAILS = [
   "Images confirm shape only (rejection candle, gap, formation). Every precise level must come from numeric_context / detect_levels — never read off the pixels.",
-  "A TradingView live capture is the operator's chart. A quickchart_fallback is NOT — never describe it as the user's chart.",
+  "Every image here is a TradingView client capture from a live browser session — there is no other source. When no live session exists there is NO image: say you analysed numbers alone, never describe a chart you were not shown.",
+  "Each timeframe arrives as a two-shot pair: a wide context frame and a zoomed detail frame of the SAME chart. Use the zoom for candle shape, the context for structure.",
   "drawings_included=false forces visual_confirmation to not_checked. Do not report confirmed against a picture that omitted the drawings.",
 ];
 
@@ -594,6 +568,7 @@ export async function captureMultiTimeframeSnapshot(
       timeframe,
       content_type: "image/png",
       image_base64: image.imageBase64,
+      images: image.images,
       captured_at: new Date(image.capturedAt).toISOString(),
       image_source: image.source,
       from_cache: image.fromCache,

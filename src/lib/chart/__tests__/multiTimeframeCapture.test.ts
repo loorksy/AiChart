@@ -95,12 +95,22 @@ describe("resolveVisualTimeframes", () => {
 });
 
 describe("visual evidence guardrails", () => {
-  it("travels with every payload and states the two hard rules", () => {
+  it("travels with every payload and states the hard rules", () => {
     const text = VISUAL_EVIDENCE_GUARDRAILS.join(" ").toLowerCase();
     assert.ok(text.includes("detect_levels"), "levels must come from numbers");
+    // TradingView-only, and blindness is stated: there is no fallback image
+    // any more — a run with no live session must SAY it analysed numbers.
     assert.ok(
-      text.includes("quickchart_fallback") || text.includes("not the operator"),
-      "fallback images must not be described as the user's chart",
+      text.includes("tradingview client capture"),
+      "the only image source is TradingView's client capture",
+    );
+    assert.ok(
+      text.includes("no image"),
+      "a browserless run has no image and must say so",
+    );
+    assert.ok(
+      text.includes("two-shot"),
+      "each timeframe arrives as the context+zoom pair",
     );
     assert.ok(
       text.includes("drawings_included=false"),

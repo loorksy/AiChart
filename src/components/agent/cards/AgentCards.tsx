@@ -31,6 +31,7 @@ import {
   Clock,
   Coins,
   Compass,
+  Eye,
   FlaskConical,
   ListChecks,
   Newspaper,
@@ -46,6 +47,7 @@ import {
   type AgentCard,
 } from "@/lib/agent/cards/types";
 import { GATE_LABELS_AR } from "@/lib/agent/gates/chain";
+import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency";
 import type { AgentFinalResult } from "@/lib/agent/types";
 import { AgentEvidenceCard, AgentFaultCard } from "../AgentEnvelopeStatus";
 import { AgentThinkingTraceDone } from "../AgentThinkingTrace";
@@ -250,6 +252,25 @@ function CardView({
               </li>
             ))}
           </ul>
+        </Shell>
+      );
+
+    // The visual-basis line: rendered on every recommendation, both states.
+    // "No chart was reviewed" is information the operator must see, so this
+    // card never hides on absence of data.
+    case "visual_review":
+      return (
+        <Shell
+          icon={<Eye className={ICON} />}
+          title={t("agent.card.visual_review")}
+          tone={card.state === "contradicted" ? "danger" : "neutral"}
+        >
+          <p>
+            {visualTransparencyLine(
+              { state: card.state, timeframesReviewed: card.timeframes },
+              locale,
+            )}
+          </p>
         </Shell>
       );
 

@@ -24,6 +24,7 @@ import {
   SkipForward,
 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency";
 import { cn } from "@/lib/utils";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import type { ActiveRecommendationView } from "@/app/api/recommendations/active/route";
@@ -64,6 +65,32 @@ const EXEC_STATE_CLASSES: Record<string, string> = {
   invalidated: "border-destructive/40 bg-destructive/10 text-destructive",
   blocked: "border-destructive/40 bg-destructive/10 text-destructive",
 };
+
+/** The stored visual audit, from either surface's evidence shape. */
+function visualReviewOf(
+  evidence: unknown,
+): { state: "confirmed" | "contradicted" | "not_checked"; timeframes: string[] } {
+  const block =
+    evidence && typeof evidence === "object"
+      ? (evidence as { visualReview?: unknown }).visualReview
+      : null;
+  if (block && typeof block === "object") {
+    const raw = block as {
+      visual_confirmation?: unknown;
+      timeframes_reviewed?: unknown;
+    };
+    const state =
+      raw.visual_confirmation === "confirmed" ||
+      raw.visual_confirmation === "contradicted"
+        ? raw.visual_confirmation
+        : "not_checked";
+    const timeframes = Array.isArray(raw.timeframes_reviewed)
+      ? raw.timeframes_reviewed.map((item) => String(item))
+      : [];
+    return { state, timeframes };
+  }
+  return { state: "not_checked", timeframes: [] };
+}
 
 /** Both spellings the revision bundles use for the dimension list. */
 function dimensionsOf(
@@ -117,6 +144,9 @@ export function RecommendationFullReport({ rec }: { rec: FullReportRecommendatio
   const { t, dir, locale } = useLocale();
   const dims = dimensionsOf(rec.evidence);
   const trace = traceOf(rec.decisionTrace);
+  // The visual-basis line is ALWAYS rendered, both states: a record with no
+  // stored review honestly reads not_checked rather than saying nothing.
+  const visualReview = visualReviewOf(rec.evidence);
   const execState = rec.executionState ?? "awaiting_activation";
   const entryZone =
     rec.entryLow != null && rec.entryHigh != null
@@ -212,6 +242,16 @@ export function RecommendationFullReport({ rec }: { rec: FullReportRecommendatio
         {rec.alternativeScenario ? (
           <Field label={t("rec.detail.alternative")}>{rec.alternativeScenario}</Field>
         ) : null}
+        {/* Always shown, both states — never omitted, never softened. */}
+        <Field label={t("agent.card.visual_review")}>
+          {visualTransparencyLine(
+            {
+              state: visualReview.state,
+              timeframesReviewed: visualReview.timeframes,
+            },
+            locale,
+          )}
+        </Field>
       </dl>
 
       {dims.length ? (

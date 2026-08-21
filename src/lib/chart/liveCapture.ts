@@ -1,22 +1,31 @@
 /**
  * Live TradingView capture: the server asks an already-open chart tab to
- * call takeClientScreenshot() and upload the PNG.
+ * call takeClientScreenshot() and upload the PNGs.
  *
  * Transport is the existing HTTP poll family (same as draw_on_chart), not a
  * new websocket/SSE stack. Pending requests live in-process; the browser
- * polls GET /api/chart/live-capture and POSTs the PNG back.
+ * polls GET /api/chart/live-capture and POSTs the PNGs back.
  *
- * Playwright / headless Chromium is not used here.
+ * The ONLY image source here is TradingView's client-side snapshot API in a
+ * live browser session. Playwright, Puppeteer, headless Chromium and CDP are
+ * rejected techniques; and when no live tab exists there is NO image — a
+ * named failure, never a rendered substitute and never a stored/stale
+ * snapshot. Browserless callers (Telegram, cron, worker) proceed on numbers
+ * alone and say so.
+ *
+ * Every capture is the two-shot pair (captureWindow.ts): a wide context
+ * frame and a zoomed detail frame. The upload validator refuses a capture
+ * that delivered only one.
  */
 
 import { getChartLayoutById } from "@/lib/store";
-import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import type { MarketType } from "@/lib/markets/types";
 import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import type { VisualConfirmation } from "@/lib/recommendations/visualConfirmation";
 import {
-  CHART_CAPTURE_CANDLES,
+  captureShots,
   LIVE_TAB_FRESH_MS,
+  type CaptureShot,
 } from "@/lib/chart/captureWindow";
 
 export const LIVE_CAPTURE_CONCURRENCY = 2;
@@ -26,11 +35,16 @@ export const LIVE_CAPTURE_UPLOAD_MS = 12_000;
 /** How long a successful live capture authorises visual_confirmation. */
 export const LAST_CAPTURE_TTL_MS = 10 * 60 * 1000;
 
+/**
+ * "quickchart_fallback" survives in the union so LEGACY stored evidence
+ * still types; the live path can only ever produce "tradingview_capture".
+ */
 export type ChartImageSource = "tradingview_capture" | "quickchart_fallback";
 export type CaptureFallbackReason =
   | "no_live_session"
   | "capture_timeout"
   | "upload_failed"
+  | "missing_shots"
   | "layout_not_found";
 
 export interface ChartCaptureMeta {
@@ -40,10 +54,25 @@ export interface ChartCaptureMeta {
   fallback_reason?: CaptureFallbackReason;
 }
 
+/** One delivered screenshot of the two-shot pair. */
+export interface CaptureShotImage {
+  label: CaptureShot["label"];
+  image_base64: string;
+}
+
 export interface ChartCaptureResult extends ChartCaptureMeta {
   ok: true;
   content_type: "image/png";
+  /** The context shot — the wide frame (kept as the primary for callers). */
   image_base64: string;
+  /** Both shots of the pair, in request order (context, zoom). */
+  images: CaptureShotImage[];
+}
+
+/** An honest non-capture: which named reason, and NO image of any kind. */
+export interface CaptureFailure {
+  ok: false;
+  reason: CaptureFallbackReason;
 }
 
 export interface LiveCaptureRequest {
@@ -54,6 +83,8 @@ export interface LiveCaptureRequest {
   interval: string;
   includeDrawings: boolean;
   includeStudies: boolean;
+  /** The mandatory two-shot pair the tab must deliver. */
+  shots: CaptureShot[];
   createdAt: number;
   uploadTimeoutMs: number;
 }
@@ -62,7 +93,8 @@ export interface LiveCaptureUpload {
   requestId: string;
   userId: number;
   layoutId: string;
-  buffer: Buffer;
+  /** One buffer per requested shot, labeled. */
+  images: { label: string; buffer: Buffer }[];
   drawingsRendered: number;
   studiesRendered: number;
 }
@@ -210,12 +242,22 @@ export function completeLiveCapture(upload: LiveCaptureUpload): { ok: true } | {
   if (!p) return { ok: false, error: "unknown_request" };
   if (p.request.userId !== upload.userId) return { ok: false, error: "layout_not_owned" };
   if (p.request.layoutId !== upload.layoutId) return { ok: false, error: "layout_not_owned" };
-  if (!upload.buffer.length) {
+  const fail = (error: string) => {
     clearTimeout(p.ackTimer);
     if (p.uploadTimer) clearTimeout(p.uploadTimer);
     pending.delete(upload.requestId);
-    p.reject(new Error("upload_failed"));
-    return { ok: false, error: "upload_failed" };
+    p.reject(new Error(error));
+    return { ok: false as const, error };
+  };
+  if (!upload.images.length || upload.images.some((image) => !image.buffer.length)) {
+    return fail("upload_failed");
+  }
+  // The two-shot rule, enforced where the pixels arrive: every requested
+  // shot must be present. A single wide frame is not a completed capture.
+  const delivered = new Set(upload.images.map((image) => image.label));
+  const missing = p.request.shots.filter((shot) => !delivered.has(shot.label));
+  if (missing.length) {
+    return fail("missing_shots");
   }
   clearTimeout(p.ackTimer);
   if (p.uploadTimer) clearTimeout(p.uploadTimer);
@@ -268,32 +310,6 @@ export function studiesIncludedFromCapture(opts: {
   return opts.includeStudies === true && opts.studiesRendered > 0;
 }
 
-async function quickchartFallback(
-  userId: number,
-  symbol: string,
-  interval: string,
-  market: MarketType,
-  reason: CaptureFallbackReason,
-): Promise<ChartCaptureResult | null> {
-  const buffer = await buildChartSnapshotBufferForMarket(userId, symbol, interval, market, {
-    limit: CHART_CAPTURE_CANDLES,
-  });
-  if (!buffer) return null;
-  const meta: ChartCaptureMeta = {
-    image_source: "quickchart_fallback",
-    drawings_included: false,
-    studies_included: false,
-    fallback_reason: reason,
-  };
-  rememberCapture(userId, "", meta);
-  return {
-    ok: true,
-    ...meta,
-    content_type: "image/png",
-    image_base64: buffer.toString("base64"),
-  };
-}
-
 export interface RequestLiveCaptureInput {
   userId: number;
   layoutId?: string;
@@ -308,37 +324,41 @@ export interface RequestLiveCaptureInput {
   uploadTimeoutMs?: number;
 }
 
+/**
+ * TradingView client capture, or an honest named failure. Never renders a
+ * substitute image and never serves a stored one: a caller that cannot
+ * reach a live tab gets `{ ok: false, reason }` and proceeds without eyes.
+ */
 export async function captureChartImage(
   input: RequestLiveCaptureInput,
-): Promise<ChartCaptureResult | null> {
+): Promise<ChartCaptureResult | CaptureFailure> {
   const includeDrawings = input.includeDrawings !== false;
   const includeStudies = input.includeStudies !== false;
-  const market = input.market ?? DEFAULT_MARKET;
   const symbol = input.symbol.toUpperCase();
   const interval = input.interval;
+  void (input.market ?? DEFAULT_MARKET);
 
   if (input.liveSession === false) {
-    return quickchartFallback(input.userId, symbol, interval, market, "no_live_session");
+    return { ok: false, reason: "no_live_session" };
   }
 
   const layoutId = input.layoutId;
   if (!layoutId || !/^[A-Za-z0-9]{8,16}$/.test(layoutId)) {
-    return quickchartFallback(input.userId, symbol, interval, market, "layout_not_found");
+    return { ok: false, reason: "layout_not_found" };
   }
   const layout = await getChartLayoutById(layoutId, input.userId);
   if (!layout) {
-    return quickchartFallback(input.userId, symbol, interval, market, "layout_not_found");
+    return { ok: false, reason: "layout_not_found" };
   }
 
-  // No polling /chat tab: skip the 8s ACK wait. Same honest QuickChart
-  // payload (no_live_session) without hanging the MCP tool.
+  // No polling /chat tab: skip the 8s ACK wait and answer honestly now.
   if (!hasFreshLiveTab(input.userId, layoutId)) {
-    return quickchartFallback(input.userId, symbol, interval, market, "no_live_session");
+    return { ok: false, reason: "no_live_session" };
   }
 
   const gotSlot = await acquireSlot(input.ackTimeoutMs ?? LIVE_CAPTURE_ACK_MS);
   if (!gotSlot) {
-    return quickchartFallback(input.userId, symbol, interval, market, "capture_timeout");
+    return { ok: false, reason: "capture_timeout" };
   }
 
   const request: LiveCaptureRequest = {
@@ -349,6 +369,7 @@ export async function captureChartImage(
     interval,
     includeDrawings,
     includeStudies,
+    shots: captureShots(),
     createdAt: Date.now(),
     uploadTimeoutMs: input.uploadTimeoutMs ?? LIVE_CAPTURE_UPLOAD_MS,
   };
@@ -376,11 +397,20 @@ export async function captureChartImage(
       studies_included,
     };
     rememberCapture(input.userId, layoutId, meta);
+    const byLabel = new Map(
+      upload.images.map((image) => [image.label, image.buffer]),
+    );
+    const images: CaptureShotImage[] = request.shots.map((shot) => ({
+      label: shot.label,
+      // completeLiveCapture validated presence; the map lookup cannot miss.
+      image_base64: byLabel.get(shot.label)!.toString("base64"),
+    }));
     return {
       ok: true,
       ...meta,
       content_type: "image/png",
-      image_base64: upload.buffer.toString("base64"),
+      image_base64: images[0]!.image_base64,
+      images,
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : "capture_timeout";
@@ -389,8 +419,10 @@ export async function captureChartImage(
         ? "no_live_session"
         : msg === "upload_failed"
           ? "upload_failed"
-          : "capture_timeout";
-    return quickchartFallback(input.userId, symbol, interval, market, reason);
+          : msg === "missing_shots"
+            ? "missing_shots"
+            : "capture_timeout";
+    return { ok: false, reason };
   } finally {
     const leftover = pending.get(request.id);
     if (leftover) {

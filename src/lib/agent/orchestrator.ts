@@ -1207,7 +1207,14 @@ async function runUnifiedChartAgentInner(
         layoutId: chartContext?.layoutId,
         liveSession: input.liveSession === true,
       })
-    : { snapshots: [], requested: [], missing: [], elapsedMs: 0 };
+    : { snapshots: [], requested: [], missing: [], visuallyVerified: false, elapsedMs: 0 };
+  // The mechanical visual-basis verdict (Phase 8): `confirmed` requires a
+  // TradingView client capture WITH drawings rendered — this run, this user.
+  // Everything else, including every browserless run, is `not_checked`.
+  const visualReview = {
+    state: visual.visuallyVerified ? ("confirmed" as const) : ("not_checked" as const),
+    timeframes: visual.snapshots.map((snapshot) => snapshot.timeframe),
+  };
   if (visual.snapshots.length) {
     trackedCtx.emitActivity({
       type: "analysis",
@@ -1797,6 +1804,7 @@ async function runUnifiedChartAgentInner(
       // The verdict bundle rides with the plan so a post-mortem can reconstruct
       // what every gate knew at decision time, not just that they all passed.
       gateVerdicts: gateChain?.verdicts,
+      visualReview,
     });
   }
 
@@ -1890,6 +1898,7 @@ async function runUnifiedChartAgentInner(
 
   return {
     decision: finalDecision.decision,
+    visualReview,
     envelope: presented.envelope,
     confidence: finalDecision.confidence,
     confidenceSemantics: finalDecision.confidenceSemantics,
@@ -2395,6 +2404,8 @@ async function storeFinalRecommendation(input: {
   entryType?: EntryType;
   /** Every gate that ran, in order, with its verdict and evidence. */
   gateVerdicts?: GateVerdict[];
+  /** The visual basis of this run — persisted with the plan, both states. */
+  visualReview?: { state: "confirmed" | "contradicted" | "not_checked"; timeframes: string[] };
 }): Promise<ActiveRecommendation | null> {
   const rec = input.finalDecision.recommendation;
   if (
@@ -2515,6 +2526,7 @@ async function storeFinalRecommendation(input: {
       evidenceSnapshot: input.evidenceSnapshot,
       strategyId: input.statisticalStrategyId,
       gateVerdicts: input.gateVerdicts,
+      visualReview: input.visualReview,
     },
     // The run's own cost evidence, PRICE units — the tradability grade's
     // within-spread-noise check finally sees the spread the LLM was shown
@@ -2635,6 +2647,8 @@ async function persistTrackedRecommendation(
     strategyId?: string;
     /** The G1–G7 verdicts that permitted this plan to exist. */
     gateVerdicts?: GateVerdict[];
+    /** The visual basis of the run this plan came from — both states. */
+    visualReview?: { state: "confirmed" | "contradicted" | "not_checked"; timeframes: string[] };
   },
   /** The run's resolved cost-evidence spread in PRICE units, for tradability. */
   spreadPrice: number | null = null,
@@ -2709,7 +2723,7 @@ async function persistTrackedRecommendation(
     // decided on. Storing only the card while claiming to fingerprint the
     // bundle is the finding.
     evidence:
-      explanation?.evidenceDimensions || explanation?.gateVerdicts
+      explanation?.evidenceDimensions || explanation?.gateVerdicts || explanation?.visualReview
         ? {
             ...(explanation.evidenceDimensions
               ? { evidenceDimensions: explanation.evidenceDimensions }
@@ -2718,6 +2732,16 @@ async function persistTrackedRecommendation(
             // post-mortem can see that the chain passed but not on what.
             ...(explanation.gateVerdicts
               ? { gateVerdicts: explanation.gateVerdicts }
+              : {}),
+            // The visual basis of the run, in BOTH states — a not_checked run
+            // records its blindness rather than omitting the field.
+            ...(explanation.visualReview
+              ? {
+                  visualReview: {
+                    visual_confirmation: explanation.visualReview.state,
+                    timeframes_reviewed: explanation.visualReview.timeframes,
+                  },
+                }
               : {}),
           }
         : undefined,

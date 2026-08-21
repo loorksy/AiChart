@@ -26,6 +26,7 @@ const result = (over: Partial<VisualEvidenceResult> = {}): VisualEvidenceResult 
   snapshots: [],
   requested: [],
   missing: [],
+  visuallyVerified: false,
   elapsedMs: 0,
   ...over,
 });

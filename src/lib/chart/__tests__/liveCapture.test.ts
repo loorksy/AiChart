@@ -18,11 +18,17 @@ import {
   resetLiveCaptureForTests,
   studiesIncludedFromCapture,
 } from "@/lib/chart/liveCapture";
+import { CHART_CONTEXT_CANDLES, CHART_ZOOM_CANDLES } from "@/lib/chart/captureWindow";
 
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
+
+const bothShots = [
+  { label: "context", buffer: PNG },
+  { label: "zoom", buffer: PNG },
+];
 
 describe("honest capture flags", () => {
   it("drawings_included is true only when drawings were requested AND rendered", () => {
@@ -95,7 +101,7 @@ describe("completeLiveCapture ownership", () => {
       requestId: "cap_missing",
       userId: 1,
       layoutId: "abcdefgh",
-      buffer: PNG,
+      images: bothShots,
       drawingsRendered: 1,
       studiesRendered: 0,
     });
@@ -104,10 +110,10 @@ describe("completeLiveCapture ownership", () => {
   });
 });
 
-describe("capture fallbacks", () => {
+describe("TradingView-only: a browserless capture is a named failure, never an image", () => {
   afterEach(() => resetLiveCaptureForTests());
 
-  it("unattended liveSession=false is no_live_session with drawings_included false", async () => {
+  it("unattended liveSession=false yields no image at all", async () => {
     const t0 = Date.now();
     const result = await captureChartImage({
       userId: 1,
@@ -115,16 +121,12 @@ describe("capture fallbacks", () => {
       interval: "1h",
       liveSession: false,
     });
-    assert.ok(Date.now() - t0 < 8_000);
-    if (!result) return; // QuickChart may have no candles in this env
-    assert.equal(result.image_source, "quickchart_fallback");
-    assert.equal(result.fallback_reason, "no_live_session");
-    assert.equal(result.drawings_included, false);
-    assert.equal(result.studies_included, false);
+    assert.ok(Date.now() - t0 < 2_000);
+    assert.deepEqual(result, { ok: false, reason: "no_live_session" });
     assert.equal(coerceVisualConfirmation("confirmed", 1), "not_checked");
   });
 
-  it("invalid layout id is layout_not_found with drawings_included false", async () => {
+  it("invalid layout id is layout_not_found — no substitute render", async () => {
     const result = await captureChartImage({
       userId: 1,
       layoutId: "nope!!!!",
@@ -132,10 +134,7 @@ describe("capture fallbacks", () => {
       interval: "1h",
       liveSession: true,
     });
-    if (!result) return;
-    assert.equal(result.image_source, "quickchart_fallback");
-    assert.equal(result.fallback_reason, "layout_not_found");
-    assert.equal(result.drawings_included, false);
+    assert.deepEqual(result, { ok: false, reason: "layout_not_found" });
   });
 
   it("missing layout row is layout_not_found", async () => {
@@ -146,13 +145,11 @@ describe("capture fallbacks", () => {
       interval: "1h",
       liveSession: true,
     });
-    if (!result) return;
-    assert.equal(result.fallback_reason, "layout_not_found");
-    assert.equal(result.drawings_included, false);
+    assert.deepEqual(result, { ok: false, reason: "layout_not_found" });
   });
 });
 
-describe("live capture round trip, ownership, fallbacks, concurrency", () => {
+describe("live capture round trip, two-shot rule, ownership, concurrency", () => {
   afterEach(() => resetLiveCaptureForTests());
 
   let userId = 0;
@@ -175,7 +172,7 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
     layoutId = layout.id;
   });
 
-  it("skips the ACK wait when no tab has polled recently", async () => {
+  it("skips the ACK wait when no tab has polled recently — and stays imageless", async () => {
     const t0 = Date.now();
     const result = await captureChartImage({
       userId,
@@ -186,13 +183,10 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
       ackTimeoutMs: 8_000,
     });
     assert.ok(Date.now() - t0 < 2_000, "must not wait the ACK timeout");
-    if (!result) return;
-    assert.equal(result.image_source, "quickchart_fallback");
-    assert.equal(result.fallback_reason, "no_live_session");
-    assert.equal(result.drawings_included, false);
+    assert.deepEqual(result, { ok: false, reason: "no_live_session" });
   });
 
-  it("accepts a TradingView PNG, reports drawings actually rendered, and caps concurrency at 2", async () => {
+  it("requests the two-shot pair, accepts both PNGs, and caps concurrency at 2", async () => {
     noteLiveCapturePoll(userId, layoutId);
     const capture = captureChartImage({
       userId,
@@ -212,6 +206,15 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
       pending = listPendingLiveCaptures(userId, layoutId);
     }
     assert.ok(pending.length >= 1, "server queued a live-capture request");
+    // The two-shot rule rides the request itself — the tab is TOLD both
+    // windows, it does not choose.
+    assert.deepEqual(
+      pending[0]!.shots,
+      [
+        { label: "context", candles: CHART_CONTEXT_CANDLES },
+        { label: "zoom", candles: CHART_ZOOM_CANDLES },
+      ],
+    );
     const requestId = pending[0]!.id;
     assert.equal(ackLiveCapture(userId, requestId), true);
 
@@ -219,7 +222,7 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
       requestId,
       userId: userId + 99,
       layoutId,
-      buffer: PNG,
+      images: bothShots,
       drawingsRendered: 6,
       studiesRendered: 2,
     });
@@ -230,7 +233,7 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
       requestId,
       userId,
       layoutId: "ZzZzZzZz",
-      buffer: PNG,
+      images: bothShots,
       drawingsRendered: 6,
       studiesRendered: 2,
     });
@@ -240,18 +243,22 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
       requestId,
       userId,
       layoutId,
-      buffer: PNG,
+      images: bothShots,
       drawingsRendered: 6,
       studiesRendered: 2,
     });
     assert.equal(ok.ok, true);
 
     const result = await capture;
-    assert.ok(result);
+    assert.ok(result.ok);
     assert.equal(result.image_source, "tradingview_capture");
     assert.equal(result.drawings_included, true);
     assert.equal(result.studies_included, true);
     assert.equal(result.fallback_reason, undefined);
+    assert.deepEqual(
+      result.images.map((image) => image.label),
+      ["context", "zoom"],
+    );
     assert.equal(coerceVisualConfirmation("confirmed", userId), "confirmed");
 
     noteLiveCapturePoll(userId, layoutId);
@@ -278,7 +285,42 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
     assert.equal(liveCaptureActiveCount(), 0);
   });
 
-  it("empty upload rejects as upload_failed and drawings_included is false", async () => {
+  it("an upload that delivered only ONE shot is refused — missing_shots", async () => {
+    noteLiveCapturePoll(userId, layoutId);
+    const capture = captureChartImage({
+      userId,
+      layoutId,
+      symbol: "XAUUSD",
+      interval: "15m",
+      liveSession: true,
+      ackTimeoutMs: 2_000,
+      uploadTimeoutMs: 2_000,
+    });
+    let pending = listPendingLiveCaptures(userId, layoutId);
+    const deadline = Date.now() + 2_000;
+    while (pending.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+      pending = listPendingLiveCaptures(userId, layoutId);
+    }
+    assert.ok(pending.length >= 1);
+    const requestId = pending[0]!.id;
+    assert.equal(ackLiveCapture(userId, requestId), true);
+    const single = completeLiveCapture({
+      requestId,
+      userId,
+      layoutId,
+      images: [{ label: "context", buffer: PNG }],
+      drawingsRendered: 6,
+      studiesRendered: 2,
+    });
+    assert.equal(single.ok, false);
+    if (!single.ok) assert.equal(single.error, "missing_shots");
+    const result = await capture;
+    assert.deepEqual(result, { ok: false, reason: "missing_shots" });
+    assert.equal(coerceVisualConfirmation("confirmed", userId), "not_checked");
+  });
+
+  it("empty upload rejects as upload_failed — no fallback image exists", async () => {
     noteLiveCapturePoll(userId, layoutId);
     const capture = captureChartImage({
       userId,
@@ -302,17 +344,17 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
       requestId,
       userId,
       layoutId,
-      buffer: Buffer.alloc(0),
+      images: [
+        { label: "context", buffer: Buffer.alloc(0) },
+        { label: "zoom", buffer: PNG },
+      ],
       drawingsRendered: 6,
       studiesRendered: 2,
     });
     assert.equal(empty.ok, false);
     if (!empty.ok) assert.equal(empty.error, "upload_failed");
     const result = await capture;
-    if (!result) return;
-    assert.equal(result.image_source, "quickchart_fallback");
-    assert.equal(result.fallback_reason, "upload_failed");
-    assert.equal(result.drawings_included, false);
+    assert.deepEqual(result, { ok: false, reason: "upload_failed" });
     assert.equal(coerceVisualConfirmation("confirmed", userId), "not_checked");
   });
 
@@ -336,9 +378,6 @@ describe("live capture round trip, ownership, fallbacks, concurrency", () => {
     assert.ok(pending.length >= 1);
     assert.equal(ackLiveCapture(userId, pending[0]!.id), true);
     const result = await capture;
-    if (!result) return;
-    assert.equal(result.image_source, "quickchart_fallback");
-    assert.equal(result.fallback_reason, "capture_timeout");
-    assert.equal(result.drawings_included, false);
+    assert.deepEqual(result, { ok: false, reason: "capture_timeout" });
   });
 });

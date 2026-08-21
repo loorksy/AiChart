@@ -18,9 +18,9 @@ const schema = z.object({
 });
 
 /**
- * Bridge: chart PNG for a symbol. Prefers takeClientScreenshot from a live
- * TradingView tab; otherwise an honest QuickChart fallback that is never
- * labelled as the operator's chart.
+ * Bridge: chart PNGs for a symbol — the two-shot TradingView pair from a
+ * live tab, or an honest named failure. There is no fallback image: a
+ * caller without a live browser session gets the reason, not a substitute.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -57,9 +57,9 @@ export async function POST(req: NextRequest) {
       liveSession: body.live_session !== false,
     });
 
-    if (!captured) {
+    if (!captured.ok) {
       return NextResponse.json(
-        { error: "تعذّر توليد صورة الشارت." },
+        { error: "تعذّر التقاط شارت TradingView.", reason: captured.reason },
         { status: 503 },
       );
     }
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
         studies_included: captured.studies_included,
         fallback_reason: captured.fallback_reason ?? null,
         image_base64: captured.image_base64,
+        images: captured.images,
       });
     }
 
