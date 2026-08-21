@@ -94,6 +94,28 @@ async function symbolAlertCount(input: {
   return Number(row?.count ?? 0);
 }
 
+/**
+ * Claim one DELIVERY of a lifecycle event — the exactly-once gate for the
+ * resident host's proactive notifications (Phase 6).
+ *
+ * A separate `notify:` namespace on the same ledger: the sweep RECORDING an
+ * event (the raw dedupe key, claimed above) is not the user HEARING it, and
+ * neither claim may block the other. Lives here so the raw claim primitive
+ * stays inside this module — the single-brain guard enforces that.
+ */
+export async function claimNotificationDelivery(input: {
+  userId: number;
+  dedupeKey: string;
+  eventType: LifecycleEventType;
+  symbol: string;
+  occurredAt?: number;
+}): Promise<boolean> {
+  return claimLifecycleDedupeKey({
+    ...input,
+    dedupeKey: `notify:${input.dedupeKey}`,
+  });
+}
+
 export interface NotifyOptions {
   /** Claim dedupe keys but count the group as suppressed rather than fresh. */
   silent?: boolean;

@@ -56,6 +56,8 @@ const SCHEMA = `
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
     telegram_model_ref       TEXT,
+    -- Proactive notification prefs: JSON category → boolean; NULL = all on.
+    notification_prefs       TEXT,
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
     onboarding_done          BOOLEAN NOT NULL DEFAULT FALSE,
@@ -1313,6 +1315,10 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS telegram_model_ref TEXT
+  `).catch(() => {});
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS notification_prefs TEXT
   `).catch(() => {});
 
 

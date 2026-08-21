@@ -40,6 +40,8 @@ const SCHEMA = `
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
     telegram_model_ref       TEXT,
+    -- Proactive notification prefs: JSON category → boolean; NULL = all on.
+    notification_prefs       TEXT,
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
@@ -1447,6 +1449,11 @@ function migrate(db: Database.Database) {
   }
   if (!settingsCols.some((c) => c.name === "telegram_model_ref")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN telegram_model_ref TEXT");
+  }
+  // Per-user proactive notification preferences (Phase 6): JSON object of
+  // category → boolean. NULL means the defaults (all categories on).
+  if (!settingsCols.some((c) => c.name === "notification_prefs")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN notification_prefs TEXT");
   }
   // Forward-only product simplification migration. Existing databases may
   // still contain legacy policy columns; no runtime code reads them, and they

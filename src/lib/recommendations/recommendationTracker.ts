@@ -65,6 +65,11 @@ export interface TrackSweepResult {
   terminal: number;
   /** Everything worth announcing from this sweep (see lifecycleEvents). */
   events: LifecycleEvent[];
+  /**
+   * The same events with their owner attached — what the resident host's
+   * proactive notifier consumes (each notification traces to one of these).
+   */
+  userEvents: { userId: number; event: LifecycleEvent }[];
 }
 
 /**
@@ -515,7 +520,15 @@ export async function trackRecommendations(
     }
   }
 
-  return { checked: active.length, updated, terminal, events };
+  return {
+    checked: active.length,
+    updated,
+    terminal,
+    events,
+    userEvents: [...byUser].flatMap(([userId, userEvents]) =>
+      userEvents.map((event) => ({ userId, event })),
+    ),
+  };
 }
 
 export interface SweepRunResult extends TrackSweepResult {
@@ -555,6 +568,6 @@ export async function runRecommendationSweep(opts: {
       error: err instanceof Error ? err.name : "unknown",
       durationMs,
     });
-    return { checked: 0, updated: 0, terminal: 0, events: [], durationMs };
+    return { checked: 0, updated: 0, terminal: 0, events: [], userEvents: [], durationMs };
   }
 }

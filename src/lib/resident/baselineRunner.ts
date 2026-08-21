@@ -36,9 +36,37 @@ export async function runSweepTick(ctx: AgentRunContext): Promise<void> {
   const outcome = await withLock("cron:recommendation-sweep", SWEEP_LOCK_MS, () =>
     runRecommendationSweep({ logger: log }),
   );
-  if (outcome.ran) {
-    // The sweep can close/expire plans — the warm picture must follow.
-    await ctx.warm.refreshRecommendations();
+  if (!outcome.ran) return;
+  // The sweep can close/expire plans — the warm picture must follow.
+  await ctx.warm.refreshRecommendations();
+
+  // Proactive notifications are EVENT-driven: what this sweep observed
+  // (activations, targets, invalidations) goes onto the queue as
+  // market_event entries; delivery — preferences, exactly-once, channels —
+  // happens in the runner, never here.
+  const { publishLifecycleNotifications } = await import("./notifications");
+  await publishLifecycleNotifications(
+    outcome.result?.userEvents ?? [],
+    ctx.publish,
+  );
+
+  // The news-block check rides the same tick: for every owner of an open
+  // plan, an imminent high-impact release becomes a market_event too. With
+  // no calendar provider configured this is an honest no-op.
+  const { checkEconomicEventProximity } = await import(
+    "@/lib/recommendations/economicEventMonitor"
+  );
+  const owners = [
+    ...new Set(ctx.warm.get().openRecommendations.map((rec) => rec.userId)),
+  ];
+  for (const userId of owners) {
+    const proximity = await checkEconomicEventProximity(userId).catch(() => null);
+    if (proximity?.events.length) {
+      await publishLifecycleNotifications(
+        proximity.events.map((event) => ({ userId, event })),
+        ctx.publish,
+      );
+    }
   }
 }
 

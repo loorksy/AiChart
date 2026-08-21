@@ -20,7 +20,7 @@ import { newId } from "@/lib/agent/activity";
 import { DATA_SYMBOL } from "@/lib/gold";
 import { BaselineRunner } from "./baselineRunner";
 import type { AgentRunContext } from "./host";
-import type { UserMessageEvent } from "./events";
+import type { MarketEvent, UserMessageEvent } from "./events";
 import {
   AgentDeadlineError,
   AgentIterationLimitError,
@@ -164,5 +164,19 @@ export class ResidentAgentRunner extends BaselineRunner {
         .catch(() => {});
       throw err;
     }
+  }
+
+  override async onMarketEvent(event: MarketEvent, ctx: AgentRunContext): Promise<void> {
+    // Proactive notifications (Phase 6): preference check, exactly-once
+    // claim, then every bound channel. A malformed payload throws a named
+    // MarketEventPayloadError — the host counts it, nothing is invented.
+    const { deliverMarketEventNotification } = await import("./notifications");
+    const result = await deliverMarketEventNotification(event, ctx);
+    log.info("market_event handled", {
+      event: event.event,
+      userId: event.userId,
+      outcome: result.outcome,
+      delivered: result.delivered,
+    });
   }
 }
