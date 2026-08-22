@@ -159,7 +159,7 @@ const NEXT_STEP_BY_TOOL: Record<string, NextStepFn> = {
   // The execution follow-ups that used to live here — verifying that
   // open_trade actually opened, that respond_approval's approval reached the
   // broker, that modify_sl_tp's levels landed — are gone with the tools they
-  // verified. This platform places no orders, so there is no broker-side state
+  // verified. Analysis places no orders (manual execution is a separate, operator-commanded layer), so there is no broker-side state
   // to re-read and no claim of success to check.
 
   // A drawing/clear write's own success doesn't prove the chart state

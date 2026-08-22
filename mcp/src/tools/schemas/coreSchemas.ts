@@ -501,6 +501,46 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     ui: { widget: "recommendation-card" },
   },
   {
+    name: "execute_recommendation",
+    domain: "core",
+    description:
+      "Executes ONE recommendation as a market order on the operator's own linked MT5 account — only when the OPERATOR explicitly asked, in their own words, to execute it. Ask exactly one question first: how many lots (offer suggested_volume from execution context if you have it); no risk lectures, no warnings, no extra confirmation. When: the operator says execute/نفّذ for a specific recommendation. NEVER on your own initiative, never as part of an analysis, and never for a plan the operator did not name. The server enforces everything: a linked account (unlinked → not_linked), plan validity (expired/awaiting/closed → named refusal), broker volume grid and free margin (invalid_volume / insufficient_margin), one live order per recommendation, and an idempotency key — repeating the call with the same idempotency_key returns the SAME order, never a second one. The stop loss travels inside the order request itself. On success report the executed price and slippage in one line; on refusal relay the short code's meaning and stop — do not retry with tweaks the operator did not ask for. side-effect: places a real order on the operator's account.",
+    inputSchema: {
+      recommendation_id: z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("The recommendation to execute (its id)."),
+      volume: z
+        .number()
+        .positive()
+        .max(1000)
+        .describe("Lots, as the operator answered. The server re-validates against the broker's grid and margin."),
+      idempotency_key: z
+        .string()
+        .min(8)
+        .max(80)
+        .describe("One key per operator request. Reuse it on retries of the SAME request so a double send stays one order."),
+    },
+    annotations: DESTRUCTIVE,
+  },
+  {
+    name: "get_execution_trades",
+    domain: "core",
+    description:
+      "Reads the operator's live trading results from their linked MT5 account: open positions, closed trades of the recent window with net profit IN MONEY, and the platform's own execution ledger. When: the operator asks about their trades, positions, or results. Read-only, on demand — never polled on your own. JSON only, no card; summarize in one or two lines. not_linked means no account is linked — say so briefly. read-only.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .min(1)
+        .max(30)
+        .optional()
+        .describe("Closed-trades window in days (default 7)."),
+    },
+    annotations: READ_ONLY,
+  },
+  {
     name: "get_agent_settings",
     domain: "core",
     description:

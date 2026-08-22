@@ -10,6 +10,7 @@ import {
   RecommendationFullReport,
   type FullReportRecommendation,
 } from "@/components/recommendations/RecommendationFullReport";
+import { ExecuteRecommendationButton } from "@/components/recommendations/ExecuteRecommendationButton";
 import type { ActiveRecommendationView } from "@/app/api/recommendations/active/route";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 
@@ -93,6 +94,8 @@ export default function RecommendationDetailsPage({
         <>
           <RecommendationFullReport rec={rec} />
           <div className="mt-3 flex gap-2">
+            {/* Renders ONLY when the server says linked + executable now. */}
+            <ExecuteRecommendationButton recommendationId={id} />
             <Button
               variant="outline"
               size="xl"

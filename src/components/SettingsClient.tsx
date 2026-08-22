@@ -8,6 +8,7 @@ import { McpConnectCard } from "@/components/settings/McpConnectCard";
 import { NotificationPrefsCard } from "@/components/settings/NotificationPrefsCard";
 import { TelegramLinkCard } from "@/components/settings/TelegramLinkCard";
 import { BrokerLinkCard } from "@/components/settings/BrokerLinkCard";
+import { ExecutionTradesCard } from "@/components/settings/ExecutionTradesCard";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
 import { AgentMemoryPanel } from "@/components/settings/AgentMemoryPanel";
 
@@ -227,6 +228,7 @@ export default function SettingsClient({
           <TelegramLinkCard />
           <NotificationPrefsCard />
           <BrokerLinkCard />
+          <ExecutionTradesCard />
           <McpConnectCard />
         </div>
       )}

@@ -7,8 +7,10 @@
  *
  * Conversation window matches OpenClaw Telegram: one live bubble that
  * edits forward (progress checklist → the answer), leftover status is deleted, and
- * buttons appear only when the agent authored a question or a report link.
- * There is no persistent keyboard and no execution button.
+ * buttons appear only when the agent authored a question, a report link, or —
+ * for a linked account with an executable plan — the manual execute button.
+ * The AGENT never presses it: execution callbacks are human taps routed
+ * straight to lib/execution, outside the model loop entirely.
  */
 import { newId } from "@/lib/agent/activity";
 import { t } from "@/lib/i18n";
@@ -65,6 +67,11 @@ import { appendMessage, ensureChat } from "@/lib/agent/chatHistory/chatStore";
 import type { AgentFinalResult } from "@/lib/agent/types";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
 import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
+import {
+  executionButtonRow,
+  handleExecutionCallback,
+  isExecutionCallback,
+} from "@/lib/telegram/executionFlow";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import {
   CHART_CONTEXT_CANDLES,
@@ -400,6 +407,26 @@ export async function handleTelegramCallback(
 ): Promise<TelegramHandleOutcome> {
   if (callback.data.startsWith(MODEL_CALLBACK_PREFIX)) {
     return handleModelCallback(callback);
+  }
+  // Manual execution taps — a HUMAN pressing a button, never the agent. The
+  // flow module renders menus only; every real guard is server-side in
+  // lib/execution, and an unlinked chat gets the same short refusal.
+  if (isExecutionCallback(callback.data)) {
+    const executionUserId = await getUserByTelegramChatId(callback.chatId);
+    if (executionUserId == null) {
+      await answerCallbackQuery(callback.callbackId, t("ar", "tg.link_prompt")).catch(
+        () => {},
+      );
+      return "ignored";
+    }
+    await handleExecutionCallback({
+      userId: executionUserId,
+      chatId: callback.chatId,
+      messageId: callback.messageId,
+      callbackId: callback.callbackId,
+      data: callback.data,
+    });
+    return "answered";
   }
   const resolved = resolveInlineOption(callback.data, callback.chatId);
   if (!resolved) {
@@ -757,7 +784,12 @@ export async function runTelegramAgentTurn(input: {
     }).catch(() => []);
     const extraButtons =
       result.decision === "buy" || result.decision === "sell"
-        ? reportLinkButtons(result.recommendationId)
+        ? [
+            // Present only when the server says this user can execute this
+            // plan right now — a human tap opens the volume menu.
+            ...(await executionButtonRow(userId, result.recommendationId)),
+            ...reportLinkButtons(result.recommendationId),
+          ]
         : undefined;
 
     await deliverReply({

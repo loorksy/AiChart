@@ -24,11 +24,15 @@ describe("MCP TOOL_CATALOG", () => {
    * it advertises a capability, the model plans around it, and the call fails
    * as "unknown tool" — or worse, the model reports having done something.
    */
-  it("advertises no account, execution, or approval capability", () => {
+  it("keeps every auto/approval-era tool name dead — manual execution is execute_recommendation + get_execution_trades only", () => {
+    // Owner decision: a MANUAL execution pair exists (operator-commanded,
+    // server-guarded). Everything the old auto-execution era advertised —
+    // account browsing, approvals, trade modes, per-position mutation —
+    // stays dead by name.
     const forbidden =
       /^(open_trade|close_trade|close_partial|modify_sl_tp|evaluate_trade|record_exit_decision|request_approval|respond_approval|get_pending_approvals|get_trade_readiness|get_agent_trade_mode|set_agent_trade_mode|get_live_account|get_account_overview|get_portfolio|get_open_trades|get_position|get_orders?|get_history_orders|get_deals|calculate_margin|propose_.*)$/;
     const offenders = TOOL_CATALOG.map((t) => t.name).filter((name) => forbidden.test(name));
-    assert.deepEqual(offenders, [], "the platform places no orders and holds no account");
+    assert.deepEqual(offenders, [], "only the sanctioned manual pair may exist; the auto-era names stay dead");
   });
 
   it("every tool has §0.11-style description and annotations", () => {

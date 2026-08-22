@@ -323,6 +323,38 @@ const SCHEMA = `
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
+  -- Manual execution (owner decision): one row per user-pressed order — the
+  -- full audit (who, recommendation, account, volume, executed price,
+  -- slippage, outcome). UNIQUE idempotency key = the double-click barrier;
+  -- client_id is the broker-side lookup for reconciliation. NOTHING here
+  -- feeds the agent's performance record.
+  CREATE TABLE IF NOT EXISTS executions (
+    id                  BIGSERIAL PRIMARY KEY,
+    user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recommendation_id   INTEGER NOT NULL,
+    idempotency_key     TEXT NOT NULL UNIQUE,
+    client_id           TEXT NOT NULL UNIQUE,
+    metaapi_account_id  TEXT NOT NULL,
+    symbol              TEXT NOT NULL,
+    direction           TEXT NOT NULL,
+    volume              DOUBLE PRECISION NOT NULL,
+    stop_loss           DOUBLE PRECISION NOT NULL,
+    take_profit         DOUBLE PRECISION,
+    requested_price     DOUBLE PRECISION,
+    executed_price      DOUBLE PRECISION,
+    slippage            DOUBLE PRECISION,
+    state               TEXT NOT NULL DEFAULT 'pending',
+    broker_order_id     TEXT,
+    broker_position_id  TEXT,
+    error_code          TEXT,
+    error_message       TEXT,
+    created_at          BIGINT NOT NULL,
+    updated_at          BIGINT NOT NULL,
+    confirmed_at        BIGINT
+  );
+  CREATE INDEX IF NOT EXISTS idx_executions_user_rec
+    ON executions (user_id, recommendation_id);
+
   CREATE TABLE IF NOT EXISTS conversations (
     id         SERIAL PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

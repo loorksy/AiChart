@@ -147,6 +147,26 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "execute_recommendation",
+      "version": "1.1.1",
+      "description": "Executes ONE recommendation as a market order on the operator's own linked MT5 account — only when the OPERATOR explicitly asked, in their own words, to execute it. Ask exactly one question first: how many lots (offer suggested_volume from execution context if you have it); no risk lectures, no warnings, no extra confirmation. When: the operator says execute/نفّذ for a specific recommendation. NEVER on your own initiative, never as part of an analysis, and never for a plan the operator did not name. The server enforces everything: a linked account (unlinked → not_linked), plan validity (expired/awaiting/closed → named refusal), broker volume grid and free margin (invalid_volume / insufficient_margin), one live order per recommendation, and an idempotency key — repeating the call with the same idempotency_key returns the SAME order, never a second one. The stop loss travels inside the order request itself. On success report the executed price and slippage in one line; on refusal relay the short code's meaning and stop — do not retry with tweaks the operator did not ask for. side-effect: places a real order on the operator's account.",
+      "permission": "market.read",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/execute_recommendation.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "find_similar_cases",
       "version": "1.1.1",
       "description": "Finds structurally similar past moments for this symbol and timeframe and returns aggregated forward outcomes for BOTH directions (buy and short) — historical observation to weigh, never confirmation of a direction already chosen, never a gate on a recommendation, and never statistical support for a specific recommendation. When: during analysis, to ask what historically followed setups like the current one. Defaults: min_similarity 0.82, limit unset (server default). found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. read-only.",
@@ -242,6 +262,26 @@
       "timeoutMs": 30000,
       "telemetry": "server-audit-log",
       "inputSchemaRef": "mcp/schemas/tools/get_chart_state.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_execution_trades",
+      "version": "1.1.1",
+      "description": "Reads the operator's live trading results from their linked MT5 account: open positions, closed trades of the recent window with net profit IN MONEY, and the platform's own execution ledger. When: the operator asks about their trades, positions, or results. Read-only, on demand — never polled on your own. JSON only, no card; summarize in one or two lines. not_linked means no account is linked — say so briefly. read-only.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_execution_trades.json",
       "outputValidation": "bridge-envelope",
       "aliases": [],
       "requiredFeatureFlags": []

@@ -452,6 +452,37 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     bridgeWrap("get_agent_settings", bridge, () => bridge.get("/api/agent/settings")),
   );
 
+  // Manual execution (owner decision). The tool is a thin bridge: every real
+  // guard — linked account, plan validity, volume grid, margin, idempotency,
+  // one live order per plan, SL inside the order request — is server-side.
+  server.registerTool(
+    "execute_recommendation",
+    mcpToolConfig("execute_recommendation"),
+    async (body) => {
+      const raw = (body ?? {}) as Record<string, unknown>;
+      return bridgeCall("execute_recommendation", raw, () =>
+        bridge.post("/api/execution/execute", {
+          recommendation_id: String(raw.recommendation_id ?? ""),
+          volume: Number(raw.volume),
+          idempotency_key: String(raw.idempotency_key ?? ""),
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_execution_trades",
+    mcpToolConfig("get_execution_trades"),
+    async (body) => {
+      const raw = (body ?? {}) as Record<string, unknown>;
+      const days = Number(raw.days);
+      const suffix = Number.isFinite(days) ? `?days=${Math.floor(days)}` : "";
+      return bridgeCall("get_execution_trades", raw, () =>
+        bridge.get(`/api/execution/trades${suffix}`),
+      );
+    },
+  );
+
 
 
   server.registerTool(

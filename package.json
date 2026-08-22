@@ -18,7 +18,8 @@
     "test:trace": "tsx --test --test-force-exit src/lib/agent/__tests__/runTraceSchema.test.ts && tsx --test --test-force-exit src/lib/agent/__tests__/runTraceDb.test.ts",
     "test:research": "tsx --test --test-force-exit src/lib/research/__tests__/*.test.ts",
     "test:gates": "tsx --test --test-force-exit src/lib/agent/__tests__/gates.test.ts src/lib/agent/gates/__tests__/clientPlanChain.test.ts src/lib/agent/gates/__tests__/mcpZeroLlm.test.ts src/lib/gold/__tests__/candleStore.test.ts",
-    "test:guards": "tsx --test --test-force-exit src/lib/__tests__/clientServerBoundary.test.ts src/lib/__tests__/noExecutionGuard.test.ts src/lib/__tests__/goldOnlyGuard.test.ts src/lib/__tests__/uiTargetsExist.test.ts src/lib/__tests__/arabicInSystemFiles.test.ts",
+    "test:execution": "tsx --test --test-force-exit src/lib/execution/__tests__/executionCore.test.ts",
+    "test:guards": "tsx --test --test-force-exit src/lib/__tests__/clientServerBoundary.test.ts src/lib/__tests__/manualExecutionGuard.test.ts src/lib/__tests__/goldOnlyGuard.test.ts src/lib/__tests__/uiTargetsExist.test.ts src/lib/__tests__/arabicInSystemFiles.test.ts",
     "test:vision": "tsx --test --test-force-exit src/lib/agent/__tests__/visualCoverage.test.ts src/lib/agent/__tests__/browseLoop.test.ts src/lib/agent/__tests__/selfVision.test.ts src/lib/chart/__tests__/liveCapture.test.ts src/lib/chart/__tests__/platformCapture.test.ts",
     "test:chart-host": "tsx --test chart-host/src/__tests__/session.test.ts",
     "test:telegram-parity": "tsx --test --test-force-exit src/lib/telegram/__tests__/telegramParity.test.ts src/lib/channels/__tests__/telegramAdapter.test.ts src/lib/telegram/__tests__/conversation.test.ts src/lib/telegram/__tests__/inlineOptions.test.ts src/lib/telegram/__tests__/html.test.ts src/lib/telegram/__tests__/liveProgress.test.ts src/lib/telegram/__tests__/liveReply.test.ts src/lib/agent/cards/__tests__/cards.test.ts",
@@ -32,7 +33,7 @@
     "test:provider-release": "tsx scripts/validate-provider-release.ts",
     "test:redis-release": "tsx scripts/validate-redis-release.ts",
     "test:live": "echo \"No live external-provider tests are enabled by default. Set the relevant provider env (e.g. OPENAI_API_KEY, MT5_BRIDGE_URL) and run the targeted suite.\" && exit 0",
-    "test:ci": "npm run test:resident && npm run test:context && npm run test:memory && npm run test:skills && npm run test:tools && npm run test:trace && npm run test:research && npm run test:recommendations && npm run test:entry-coherence && npm run test:gates && npm run test:guards && npm run test:vision && npm run test:chart-host && npm run test:telegram-parity && npm run test:trading-dna && npm run test:unit && npm run test:decision-authority && npm run test:integration",
+    "test:ci": "npm run test:resident && npm run test:context && npm run test:memory && npm run test:skills && npm run test:tools && npm run test:trace && npm run test:research && npm run test:recommendations && npm run test:entry-coherence && npm run test:gates && npm run test:execution && npm run test:guards && npm run test:vision && npm run test:chart-host && npm run test:telegram-parity && npm run test:trading-dna && npm run test:unit && npm run test:decision-authority && npm run test:integration",
     "test:resident": "tsx --test --test-force-exit src/lib/resident/__tests__/*.test.ts"
   },
   "dependencies": {

@@ -324,6 +324,41 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  -- Manual execution (owner decision): one row per user-pressed order, the
+  -- full audit the spec demands — who, which recommendation, which account,
+  -- volume, executed price, slippage, outcome. The UNIQUE idempotency key is
+  -- the double-click barrier; client_id is what reconciliation looks up at
+  -- the broker when a response was lost. NOTHING here feeds the agent's
+  -- performance record — recommendation outcomes are measured on the
+  -- recommendation, never on what a user executed at any size.
+  CREATE TABLE IF NOT EXISTS executions (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL,
+    recommendation_id   INTEGER NOT NULL,
+    idempotency_key     TEXT NOT NULL UNIQUE,
+    client_id           TEXT NOT NULL UNIQUE,
+    metaapi_account_id  TEXT NOT NULL,
+    symbol              TEXT NOT NULL,
+    direction           TEXT NOT NULL,
+    volume              REAL NOT NULL,
+    stop_loss           REAL NOT NULL,
+    take_profit         REAL,
+    requested_price     REAL,
+    executed_price      REAL,
+    slippage            REAL,
+    state               TEXT NOT NULL DEFAULT 'pending',
+    broker_order_id     TEXT,
+    broker_position_id  TEXT,
+    error_code          TEXT,
+    error_message       TEXT,
+    created_at          INTEGER NOT NULL,
+    updated_at          INTEGER NOT NULL,
+    confirmed_at        INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_executions_user_rec
+    ON executions (user_id, recommendation_id);
+
   CREATE TABLE IF NOT EXISTS conversations (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,

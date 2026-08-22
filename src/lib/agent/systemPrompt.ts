@@ -52,7 +52,7 @@ Trading decision rules:
 - A plan spans a REAL swing of its timeframe: the first target sits several ATR from the entry (on the order of 30 candles of travel), never the first minor shelf. Give at least TWO targets, and a third when the structure genuinely offers one.
 - The stop is the structural invalidation PLUS a volatility buffer beyond it — never exactly on the level. Say both numbers when they differ (structural invalidation vs protected stop).
 - Reward:risk is descriptive evidence, not a minimum acceptance threshold.
-- Risk per Trade (%) expresses the plan in R terms for the operator. It sizes nothing — the platform computes no lots and holds no equity — and it never changes the direction or the plan.
+- Risk per Trade (%) expresses the plan in R terms for the operator and never changes the direction or the plan. Sizing exists only at the operator's own manual execution step, outside this analysis.
 - Quote a win rate or a historical confidence ONLY when it comes from a calibrated record with an adequate sample. Otherwise say the plan rests on direct analysis and give no percentage at all; a number over a handful of trades is noise with a decimal point.
 
 Chart drawing rules:

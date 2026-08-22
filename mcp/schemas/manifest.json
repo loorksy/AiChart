@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-08-22T14:56:19.214Z",
-  "toolCount": 32,
+  "exportedAt": "2026-08-22T15:14:48.886Z",
+  "toolCount": 34,
   "tools": [
     {
       "name": "get_agent_capabilities",
@@ -61,6 +61,26 @@
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": false
+      }
+    },
+    {
+      "name": "execute_recommendation",
+      "domain": "core",
+      "description": "Executes ONE recommendation as a market order on the operator's own linked MT5 account — only when the OPERATOR explicitly asked, in their own words, to execute it. Ask exactly one question first: how many lots (offer suggested_volume from execution context if you have it); no risk lectures, no warnings, no extra confirmation. When: the operator says execute/نفّذ for a specific recommendation. NEVER on your own initiative, never as part of an analysis, and never for a plan the operator did not name. The server enforces everything: a linked account (unlinked → not_linked), plan validity (expired/awaiting/closed → named refusal), broker volume grid and free margin (invalid_volume / insufficient_margin), one live order per recommendation, and an idempotency key — repeating the call with the same idempotency_key returns the SAME order, never a second one. The stop loss travels inside the order request itself. On success report the executed price and slippage in one line; on refusal relay the short code's meaning and stop — do not retry with tweaks the operator did not ask for. side-effect: places a real order on the operator's account.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "get_execution_trades",
+      "domain": "core",
+      "description": "Reads the operator's live trading results from their linked MT5 account: open positions, closed trades of the recent window with net profit IN MONEY, and the platform's own execution ledger. When: the operator asks about their trades, positions, or results. Read-only, on demand — never polled on your own. JSON only, no card; summarize in one or two lines. not_linked means no account is linked — say so briefly. read-only.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
       }
     },
     {

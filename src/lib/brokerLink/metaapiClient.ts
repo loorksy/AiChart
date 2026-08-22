@@ -149,6 +149,8 @@ export async function readAccount(input: {
   state: MetaapiAccountState;
   login: string | null;
   connectionStatus: string | null;
+  /** Deployment region — the client-api host is region-scoped. */
+  region: string | null;
 }> {
   const res = await fetchWithTimeout(
     `${PROVISIONING_ORIGIN}/users/current/accounts/${encodeURIComponent(input.accountId)}`,
@@ -171,6 +173,7 @@ export async function readAccount(input: {
     login: typeof body.login === "string" ? body.login : null,
     connectionStatus:
       typeof body.connectionStatus === "string" ? body.connectionStatus : null,
+    region: typeof body.region === "string" && body.region ? body.region : null,
   };
 }
 
