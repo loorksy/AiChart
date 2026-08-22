@@ -123,6 +123,10 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   const [running, setRunning] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Billing v3: a named account-state refusal from the server (one of the
+  // three contract codes). The workspace renders it as the ONE modal with a
+  // single action; plain errors stay in `error`.
+  const [billingRefusal, setBillingRefusal] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string>(opts.chatId ?? uuid());
   // Idempotency: a mutationId is applied to the chart at most once, ever.
@@ -425,8 +429,15 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         if (!response.ok || !response.body) {
           httpFailed = true;
           const data = (await response.json().catch(() => null)) as
-            | { error?: string }
+            | { error?: string; code?: string }
             | null;
+          if (
+            data?.code === "subscription_expired" ||
+            data?.code === "insufficient_credits" ||
+            data?.code === "trial_exhausted"
+          ) {
+            setBillingRefusal(data.code);
+          }
           throw new Error(data?.error ?? t(opts.locale ?? "ar", "agent.error"));
         }
 
@@ -610,6 +621,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
     [opts, running],
   );
 
+  const clearBillingRefusal = useCallback(() => setBillingRefusal(null), []);
+
   return useMemo(
     () => ({
       messages,
@@ -619,6 +632,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       running,
       reconnecting,
       error,
+      billingRefusal,
+      clearBillingRefusal,
       sendMessage,
       cancel,
     }),
@@ -630,6 +645,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       running,
       reconnecting,
       error,
+      billingRefusal,
+      clearBillingRefusal,
       sendMessage,
       cancel,
     ],

@@ -6,15 +6,26 @@ import { buttonVariants } from "@/components/squareui/button";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
+/** Admin-set plan facts, resolved server-side and passed down — never constants. */
+export interface SubscribePlanFacts {
+  priceCents: number | null;
+  trialLimit: number;
+  trialDurationMinutes: number;
+}
+
 export function SubscribeClient({
   trialRemaining = 0,
   mode = "blocked",
+  plan,
 }: {
   trialRemaining?: number;
   mode?: "trial" | "blocked" | "info";
+  plan: SubscribePlanFacts;
 }) {
-  const { locale, dir } = useLocale();
+  const { locale, dir, t } = useLocale();
   const isAr = locale === "ar";
+  const price = plan.priceCents != null ? plan.priceCents / 100 : null;
+  const withClock = plan.trialDurationMinutes > 0;
 
   return (
     <div dir={dir} className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-10">
@@ -33,14 +44,18 @@ export function SubscribeClient({
       </div>
 
       <div className="rounded-[var(--radius-lg)] border border-border bg-card p-5 elevation-1">
-        <div className="flex items-baseline gap-3">
-          <span className="text-3xl font-semibold text-foreground">
-            ${AICHART_PLAN.promotionalPriceUsd}
-          </span>
-          <span className="text-sm text-muted-foreground line-through">
-            ${AICHART_PLAN.regularPriceUsd}
-          </span>
-        </div>
+        {price != null ? (
+          <div className="flex items-baseline gap-3">
+            <span className="text-3xl font-semibold text-foreground" dir="ltr">
+              ${price}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {isAr ? "شهرياً" : "/month"}
+            </span>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("billing.pricing_pending")}</p>
+        )}
         <p className="mt-2 text-xs text-muted-foreground">
           {isAr
             ? "اشتراك شهري واحد يفتح كل الميزات."
@@ -48,17 +63,14 @@ export function SubscribeClient({
         </p>
         {mode === "trial" && trialRemaining > 0 ? (
           <p className="mt-3 text-sm text-foreground">
-            {isAr
-              ? `تجربتك المجانية: متبقي ${trialRemaining} من ${AICHART_PLAN.trialRecommendations} توصيات، ولمدة ساعة.`
-              : `Free trial: ${trialRemaining} of ${AICHART_PLAN.trialRecommendations} recommendations left, within a one-hour window.`}
+            {t(withClock ? "billing.trial_remaining_clock" : "billing.trial_remaining", {
+              remaining: String(trialRemaining),
+              limit: String(plan.trialLimit),
+            })}
           </p>
         ) : null}
         {mode === "blocked" ? (
-          <p className="mt-3 text-sm text-foreground">
-            {isAr
-              ? "انتهت تجربتك المجانية (ساعة واحدة أو ثلاث توصيات). فعّل الوصول الكامل للمتابعة."
-              : "Your free trial has ended (one hour or three recommendations). Activate full access to continue."}
-          </p>
+          <p className="mt-3 text-sm text-foreground">{t("billing.trial_ended_cta")}</p>
         ) : null}
       </div>
 

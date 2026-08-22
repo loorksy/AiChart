@@ -772,6 +772,22 @@ export const en = {
   "exec.modal.execute": "Execute",
   "exec.modal.executing": "Executing…",
   "exec.modal.close": "Close",
+
+  // --- Billing: the three refusals and the status surface ---
+  "billing.refusal.subscription_expired": "Your subscription has expired.",
+  "billing.refusal.insufficient_credits": "Your credit balance is empty.",
+  "billing.refusal.trial_exhausted": "Your free trial has ended.",
+  "billing.refusal.trial_locked_feature": "Linking a trading account is available after subscribing.",
+  "billing.refusal.account_blocked": "This account is suspended.",
+  "billing.pricing_pending": "Pricing is being finalized — contact us to subscribe.",
+  "billing.trial_remaining": "Free trial: {remaining} of {limit} recommendations left.",
+  "billing.trial_remaining_clock": "Free trial: {remaining} of {limit} recommendations left, within a limited window.",
+  "billing.trial_ended_cta": "Your free trial has ended. Activate full access to continue.",
+  "billing.cta.renew": "Renew subscription",
+  "billing.cta.topup": "Buy extra credits",
+  "billing.cta.subscribe": "Subscribe now",
+  "billing.trial_exhausted_message":
+    "Your free trial has ended. Subscribing unlocks full access — browsing and your past recommendations stay available.",
   "exec.done": "Executed: {direction} {volume} lots @ {price}",
   "exec.done.pending_price": "Executed — price pending confirmation",
   "exec.done.slippage": "slippage {slippage}",

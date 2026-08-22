@@ -1,17 +1,16 @@
 import type { PublicUser } from "@/lib/types";
-import { AICHART_PLAN } from "@/lib/subscription/plan";
+import { t } from "@/lib/i18n";
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
 
 /**
  * Trial access gate for the chat surface.
  *
- * The trial is no longer an interaction economy: it carries EVERY feature and
- * is bounded by two caps enforced elsewhere — the one-hour clock (resolved in
- * entitlement.ts from `trial_started_at`) and the three-recommendation count
- * (claimed atomically at recommendation creation). Chat itself is unmetered
- * inside the window, so claim answers only "may this user run the agent right
- * now?", and commit/release exist as no-ops to keep the stream route's
- * claim→work→commit/release shape (and its retry safety) intact.
+ * The trial carries EVERY feature and is bounded by the caps the ADMIN sets
+ * (billing_plan): the recommendation count, and an optional wall clock that
+ * is off by default. Chat itself is unmetered inside the window, so claim
+ * answers only "may this user run the agent right now?", and commit/release
+ * exist as no-ops to keep the stream route's claim→work→commit/release shape
+ * (and its retry safety) intact.
  *
  * The `trial_interaction_ledger` table stays readable for history; nothing
  * writes it anymore.
@@ -40,7 +39,7 @@ export async function claimTrialInteraction(
   }
   return {
     ok: false,
-    // A trial that ran out (clock or recommendations) reads as exhausted; any
+    // A trial that ran out (count or optional clock) reads as exhausted; any
     // other blocked state (suspended/expired) is a plain block.
     reason: snap.planStatus === "trial" ? "exhausted" : "blocked",
     used: snap.trialUsed,
@@ -60,19 +59,7 @@ export async function releaseTrialInteraction(
   _requestId: string,
 ): Promise<void> {}
 
+/** Short, price-free — the price is DATA now; the CTA carries the action. */
 export function subscriptionRequiredMessage(locale: "ar" | "en" = "ar"): string {
-  if (locale === "en") {
-    return (
-      `Your free trial has ended (one hour or ${AICHART_PLAN.trialRecommendations} recommendations). ` +
-      `Full Lonora access is $${AICHART_PLAN.promotionalPriceUsd}/month ` +
-      `(regular price $${AICHART_PLAN.regularPriceUsd}). ` +
-      `Contact @${AICHART_PLAN.telegramHandle} on Telegram to activate.`
-    );
-  }
-  return (
-    `انتهت تجربتك المجانية (ساعة واحدة أو ${AICHART_PLAN.trialRecommendations} توصيات). ` +
-    `الوصول الكامل بسعر ${AICHART_PLAN.promotionalPriceUsd}$ شهرياً ` +
-    `(السعر المعتاد ${AICHART_PLAN.regularPriceUsd}$). ` +
-    `تواصل عبر تيليجرام @${AICHART_PLAN.telegramHandle} لتفعيل الاشتراك.`
-  );
+  return t(locale, "billing.trial_exhausted_message");
 }

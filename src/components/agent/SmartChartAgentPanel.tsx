@@ -19,6 +19,7 @@ import {
   type AgentPersistPayload,
 } from "@/hooks/useSmartChartAgent";
 import { useLocale } from "@/hooks/useLocale";
+import { BillingRefusalModal, type BillingRefusalCode } from "@/components/billing/BillingRefusalModal";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTraceLive } from "./AgentThinkingTrace";
 import { AgentChatInput } from "./AgentChatInput";
@@ -122,6 +123,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       running,
       reconnecting,
       error,
+      billingRefusal,
+      clearBillingRefusal,
       sendMessage,
       cancel,
     } = useSmartChartAgent({
@@ -248,6 +251,12 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         className="chat-panel-shell h-full w-full bg-transparent"
         dir={dir}
       >
+        {billingRefusal ? (
+          <BillingRefusalModal
+            code={billingRefusal as BillingRefusalCode}
+            onClose={clearBillingRefusal}
+          />
+        ) : null}
         {/* No fixed agent header bar and NO static quick-action toolbar — the
             chat panel is clean. All follow-up prompts are dynamic, model-
             generated suggestions rendered per turn (never hardcoded buttons).

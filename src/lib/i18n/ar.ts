@@ -757,6 +757,22 @@ export const ar: Record<TranslationKey, string> = {
   "exec.modal.execute": "تنفيذ",
   "exec.modal.executing": "جارٍ التنفيذ…",
   "exec.modal.close": "إغلاق",
+
+  // --- الفوترة: الرفضات الثلاث وواجهة الحالة ---
+  "billing.refusal.subscription_expired": "اشتراكك منتهٍ.",
+  "billing.refusal.insufficient_credits": "رصيدك نفد.",
+  "billing.refusal.trial_exhausted": "انتهت تجربتك المجانية.",
+  "billing.refusal.trial_locked_feature": "ربط حساب التداول متاح بعد الاشتراك.",
+  "billing.refusal.account_blocked": "هذا الحساب موقوف.",
+  "billing.pricing_pending": "التسعير قيد الإعداد — تواصل معنا لتفعيل الاشتراك.",
+  "billing.trial_remaining": "تجربتك المجانية: متبقي {remaining} من {limit} توصيات.",
+  "billing.trial_remaining_clock": "تجربتك المجانية: متبقي {remaining} من {limit} توصيات، ولمدة محدودة.",
+  "billing.trial_ended_cta": "انتهت تجربتك المجانية. فعّل الوصول الكامل للمتابعة.",
+  "billing.cta.renew": "تجديد الاشتراك",
+  "billing.cta.topup": "شراء رصيد إضافي",
+  "billing.cta.subscribe": "اشترك الآن",
+  "billing.trial_exhausted_message":
+    "انتهت تجربتك المجانية. الاشتراك يفتح الوصول الكامل — التصفح ومتابعة توصياتك السابقة متاحان دائماً.",
   "exec.done": "نُفّذ: {direction} {volume} لوت @ {price}",
   "exec.done.pending_price": "نُفّذ — السعر قيد التأكيد",
   "exec.done.slippage": "انزلاق {slippage}",

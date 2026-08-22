@@ -25,6 +25,7 @@ import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { criticalAlert, metrics } from "@/lib/metrics";
 import { validateCompletePlan } from "@/lib/recommendations/canonical/planContract";
+import { RecommendationLifecycleError } from "@/lib/recommendations/canonical/types";
 import {
   activationRuleSchema,
   normalizeActivationRule,
@@ -683,6 +684,23 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 },
       );
+    }
+    // Billing v3: the three account states reach MCP as STRUCTURED codes the
+    // model can read and relay — never a vague failure. The bridge already
+    // propagates {ok:false, error:{code,message}} bodies verbatim.
+    if (e instanceof RecommendationLifecycleError) {
+      const billing: Partial<Record<string, { code: string; status: number }>> = {
+        TRIAL_RECOMMENDATION_LIMIT: { code: "trial_exhausted", status: 403 },
+        SUBSCRIPTION_EXPIRED: { code: "subscription_expired", status: 403 },
+        INSUFFICIENT_CREDITS: { code: "insufficient_credits", status: 402 },
+      };
+      const mapped = billing[e.code];
+      if (mapped) {
+        return NextResponse.json(
+          { ok: false, error: { code: mapped.code, message: e.message } },
+          { status: mapped.status },
+        );
+      }
     }
     return handleError(e);
   }

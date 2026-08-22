@@ -13,6 +13,7 @@ import {
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
 import { getAdminRole, permissionsForRole } from "@/lib/adminRoles";
 import { AICHART_PLAN } from "@/lib/subscription/plan";
+import { getCurrentPlanPrice } from "@/lib/billing/planConfig";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -50,8 +51,8 @@ export async function GET() {
       plan: {
         titleEn: AICHART_PLAN.titleEn,
         titleAr: AICHART_PLAN.titleAr,
-        regularPriceUsd: AICHART_PLAN.regularPriceUsd,
-        promotionalPriceUsd: AICHART_PLAN.promotionalPriceUsd,
+        // Billing v3: the price is a DB row (null until the admin sets one).
+        priceCents: (await getCurrentPlanPrice())?.price_cents ?? null,
         telegramUrl: AICHART_PLAN.telegramUrl,
         telegramHandle: AICHART_PLAN.telegramHandle,
       },

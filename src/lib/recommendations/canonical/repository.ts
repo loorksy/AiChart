@@ -189,20 +189,66 @@ export async function createCanonicalRecommendation(
     );
   }
 
-  // Trial cap (single-plan billing): a trial account may create exactly
-  // three recommendations. Claimed HERE — the one choke point every surface
-  // funnels through — with an atomic guarded increment, so two concurrent
-  // creations cannot mint a fourth. Paid/admin pass untouched; legacy imports
-  // are history, not new claims. Dynamic import mirrors the usageMeter
-  // precedent and keeps this persistence layer cycle-free.
+  // Billing at the ONE choke point every surface funnels through (web,
+  // Telegram, MCP alike). Two layers, both refused BEFORE any row exists:
+  //
+  //  - the trial cap: an atomic guarded increment (limit from billing_plan),
+  //    so two concurrent creations cannot mint one past the cap;
+  //  - the credit gate: expired subscription / empty balance are refused by
+  //    NAME here — hiding a button somewhere is never the guard. The actual
+  //    DEBIT happens inside the creation transaction below, so a failed
+  //    insert rolls the charge back with it.
+  //
+  // Legacy imports are history, not new claims. Dynamic imports mirror the
+  // usageMeter precedent and keep this persistence layer cycle-free.
+  let paidDebit: { price: number } | null = null;
   if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
     const { claimTrialRecommendation } = await import("@/lib/subscription/entitlement");
-    const claim = await claimTrialRecommendation(input.userId);
+    const { resolveSpendGate } = await import("@/lib/billing/spend");
+    const { t } = await import("@/lib/i18n");
+    // The gate NAMES the account state FIRST — an expired subscriber must
+    // hear "subscription expired", never the trial's message and never the
+    // balance's — and only an allowed account then consumes a trial slot
+    // (atomic guarded increment; the last-slot race is settled by the SQL
+    // guard, not by this read).
+    const decision = await resolveSpendGate(input.userId, "recommendation");
+    const claim = decision.allowed
+      ? await claimTrialRecommendation(input.userId)
+      : ({ ok: false, reason: "blocked" } as const);
+    if (!decision.allowed) {
+      if (decision.code === "subscription_expired") {
+        throw new RecommendationLifecycleError(
+          "SUBSCRIPTION_EXPIRED",
+          t("ar", "billing.refusal.subscription_expired"),
+        );
+      }
+      if (decision.code === "insufficient_credits") {
+        throw new RecommendationLifecycleError(
+          "INSUFFICIENT_CREDITS",
+          t("ar", "billing.refusal.insufficient_credits"),
+        );
+      }
+      if (decision.code === "trial_exhausted") {
+        throw new RecommendationLifecycleError(
+          "TRIAL_RECOMMENDATION_LIMIT",
+          t("ar", "billing.refusal.trial_exhausted"),
+        );
+      }
+      throw new RecommendationLifecycleError(
+        "RECOMMENDATION_INVALID_INPUT",
+        t("ar", "billing.refusal.account_blocked"),
+      );
+    }
     if (!claim.ok) {
+      // The gate allowed (e.g. enforcement off) but the trial counter is
+      // spent — the product cap holds regardless of the billing switch.
       throw new RecommendationLifecycleError(
         "TRIAL_RECOMMENDATION_LIMIT",
-        "انتهت توصيات التجربة المجانية الثلاث — فعّل الاشتراك لمتابعة استقبال التوصيات.",
+        t("ar", "billing.refusal.trial_exhausted"),
       );
+    }
+    if (claim.mode === "paid" && decision.mode === "paid" && decision.price > 0) {
+      paidDebit = { price: decision.price };
     }
   }
 
@@ -450,6 +496,30 @@ export async function createCanonicalRecommendation(
         "{}",
       ],
     );
+    // The credit debit rides the SAME transaction as the insert: a failed
+    // creation rolls the charge back, and the conditional update re-checks
+    // the balance so a race that emptied it since the gate read aborts the
+    // whole creation as insufficient_credits. ref = the recommendation id —
+    // the natural idempotency key.
+    if (paidDebit) {
+      const { debitCredits } = await import("@/lib/billing/credits");
+      const debit = await debitCredits(
+        {
+          userId: input.userId,
+          amount: paidDebit.price,
+          kind: "debit_recommendation",
+          ref: `rec:${id}`,
+        },
+        db,
+      );
+      if (!debit.ok) {
+        const { t } = await import("@/lib/i18n");
+        throw new RecommendationLifecycleError(
+          "INSUFFICIENT_CREDITS",
+          t("ar", "billing.refusal.insufficient_credits"),
+        );
+      }
+    }
     return id;
   });
 

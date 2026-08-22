@@ -8,7 +8,8 @@ import {
   withRequestModel,
 } from "@/lib/llm";
 import { withUsageContext } from "@/lib/billing/usageMeter";
-import { checkSpendAllowed } from "@/lib/billing/gate";
+import { resolveSpendGate, authorizeAndDebit } from "@/lib/billing/spend";
+import { t } from "@/lib/i18n";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
@@ -284,25 +285,31 @@ export async function POST(req: NextRequest) {
     const trialClaim = await claimTrialInteraction(user, requestId);
     if (!trialClaim.ok) {
       return NextResponse.json(
-        { error: subscriptionRequiredMessage(locale) },
+        {
+          error: subscriptionRequiredMessage(locale),
+          // The three-state contract: the client modal keys off this code.
+          code: trialClaim.reason === "exhausted" ? "trial_exhausted" : "account_blocked",
+        },
         { status: 403 },
       );
     }
     const trialMetered = trialClaim.mode === "trial";
 
-    // V2-A2: refuse a spent balance HERE — before the burst slot, before any
-    // model call. A plain 402 also leaves the SSE crash path as the only
-    // place that emits an error event, which is the contract phase-0 locks.
-    const gate = await checkSpendAllowed(user.id);
-    if (!gate.allowed) {
+    // Billing v3: the ONE spend gate, before the burst slot and any model
+    // call. subscription_expired outranks any balance question, and the named
+    // code rides the JSON so every surface shows the same three states. A
+    // plain 402/403 here also leaves the SSE crash path as the only place
+    // that emits an error event, which is the contract phase-0 locks.
+    const chatGate = await resolveSpendGate(user.id, "chat_turn");
+    if (!chatGate.allowed) {
       if (trialMetered) await releaseTrialInteraction(user.id, requestId);
       return NextResponse.json(
         {
-          error: gate.message,
-          code: "no_credits",
-          balance_usd: gate.balanceUsd,
+          error: t(locale, `billing.refusal.${chatGate.code}`),
+          code: chatGate.code,
+          balance: chatGate.balance,
         },
-        { status: 402 },
+        { status: chatGate.code === "insufficient_credits" ? 402 : 403 },
       );
     }
 
@@ -576,6 +583,18 @@ export async function POST(req: NextRequest) {
           if (trialMetered) {
             await commitTrialInteraction(user.id, requestId);
           }
+
+          // Chat pricing (admin-set, 0 = free): charged only on a COMPLETED
+          // turn — a failed run costs nothing. The upfront gate was the
+          // refusal point; if a concurrent spend emptied the balance since,
+          // the conditional debit refuses silently and the balance still
+          // never goes below zero. ref = requestId, so the same turn can
+          // never charge twice (queue redelivery included).
+          await authorizeAndDebit({
+            userId: user.id,
+            op: "chat_turn",
+            ref: `chat:${requestId}`,
+          }).catch(() => {});
 
           const safeResult = stripInternalFieldsFromClientResult(result);
           // Persist even if the browser dropped — a reconnecting client

@@ -21,6 +21,8 @@ import {
 } from "@/lib/brokerLink/store";
 import { metaapiConfigured, metaapiRegion, metaapiToken } from "@/lib/brokerLink/token";
 import { startTrialClock } from "@/lib/subscription/entitlement";
+import { resolveSpendGate } from "@/lib/billing/spend";
+import { t } from "@/lib/i18n";
 
 const PostBody = z
   .object({
@@ -137,6 +139,23 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const user = await requireUser();
+    // Billing v3: linking is a SUBSCRIBER feature — the trial is refused
+    // HERE, by the server, whatever the client renders. Expired and empty
+    // states answer with their own named codes so the three messages never
+    // blur. (The one-time link charge itself lands with the charge flow.)
+    const linkGate = await resolveSpendGate(user.id, "mt5_link");
+    if (!linkGate.allowed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: linkGate.code,
+            message: t("ar", `billing.refusal.${linkGate.code}`),
+          },
+        },
+        { status: linkGate.code === "insufficient_credits" ? 402 : 403 },
+      );
+    }
     const token = await metaapiToken();
     if (!token) {
       return NextResponse.json(

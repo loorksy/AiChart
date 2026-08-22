@@ -73,6 +73,7 @@ import {
   isExecutionCallback,
 } from "@/lib/telegram/executionFlow";
 import { captureChartWithPlatformFallback } from "@/lib/chart/platformCapture";
+import { resolveSpendGate } from "@/lib/billing/spend";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
   resolveTelegramCommand,
@@ -612,6 +613,27 @@ export async function runTelegramAgentTurn(input: {
   const { userId, chatId, text: turnMessage, messageId } = input;
   const message = { chatId, messageId };
   try {
+    // Billing v3 — the same three account states as web and MCP, refused
+    // SERVER-side before any agent work, each with a short line and one
+    // button that opens the right page. Hiding UI is never the guard.
+    const gate = await resolveSpendGate(userId, "chat_turn");
+    if (!gate.allowed) {
+      const target =
+        gate.code === "insufficient_credits" ? "/console/billing" : "/subscribe";
+      const label =
+        gate.code === "insufficient_credits"
+          ? t("ar", "billing.cta.topup")
+          : gate.code === "subscription_expired"
+            ? t("ar", "billing.cta.renew")
+            : t("ar", "billing.cta.subscribe");
+      await sendMessage(
+        chatId,
+        t("ar", `billing.refusal.${gate.code}`),
+        [[{ text: label, url: `${getPublicAppUrl()}${target}` }]],
+        { replyToMessageId: messageId },
+      ).catch(() => {});
+      return "answered";
+    }
     // ── Shared turn context: per-chat memory and session ─────────────────
     //
     // The bot was stateless between turns: no sessionId (the orchestrator

@@ -1,24 +1,27 @@
 /**
- * Canonical Lonora subscription product — ONE paid plan, billed monthly via
- * Stripe ($180/mo), plus a free trial that carries EVERY feature but is
- * bounded by two caps at once: a one-hour clock and three recommendations.
- * Hitting either cap ends the trial.
+ * Canonical Lonora subscription product — ONE paid plan plus a free trial
+ * that carries EVERY feature and is bounded by the trial caps the ADMIN
+ * sets (billing_plan: recommendation count, optional wall clock — disabled
+ * by default). Prices and trial numbers are DATABASE rows (billing v3);
+ * this module keeps only identity and contact facts.
  */
 
 export const AICHART_PLAN = {
   id: "aichart_full_access",
   titleEn: "Lonora Full Access",
   titleAr: "Lonora — الوصول الكامل",
-  regularPriceUsd: 350,
-  promotionalPriceUsd: 180,
   currency: "USD",
   telegramHandle: "aswadtr",
   telegramUrl: "https://t.me/aswadtr",
-  /** Trial wall-clock budget, measured from when the trial clock starts. */
-  trialDurationMs: 60 * 60 * 1000,
-  /** Recommendations the trial may create before it ends. */
-  trialRecommendations: 3,
 } as const;
+
+/** The admin-set trial bounds, resolved from billing_plan at read time. */
+export interface TrialConfig {
+  /** Recommendations the trial may create before it ends. */
+  trialLimit: number;
+  /** Wall-clock budget from the first start; 0 = no clock (the default). */
+  trialDurationMs: number;
+}
 
 export type PlanStatus = "trial" | "active" | "suspended" | "expired";
 

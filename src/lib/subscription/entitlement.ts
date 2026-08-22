@@ -1,10 +1,11 @@
 import { execute, queryOne } from "@/lib/db";
 import type { PublicUser } from "@/lib/types";
 import {
-  AICHART_PLAN,
   type EntitlementSnapshot,
   type PlanStatus,
+  type TrialConfig,
 } from "@/lib/subscription/plan";
+import { getBillingPlan } from "@/lib/billing/planConfig";
 
 export type UserEntitlementRow = {
   user_id: number;
@@ -28,6 +29,15 @@ function isExpired(expiresAt: string | null | undefined): boolean {
   if (!expiresAt) return false;
   const t = new Date(expiresAt).getTime();
   return Number.isFinite(t) && t <= Date.now();
+}
+
+/** The admin-set trial bounds (billing_plan). 0 duration = no clock. */
+export async function loadTrialConfig(): Promise<TrialConfig> {
+  const plan = await getBillingPlan();
+  return {
+    trialLimit: Math.max(0, plan.trial_recommendations | 0),
+    trialDurationMs: Math.max(0, plan.trial_duration_minutes | 0) * 60_000,
+  };
 }
 
 export async function ensureEntitlementRow(userId: number): Promise<UserEntitlementRow> {
@@ -57,6 +67,7 @@ export async function getEntitlementRow(userId: number): Promise<UserEntitlement
 export function resolveEntitlement(
   user: Pick<PublicUser, "id" | "role" | "status">,
   row: UserEntitlementRow,
+  cfg: TrialConfig,
 ): EntitlementSnapshot {
   const isAdmin = user.role === "admin";
   if (isAdmin) {
@@ -66,8 +77,8 @@ export function resolveEntitlement(
       isAdmin: true,
       hasPaidAccess: true,
       trialUsed: 0,
-      trialRemaining: AICHART_PLAN.trialRecommendations,
-      trialLimit: AICHART_PLAN.trialRecommendations,
+      trialRemaining: cfg.trialLimit,
+      trialLimit: cfg.trialLimit,
       trialStartedAt: null,
       trialExpiresAt: null,
       expiresAt: null,
@@ -83,7 +94,7 @@ export function resolveEntitlement(
       hasPaidAccess: false,
       trialUsed: row.trial_recommendations_used,
       trialRemaining: 0,
-      trialLimit: AICHART_PLAN.trialRecommendations,
+      trialLimit: cfg.trialLimit,
       trialStartedAt: row.trial_started_at,
       trialExpiresAt: null,
       expiresAt: row.subscription_expires_at,
@@ -103,8 +114,8 @@ export function resolveEntitlement(
       isAdmin: false,
       hasPaidAccess: true,
       trialUsed: row.trial_recommendations_used,
-      trialRemaining: AICHART_PLAN.trialRecommendations,
-      trialLimit: AICHART_PLAN.trialRecommendations,
+      trialRemaining: cfg.trialLimit,
+      trialLimit: cfg.trialLimit,
       trialStartedAt: row.trial_started_at,
       trialExpiresAt: null,
       expiresAt: row.subscription_expires_at,
@@ -120,7 +131,7 @@ export function resolveEntitlement(
       hasPaidAccess: false,
       trialUsed: row.trial_recommendations_used,
       trialRemaining: 0,
-      trialLimit: AICHART_PLAN.trialRecommendations,
+      trialLimit: cfg.trialLimit,
       trialStartedAt: row.trial_started_at,
       trialExpiresAt: null,
       expiresAt: row.subscription_expires_at,
@@ -133,11 +144,13 @@ export function resolveEntitlement(
   // the clock starts the user can sign in and browse; the hour begins when
   // startTrialClock runs.
   const used = Math.max(0, row.trial_recommendations_used | 0);
-  const remaining = Math.max(0, AICHART_PLAN.trialRecommendations - used);
+  const remaining = Math.max(0, cfg.trialLimit - used);
   const startedMs = row.trial_started_at ? new Date(row.trial_started_at).getTime() : null;
+  // The wall clock is an OPTIONAL admin knob (billing_plan), off by default:
+  // with duration 0 the trial is bounded by the recommendation count alone.
   const expiresMs =
-    startedMs != null && Number.isFinite(startedMs)
-      ? startedMs + AICHART_PLAN.trialDurationMs
+    cfg.trialDurationMs > 0 && startedMs != null && Number.isFinite(startedMs)
+      ? startedMs + cfg.trialDurationMs
       : null;
   const clockDead = expiresMs != null && Date.now() >= expiresMs;
   return {
@@ -147,7 +160,7 @@ export function resolveEntitlement(
     hasPaidAccess: false,
     trialUsed: used,
     trialRemaining: remaining,
-    trialLimit: AICHART_PLAN.trialRecommendations,
+    trialLimit: cfg.trialLimit,
     trialStartedAt: row.trial_started_at,
     trialExpiresAt: expiresMs != null ? new Date(expiresMs).toISOString() : null,
     expiresAt: null,
@@ -192,7 +205,8 @@ export async function claimTrialRecommendation(
     [userId],
   );
   if (!user) return { ok: false, reason: "blocked" };
-  const snapshot = resolveEntitlement(user, await ensureEntitlementRow(user.id));
+  const cfg = await loadTrialConfig();
+  const snapshot = resolveEntitlement(user, await ensureEntitlementRow(user.id), cfg);
   if (snapshot.isAdmin) return { ok: true, mode: "admin" };
   if (snapshot.hasPaidAccess) return { ok: true, mode: "paid" };
   if (snapshot.access !== "trial") return { ok: false, reason: "blocked" };
@@ -202,7 +216,7 @@ export async function claimTrialRecommendation(
             updated_at = ${nowExpr()}
       WHERE user_id = ? AND plan_status = 'trial'
         AND trial_recommendations_used < ?`,
-    [user.id, AICHART_PLAN.trialRecommendations],
+    [user.id, cfg.trialLimit],
   );
   if (res.changes < 1) return { ok: false, reason: "exhausted" };
   return { ok: true, mode: "trial" };
@@ -211,6 +225,7 @@ export async function claimTrialRecommendation(
 export async function getEntitlementForUser(
   user: Pick<PublicUser, "id" | "role" | "status">,
 ): Promise<EntitlementSnapshot> {
+  const cfg = await loadTrialConfig();
   if (user.role === "admin") {
     return resolveEntitlement(user, {
       user_id: user.id,
@@ -224,10 +239,10 @@ export async function getEntitlementForUser(
       activated_by: null,
       note: null,
       updated_at: "",
-    });
+    }, cfg);
   }
   const row = await getEntitlementRow(user.id);
-  const snap = resolveEntitlement(user, row);
+  const snap = resolveEntitlement(user, row, cfg);
   if (row.plan_status === "active" && snap.planStatus === "expired") {
     await execute(
       `UPDATE user_entitlements SET plan_status = 'expired', updated_at = ${nowExpr()} WHERE user_id = ?`,

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { initDb } from "@/lib/db";
 import { getStripeKeys } from "@/lib/billing/stripe";
-import { TIER_ORDER, TIERS } from "@/lib/billing/tiers";
+import { getBillingPlan, getCurrentPlanPrice } from "@/lib/billing/planConfig";
 import { AICHART_PLAN } from "@/lib/subscription/plan";
 import { PricingCards } from "@/components/billing/PricingCards";
 import { Surface } from "@/components/foundation";
@@ -16,16 +16,20 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata = pageMetadata("pricing");
 
 /**
- * V2-A5 (#94): the public pricing page. Tier data comes from the same
- * tiers.ts the enforcement gate reads — the page can never drift from what
- * the billing actually does. Checkout works when Stripe keys exist;
- * otherwise the CTA degrades to a live contact link.
+ * The public pricing page. Plan data comes from the same billing_plan /
+ * plan_prices rows the enforcement gate reads — the page can never drift
+ * from what billing actually does, and an unset price degrades to the
+ * contact CTA. Checkout works when Stripe keys exist.
  */
 export default async function PricingPage() {
   if (!FEATURES.billing()) redirect("/");
   await initDb();
-  const [user, stripeKeys] = await Promise.all([getCurrentUser(), getStripeKeys()]);
-  const tiers = TIER_ORDER.map((id) => TIERS[id]);
+  const [user, stripeKeys, plan, price] = await Promise.all([
+    getCurrentUser(),
+    getStripeKeys(),
+    getBillingPlan(),
+    getCurrentPlanPrice(),
+  ]);
 
   return (
     <div dir="rtl" className="min-h-dvh bg-background">
@@ -61,15 +65,12 @@ export default async function PricingPage() {
         </div>
 
         <PricingCards
-          tiers={tiers.map((t) => ({
-            id: t.id,
-            nameEn: t.nameEn,
-            nameAr: t.nameAr,
-            priceUsd: t.priceUsd,
-            includedCreditsUsd: t.includedCreditsUsd,
-            features: t.features,
-            modelCount: t.allowedModels.length || 8,
-          }))}
+          plan={{
+            priceCents: price?.price_cents ?? null,
+            creditsPerCycle: price?.credits_per_cycle ?? null,
+            trialLimit: plan.trial_recommendations,
+            trialDurationMinutes: plan.trial_duration_minutes,
+          }}
           signedIn={user != null}
           stripeReady={stripeKeys != null}
         />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CreditCard, Search, UserSearch } from "lucide-react";
 
 import { AICHART_PLAN } from "@/lib/subscription/plan";
@@ -60,6 +60,23 @@ export function AdminSubscriptionsPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [searched, setSearched] = useState(false);
+  // The admin-set trial cap (billing_plan) — displayed, never hardcoded.
+  const [trialLimit, setTrialLimit] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/billing/plan")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { trial_recommendations?: number } | null) => {
+        if (alive && d && Number.isFinite(d.trial_recommendations)) {
+          setTrialLimit(Number(d.trial_recommendations));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const search = useCallback(async () => {
     setBusy(true);
@@ -139,7 +156,7 @@ export function AdminSubscriptionsPanel() {
     <AdminPage dir="rtl" data-testid="admin-subscriptions-panel">
       <SectionHeader
         title="إدارة الاشتراكات"
-        description={`خطة واحدة: ${AICHART_PLAN.titleAr} — ${AICHART_PLAN.promotionalPriceUsd}$ (بدلاً من ${AICHART_PLAN.regularPriceUsd}$) · تفعيل يدوي بعد الدفع عبر Telegram`}
+        description={`خطة واحدة: ${AICHART_PLAN.titleAr} · السعر والكريدت من تبويب الفوترة · تفعيل يدوي بعد الدفع عبر Telegram`}
         icon={CreditCard}
       />
 
@@ -206,7 +223,7 @@ export function AdminSubscriptionsPanel() {
                     label: "التجربة",
                     value: (
                       <span dir="ltr" className="type-numeric">
-                        {r.trial_recommendations_used ?? 0}/{AICHART_PLAN.trialRecommendations}
+                        {r.trial_recommendations_used ?? 0}/{trialLimit ?? "—"}
                       </span>
                     ),
                   },
@@ -270,7 +287,7 @@ export function AdminSubscriptionsPanel() {
                       </Badge>
                     </Td>
                     <Td numeric dir="ltr">
-                      {r.trial_recommendations_used ?? 0}/{AICHART_PLAN.trialRecommendations}
+                      {r.trial_recommendations_used ?? 0}/{trialLimit ?? "—"}
                     </Td>
                     <Td className="whitespace-nowrap text-xs text-muted-foreground">
                       {r.subscription_expires_at
