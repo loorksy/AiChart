@@ -51,13 +51,17 @@ test("canonical core carries the identity and the hard rules", () => {
   const core = canonicalIdentityCore();
   assert.match(core, /chat-first analyst for gold \(XAUUSD\) only/);
   assert.match(core, /model alone owns the analytical decision/);
-  // Recommendations-only: there is no order to place and no lot to size, so
-  // the old execution rules ("valid stop-loss", broker equity) are gone and
-  // their absence is what this now pins.
+  // The ANALYSIS places nothing; execution is a separate MANUAL layer the
+  // operator commands (owner decision). What this pins now: the analysis
+  // never executes, nothing is automatic, sizing exists only at the manual
+  // step, and executed trades never grade the recommendation record.
   assert.match(core, /never places, modifies, or closes a trade/);
-  assert.match(core, /the platform computes no lots/);
+  assert.match(core, /no automatic execution of any kind/i);
+  assert.match(core, /sizing exists only at the manual execution step/);
+  assert.match(core, /Executed trades never enter the recommendation record/);
   assert.match(core, /operator's language/);
-  assert.doesNotMatch(core, /MetaTrader|MT5|broker equity|open_trade/i);
+  // The auto-era vocabulary stays dead.
+  assert.doesNotMatch(core, /open_trade|broker equity|trade mode|approval flow/i);
 });
 
 test("canonical core states the three-layer doctrine", () => {

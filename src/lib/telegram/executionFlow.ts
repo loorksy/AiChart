@@ -1,6 +1,6 @@
 /**
  * Telegram execution flow — the same short path as the web modal:
- * press تنفيذ → adjust the lots → press again → read the number.
+ * press execute, adjust the lots, press again, read the number.
  *
  * Every press is a HUMAN tap on an inline button; the agent never composes
  * these callbacks and cannot reach this module (the manual-execution guard
@@ -17,6 +17,7 @@
  * one order by construction.
  */
 import { t } from "@/lib/i18n";
+import { DATA_SYMBOL } from "@/lib/gold";
 import {
   answerCallbackQuery,
   editMessageText,
@@ -169,7 +170,7 @@ export async function handleExecutionCallback(
       input.chatId,
       menuText({
         direction: context.direction ?? "buy",
-        symbol: context.symbol ?? "XAUUSD",
+        symbol: context.symbol ?? DATA_SYMBOL,
         entry: context.entry ?? null,
         stopLoss: context.stopLoss ?? null,
         takeProfit: context.takeProfit ?? null,
@@ -204,7 +205,7 @@ export async function handleExecutionCallback(
       input.messageId,
       menuText({
         direction: context.direction ?? "buy",
-        symbol: context.symbol ?? "XAUUSD",
+        symbol: context.symbol ?? DATA_SYMBOL,
         entry: context.entry ?? null,
         stopLoss: context.stopLoss ?? null,
         takeProfit: context.takeProfit ?? null,
