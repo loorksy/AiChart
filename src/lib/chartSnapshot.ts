@@ -1,3 +1,20 @@
+/**
+ * Server-side chart RENDERING (QuickChart) — the recommendation report image,
+ * and nothing else.
+ *
+ * Why this survives the QuickChart purge (written justification, reviewed):
+ * every LIVE chart the operator or the agent looks at comes from the one
+ * vision source — captureChartWithPlatformFallback (a real TradingView
+ * capture via the operator's tab or the hosted chart session). This module
+ * serves the one remaining, deliberately different job: the ANNOTATED REPORT
+ * image of a stored recommendation (its entry/stop/target levels drawn over
+ * the platform's own candles), which must be re-drawable deterministically
+ * for any recommendation at any later time, chart session up or not. It is a
+ * data render of platform candles, is never captioned or claimed as a
+ * TradingView review, and must never be served where a live chart was asked
+ * for — the Telegram /chart command and every capture tool refuse honestly
+ * instead of falling back here.
+ */
 import { fetchOhlc } from "./ohlc/fetchOhlc";
 import { barDurationSec, normalizeInterval } from "./intervals";
 import type { MarketType } from "./markets/types";
@@ -461,54 +478,7 @@ async function renderChartPng(
   return Buffer.from(await res.arrayBuffer());
 }
 
-/**
- * Builds a QuickChart URL with candles, all drawing types, and strategy levels.
- */
-export async function buildChartSnapshotUrl(
-  input: ChartSnapshotInput,
-): Promise<string | null> {
-  try {
-    const limit = input.limit ?? CHART_CAPTURE_CANDLES;
-    const candles = await fetchCandleSeries(
-      undefined,
-      input.symbol,
-      input.interval,
-      "forex",
-      limit,
-    );
-    if (!candles) return null;
-    const chart = buildChartJson(input, candles);
-    if (!chart) return null;
-    const encoded = encodeURIComponent(JSON.stringify(chart));
-    return `https://quickchart.io/chart?v=3&w=1280&h=560&bkg=%230a0e17&c=${encoded}`;
-  } catch {
-    return null;
-  }
-}
-
-/** PNG bytes via QuickChart POST (reliable for Telegram multipart upload). */
-export async function buildChartSnapshotBuffer(
-  input: ChartSnapshotInput,
-): Promise<Buffer | null> {
-  try {
-    const limit = input.limit ?? CHART_CAPTURE_CANDLES;
-    const candles = await fetchCandleSeries(
-      undefined,
-      input.symbol,
-      input.interval,
-      "forex",
-      limit,
-    );
-    if (!candles) return null;
-    const chart = buildChartJson(input, candles);
-    if (!chart) return null;
-    return renderChartPng(chart);
-  } catch {
-    return null;
-  }
-}
-
-/** Server-side chart PNG for forex candles. */
+/** Server-side chart PNG for forex candles — the report renderer's one entry. */
 export async function buildChartSnapshotBufferForMarket(
   userId: number,
   symbol: string,

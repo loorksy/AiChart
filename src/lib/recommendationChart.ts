@@ -50,23 +50,3 @@ export async function attachChartToRecommendation(
 
   return { rec: enriched };
 }
-
-/** Resolves chart URL from recommendation metadata or builds a fresh one. */
-export async function resolveChartUrl(
-  rec: Pick<
-    Recommendation,
-    | "id"
-    | "symbol"
-    | "timeframe"
-    | "chart_image_url"
-    | "entry"
-    | "stop_loss"
-    | "take_profit"
-    | "pattern_name"
-    | "chart_drawings_json"
-  >,
-): Promise<string | null> {
-  if (rec.chart_image_url) return rec.chart_image_url;
-  if (rec.id) return chartImagePathForRecommendation(rec.id);
-  return null;
-}

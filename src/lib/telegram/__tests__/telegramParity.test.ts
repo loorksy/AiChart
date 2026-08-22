@@ -171,6 +171,18 @@ describe("the surface shares the platform's brain", () => {
     const analysisCall = agentSource.indexOf("runUnifiedChartAgent(");
     assert.ok(unlinkedBranch > 0 && unlinkedBranch < analysisCall);
   });
+
+  it("serves /chart from the SAME vision source the agent judges on", () => {
+    // The incident this pins: /chart used to send a server-side QuickChart
+    // redraw while the agent's verdict in the same conversation was formed on
+    // a TradingView capture — two different images of "the chart". Telegram's
+    // user-facing photos must come from the one capture pipeline; when it
+    // cannot deliver, the honest failure text goes out, never a substitute
+    // image from a different renderer.
+    assert.match(agentSource, /captureChartWithPlatformFallback\(/);
+    assert.match(agentSource, /telegramChartFailed\(\)/);
+    assert.doesNotMatch(agentSource, /chartSnapshot|buildChartSnapshotBuffer|quickchart/i);
+  });
 });
 
 describe("cards carry links, never actions", () => {

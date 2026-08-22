@@ -8,7 +8,13 @@ import { overlaysFromRecommendation } from "@/lib/chartOverlays";
 import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 import type { MarketType } from "@/lib/markets/types";
 
-/** Bridge: annotated chart PNG for a recommendation (token auth, no cookies). */
+/**
+ * Bridge: annotated chart PNG for a recommendation (token auth, no cookies).
+ * A stored recommendation's REPORT render — levels over platform candles
+ * (server render — see the justification in chartSnapshot.ts). The error hint
+ * below already steers live views to capture_chart_snapshot; this route is
+ * never a live-chart substitute.
+ */
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },

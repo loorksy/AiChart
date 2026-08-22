@@ -72,11 +72,7 @@ import {
   handleExecutionCallback,
   isExecutionCallback,
 } from "@/lib/telegram/executionFlow";
-import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
-import {
-  CHART_CONTEXT_CANDLES,
-  CHART_ZOOM_CANDLES,
-} from "@/lib/chart/captureWindow";
+import { captureChartWithPlatformFallback } from "@/lib/chart/platformCapture";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
   resolveTelegramCommand,
@@ -522,24 +518,27 @@ export async function prepareTelegramTurn(
   const command = resolveTelegramCommand(incoming);
   if (command?.kind === "chart_photo") {
     await sendChatAction(message.chatId, "upload_photo").catch(() => {});
-    // The two-shot rule applies to user-requested charts too: a wide context
-    // frame and a zoomed detail frame, rendered from platform candles (no
-    // browser exists here, so these are data renders — captioned as charts
-    // of the data, never presented as a TradingView review).
-    const [contextShot, zoomShot] = await Promise.all([
-      buildChartSnapshotBufferForMarket(userId, DATA_SYMBOL, "15m", "forex", {
-        limit: CHART_CONTEXT_CANDLES,
-      }),
-      buildChartSnapshotBufferForMarket(userId, DATA_SYMBOL, "15m", "forex", {
-        limit: CHART_ZOOM_CANDLES,
-      }),
-    ]);
-    if (!contextShot) {
+    // The SAME vision source the agent judges on: the operator's live tab if
+    // one is fresh, else the hosted chart session — a real TradingView
+    // capture, two shots (wide context + zoom) like every other capture.
+    // No fresh tab and no chart session is an honest failure message, never
+    // a substitute image drawn from a different renderer.
+    const captured = await captureChartWithPlatformFallback({
+      userId,
+      symbol: DATA_SYMBOL,
+      interval: "15m",
+      market: "forex",
+      liveSession: false,
+    });
+    if (!captured.ok) {
       await sendMessage(message.chatId, telegramChartFailed(), undefined, {
         replyToMessageId: message.messageId,
       }).catch(() => {});
       return { kind: "handled", outcome: "answered" };
     }
+    const contextShot = Buffer.from(captured.image_base64, "base64");
+    const zoomImage = captured.images.find((shot) => shot.label === "zoom");
+    const zoomShot = zoomImage ? Buffer.from(zoomImage.image_base64, "base64") : null;
     const closed = !getSessionStatus(DATA_SYMBOL).isOpen;
     await dismissPersistentKeyboardOnce(message.chatId);
     await sendPhotoBuffer(

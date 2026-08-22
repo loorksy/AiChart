@@ -7,6 +7,11 @@ import type { MarketType } from "@/lib/markets/types";
 import { overlaysFromRecommendation } from "@/lib/chartOverlays";
 import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 
+/**
+ * The stored recommendation's REPORT image: its levels drawn over platform
+ * candles (server render — see the justification in chartSnapshot.ts). This
+ * is not a live-chart surface; live views go through the capture pipeline.
+ */
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
