@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import {
-  createFmpProvider,
-  clearFmpCache,
-} from "@/lib/agent/news/providers/fmpProvider";
-import { clearForexFactoryCache } from "@/lib/agent/news/providers/forexFactoryProvider";
+import { createFmpProvider } from "@/lib/agent/news/providers/fmpProvider";
+import { resetCalendarCacheForTests } from "@/lib/agent/news/calendarCache";
 import { clearPlatformConfigCache } from "@/lib/platformConfig";
 import { runNewsMacroAgent } from "@/lib/agent/agents/newsMacroAgent";
 import type { AgentActivityEvent, AgentRunContext } from "@/lib/agent/types";
@@ -27,8 +24,9 @@ function fakeCtx(
 
 afterEach(() => {
   globalThis.fetch = realFetch;
-  clearFmpCache();
-  clearForexFactoryCache();
+  // runNewsMacroAgent goes through the platform calendar cache — reset it or
+  // one test's schedule is served to the next.
+  resetCalendarCacheForTests();
   delete process.env.FMP_API_KEY;
   delete process.env.FOREX_FACTORY_CALENDAR_V1;
   clearPlatformConfigCache();

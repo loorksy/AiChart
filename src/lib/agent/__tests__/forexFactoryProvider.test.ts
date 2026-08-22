@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import {
-  createForexFactoryProvider,
-  clearForexFactoryCache,
-} from "@/lib/agent/news/providers/forexFactoryProvider";
+import { createForexFactoryProvider } from "@/lib/agent/news/providers/forexFactoryProvider";
 import { getNewsProvider, newsProviderConfigured } from "@/lib/agent/news/newsProvider";
-import { clearFmpCache } from "@/lib/agent/news/providers/fmpProvider";
+import { resetCalendarCacheForTests } from "@/lib/agent/news/calendarCache";
 import { clearPlatformConfigCache } from "@/lib/platformConfig";
 
 const realFetch = globalThis.fetch;
@@ -20,8 +17,9 @@ function stubFetch(body: unknown, status = 200): void {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
-  clearForexFactoryCache();
-  clearFmpCache();
+  // getNewsProvider routes through the platform calendar cache — reset it or
+  // one test's schedule is served to the next.
+  resetCalendarCacheForTests();
   delete process.env.FMP_API_KEY;
   delete process.env.NEWS_API_KEY;
   delete process.env.ECONOMIC_CALENDAR_API_KEY;

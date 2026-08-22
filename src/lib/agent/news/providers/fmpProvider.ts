@@ -1,10 +1,13 @@
 /**
  * Financial Modeling Prep economic-calendar provider. Wires the honest
- * NewsProvider contract to a real upstream: events are fetched (with a short
- * in-memory cache to respect rate limits), filtered to the requested
- * currencies, and mapped to the platform's impact scale. Any upstream failure
- * surfaces as a thrown error so the News Agent degrades to newsRisk=unknown —
- * never fake events.
+ * NewsProvider contract to a real upstream: events are fetched, filtered to
+ * the requested currencies, and mapped to the platform's impact scale. Any
+ * upstream failure surfaces as a thrown error so the News Agent degrades to
+ * newsRisk=unknown — never fake events.
+ *
+ * Caching lives ONE level up, in the platform calendar cache (calendarCache.ts)
+ * that every getNewsProvider() consumer goes through — a provider-local cache
+ * here would silently defeat its adaptive near-event refresh.
  */
 import { fetchWithTimeout } from "@/lib/externalFetch";
 import {
@@ -14,7 +17,6 @@ import {
 } from "../newsProvider";
 
 const BASE_URL = "https://financialmodelingprep.com/api/v3/economic_calendar";
-const CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface FmpCalendarRow {
   date?: string;
@@ -23,13 +25,6 @@ interface FmpCalendarRow {
   currency?: string;
   impact?: string;
 }
-
-interface CacheEntry {
-  fetchedAt: number;
-  events: EconomicEvent[];
-}
-
-const cache = new Map<string, CacheEntry>();
 
 /** Country → currency mapping for rows without an explicit currency. */
 const COUNTRY_CURRENCY: Record<string, string> = {
@@ -81,41 +76,27 @@ export function createFmpProvider(apiKey: string): NewsProvider {
     }): Promise<EconomicEvent[]> {
       const fromStr = input.from.toISOString().slice(0, 10);
       const toStr = input.to.toISOString().slice(0, 10);
-      const cacheKey = `${fromStr}:${toStr}`;
-
-      let all: EconomicEvent[];
-      const cached = cache.get(cacheKey);
-      if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-        all = cached.events;
-      } else {
-        const url = `${BASE_URL}?from=${fromStr}&to=${toStr}&apikey=${encodeURIComponent(apiKey)}`;
-        const res = await fetchWithTimeout(url, { method: "GET" });
-        if (!res.ok) {
-          throw new Error(`FMP calendar request failed: ${res.status}`);
-        }
-        const rows = (await res.json()) as unknown;
-        if (!Array.isArray(rows)) {
-          throw new Error("FMP calendar returned an unexpected shape.");
-        }
-        all = (rows as FmpCalendarRow[])
-          .filter((r) => r.date && r.event)
-          .map((r) => ({
-            title: String(r.event),
-            time: new Date(String(r.date)).toISOString(),
-            impact: mapImpact(r.impact),
-            currency: rowCurrency(r),
-          }));
-        cache.set(cacheKey, { fetchedAt: Date.now(), events: all });
+      const url = `${BASE_URL}?from=${fromStr}&to=${toStr}&apikey=${encodeURIComponent(apiKey)}`;
+      const res = await fetchWithTimeout(url, { method: "GET" });
+      if (!res.ok) {
+        throw new Error(`FMP calendar request failed: ${res.status}`);
       }
+      const rows = (await res.json()) as unknown;
+      if (!Array.isArray(rows)) {
+        throw new Error("FMP calendar returned an unexpected shape.");
+      }
+      const all = (rows as FmpCalendarRow[])
+        .filter((r) => r.date && r.event)
+        .map((r) => ({
+          title: String(r.event),
+          time: new Date(String(r.date)).toISOString(),
+          impact: mapImpact(r.impact),
+          currency: rowCurrency(r),
+        }));
 
       // One shared relevance rule for every calendar source (window +
       // currencies + the gold-terms extension) — sources must not drift apart.
       return all.filter((event) => eventMatchesRequest(event, input));
     },
   };
-}
-
-/** Test hook: clear the module cache between test cases. */
-export function clearFmpCache(): void {
-  cache.clear();
 }

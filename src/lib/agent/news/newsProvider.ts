@@ -9,6 +9,7 @@
  * other's calendar, and only both failing degrades the agent to unknown.
  */
 import { FEATURES } from "@/lib/agent/featureFlags";
+import { getCalendarEvents } from "./calendarCache";
 import { createFmpProvider } from "./providers/fmpProvider";
 import { createForexFactoryProvider } from "./providers/forexFactoryProvider";
 
@@ -131,11 +132,29 @@ function mergedProvider(providers: NewsProvider[]): NewsProvider {
 }
 
 /**
+ * The platform-level calendar cache wrapped around whatever source mix is
+ * configured. Every consumer of getNewsProvider goes through it: one shared,
+ * single-flight fetch per freshness window, event distances computed at read
+ * time, and the unchanged fail-closed behavior on a fetch failure with no
+ * tolerably-fresh cache (see calendarCache.ts for the full contract).
+ */
+function withPlatformCalendarCache(inner: NewsProvider): NewsProvider {
+  const cached: NewsProvider = {
+    getEconomicEvents: (input) =>
+      getCalendarEvents(input, { fetch: (span) => inner.getEconomicEvents(span) }),
+  };
+  if (inner.getLiveHeadlines) {
+    cached.getLiveHeadlines = inner.getLiveHeadlines.bind(inner);
+  }
+  return cached;
+}
+
+/**
  * Returns the active provider, or null when none is configured: FMP when a key
  * exists (FMP_API_KEY, with NEWS_API_KEY / ECONOMIC_CALENDAR_API_KEY accepted
  * as aliases), Forex Factory when its flag is on, MERGED when both. If
  * construction fails the agent degrades to newsRisk=unknown — never fake
- * events.
+ * events. Whatever the mix, calendar reads go through the platform cache.
  */
 export function getNewsProvider(): NewsProvider | null {
   const providers: NewsProvider[] = [];
@@ -158,6 +177,7 @@ export function getNewsProvider(): NewsProvider | null {
     }
   }
   if (providers.length === 0) return null;
-  if (providers.length === 1) return providers[0];
-  return mergedProvider(providers);
+  return withPlatformCalendarCache(
+    providers.length === 1 ? providers[0]! : mergedProvider(providers),
+  );
 }

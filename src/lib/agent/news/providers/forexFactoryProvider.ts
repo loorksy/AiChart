@@ -2,9 +2,12 @@
  * Forex Factory weekly-calendar provider. Reads the public weekly feed the
  * site itself publishes (no API key), maps its impact ratings onto the
  * platform scale, and applies the same honesty rules as every other source:
- * defensive parsing, bounded fetch, short cache, and a thrown error on any
- * upstream failure so the News Agent degrades to newsRisk=unknown — never
- * fake events.
+ * defensive parsing, bounded fetch, and a thrown error on any upstream
+ * failure so the News Agent degrades to newsRisk=unknown — never fake events.
+ *
+ * Caching lives ONE level up, in the platform calendar cache (calendarCache.ts)
+ * that every getNewsProvider() consumer goes through — a provider-local cache
+ * here would silently defeat its adaptive near-event refresh.
  *
  * The feed is an UNOFFICIAL convenience published by the calendar's CDN; its
  * absence or a schema drift must never take the platform down, which is why
@@ -19,9 +22,6 @@ import {
 } from "../newsProvider";
 
 const FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
-/** The feed republishes a handful of times per hour; 10 minutes is fresh
- *  enough for a 6-hour risk window without hammering the CDN. */
-const CACHE_TTL_MS = 10 * 60 * 1000;
 
 interface FfRow {
   title?: unknown;
@@ -29,13 +29,6 @@ interface FfRow {
   date?: unknown;
   impact?: unknown;
 }
-
-interface CacheEntry {
-  fetchedAt: number;
-  events: EconomicEvent[];
-}
-
-let cache: CacheEntry | null = null;
 
 function mapImpact(raw: unknown): EconomicEvent["impact"] {
   const v = String(raw ?? "").toLowerCase();
@@ -71,33 +64,22 @@ export function createForexFactoryProvider(): NewsProvider {
       from: Date;
       to: Date;
     }): Promise<EconomicEvent[]> {
-      let all: EconomicEvent[];
-      if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-        all = cache.events;
-      } else {
-        const res = await fetchWithTimeout(
-          FEED_URL,
-          { method: "GET" },
-          { label: "Forex Factory calendar" },
-        );
-        if (!res.ok) {
-          throw new Error(`Forex Factory calendar request failed: ${res.status}`);
-        }
-        const rows = (await res.json()) as unknown;
-        if (!Array.isArray(rows)) {
-          throw new Error("Forex Factory calendar returned an unexpected shape.");
-        }
-        all = (rows as FfRow[])
-          .map(mapRow)
-          .filter((event): event is EconomicEvent => event !== null);
-        cache = { fetchedAt: Date.now(), events: all };
+      const res = await fetchWithTimeout(
+        FEED_URL,
+        { method: "GET" },
+        { label: "Forex Factory calendar" },
+      );
+      if (!res.ok) {
+        throw new Error(`Forex Factory calendar request failed: ${res.status}`);
       }
+      const rows = (await res.json()) as unknown;
+      if (!Array.isArray(rows)) {
+        throw new Error("Forex Factory calendar returned an unexpected shape.");
+      }
+      const all = (rows as FfRow[])
+        .map(mapRow)
+        .filter((event): event is EconomicEvent => event !== null);
       return all.filter((event) => eventMatchesRequest(event, input));
     },
   };
-}
-
-/** Test hook: clear the module cache between test cases. */
-export function clearForexFactoryCache(): void {
-  cache = null;
 }

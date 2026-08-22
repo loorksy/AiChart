@@ -130,7 +130,8 @@ export async function checkEconomicEventProximity(
   const from = new Date(now);
   const to = new Date(now + EVENT_PROXIMITY_MINUTES * 60_000);
   // One calendar read per symbol: the provider owns the currency matching
-  // (including the gold/USD nuance), and caches the upstream fetch itself.
+  // (including the gold/USD nuance); the platform calendar cache behind
+  // getNewsProvider makes the upstream fetch shared and rare.
   const eventsBySymbol = new Map<string, EconomicEvent[]>();
 
   for (const rec of recs) {
