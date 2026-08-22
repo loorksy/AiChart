@@ -2,6 +2,14 @@
 *.sh text eol=lf
 infra/** text eol=lf
 
+# Generated tool artifacts are BYTE-compared by their check scripts
+# (mcp schemas:check / export-contract --check diff the regenerated LF text
+# against the checked-out file). A CRLF checkout on Windows plants a CR on
+# every line (~704 of them in contract.json), so the checks fail there
+# forever while passing on Linux. Pin LF everywhere.
+agent/tools/contract.json text eol=lf
+mcp/schemas/**/*.json text eol=lf
+
 # --- merged from web/.gitattributes ---
 # TradingView Advanced Charts is vendored verbatim. Mark it -text so git never
 # rewrites line endings on it: this is a licensed third-party build and the

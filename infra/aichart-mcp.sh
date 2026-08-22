@@ -4,23 +4,31 @@ set -euo pipefail
 
 REPO="${AICHART_INSTALL_DIR:-/opt/aichart}"
 MCP_DIR="$REPO/mcp"
-WEB_ENV="$REPO/web/.env"
+# The app lives at the repo ROOT (the old web/ subdirectory is gone) — its
+# .env is the one shared env file on the box.
+ENV_FILE="$REPO/.env"
 
 cd "$MCP_DIR"
 
-if [[ -f "$WEB_ENV" ]]; then
+if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
-  source <(grep -E '^(AICHART_API_URL|AICHART_SERVICE_TOKEN|GIT_COMMIT=|MCP_|PORT=|DB_PATH=|DATABASE_URL=|BRIDGE_FETCH_TIMEOUT_MS=)' "$WEB_ENV" 2>/dev/null | sed 's/\r$//')
+  source <(grep -E '^(AICHART_API_URL|AICHART_SERVICE_TOKEN|GIT_COMMIT=|MCP_|PORT=|DB_PATH=|DATABASE_URL=|BRIDGE_FETCH_TIMEOUT_MS=)' "$ENV_FILE" 2>/dev/null | sed 's/\r$//')
   set +a
   PORT="${PORT:-3010}"
   export AICHART_API_URL="${AICHART_API_URL:-http://127.0.0.1:${PORT}}"
   DB_PATH="${DB_PATH:-data/aichart.db}"
   if [[ "$DB_PATH" != /* ]]; then
-    export DB_PATH="$REPO/web/$DB_PATH"
+    export DB_PATH="$REPO/$DB_PATH"
   else
     export DB_PATH="$DB_PATH"
   fi
+else
+  # Sourcing used to point at web/.env and skip SILENTLY when it was absent —
+  # the process then ran on defaults (API port 3000, no service token) with
+  # nothing in the logs to say why the bridge was broken. Missing env is
+  # loud now; it stays non-fatal because pm2 may inject the env itself.
+  echo "[aichart-mcp] WARNING: $ENV_FILE not found — running on defaults/inherited env" >&2
 fi
 
 export MCP_PORT="${MCP_PORT:-8787}"

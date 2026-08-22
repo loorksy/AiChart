@@ -14,8 +14,9 @@
 ```bash
 docker build -t aichart-chart-host ./chart-host
 
-# --init يحصد عمليات Chromium الزومبي؛ المنفذ 8788 على المضيف لأن 8787
-# مشغول بخدمة aichart-mcp.
+# --init «إلزامي» لا اختياري: بدونه يترك كل فتح/إغلاق للمتصفح ~3 عمليات
+# Chromium زومبي، ومع --pids-limit=256 تتوقف الحاوية عن العمل بعد ~80 دورة.
+# المنفذ 8788 على المضيف لأن 8787 مشغول بخدمة aichart-mcp.
 docker run -d --name chart-host \
   --init --memory=1500m --pids-limit=256 --restart=unless-stopped \
   -p 127.0.0.1:8788:8787 \
