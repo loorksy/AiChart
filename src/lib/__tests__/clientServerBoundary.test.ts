@@ -36,11 +36,12 @@ const SERVER_ONLY_PREFIXES = [
   "src/lib/agent/orchestrator",
 ];
 const SERVER_ONLY_FILES = [
+  "src/lib/db.ts",
   "src/lib/llm.ts",
   "src/lib/queue.ts",
   "src/lib/telegram.ts",
   "src/lib/store.ts",
-  "src/lib/worker.ts",
+  "src/worker.ts",
   "src/lib/embeddings.ts",
 ];
 /** Pure vocabulary modules a client component MAY share. */

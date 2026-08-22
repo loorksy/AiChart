@@ -26,7 +26,6 @@ import type { AgentRunContext } from "./host";
 import { UnknownChannelError } from "./host";
 import {
   DEFAULT_NOTIFICATION_PREFS,
-  NOTIFICATION_CATEGORIES,
   normalizeNotificationPrefs as normalizePrefs,
   type NotificationCategory,
   type NotificationPrefs,
@@ -34,13 +33,14 @@ import {
 
 const log = createLogger("resident.notifications");
 
-// The vocabulary lives in ./notificationPrefs — a pure, import-free module the
-// browser settings card can share without pulling the resident host (and the
-// DB drivers behind it) into the client bundle. Re-exported here so server
-// callers keep their one import.
+// The vocabulary (categories, types, defaults, normalizer) lives in the
+// PURE module so the client settings card can import it without dragging
+// this file's host/db graph into the browser bundle. Re-exported here so
+// server callers keep one import site.
 export {
   DEFAULT_NOTIFICATION_PREFS,
   NOTIFICATION_CATEGORIES,
+  normalizeNotificationPrefs,
   type NotificationCategory,
   type NotificationPrefs,
 } from "./notificationPrefs";
