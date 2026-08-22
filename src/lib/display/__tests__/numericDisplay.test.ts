@@ -24,14 +24,14 @@ describe("numericDisplay", () => {
 
 describe("balanceChipStateFromApi", () => {
   it("renders zero credit as ready", () => {
-    assert.deepEqual(balanceChipStateFromApi({ ok: true, balance: { totalUsd: 0 } }), {
+    assert.deepEqual(balanceChipStateFromApi({ ok: true, balance: 0 }), {
       status: "ready",
       value: 0,
     });
   });
 
-  it("errors when totalUsd is missing", () => {
-    assert.deepEqual(balanceChipStateFromApi({ ok: true, balance: {} }), {
+  it("errors when the balance is missing", () => {
+    assert.deepEqual(balanceChipStateFromApi({ ok: true }), {
       status: "error",
     });
   });

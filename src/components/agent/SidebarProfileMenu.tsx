@@ -18,7 +18,9 @@ import { useLocale } from "@/hooks/useLocale";
 import { useTheme } from "@/components/ThemeProvider";
 import { useConsoleOverlays } from "@/components/shell/ConsoleOverlays";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
-import { BalanceChip } from "@/components/shell/BalanceChip";
+import { AccountStatusBadge } from "@/components/billing/AccountStatusBadge";
+import { useBillingSummary } from "@/hooks/useBillingSummary";
+import Link from "next/link";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 import { APP_LOCALES, type AppLocale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -477,10 +479,9 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
             <span aria-hidden className="h-1 w-10 rounded-full bg-muted-foreground/40" />
           </div>
           <ProfileIdentity initial={initial} displayName={name} email={email} />
-          {/* Subscription credit — same BalanceChip as the top bar, never MT equity. */}
-          <div className="flex justify-center px-4 pb-2">
-            <BalanceChip />
-          </div>
+          {/* The account panel: status, balance, trial/expiry, ONE action —
+              everything visible at once, no extra clicks. */}
+          <AccountFacts />
           <div className="py-1">
             <ProfileMenuItems
               onDone={() => setOpen(false)}
@@ -494,3 +495,64 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
     </Dialog.Root>
   );
 }
+
+/**
+ * The account panel facts (billing v3): status badge, the credit balance as
+ * a plain number, what remains of the trial (Free) or the expiry date
+ * (Pro), ONE action for the state, a link to the ledger, and the quiet
+ * threshold alerts — visible at once, never a popup.
+ */
+function AccountFacts() {
+  const { t, locale } = useLocale();
+  const { summary } = useBillingSummary();
+  if (!summary) return null;
+  const pro = summary.status === "pro";
+  return (
+    <div className="mx-4 mb-2 rounded-[var(--radius)] border border-border/60 bg-muted/30 p-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <AccountStatusBadge />
+        <span className="tabular-nums text-foreground" dir="ltr" data-testid="account-balance">
+          {summary.balance} {t("account.credits_unit")}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {pro
+          ? summary.expires_at
+            ? t("account.expires_on", {
+                date: new Date(summary.expires_at).toLocaleDateString(locale),
+              })
+            : t("billing.status_active")
+          : t("account.trial_left", {
+              remaining: String(summary.trial_remaining),
+              limit: String(summary.trial_limit),
+            })}
+      </p>
+      {summary.alerts.low_balance && (
+        <p className="mt-1 text-xs text-warning" role="status">
+          {t("account.alert.low_balance")}
+        </p>
+      )}
+      {summary.alerts.expiring_soon && (
+        <p className="mt-1 text-xs text-warning" role="status">
+          {t("account.alert.expiring_soon")}
+        </p>
+      )}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <Link
+          href={pro ? "/console/billing" : "/subscribe"}
+          className="text-xs font-semibold text-foreground underline-offset-4 hover:underline"
+          data-testid="account-cta"
+        >
+          {pro ? t("billing.cta.topup") : t("billing.cta.subscribe")}
+        </Link>
+        <Link
+          href="/console/billing"
+          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t("account.ledger_link")}
+        </Link>
+      </div>
+    </div>
+  );
+}
+

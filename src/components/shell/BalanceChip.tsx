@@ -1,65 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Loader2, Wallet } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { useBillingSummary } from "@/hooks/useBillingSummary";
 import { cn } from "@/lib/utils";
-import {
-  formatUsd,
-  isNumericReady,
-  type NumericFetchState,
-} from "@/lib/display/numericDisplay";
-
-/** Below this the account is running on fumes and the next analysis may fail. */
-const LOW_BALANCE_USD = 2;
-
-type ChipState =
-  | { status: "loading" }
-  | { status: "error" }
-  | { status: "ready"; totalUsd: number; enforced: boolean };
+import { isNumericReady, type NumericFetchState } from "@/lib/display/numericDisplay";
 
 /**
- * Subscription credit in the header — always shown when the balance API
- * succeeds, including while billing enforcement is off (owner policy).
+ * The CREDIT balance in the header — billing v3. Always shown when the
+ * summary API succeeds, including while billing enforcement is off (owner
+ * policy). Free accounts read their trial count here; Pro accounts read the
+ * credit number, with the LOW state driven by the ADMIN threshold (a
+ * database number, never a constant). Updates instantly via the shared
+ * billing-changed feed — no reloads.
  */
 export function BalanceChip() {
   const { t } = useLocale();
-  const [state, setState] = useState<ChipState>({ status: "loading" });
+  const { summary } = useBillingSummary();
 
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const res = await fetch("/api/billing/balance", { cache: "no-store" });
-        if (!res.ok) {
-          if (alive) setState({ status: "error" });
-          return;
-        }
-        const json = (await res.json()) as {
-          ok: boolean;
-          billing_enforced: boolean;
-          balance?: { totalUsd?: number };
-        };
-        if (!alive || !json.ok || !isNumericReady(json.balance?.totalUsd)) {
-          if (alive) setState({ status: "error" });
-          return;
-        }
-        setState({
-          status: "ready",
-          totalUsd: json.balance!.totalUsd!,
-          enforced: json.billing_enforced,
-        });
-      } catch {
-        if (alive) setState({ status: "error" });
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  if (state.status === "loading") {
+  if (!summary) {
     return (
       <span
         data-testid="balance-chip"
@@ -76,33 +36,15 @@ export function BalanceChip() {
     );
   }
 
-  if (state.status === "error") {
-    return (
-      <Link
-        href="/console/billing"
-        data-testid="balance-chip"
-        data-balance-state="error"
-        className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 text-xs font-semibold text-warning"
-        title={t("balance.load_failed")}
-      >
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span className="hidden sm:inline text-[10px] font-medium opacity-80">
-          {t("balance.credit_short")}
-        </span>
-        <span>{t("balance.unavailable")}</span>
-      </Link>
-    );
-  }
-
-  const empty = state.totalUsd <= 0;
-  const low = !empty && state.totalUsd < LOW_BALANCE_USD;
+  const pro = summary.status === "pro";
+  const empty = pro && summary.balance <= 0;
+  const low = pro && !empty && summary.alerts.low_balance;
 
   return (
     <Link
       href="/console/billing"
       data-testid="balance-chip"
       data-balance-state={empty ? "empty" : low ? "low" : "ok"}
-      data-billing-enforced={state.enforced ? "true" : "false"}
       className={cn(
         "flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold tabular-nums transition-colors duration-150 ease-out",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
@@ -120,9 +62,15 @@ export function BalanceChip() {
         <Wallet className="h-3.5 w-3.5 shrink-0" aria-hidden />
       )}
       <span className="hidden sm:inline text-[10px] font-medium opacity-70">
-        {t("balance.credit_short")}
+        {pro ? t("balance.credit_short") : t("account.badge.free")}
       </span>
-      <span dir="ltr">{formatUsd(state.totalUsd)}</span>
+      {pro ? (
+        <span dir="ltr">{summary.balance}</span>
+      ) : (
+        <span dir="ltr">
+          {summary.trial_remaining}/{summary.trial_limit}
+        </span>
+      )}
       {(empty || low) && (
         <span className="hidden sm:inline">
           {empty ? t("balance.add_credit") : t("balance.low")}
@@ -132,13 +80,13 @@ export function BalanceChip() {
   );
 }
 
-/** Exported for unit tests — maps API payload to display state. */
+/** Exported for unit tests — maps the summary payload to display state. */
 export function balanceChipStateFromApi(json: {
   ok: boolean;
-  balance?: { totalUsd?: number };
+  balance?: number;
 }): NumericFetchState {
-  if (!json.ok || !isNumericReady(json.balance?.totalUsd)) {
+  if (!json.ok || !isNumericReady(json.balance)) {
     return { status: "error" };
   }
-  return { status: "ready", value: json.balance!.totalUsd! };
+  return { status: "ready", value: json.balance! };
 }

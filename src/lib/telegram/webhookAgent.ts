@@ -562,6 +562,39 @@ export async function prepareTelegramTurn(
     await sendModelMenu(userId, message.chatId, message.messageId);
     return { kind: "handled", outcome: "answered" };
   }
+  if (command?.kind === "account_status") {
+    // The same summary the web badge reads — one derivation, every surface.
+    const { queryOne } = await import("@/lib/db");
+    const { buildAccountSummary } = await import("@/lib/billing/accountSummary");
+    const row = await queryOne<{ id: number; role: string; status: string }>(
+      "SELECT id, role, status FROM users WHERE id = ?",
+      [userId],
+    );
+    if (row) {
+      const summary = await buildAccountSummary(
+        row as { id: number; role: "user" | "admin"; status: "active" | "suspended" },
+      );
+      const line =
+        summary.status === "pro"
+          ? summary.expires_at
+            ? t("ar", "account.tg_line_pro", {
+                balance: String(summary.balance),
+                date: new Date(summary.expires_at).toLocaleDateString("ar"),
+              })
+            : t("ar", "account.tg_line_pro_no_date", {
+                balance: String(summary.balance),
+              })
+          : t("ar", "account.tg_line_free", {
+              balance: String(summary.balance),
+              remaining: String(summary.trial_remaining),
+              limit: String(summary.trial_limit),
+            });
+      await sendMessage(message.chatId, line, undefined, {
+        replyToMessageId: message.messageId,
+      }).catch(() => {});
+    }
+    return { kind: "handled", outcome: "answered" };
+  }
   const turnMessage = command?.kind === "prompt" ? command.message : incoming;
   return { kind: "agent", userId, text: turnMessage };
 }

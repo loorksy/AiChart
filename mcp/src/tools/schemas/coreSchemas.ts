@@ -541,6 +541,14 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: READ_ONLY,
   },
   {
+    name: "get_account_status",
+    domain: "core",
+    description:
+      "Reads the operator's ACCOUNT STATE: free or pro, credit balance, trial recommendations remaining, subscription expiry, and any pending low-balance/expiry alert. When: the operator asks about their subscription, balance, or remaining trial — or before explaining a billing refusal, so the state is stated instead of guessed. Read-only, on demand. JSON only, no card; summarize in one line. read-only.",
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  {
     name: "get_agent_settings",
     domain: "core",
     description:

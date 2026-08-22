@@ -486,6 +486,13 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
 
 
   server.registerTool(
+    "get_account_status",
+    mcpToolConfig("get_account_status"),
+    async () =>
+      bridgeCall("get_account_status", {}, () => bridge.get("/api/billing/summary")),
+  );
+
+  server.registerTool(
     "find_similar_cases",
     mcpToolConfig("find_similar_cases"),
     async (body) => {

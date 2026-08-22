@@ -92,8 +92,12 @@ test("both consoles share one top bar: account and nav", () => {
 
 test("subscription credit chip renders regardless of billing enforcement flag", () => {
   const chip = read("components/shell/BalanceChip.tsx");
-  assert.doesNotMatch(chip, /!state\.enforced\) return null/);
-  assert.match(chip, /formatUsd\(state\.totalUsd\)/);
+  assert.doesNotMatch(chip, /enforced\) return null/);
+  // Billing v3: integer credits from the shared summary feed; the LOW state
+  // comes from the ADMIN threshold, never a constant in the component.
+  assert.match(chip, /summary\.balance/);
+  assert.match(chip, /alerts\.low_balance/);
+  assert.doesNotMatch(chip, /LOW_BALANCE_USD/);
   assert.match(chip, /data-balance-state=\{empty \? "empty"/);
 });
 

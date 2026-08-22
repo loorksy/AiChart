@@ -17,11 +17,12 @@
  */
 import { DISPLAY_NAME_AR } from "@/lib/gold";
 import { t } from "@/lib/i18n";
-import { CHART_ACTION, MODEL_ACTION, resolveUserMenuInput } from "@/lib/telegramCommands";
+import { ACCOUNT_ACTION, CHART_ACTION, MODEL_ACTION, resolveUserMenuInput } from "@/lib/telegramCommands";
 
 export type TelegramCommand =
   | { kind: "chart_photo" }
   | { kind: "model_menu" }
+  | { kind: "account_status" }
   | { kind: "prompt"; message: string };
 
 /**
@@ -37,6 +38,11 @@ export function resolveTelegramCommand(raw: string): TelegramCommand | null {
   // Mechanical like /chart: the model menu renders a keyboard, not prose.
   if (mapped === MODEL_ACTION || trimmed === MODEL_ACTION) {
     return { kind: "model_menu" };
+  }
+  // Mechanical too: account status is FACTS (state, balance, trial/expiry),
+  // composed from the same summary the web badge reads — never agent prose.
+  if (mapped === ACCOUNT_ACTION || trimmed === ACCOUNT_ACTION) {
+    return { kind: "account_status" };
   }
   if (mapped) return { kind: "prompt", message: mapped };
   return null;

@@ -4,6 +4,7 @@ import { CandlestickChart, PanelLeft, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BalanceChip } from "@/components/shell/BalanceChip";
+import { AccountStatusBadge } from "@/components/billing/AccountStatusBadge";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
@@ -138,7 +139,12 @@ export function ConsoleTopBar({
             "justify-end",
           )}
         >
-          {showBalance && <BalanceChip />}
+          {showBalance && (
+            <>
+              <AccountStatusBadge />
+              <BalanceChip />
+            </>
+          )}
           {showChartToggle && (
             <button
               type="button"

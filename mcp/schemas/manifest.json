@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-08-22T15:14:48.886Z",
-  "toolCount": 34,
+  "exportedAt": "2026-08-22T23:20:28.922Z",
+  "toolCount": 35,
   "tools": [
     {
       "name": "get_agent_capabilities",
@@ -77,6 +77,16 @@
       "name": "get_execution_trades",
       "domain": "core",
       "description": "Reads the operator's live trading results from their linked MT5 account: open positions, closed trades of the recent window with net profit IN MONEY, and the platform's own execution ledger. When: the operator asks about their trades, positions, or results. Read-only, on demand — never polled on your own. JSON only, no card; summarize in one or two lines. not_linked means no account is linked — say so briefly. read-only.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_account_status",
+      "domain": "core",
+      "description": "Reads the operator's ACCOUNT STATE: free or pro, credit balance, trial recommendations remaining, subscription expiry, and any pending low-balance/expiry alert. When: the operator asks about their subscription, balance, or remaining trial — or before explaining a billing refusal, so the state is stated instead of guessed. Read-only, on demand. JSON only, no card; summarize in one line. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

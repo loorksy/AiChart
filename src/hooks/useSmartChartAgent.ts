@@ -2,6 +2,7 @@
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { notifyBillingChanged } from "@/hooks/useBillingSummary";
 import type {
   AgentActivityEvent,
   AgentChartContext,
@@ -497,6 +498,9 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               const result = data as AgentFinalResult;
               const turnActivity = result.activityEvents ?? [];
               finalized = true;
+              // A completed turn may have consumed trial or credits —
+              // refresh the badge and balance instantly, no reload.
+              notifyBillingChanged();
               // Store first: if this instance is unmounted, the subscription
               // on the next mount claims the final from here.
               updateLiveRun(chatId, pendingId, {

@@ -7,6 +7,7 @@ import { Input } from "@/components/squareui/input";
 import { Surface } from "@/components/foundation";
 import { MetaTraderMark } from "@/components/settings/MetaTraderMark";
 import { useLocale } from "@/hooks/useLocale";
+import { notifyBillingChanged } from "@/hooks/useBillingSummary";
 import type { TranslationKey } from "@/lib/i18n";
 
 interface BrokerStatus {
@@ -76,6 +77,8 @@ export function BrokerLinkCard() {
         return;
       }
       setPassword("");
+      // The one-time link charge just landed — refresh badge and balance.
+      notifyBillingChanged();
       let live = await refresh(true);
       for (let i = 0; i < 4 && live?.status === "draft"; i += 1) {
         await sleep(2000);

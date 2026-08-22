@@ -187,6 +187,26 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "get_account_status",
+      "version": "1.1.1",
+      "description": "Reads the operator's ACCOUNT STATE: free or pro, credit balance, trial recommendations remaining, subscription expiry, and any pending low-balance/expiry alert. When: the operator asks about their subscription, balance, or remaining trial — or before explaining a billing refusal, so the state is stated instead of guessed. Read-only, on demand. JSON only, no card; summarize in one line. read-only.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_account_status.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "get_agent_capabilities",
       "version": "1.1.1",
       "description": "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_agent_settings -> resolve_agent_skills), not a suggestion.",
