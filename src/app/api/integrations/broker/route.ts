@@ -1,21 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleError, requireUser } from "@/lib/api";
+import { normalizeLogin, normalizeServer } from "@/lib/brokerLink/brokers";
 import {
-  brokerIdForServer,
-  normalizeLogin,
-  normalizeServer,
-} from "@/lib/brokerLink/brokers";
-import {
-  createTradingAccount,
   deleteAccount,
   MetaapiClientError,
   readAccount,
 } from "@/lib/brokerLink/metaapiClient";
+import { linkBrokerAccountCharged } from "@/lib/brokerLink/linkFlow";
+import { getCreditPrice } from "@/lib/billing/planConfig";
 import {
   getBrokerLink,
-  insertBrokerLink,
-  replaceBrokerLink,
   deleteBrokerLink,
   updateBrokerLinkStatus,
 } from "@/lib/brokerLink/store";
@@ -130,6 +125,8 @@ export async function GET(req: Request) {
       status: row ? publicState(row.state) : null,
       server: row?.server ?? null,
       login: row?.login ?? null,
+      // The one-time credit charge the link modal must state up front.
+      link_cost_credits: await getCreditPrice("mt5_link"),
     });
   } catch (err) {
     return handleError(err);
@@ -177,32 +174,32 @@ export async function POST(req: Request) {
     }
 
     const existing = await getBrokerLink(user.id);
-    const created = await createTradingAccount({
+    // Billing v3: provisioning first (a failed link charges nothing), then
+    // the row and the ONE-TIME charge in one transaction; a refused charge
+    // deletes the fresh account and leaves any previous link untouched.
+    const linked = await linkBrokerAccountCharged({
       token,
       userId: user.id,
       server,
       login,
       password,
-      region: await metaapiRegion(),
+      region: (await metaapiRegion()) ?? undefined,
+      hasExistingLink: existing != null,
     });
-
-    const persist = {
-      userId: user.id,
-      metaapiAccountId: created.id,
-      brokerId: brokerIdForServer(server),
-      server,
-      state: created.state,
-      login,
-    };
-    let row = existing
-      ? await replaceBrokerLink(persist)
-      : await insertBrokerLink(persist).catch(async (): Promise<
-          Awaited<ReturnType<typeof insertBrokerLink>>
-        > => {
-          const again = await getBrokerLink(user.id);
-          if (!again) throw new Error("Could not persist the broker link.");
-          return replaceBrokerLink(persist);
-        });
+    if (!linked.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "insufficient_credits",
+            message: t("ar", "billing.refusal.insufficient_credits"),
+          },
+        },
+        { status: 402 },
+      );
+    }
+    const created = { id: linked.accountId, state: linked.state };
+    let row = linked.row;
 
     if (existing && existing.metaapi_account_id !== created.id) {
       try {

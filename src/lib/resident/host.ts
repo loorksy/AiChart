@@ -81,6 +81,7 @@ export interface ResidentHostOptions {
   /** Cadences for the ticks the host itself publishes. 0 disables one. */
   sweepEveryMs?: number;
   candleSyncEveryMs?: number;
+  entitlementSweepEveryMs?: number;
   now?: () => number;
 }
 
@@ -91,7 +92,10 @@ export class ResidentHost {
   private readonly senders = new Map<string, ChannelSender>();
   private readonly persistHooks: Array<() => Promise<void>> = [];
   private readonly opts: Required<
-    Pick<ResidentHostOptions, "concurrency" | "maxUptimeMs" | "sweepEveryMs" | "candleSyncEveryMs">
+    Pick<
+      ResidentHostOptions,
+      "concurrency" | "maxUptimeMs" | "sweepEveryMs" | "candleSyncEveryMs" | "entitlementSweepEveryMs"
+    >
   > & { healthPort: number | null; exit: (code: number) => void; now: () => number };
   private startedAt = 0;
   private inFlight = 0;
@@ -112,6 +116,7 @@ export class ResidentHost {
       exit: options.exit ?? ((code) => process.exit(code)),
       sweepEveryMs: options.sweepEveryMs ?? 5 * 60 * 1000,
       candleSyncEveryMs: options.candleSyncEveryMs ?? 10 * 60 * 1000,
+      entitlementSweepEveryMs: options.entitlementSweepEveryMs ?? 60 * 60 * 1000,
       now: options.now ?? (() => Date.now()),
     };
   }
@@ -211,6 +216,9 @@ export class ResidentHost {
     };
     schedule(this.opts.sweepEveryMs, "recommendation_sweep");
     schedule(this.opts.candleSyncEveryMs, "candle_sync");
+    // Billing v3: lapsed subscriptions disconnect their MT5 link (positions
+    // untouched). Hourly is plenty — expiry is a date, not a price.
+    schedule(this.opts.entitlementSweepEveryMs, "entitlement_sweep");
     if (this.opts.maxUptimeMs > 0) schedule(60_000, "restart_check");
   }
 

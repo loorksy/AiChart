@@ -823,6 +823,8 @@ export const ar: Record<TranslationKey, string> = {
   "admin.billing.starts": "البداية",
   "admin.billing.ends": "النهاية",
   "admin.billing.create_offer": "إنشاء عرض",
+  "billing.mt5_disconnected_expired": "انتهى اشتراكك ففُصل اتصال حساب MT5. مراكزك وأوامرك لدى الوسيط لم تُمَس. جدّد الاشتراك ثم أعد الربط للعودة.",
+  "connect.broker.link_cost": "سيُخصم {credits} كريدت لمرة واحدة عند نجاح الربط — الاتصال بعدها دائم بلا خصم متكرر.",
   "billing.credit_balance": "رصيد الكريدت",
   "billing.account_state": "حالة الحساب",
   "billing.pro_until": "اشتراك فعّال حتى {date}",

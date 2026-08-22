@@ -838,6 +838,8 @@ export const en = {
   "admin.billing.starts": "Starts",
   "admin.billing.ends": "Ends",
   "admin.billing.create_offer": "Create offer",
+  "billing.mt5_disconnected_expired": "Your subscription expired, so the MT5 connection was stopped. Your positions and orders at the broker are untouched. Renew and relink to come back.",
+  "connect.broker.link_cost": "A one-time {credits}-credit charge applies when linking succeeds — the connection then stays on with no recurring charge.",
   "billing.credit_balance": "Credit balance",
   "billing.account_state": "Account state",
   "billing.pro_until": "Active subscription until {date}",

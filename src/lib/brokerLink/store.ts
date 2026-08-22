@@ -1,4 +1,13 @@
-import { execute, queryOne } from "@/lib/db";
+import { execute, query as rootQuery, queryOne } from "@/lib/db";
+
+/** Optional transaction executor — billing composes the link row and its
+ *  one-time charge into ONE transaction (see the broker link flow). */
+export interface StoreExecutor {
+  query: <R>(sql: string, params?: unknown[]) => Promise<R[]>;
+  execute: (sql: string, params?: unknown[]) => Promise<{ changes: number }>;
+}
+
+const rootDb: StoreExecutor = { query: rootQuery, execute };
 
 export interface BrokerLinkRow {
   user_id: number;
@@ -18,13 +27,15 @@ function nowExpr(): string {
 
 export async function getBrokerLink(
   userId: number,
+  db?: StoreExecutor,
 ): Promise<BrokerLinkRow | null> {
-  return queryOne<BrokerLinkRow>(
+  const rows = await (db ?? rootDb).query<BrokerLinkRow>(
     `SELECT user_id, metaapi_account_id, broker_id, server, platform, state,
             login, created_at, updated_at
        FROM broker_links WHERE user_id = ?`,
     [userId],
   );
+  return rows[0] ?? null;
 }
 
 export async function insertBrokerLink(row: {
@@ -34,8 +45,8 @@ export async function insertBrokerLink(row: {
   server: string;
   state: string;
   login?: string | null;
-}): Promise<BrokerLinkRow> {
-  await execute(
+}, db: StoreExecutor = rootDb): Promise<BrokerLinkRow> {
+  await db.execute(
     `INSERT INTO broker_links (
        user_id, metaapi_account_id, broker_id, server, platform, state, login, updated_at
      ) VALUES (?, ?, ?, ?, 'mt5', ?, ?, ${nowExpr()})`,
@@ -48,7 +59,7 @@ export async function insertBrokerLink(row: {
       row.login ?? null,
     ],
   );
-  const saved = await getBrokerLink(row.userId);
+  const saved = await getBrokerLink(row.userId, db);
   if (!saved) throw new Error("broker_links insert did not persist");
   return saved;
 }
@@ -60,8 +71,8 @@ export async function replaceBrokerLink(row: {
   server: string;
   state: string;
   login?: string | null;
-}): Promise<BrokerLinkRow> {
-  await execute(
+}, db: StoreExecutor = rootDb): Promise<BrokerLinkRow> {
+  await db.execute(
     `UPDATE broker_links
         SET metaapi_account_id = ?, broker_id = ?, server = ?, platform = 'mt5',
             state = ?, login = ?, updated_at = ${nowExpr()}
@@ -75,7 +86,7 @@ export async function replaceBrokerLink(row: {
       row.userId,
     ],
   );
-  const saved = await getBrokerLink(row.userId);
+  const saved = await getBrokerLink(row.userId, db);
   if (!saved) throw new Error("broker_links replace did not persist");
   return saved;
 }

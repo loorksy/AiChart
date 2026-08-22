@@ -15,6 +15,8 @@ interface BrokerStatus {
   status: "draft" | "configured" | null;
   server: string | null;
   login: string | null;
+  /** One-time credits charged when the link succeeds (0 = free). */
+  link_cost_credits?: number;
 }
 
 function errorKey(code?: string): TranslationKey {
@@ -155,6 +157,15 @@ export function BrokerLinkCard() {
             if (canSubmit) void submit();
           }}
         >
+          {/* The form IS the confirmation: the one-time charge is stated
+              here, once, and the link button is the only ceremony. */}
+          {(status.link_cost_credits ?? 0) > 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="link-cost-line">
+              {t("connect.broker.link_cost", {
+                credits: String(status.link_cost_credits),
+              })}
+            </p>
+          ) : null}
           <label className="block space-y-1.5 text-start text-sm">
             <span className="font-medium">{t("connect.broker.login")}</span>
             <Input

@@ -80,6 +80,25 @@ export async function runCandleSyncTick(ctx: AgentRunContext): Promise<void> {
   await ctx.warm.load();
 }
 
+export async function runEntitlementSweepTick(): Promise<void> {
+  const { withLock } = await import("@/lib/locks");
+  const { sweepExpiredBrokerLinks } = await import("@/lib/brokerLink/expirySweep");
+  await withLock("cron:entitlement-sweep", SYNC_LOCK_MS, async () => {
+    await sweepExpiredBrokerLinks({
+      notify: async (userId: number) => {
+        // A short factual line, once, through the channel the user already
+        // linked — no lectures.
+        const { getTelegramChatId } = await import("@/lib/store");
+        const chatId = await getTelegramChatId(userId);
+        if (!chatId) return;
+        const { sendMessage } = await import("@/lib/telegram");
+        const { t } = await import("@/lib/i18n");
+        await sendMessage(chatId, t("ar", "billing.mt5_disconnected_expired"));
+      },
+    });
+  });
+}
+
 export class BaselineRunner implements AgentRunner {
   async onScheduledTick(event: ScheduledTickEvent, ctx: AgentRunContext): Promise<void> {
     switch (event.tick) {
@@ -87,6 +106,8 @@ export class BaselineRunner implements AgentRunner {
         return runSweepTick(ctx);
       case "candle_sync":
         return runCandleSyncTick(ctx);
+      case "entitlement_sweep":
+        return runEntitlementSweepTick();
       case "restart_check":
         // Owned by the host itself; reaching here is a routing bug.
         log.warn("restart_check reached the runner");

@@ -177,6 +177,32 @@ export async function readAccount(input: {
   };
 }
 
+/**
+ * Stop the cloud API connection for an account — and NOTHING else. Undeploy
+ * touches no order and no position: whatever is open at the broker stays
+ * exactly as the user left it; only the MetaAPI connection goes away. Used
+ * by the subscription-expiry sweep. 404 tolerated (already gone).
+ */
+export async function undeployAccount(input: {
+  token: string;
+  accountId: string;
+}): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${PROVISIONING_ORIGIN}/users/current/accounts/${encodeURIComponent(input.accountId)}/undeploy`,
+    {
+      method: "POST",
+      headers: headers(input.token),
+    },
+    { timeoutMs: 20_000, label: "MetaAPI" },
+  );
+  if (res.status === 404 || res.status === 204 || res.ok) return;
+  const body = await readJson(res);
+  throw new MetaapiClientError(
+    res.status >= 400 && res.status < 600 ? res.status : 502,
+    errorMessage(body, "Could not undeploy the broker-link account at MetaAPI."),
+  );
+}
+
 export async function deleteAccount(input: {
   token: string;
   accountId: string;

@@ -131,7 +131,14 @@ describe("in-app MetaTrader form never stores the password", () => {
     assert.match(route, /requireUser/);
     assert.doesNotMatch(route, /resolveBridgeUserId/);
     assert.match(route, /password: z\.string/);
-    assert.match(route, /createTradingAccount/);
+    // Billing v3 moved provisioning into the charged link flow: the route
+    // hands the password to linkBrokerAccountCharged, which forwards it to
+    // createTradingAccount and NOWHERE else — same invariant, real path.
+    assert.match(route, /linkBrokerAccountCharged/);
+    const flow = readFileSync(path.join(SRC, "lib/brokerLink/linkFlow.ts"), "utf8");
+    assert.match(flow, /createTradingAccount/);
+    assert.doesNotMatch(flow, /insertBrokerLink\([\s\S]{0,400}password/);
+    assert.doesNotMatch(flow, /replaceBrokerLink\([\s\S]{0,400}password/);
     assert.doesNotMatch(route, /insertBrokerLink\([\s\S]*password/);
     assert.doesNotMatch(route, /configurationLink/);
     assert.doesNotMatch(card, /<iframe/);

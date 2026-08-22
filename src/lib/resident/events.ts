@@ -44,7 +44,7 @@ export const userMessageEventSchema = z.object({
 export const scheduledTickEventSchema = z.object({
   kind: z.literal("scheduled_tick"),
   /** What this tick asks the host to do. */
-  tick: z.enum(["recommendation_sweep", "candle_sync", "restart_check"]),
+  tick: z.enum(["recommendation_sweep", "candle_sync", "restart_check", "entitlement_sweep"]),
   enqueuedAt: z.number().int().positive(),
 });
 
