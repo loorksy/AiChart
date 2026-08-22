@@ -533,8 +533,10 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       symbol: zSymbol,
       interval: zInterval,
       market: zMarket,
-      pattern_name: z.string().optional(),
-      chart_drawings: zChartDrawings,
+      // No pattern_name / chart_drawings here: the capture photographs what
+      // the chart ALREADY renders. Drawings go through draw_on_chart (layout
+      // state), which both the operator tab and the platform session render —
+      // a parameter the route drops is a promise the tool must not make.
       layout_id: z.string().optional(),
       include_drawings: zLooseBoolean
         .optional()

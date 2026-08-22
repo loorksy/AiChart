@@ -302,7 +302,10 @@ export class ChartHostSession {
       tabOpen: Boolean(
         this.open && this.open.browser.isConnected() && !this.open.page.isClosed(),
       ),
-      pageUrl: this.open?.pageUrl ?? null,
+      // Origin + path only. The full URL carries the page's capability token
+      // in its query, and /healthz is unauthenticated — a status endpoint
+      // must never hand out the credential that operates the tab.
+      pageUrl: this.open ? redactPageUrl(this.open.pageUrl) : null,
       launchedAt: this.open?.launchedAt ?? null,
       ageMs: this.open ? now - this.open.launchedAt : null,
       lastEnsureAt: this.lastEnsureAt,
@@ -312,5 +315,15 @@ export class ChartHostSession {
       recycles: this.recycles,
       lastError: this.lastError,
     };
+  }
+}
+
+/** The page URL with its query (the capability token) stripped. */
+export function redactPageUrl(pageUrl: string): string {
+  try {
+    const url = new URL(pageUrl);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "[unparseable]";
   }
 }

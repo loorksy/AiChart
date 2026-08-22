@@ -14,9 +14,11 @@
 ```bash
 docker build -t aichart-chart-host ./chart-host
 
+# --init يحصد عمليات Chromium الزومبي؛ المنفذ 8788 على المضيف لأن 8787
+# مشغول بخدمة aichart-mcp.
 docker run -d --name chart-host \
-  --memory=1500m --pids-limit=256 --restart=unless-stopped \
-  -p 127.0.0.1:8787:8787 \
+  --init --memory=1500m --pids-limit=256 --restart=unless-stopped \
+  -p 127.0.0.1:8788:8787 \
   -e APP_URL="https://your-app-origin" \
   -e AICHART_SERVICE_TOKEN="<نفس قيمة التطبيق>" \
   aichart-chart-host
@@ -25,7 +27,7 @@ docker run -d --name chart-host \
 ثم في بيئة التطبيق:
 
 ```bash
-CHART_HOST_URL=http://127.0.0.1:8787
+CHART_HOST_URL=http://127.0.0.1:8788
 # نفس السر يستخدم للتحكم ولتوقيع رمز الصفحة:
 AICHART_SERVICE_TOKEN=<same>
 ```

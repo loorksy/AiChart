@@ -12,19 +12,6 @@
       "type": "string",
       "const": "forex"
     },
-    "pattern_name": {
-      "type": "string"
-    },
-    "chart_drawings": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "propertyNames": {
-          "type": "string"
-        },
-        "additionalProperties": {}
-      }
-    },
     "layout_id": {
       "type": "string"
     },

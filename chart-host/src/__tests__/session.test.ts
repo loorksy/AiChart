@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ChartHostSession,
+  redactPageUrl,
   type HostBrowser,
   type HostPage,
   type SessionEvent,
@@ -244,5 +245,15 @@ describe("chart-host session lifecycle", () => {
     await session.close();
     assert.equal(session.status().tabOpen, false);
     assert.equal(w.browsers[0]!.connected, false);
+  });
+
+  it("status never leaks the page's capability token", async () => {
+    const { launch } = world();
+    const session = new ChartHostSession({ launch }, { allowedPagePrefix: ALLOWED });
+    await session.ensure(`${ALLOWED}?token=super-secret-capability`);
+    const status = session.status();
+    assert.equal(status.pageUrl, ALLOWED, "origin + path only");
+    assert.doesNotMatch(JSON.stringify(status), /super-secret-capability/);
+    assert.equal(redactPageUrl("not a url"), "[unparseable]");
   });
 });
