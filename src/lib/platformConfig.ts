@@ -137,6 +137,17 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "مفتاح مجاني من fred.stlouisfed.org",
   },
   {
+    // Second calendar source next to Forex Factory — with both configured
+    // their events merge; this key never replaces the keyless feed.
+    key: "FMP_API_KEY",
+    label: "مفتاح FMP (تقويم الأخبار الاقتصادية)",
+    labelEn: "FMP_API_KEY",
+    group: "markets",
+    secret: true,
+    plainStorage: false,
+    placeholder: "من financialmodelingprep.com",
+  },
+  {
     // The platform-level market-data feed — one token serves every user;
     // not a per-account credential.
     key: "OANDA_API_TOKEN",

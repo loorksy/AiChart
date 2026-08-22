@@ -9,6 +9,7 @@
  * other's calendar, and only both failing degrades the agent to unknown.
  */
 import { FEATURES } from "@/lib/agent/featureFlags";
+import { getPlatformValue } from "@/lib/platformConfig";
 import { getCalendarEvents } from "./calendarCache";
 import { createFmpProvider } from "./providers/fmpProvider";
 import { createForexFactoryProvider } from "./providers/forexFactoryProvider";
@@ -64,16 +65,24 @@ export function eventMatchesRequest(
   return false;
 }
 
+/**
+ * The FMP key the platform actually has: the admin-panel table first (via the
+ * platformConfig cache initDb populates in every process — web AND worker),
+ * process.env as the fallback, with the two legacy env aliases still honored.
+ */
+function fmpApiKey(): string | undefined {
+  return (
+    getPlatformValue("FMP_API_KEY") ||
+    process.env.NEWS_API_KEY ||
+    process.env.ECONOMIC_CALENDAR_API_KEY ||
+    undefined
+  );
+}
+
 /** True when any economic-calendar source is available — an API key, or the
  *  keyless Forex Factory feed when its flag is on. */
 export function newsProviderConfigured(): boolean {
-  return (
-    Boolean(
-      process.env.FMP_API_KEY ||
-        process.env.NEWS_API_KEY ||
-        process.env.ECONOMIC_CALENDAR_API_KEY,
-    ) || FEATURES.forexFactoryCalendarV1()
-  );
+  return Boolean(fmpApiKey()) || FEATURES.forexFactoryCalendarV1();
 }
 
 /** Same event from two sources under slightly different names: dedupe ONLY on
@@ -158,10 +167,7 @@ function withPlatformCalendarCache(inner: NewsProvider): NewsProvider {
  */
 export function getNewsProvider(): NewsProvider | null {
   const providers: NewsProvider[] = [];
-  const apiKey =
-    process.env.FMP_API_KEY ||
-    process.env.NEWS_API_KEY ||
-    process.env.ECONOMIC_CALENDAR_API_KEY;
+  const apiKey = fmpApiKey();
   if (apiKey) {
     try {
       providers.push(createFmpProvider(apiKey));
