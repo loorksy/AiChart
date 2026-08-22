@@ -13,11 +13,14 @@ import { useCallback, useEffect, useState } from "react";
 import { BellRing } from "lucide-react";
 import { Surface } from "@/components/foundation";
 import { useLocale } from "@/hooks/useLocale";
+// The PURE vocabulary module — never ./notifications, whose delivery half
+// statically reaches the resident host and the DB drivers. Importing that
+// from a "use client" file is exactly what broke the production build.
 import {
   NOTIFICATION_CATEGORIES,
   type NotificationCategory,
   type NotificationPrefs,
-} from "@/lib/resident/notifications";
+} from "@/lib/resident/notificationPrefs";
 
 export function NotificationPrefsCard() {
   const { t, dir } = useLocale();

@@ -24,26 +24,26 @@ import type {
 import type { MarketEvent, ResidentEvent } from "./events";
 import type { AgentRunContext } from "./host";
 import { UnknownChannelError } from "./host";
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  NOTIFICATION_CATEGORIES,
+  normalizeNotificationPrefs as normalizePrefs,
+  type NotificationCategory,
+  type NotificationPrefs,
+} from "./notificationPrefs";
 
 const log = createLogger("resident.notifications");
 
-export const NOTIFICATION_CATEGORIES = [
-  "activation",
-  "target",
-  "invalidation",
-  "news_block",
-] as const;
-
-export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
-
-export type NotificationPrefs = Record<NotificationCategory, boolean>;
-
-export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
-  activation: true,
-  target: true,
-  invalidation: true,
-  news_block: true,
-};
+// The vocabulary lives in ./notificationPrefs — a pure, import-free module the
+// browser settings card can share without pulling the resident host (and the
+// DB drivers behind it) into the client bundle. Re-exported here so server
+// callers keep their one import.
+export {
+  DEFAULT_NOTIFICATION_PREFS,
+  NOTIFICATION_CATEGORIES,
+  type NotificationCategory,
+  type NotificationPrefs,
+} from "./notificationPrefs";
 
 /**
  * Which lifecycle events are proactively pushed, and under which preference.
@@ -78,17 +78,6 @@ export class MarketEventPayloadError extends Error {
 // ---------------------------------------------------------------------------
 // Preferences
 // ---------------------------------------------------------------------------
-
-function normalizePrefs(raw: unknown): NotificationPrefs {
-  const prefs = { ...DEFAULT_NOTIFICATION_PREFS };
-  if (raw && typeof raw === "object") {
-    for (const category of NOTIFICATION_CATEGORIES) {
-      const value = (raw as Record<string, unknown>)[category];
-      if (typeof value === "boolean") prefs[category] = value;
-    }
-  }
-  return prefs;
-}
 
 export async function getNotificationPrefs(userId: number): Promise<NotificationPrefs> {
   const { queryOne } = await import("@/lib/db");
