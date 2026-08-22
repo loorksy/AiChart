@@ -2009,6 +2009,16 @@ function migrate(db: Database.Database) {
     );
   }
 
+  // Billing v3: a subscriber PINS the immutable plan-price row they bought —
+  // renewals grant that row's credits, whatever the plan points at today.
+  const subCols = db
+    .prepare("PRAGMA table_info(subscriptions)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  if (!subCols.includes("price_id")) {
+    db.exec("ALTER TABLE subscriptions ADD COLUMN price_id INTEGER");
+  }
+
   // Partial-stage outcomes on the case memory (plan §12). Additive only: rows
   // indexed before these columns existed keep NULLs — their features are
   // frozen and never reinterpreted.

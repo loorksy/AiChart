@@ -31,6 +31,7 @@ export const ADMIN_TAB_IDS = [
   "subscriptions",
   "support",
   "billing",
+  "billing-config",
   "keys",
   "system",
   "diagnostics",
@@ -120,6 +121,16 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         labelEn: "Billing and profit",
         icon: MoneyBag02Icon,
         permission: "profit_read",
+      },
+      {
+        // Post-ratchet addition: the label stays English here (the ratchet
+        // forbids new Arabic in system files); the panel itself is fully
+        // localized through i18n.
+        id: "billing-config",
+        label: "Plan & Pricing",
+        labelEn: "Plan and pricing",
+        icon: CreditCardIcon,
+        permission: "billing_write",
       },
     ],
   },

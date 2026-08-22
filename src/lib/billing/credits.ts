@@ -186,7 +186,7 @@ export async function debitCredits(
     amount: number;
     kind: Extract<
       CreditEntryKind,
-      "debit_recommendation" | "debit_chat" | "debit_mt5_link"
+      "debit_recommendation" | "debit_chat" | "debit_mt5_link" | "admin_adjust"
     >;
     ref: string;
     note?: string | null;

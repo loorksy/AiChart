@@ -741,6 +741,8 @@ const SCHEMA = `
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS parity_key TEXT;
+  -- Billing v3: subscribers pin the immutable plan-price row they bought.
+  ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS price_id BIGINT;
   CREATE UNIQUE INDEX IF NOT EXISTS uq_parity_comparison_moment
     ON decision_parity_comparisons(user_id, parity_key)
     WHERE user_id IS NOT NULL AND parity_key IS NOT NULL;

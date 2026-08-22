@@ -1,15 +1,12 @@
 /**
- * ONE subscription tier — a LEAF module, no imports.
+ * LEGACY tier table — FROZEN analytics data, not product pricing.
  *
- * The four-tier table collapsed into the single $180/month Full Access plan
- * (the same product AICHART_PLAN describes; that module stays import-free of
- * this one so both remain leaves). Prices and included credits are PUBLIC
- * product facts. What is NOT here: the platform's cost margin — that lives in
- * platform_config (BILLING_RETAIL_MULTIPLIER), never in this public repo.
- *
- * Legacy tier ids (lite/plus/pro/promax) remain resolvable through
- * `tierDef()` so stored subscription rows and old Stripe metadata keep
- * working — they all map onto the one plan.
+ * Billing v3 moved every live price into the database (billing_plan /
+ * plan_prices / credit_prices / topup_packs): nothing here prices, charges,
+ * or displays the product anymore. What remains is the historical mapping
+ * the USD-era analytics read (profit dashboard revenue estimates over old
+ * subscription rows) and `tierDef()` so legacy tier ids in stored rows and
+ * old Stripe metadata keep resolving. Do not wire NEW code to these numbers.
  */
 
 export type TierId = "full";

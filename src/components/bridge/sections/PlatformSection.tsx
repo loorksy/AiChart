@@ -22,6 +22,7 @@ import { AdminUsagePanel } from "@/components/admin/AdminUsagePanel";
 import { AdminUsersTable } from "@/components/admin/AdminUsersTable";
 import { AdminSubscriptionsPanel } from "@/components/admin/AdminSubscriptionsPanel";
 import { AdminBillingPanel } from "@/components/admin/AdminBillingPanel";
+import { AdminBillingConfigPanel } from "@/components/admin/AdminBillingConfigPanel";
 import { AdminTeamPanel } from "@/components/admin/AdminTeamPanel";
 import { AdminSupportPanel } from "@/components/admin/AdminSupportPanel";
 import { ProfileSection } from "@/components/bridge/sections/ProfileSection";
@@ -121,6 +122,7 @@ export function PlatformSection({
               {tab === "team" && <AdminTeamPanel />}
               {tab === "support" && <AdminSupportPanel />}
               {tab === "billing" && <AdminBillingPanel />}
+              {tab === "billing-config" && <AdminBillingConfigPanel />}
               {tab === "subscriptions" && <AdminSubscriptionsPanel />}
               {tab === "keys" && <AdminKeysPanel />}
               {tab === "system" && <AdminSystemPanel />}

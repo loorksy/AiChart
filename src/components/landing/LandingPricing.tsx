@@ -1,10 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-// Sanctioned data-only import (spec §3): tiers.ts is a leaf module — the
-// summary can never drift from what billing enforces. No other logic touched.
-import { TIER_ORDER, TIERS } from "@/lib/billing/tiers";
 // Existing contact destination — the same manual-activation channel the
 // platform already links to.
 import { AICHART_PLAN } from "@/lib/subscription/plan";
@@ -22,12 +20,33 @@ const FEATURE_KEYS = [
   "prioritySupport",
 ] as const;
 
+interface PlanFacts {
+  price_cents: number | null;
+  credits_per_cycle: number | null;
+  title_ar: string;
+  title_en: string;
+}
+
 /** Single-plan pricing summary — one card, every feature, plus the trial note. */
 export function LandingPricing() {
   const { locale, dir } = useLocale();
   const isAr = locale === "ar";
   const c = getLandingCopy(locale).pricing;
-  const tiers = TIER_ORDER.map((id) => TIERS[id]);
+  // Billing v3: the price is DATA — the summary reads the same plan row the
+  // billing gate enforces, so the landing can never drift from reality.
+  const [plan, setPlan] = useState<PlanFacts | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/billing/plan")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: PlanFacts | null) => {
+        if (alive && d) setPlan(d);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <section
@@ -50,12 +69,11 @@ export function LandingPricing() {
         </div>
 
         <div className="mx-auto mt-10 grid max-w-md gap-4">
-          {tiers.map((tier) => {
+          {(() => {
             const highlight = true;
-            const enabled = FEATURE_KEYS.filter((key) => tier.features[key]);
+            const enabled = [...FEATURE_KEYS];
             return (
               <Surface
-                key={tier.id}
                 as="section"
                 padding="md"
                 elevation={highlight ? 2 : 1}
@@ -73,35 +91,37 @@ export function LandingPricing() {
                 )}
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="text-base font-bold text-foreground">
-                    {isAr ? tier.nameAr : tier.nameEn}
+                    {isAr ? AICHART_PLAN.titleAr : AICHART_PLAN.titleEn}
                   </h3>
                   <span className="text-xs text-muted-foreground">
-                    {isAr ? tier.nameEn : tier.nameAr}
+                    {isAr ? AICHART_PLAN.titleEn : AICHART_PLAN.titleAr}
                   </span>
                 </div>
-                <p className="mt-3 flex items-baseline gap-1" dir="ltr">
-                  <span className="font-serif text-3xl font-semibold tabular-nums text-foreground">
-                    ${tier.priceUsd}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {c.perMonth}
-                  </span>
-                </p>
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  {c.creditsPrefix}{" "}
-                  <span className="font-semibold tabular-nums text-foreground" dir="ltr">
-                    ${tier.includedCreditsUsd}
-                  </span>
-                </p>
+                {plan?.price_cents != null ? (
+                  <p className="mt-3 flex items-baseline gap-1" dir="ltr">
+                    <span className="font-serif text-3xl font-semibold tabular-nums text-foreground">
+                      ${plan.price_cents / 100}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {c.perMonth}
+                    </span>
+                  </p>
+                ) : null}
+                {plan?.credits_per_cycle != null && plan.credits_per_cycle > 0 ? (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {c.creditsPrefix}{" "}
+                    <span className="font-semibold tabular-nums text-foreground" dir="ltr">
+                      {plan.credits_per_cycle}
+                    </span>
+                  </p>
+                ) : null}
                 <ul className="mt-4 flex-1 space-y-1.5 text-xs text-foreground/90">
                   <li className="flex items-center gap-1.5">
                     <Check
                       aria-hidden="true"
                       className="size-3.5 shrink-0 text-muted-foreground"
                     />
-                    {tier.allowedModels.length === 0
-                      ? c.modelsAll
-                      : `${tier.allowedModels.length} ${c.modelsCount}`}
+                    {c.modelsAll}
                   </li>
                   {enabled.map((key) => (
                     <li key={key} className="flex items-center gap-1.5">
@@ -115,7 +135,7 @@ export function LandingPricing() {
                 </ul>
               </Surface>
             );
-          })}
+          })()}
         </div>
 
         <div className="mt-8 flex flex-col items-center gap-3">

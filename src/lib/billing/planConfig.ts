@@ -145,6 +145,117 @@ export async function updateBillingPlanSettings(
   bustBillingConfigCache();
 }
 
+export interface TopupPackRow {
+  id: number;
+  credits: number;
+  price_cents: number;
+  active: number;
+  sort: number;
+  created_at: number;
+  archived_at: number | null;
+}
+
+export interface OfferRow {
+  id: number;
+  kind: "percent" | "fixed_cents";
+  value: number;
+  starts_at: number;
+  ends_at: number;
+  active: number;
+  stripe_coupon_id: string | null;
+  created_by: number | null;
+  created_at: number;
+}
+
+/** Purchasable packs (active, not archived), admin order. */
+export async function listTopupPacks(includeArchived = false): Promise<TopupPackRow[]> {
+  return query<TopupPackRow>(
+    includeArchived
+      ? "SELECT * FROM topup_packs ORDER BY archived_at IS NOT NULL, sort, id"
+      : "SELECT * FROM topup_packs WHERE active = 1 AND archived_at IS NULL ORDER BY sort, id",
+  );
+}
+
+export async function getTopupPack(id: number): Promise<TopupPackRow | null> {
+  return queryOne<TopupPackRow>("SELECT * FROM topup_packs WHERE id = ?", [id]);
+}
+
+export async function createTopupPack(
+  input: { credits: number; priceCents: number; sort?: number },
+): Promise<number> {
+  if (!Number.isInteger(input.credits) || input.credits <= 0) throw new Error("credits must be positive");
+  if (!Number.isInteger(input.priceCents) || input.priceCents < 0) throw new Error("price_cents must be non-negative");
+  const { insertReturningId } = await import("@/lib/db");
+  return insertReturningId(
+    "INSERT INTO topup_packs (credits, price_cents, active, sort, created_at) VALUES (?, ?, 1, ?, ?)",
+    [input.credits, input.priceCents, input.sort ?? 0, Date.now()],
+  );
+}
+
+export async function updateTopupPack(
+  id: number,
+  patch: { active?: boolean; sort?: number },
+): Promise<void> {
+  const row = await getTopupPack(id);
+  if (!row) throw new Error("pack not found");
+  await execute("UPDATE topup_packs SET active = ?, sort = ? WHERE id = ?", [
+    patch.active == null ? row.active : patch.active ? 1 : 0,
+    patch.sort ?? row.sort,
+    id,
+  ]);
+}
+
+/** Archive, never delete: an open checkout carries the pack's terms in its
+ *  own metadata, and history keeps its reference. */
+export async function archiveTopupPack(id: number): Promise<void> {
+  await execute(
+    "UPDATE topup_packs SET archived_at = ?, active = 0 WHERE id = ? AND archived_at IS NULL",
+    [Date.now(), id],
+  );
+}
+
+export async function listOffers(): Promise<OfferRow[]> {
+  return query<OfferRow>("SELECT * FROM offers ORDER BY id DESC");
+}
+
+export async function createOffer(input: {
+  kind: "percent" | "fixed_cents";
+  value: number;
+  startsAt: number;
+  endsAt: number;
+  createdBy: number;
+}): Promise<number> {
+  if (!Number.isInteger(input.value) || input.value <= 0) throw new Error("value must be positive");
+  if (input.kind === "percent" && input.value > 100) throw new Error("percent must be 1..100");
+  if (!(input.endsAt > input.startsAt)) throw new Error("ends_at must be after starts_at");
+  const { insertReturningId } = await import("@/lib/db");
+  return insertReturningId(
+    "INSERT INTO offers (kind, value, starts_at, ends_at, active, created_by, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+    [input.kind, input.value, input.startsAt, input.endsAt, input.createdBy, Date.now()],
+  );
+}
+
+export async function setOfferActive(id: number, active: boolean): Promise<void> {
+  await execute("UPDATE offers SET active = ? WHERE id = ?", [active ? 1 : 0, id]);
+}
+
+export async function setOfferStripeCoupon(id: number, couponId: string): Promise<void> {
+  await execute("UPDATE offers SET stripe_coupon_id = ? WHERE id = ?", [couponId, id]);
+}
+
+/**
+ * The offer a checkout created RIGHT NOW may carry: active AND inside its
+ * window at this moment. Evaluated once at session-create time — an offer
+ * that ends later never touches an existing session, and an ended offer is
+ * never applied even while its row exists.
+ */
+export async function activeOfferAt(now = Date.now()): Promise<OfferRow | null> {
+  return queryOne<OfferRow>(
+    "SELECT * FROM offers WHERE active = 1 AND starts_at <= ? AND ends_at > ? ORDER BY id DESC",
+    [now, now],
+  );
+}
+
 export async function getCurrentPlanPrice(): Promise<PlanPriceRow | null> {
   const plan = await getBillingPlan();
   if (plan.current_price_id == null) return null;

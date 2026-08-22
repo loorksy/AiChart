@@ -14,43 +14,45 @@ import { cn } from "@/lib/utils";
 interface LedgerRow {
   ts: number;
   kind: string;
-  amount_usd: number;
-  bucket: string;
+  amount: number;
+  balance_after: number;
   note: string | null;
 }
 
 interface BalanceData {
   ok: boolean;
   billing_enforced: boolean;
-  balance: { monthlyUsd: number; topupUsd: number; totalUsd: number; periodEnd: number | null };
-  subscription: {
-    tier: string;
-    tier_name_ar: string;
-    status: string;
-    period_end: number;
-  } | null;
+  balance: number;
+  plan_status: string;
+  has_paid_access: boolean;
+  expires_at: string | null;
+  trial_used: number;
+  trial_limit: number;
+  trial_remaining: number;
   ledger: LedgerRow[];
+}
+
+interface PackRow {
+  id: number;
+  credits: number;
+  price_cents: number;
 }
 
 /** Ledger kinds the API emits, mapped to their translation keys. */
 const KIND_KEYS = {
-  monthly_grant: "billing.kind.monthly_grant",
-  trial_grant: "billing.kind.trial_grant",
-  gift: "billing.kind.gift",
+  cycle_grant: "billing.kind.cycle_grant",
   topup: "billing.kind.topup",
-  burn: "billing.kind.burn",
-  adjust: "billing.kind.adjust",
+  admin_adjust: "billing.kind.adjust",
+  debit_recommendation: "billing.kind.debit_recommendation",
+  debit_chat: "billing.kind.debit_chat",
+  debit_mt5_link: "billing.kind.debit_mt5_link",
 } as const satisfies Record<string, TranslationKey>;
 
-const TOPUP_AMOUNTS = [20, 50, 100];
-
-const fmtUsd = (v: number) =>
-  `$${Math.abs(v).toFixed(Math.abs(v) < 1 ? 3 : 2)}`;
-
-/** V2-A5 (#94): the operator's money page — balance, statement, actions. */
+/** Billing v3: the operator's CREDIT page — balance, packs, statement. */
 export function BillingClient() {
   const { t, dir, locale } = useLocale();
   const [data, setData] = useState<BalanceData | null>(null);
+  const [packs, setPacks] = useState<PackRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -59,37 +61,48 @@ export function BillingClient() {
     setLoadFailed(false);
     setError(null);
     try {
-      const res = await fetch("/api/billing/balance");
-      if (res.ok) {
-        setData((await res.json()) as BalanceData);
+      const [balanceRes, packsRes] = await Promise.all([
+        fetch("/api/billing/balance"),
+        fetch("/api/billing/packs"),
+      ]);
+      if (balanceRes.ok) {
+        setData((await balanceRes.json()) as BalanceData);
       } else {
         setError(t("billing.load_failed"));
         setLoadFailed(true);
+      }
+      if (packsRes.ok) {
+        const p = (await packsRes.json()) as { packs?: PackRow[] };
+        setPacks(p.packs ?? []);
       }
     } catch {
       setError(t("billing.network_failed"));
       setLoadFailed(true);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  async function topup(amount: number) {
-    setBusy(`topup-${amount}`);
+  async function buyPack(packId: number) {
+    setBusy(`pack-${packId}`);
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topup_usd: amount }),
+        body: JSON.stringify({ purpose: "topup", pack_id: packId }),
       });
-      const out = (await res.json()) as { ok: boolean; url?: string; message?: string };
+      const out = (await res.json()) as {
+        ok: boolean;
+        url?: string;
+        error?: { message?: string };
+      };
       if (out.ok && out.url) {
         window.location.href = out.url;
         return;
       }
-      setError(out.message ?? t("billing.checkout_unavailable"));
+      setError(out.error?.message ?? t("billing.checkout_unavailable"));
     } finally {
       setBusy(null);
     }
@@ -159,6 +172,19 @@ export function BillingClient() {
     );
   }
 
+  const statusLine = data.has_paid_access
+    ? data.expires_at
+      ? t("billing.pro_until", {
+          date: new Date(data.expires_at).toLocaleDateString(locale),
+        })
+      : t("billing.status_active")
+    : data.plan_status === "trial"
+      ? t("billing.trial_line", {
+          remaining: String(data.trial_remaining),
+          limit: String(data.trial_limit),
+        })
+      : t("billing.refusal.subscription_expired");
+
   return (
     <div className="space-y-6" dir={dir}>
       {header}
@@ -175,90 +201,75 @@ export function BillingClient() {
 
       {!data.billing_enforced && (
         <Surface padding="sm" className="bg-muted/40">
-          <p className="type-caption">
-            {t("billing.preview_mode")}
-          </p>
+          <p className="type-caption">{t("billing.preview_mode")}</p>
         </Surface>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-3" aria-label={t("billing.balances")}>
+      <section className="grid gap-4 sm:grid-cols-2" aria-label={t("billing.balances")}>
         <Surface padding="lg">
-          <p className="type-caption">{t("billing.total_balance")}</p>
-          <p className="mt-1 text-3xl font-extrabold tabular-nums text-foreground">
-            {fmtUsd(data.balance.totalUsd)}
+          <p className="type-caption">{t("billing.credit_balance")}</p>
+          <p
+            className="mt-1 text-3xl font-extrabold tabular-nums text-foreground"
+            dir="ltr"
+            data-testid="credit-balance"
+          >
+            {data.balance}
           </p>
         </Surface>
         <Surface padding="lg">
-          <p className="type-caption">{t("billing.monthly_balance")}</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
-            {fmtUsd(data.balance.monthlyUsd)}
-          </p>
-          {data.balance.periodEnd && (
-            <p className="type-caption mt-1">
-              {t("billing.renews_on", {
-                date: new Date(data.balance.periodEnd).toLocaleDateString(locale),
-              })}
-            </p>
-          )}
-        </Surface>
-        <Surface padding="lg">
-          <p className="type-caption">{t("billing.topup_balance")}</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
-            {fmtUsd(data.balance.topupUsd)}
-          </p>
+          <p className="type-caption">{t("billing.account_state")}</p>
+          <p className="mt-1 text-lg font-semibold text-foreground">{statusLine}</p>
         </Surface>
       </section>
 
       <Surface as="section" padding="lg">
-        <SectionHeader
-          title={
-            data.subscription
-              ? t("billing.plan_line", {
-                  tier: data.subscription.tier_name_ar,
-                  status:
-                    data.subscription.status === "active"
-                      ? t("billing.status_active")
-                      : data.subscription.status,
-                })
-              : t("billing.no_subscription")
-          }
-          description={
-            data.subscription
-              ? t("billing.renewal", {
-                  date: new Date(data.subscription.period_end).toLocaleDateString(locale),
-                })
-              : undefined
-          }
-        />
-
-        {/* Dedicated action row — actions live under the subscription line,
-            not squeezed into the SectionHeader. */}
-        {data.subscription && (
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button size="xl" onClick={openPortal} disabled={busy != null}>
+        <SectionHeader title={t("billing.add_credit")} />
+        {/* The purchase contract, IN WRITING before any buy button: credits
+            are spendable while the subscription is live; expiry freezes the
+            balance (it is kept, and usable again on renewal). */}
+        <p className="type-caption mt-1" data-testid="topup-disclosure">
+          {t("billing.topup_disclosure")}
+        </p>
+        {data.has_paid_access ? (
+          packs.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {packs.map((pack) => (
+                <Button
+                  key={pack.id}
+                  variant="outline"
+                  size="xl"
+                  onClick={() => buyPack(pack.id)}
+                  disabled={busy != null}
+                >
+                  {busy === `pack-${pack.id}`
+                    ? t("billing.working")
+                    : t("billing.pack_button", {
+                        credits: String(pack.credits),
+                        price: (pack.price_cents / 100).toFixed(2),
+                      })}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <p className="type-caption mt-3">{t("billing.no_packs")}</p>
+          )
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <p className="type-caption">{t("billing.topup_needs_active")}</p>
+            <Link href="/subscribe" className={cn(buttonVariants({ size: "lg" }))}>
+              {data.plan_status === "trial"
+                ? t("billing.cta.subscribe")
+                : t("billing.cta.renew")}
+            </Link>
+          </div>
+        )}
+        {data.has_paid_access && (
+          <div className="mt-4 border-t border-border pt-4">
+            <Button size="lg" variant="outline" onClick={openPortal} disabled={busy != null}>
               {busy === "portal" ? t("billing.working") : t("billing.manage_subscription")}
             </Button>
           </div>
         )}
-
-        <div className="mt-4 border-t border-border pt-4">
-          <p className="type-overline">{t("billing.add_credit")}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {TOPUP_AMOUNTS.map((amount) => (
-              <Button
-                key={amount}
-                variant="outline"
-                size="xl"
-                onClick={() => topup(amount)}
-                disabled={busy != null}
-              >
-                {busy === `topup-${amount}`
-                  ? t("billing.working")
-                  : t("billing.topup_amount", { amount: String(amount) })}
-              </Button>
-            ))}
-          </div>
-        </div>
       </Surface>
 
       <Surface as="section" padding="none">
@@ -290,11 +301,12 @@ export function BillingClient() {
                 <span
                   className={cn(
                     "shrink-0 font-medium tabular-nums",
-                    row.amount_usd < 0 ? "text-sell" : "text-buy",
+                    row.amount < 0 ? "text-sell" : "text-buy",
                   )}
+                  dir="ltr"
                 >
-                  {row.amount_usd < 0 ? "-" : "+"}
-                  {fmtUsd(row.amount_usd)}
+                  {row.amount < 0 ? "" : "+"}
+                  {row.amount}
                 </span>
                 <time
                   dateTime={new Date(row.ts).toISOString()}

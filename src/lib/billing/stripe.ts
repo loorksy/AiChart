@@ -58,7 +58,7 @@ export function formEncode(params: Record<string, unknown>, prefix = ""): string
   return parts;
 }
 
-async function stripePost(
+export async function stripePost(
   secretKey: string,
   path: string,
   params: Record<string, unknown>,

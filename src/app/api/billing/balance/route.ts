@@ -1,44 +1,44 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { initDb, query } from "@/lib/db";
-import { getBalance } from "@/lib/billing/creditLedger";
-import { billingEnforced, getSubscription } from "@/lib/billing/gate";
-import { tierDef } from "@/lib/billing/tiers";
+import { initDb } from "@/lib/db";
+import { getCreditBalance, listCreditEntries } from "@/lib/billing/credits";
+import { billingEnforced } from "@/lib/billing/spend";
+import { getEntitlementForUser } from "@/lib/subscription/entitlement";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * V2-A2 (#91): the signed-in user's own balance + tier + recent statement.
- * Feeds the composer credit meter and the billing page (A5).
+ * Billing v3: the signed-in user's own CREDIT balance, account state, and
+ * recent movement — the ledger the user is entitled to see. Feeds the
+ * billing page and the account-status panel.
  */
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
   await initDb();
-  const [balance, sub, enforced, recent] = await Promise.all([
-    getBalance(user.id),
-    getSubscription(user.id),
+  const [balance, entitlement, enforced, entries] = await Promise.all([
+    getCreditBalance(user.id),
+    getEntitlementForUser(user),
     billingEnforced(),
-    query(
-      `SELECT ts, kind, amount_usd, bucket, note FROM credit_ledger
-       WHERE user_id = ? ORDER BY ts DESC LIMIT 50`,
-      [user.id],
-    ),
+    listCreditEntries(user.id, 50),
   ]);
-  const tier = sub ? tierDef(sub.tier) : null;
   return NextResponse.json({
     ok: true,
     billing_enforced: enforced,
     balance,
-    subscription: sub
-      ? {
-          tier: sub.tier,
-          tier_name_ar: tier?.nameAr ?? sub.tier,
-          status: sub.status,
-          period_end: sub.current_period_end,
-        }
-      : null,
-    ledger: recent,
+    plan_status: entitlement.planStatus,
+    has_paid_access: entitlement.hasPaidAccess,
+    expires_at: entitlement.expiresAt,
+    trial_used: entitlement.trialUsed,
+    trial_limit: entitlement.trialLimit,
+    trial_remaining: entitlement.trialRemaining,
+    ledger: entries.map((e) => ({
+      ts: e.ts,
+      kind: e.kind,
+      amount: e.amount,
+      balance_after: e.balance_after,
+      note: e.note,
+    })),
   });
 }

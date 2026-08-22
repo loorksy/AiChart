@@ -18,7 +18,8 @@ import {
   withRequestModel,
 } from "@/lib/llm";
 import { withUsageContext } from "@/lib/billing/usageMeter";
-import { checkSpendAllowed } from "@/lib/billing/gate";
+import { resolveSpendGate } from "@/lib/billing/spend";
+import { t as translate } from "@/lib/i18n";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
@@ -94,19 +95,18 @@ export async function POST(req: NextRequest) {
     // next-open plan — a real, billable analysis the caller asked for, so it
     // proceeds through the spend gate like any other.
 
-    // V2-A2: refuse NEW paid work when the balance is gone (flag-gated; a
-    // disabled flag means the gate always allows). Browsing routes never ask.
-    const gate = await checkSpendAllowed(userId);
+    // Billing v3 preflight: an analysis exists to produce a recommendation,
+    // so it is gated by the SAME three account states creation enforces —
+    // refusing here saves the model spend a doomed creation would waste.
+    const gate = await resolveSpendGate(userId, "recommendation");
     if (!gate.allowed) {
       return NextResponse.json(
         {
           ok: false,
-          error: "no_credits",
-          failure_code: "no_credits",
-          message: gate.message,
-          balance_usd: gate.balanceUsd,
+          error: { code: gate.code, message: translate("ar", `billing.refusal.${gate.code}`) },
+          failure_code: gate.code,
         },
-        { status: 402 },
+        { status: gate.code === "insufficient_credits" ? 402 : 403 },
       );
     }
 
