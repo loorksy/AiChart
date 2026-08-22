@@ -7,12 +7,15 @@
  * the same multi-timeframe capture the MCP tool uses and hands it to the
  * decision call in the same interleaved form.
  *
- * Best-effort by contract. A live chart tab can photograph the operator's
- * TradingView widget — the ONLY accepted image source. Unattended runs
- * (Telegram, cron, worker) get NO image: no rendered substitute, no stored
- * snapshot — the frames are reported missing and the analysis proceeds on
- * numbers alone, publishing normally. A missing live view degrades the read
- * rather than killing the analysis.
+ * Best-effort by contract. TradingView's client screenshot is the ONLY
+ * accepted image source — the operator's own tab when one is polling, else
+ * the platform's shared chart session (chart-host container), whose page
+ * runs the same takeClientScreenshot. Unattended runs (Telegram, cron,
+ * worker) therefore get REAL charts whenever the chart session is up; when
+ * neither tab exists there is still NO image — no rendered substitute, no
+ * stored snapshot — the frames are reported missing and the analysis
+ * proceeds on numbers alone, publishing normally. A missing view degrades
+ * the read rather than killing the analysis.
  *
  * The degradation is only honest if it is STATED. This module returns what was
  * requested alongside what arrived, so "I did not see the 4h" reaches the model

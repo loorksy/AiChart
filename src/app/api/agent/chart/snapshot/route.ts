@@ -4,7 +4,11 @@ import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getChartLayoutById, getOrCreateChartLayout } from "@/lib/store";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
-import { captureChartImage, pickLiveLayoutId } from "@/lib/chart/liveCapture";
+import { pickLiveLayoutId } from "@/lib/chart/liveCapture";
+import {
+  captureChartWithPlatformFallback,
+  layoutOverlaysFromState,
+} from "@/lib/chart/platformCapture";
 
 const schema = z.object({
   symbol: z.string().min(1),
@@ -46,7 +50,15 @@ export async function POST(req: NextRequest) {
       layoutId = primary?.id;
     }
 
-    const captured = await captureChartImage({
+    // When the operator has no live tab and the shot falls to the platform
+    // chart session, the requesting layout's own drawings/studies travel
+    // with the request — rendered for that shot, counted off the widget.
+    const layoutForOverlays = layoutId
+      ? await getChartLayoutById(layoutId, userId)
+      : null;
+    const overlays = layoutOverlaysFromState(layoutForOverlays?.state_json ?? null);
+
+    const captured = await captureChartWithPlatformFallback({
       userId,
       layoutId,
       symbol: body.symbol,
@@ -55,6 +67,8 @@ export async function POST(req: NextRequest) {
       includeDrawings: body.include_drawings,
       includeStudies: body.include_studies,
       liveSession: body.live_session !== false,
+      platformDrawings: body.include_drawings === false ? [] : overlays.drawings,
+      platformStudies: body.include_studies === false ? [] : overlays.studies,
     });
 
     if (!captured.ok) {

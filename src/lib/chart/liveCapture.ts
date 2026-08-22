@@ -7,11 +7,14 @@
  * polls GET /api/chart/live-capture and POSTs the PNGs back.
  *
  * The ONLY image source here is TradingView's client-side snapshot API in a
- * live browser session. Playwright, Puppeteer, headless Chromium and CDP are
- * rejected techniques; and when no live tab exists there is NO image — a
- * named failure, never a rendered substitute and never a stored/stale
- * snapshot. Browserless callers (Telegram, cron, worker) proceed on numbers
- * alone and say so.
+ * live browser session — the operator's own tab, or the PLATFORM tab: the
+ * /chart-host page hosted in the isolated chart-host container, which polls
+ * and answers exactly like an operator tab (its machinery lives at the
+ * bottom of this file). Playwright never captures anything — it only hosts
+ * that one page; as an image source it stays rejected along with Puppeteer
+ * and raw CDP. When NEITHER tab exists there is NO image — a named failure,
+ * never a rendered substitute and never a stored/stale snapshot — and
+ * callers proceed on numbers alone, saying so.
  *
  * Every capture is the two-shot pair (captureWindow.ts): a wide context
  * frame and a zoomed detail frame. The upload validator refuses a capture
@@ -45,7 +48,10 @@ export type CaptureFallbackReason =
   | "capture_timeout"
   | "upload_failed"
   | "missing_shots"
-  | "layout_not_found";
+  | "layout_not_found"
+  // The platform chart session (chart-host container) — named, never silent.
+  | "host_unreachable"
+  | "host_not_ready";
 
 export interface ChartCaptureMeta {
   image_source: ChartImageSource;
@@ -434,6 +440,215 @@ export async function captureChartImage(
   }
 }
 
+// ---------------------------------------------------------------------------
+// The PLATFORM tab — one shared headless chart session for the whole install.
+//
+// The chart-host container (see chart-host/) opens /chart-host in Playwright;
+// that page mounts the same TradingView widget the operator sees and polls
+// /api/chart/host-capture exactly like an operator tab polls live-capture.
+// The image source is therefore STILL takeClientScreenshot inside a real
+// TradingView session — Playwright only hosts the page and never screenshots.
+//
+// One tab serves every user: requests carry symbol/interval (and, when the
+// caller's layout has them, the drawings to render), never a per-user widget.
+// ---------------------------------------------------------------------------
+
+/** A drawing shipped to the platform tab to render before the shots. */
+export type PlatformCaptureDrawing = Record<string, unknown>;
+
+export interface PlatformCaptureRequest {
+  id: string;
+  symbol: string;
+  interval: string;
+  includeDrawings: boolean;
+  includeStudies: boolean;
+  /** Validated drawings from the REQUESTING layout, rendered for this shot. */
+  drawings: PlatformCaptureDrawing[];
+  studies: PlatformCaptureDrawing[];
+  shots: CaptureShot[];
+  createdAt: number;
+  uploadTimeoutMs: number;
+}
+
+export interface PlatformCaptureUpload {
+  requestId: string;
+  images: { label: string; buffer: Buffer }[];
+  drawingsRendered: number;
+  studiesRendered: number;
+}
+
+interface PendingPlatformCapture {
+  request: PlatformCaptureRequest;
+  acked: boolean;
+  resolve: (upload: PlatformCaptureUpload) => void;
+  reject: (err: Error) => void;
+  ackTimer: ReturnType<typeof setTimeout>;
+  uploadTimer?: ReturnType<typeof setTimeout>;
+}
+
+const platformPending = new Map<string, PendingPlatformCapture>();
+let platformTabAt = 0;
+
+/** Heartbeat from GET /api/chart/host-capture — the shared tab is alive. */
+export function notePlatformTabPoll(): void {
+  platformTabAt = Date.now();
+}
+
+export function hasFreshPlatformTab(now = Date.now()): boolean {
+  return platformTabAt > 0 && now - platformTabAt <= LIVE_TAB_FRESH_MS;
+}
+
+export function listPendingPlatformCaptures(): PlatformCaptureRequest[] {
+  return [...platformPending.values()].map((p) => p.request);
+}
+
+export function ackPlatformCapture(requestId: string): boolean {
+  const p = platformPending.get(requestId);
+  if (!p) return false;
+  if (p.acked) return true;
+  p.acked = true;
+  clearTimeout(p.ackTimer);
+  p.uploadTimer = setTimeout(() => {
+    p.reject(new Error("capture_timeout"));
+    platformPending.delete(requestId);
+  }, p.request.uploadTimeoutMs);
+  return true;
+}
+
+export function completePlatformCapture(
+  upload: PlatformCaptureUpload,
+): { ok: true } | { ok: false; error: string } {
+  const p = platformPending.get(upload.requestId);
+  if (!p) return { ok: false, error: "unknown_request" };
+  const fail = (error: string) => {
+    clearTimeout(p.ackTimer);
+    if (p.uploadTimer) clearTimeout(p.uploadTimer);
+    platformPending.delete(upload.requestId);
+    p.reject(new Error(error));
+    return { ok: false as const, error };
+  };
+  if (!upload.images.length || upload.images.some((image) => !image.buffer.length)) {
+    return fail("upload_failed");
+  }
+  // The two-shot rule holds on the platform tab exactly as on an operator's.
+  const delivered = new Set(upload.images.map((image) => image.label));
+  const missing = p.request.shots.filter((shot) => !delivered.has(shot.label));
+  if (missing.length) {
+    return fail("missing_shots");
+  }
+  clearTimeout(p.ackTimer);
+  if (p.uploadTimer) clearTimeout(p.uploadTimer);
+  platformPending.delete(upload.requestId);
+  p.resolve(upload);
+  return { ok: true };
+}
+
+export interface RequestPlatformCaptureInput {
+  /** Whose analysis this shot serves — the capture is remembered for them. */
+  forUserId: number;
+  symbol: string;
+  interval: string;
+  includeDrawings?: boolean;
+  includeStudies?: boolean;
+  drawings?: PlatformCaptureDrawing[];
+  studies?: PlatformCaptureDrawing[];
+  ackTimeoutMs?: number;
+  uploadTimeoutMs?: number;
+}
+
+/**
+ * One capture on the shared platform tab. The caller has already ensured the
+ * tab exists (platformCapture.ts) — an unanswered request here still fails by
+ * name, never hangs: the ack timer fires `host_not_ready`.
+ */
+export async function requestPlatformCapture(
+  input: RequestPlatformCaptureInput,
+): Promise<ChartCaptureResult | CaptureFailure> {
+  const includeDrawings = input.includeDrawings !== false;
+  const includeStudies = input.includeStudies !== false;
+  const ackTimeoutMs = input.ackTimeoutMs ?? LIVE_CAPTURE_ACK_MS;
+
+  const gotSlot = await acquireSlot(ackTimeoutMs);
+  if (!gotSlot) {
+    return { ok: false, reason: "capture_timeout" };
+  }
+
+  const request: PlatformCaptureRequest = {
+    id: newId(),
+    symbol: input.symbol.toUpperCase(),
+    interval: input.interval,
+    includeDrawings,
+    includeStudies,
+    drawings: includeDrawings ? (input.drawings ?? []) : [],
+    studies: includeStudies ? (input.studies ?? []) : [],
+    shots: captureShots(),
+    createdAt: Date.now(),
+    uploadTimeoutMs: input.uploadTimeoutMs ?? LIVE_CAPTURE_UPLOAD_MS,
+  };
+
+  try {
+    const upload = await new Promise<PlatformCaptureUpload>((resolve, reject) => {
+      const ackTimer = setTimeout(() => {
+        platformPending.delete(request.id);
+        reject(new Error("host_not_ready"));
+      }, ackTimeoutMs);
+      platformPending.set(request.id, {
+        request,
+        acked: false,
+        resolve,
+        reject,
+        ackTimer,
+      });
+    });
+
+    const drawings_included = drawingsIncludedFromCapture({
+      includeDrawings,
+      drawingsRendered: upload.drawingsRendered,
+    });
+    const studies_included = studiesIncludedFromCapture({
+      includeStudies,
+      studiesRendered: upload.studiesRendered,
+    });
+    const meta: ChartCaptureMeta = {
+      image_source: "tradingview_capture",
+      drawings_included,
+      studies_included,
+    };
+    rememberCapture(input.forUserId, "platform", meta);
+    const byLabel = new Map(upload.images.map((image) => [image.label, image.buffer]));
+    const images: CaptureShotImage[] = request.shots.map((shot) => ({
+      label: shot.label,
+      image_base64: byLabel.get(shot.label)!.toString("base64"),
+    }));
+    return {
+      ok: true,
+      ...meta,
+      content_type: "image/png",
+      image_base64: images[0]!.image_base64,
+      images,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "capture_timeout";
+    const reason: CaptureFallbackReason =
+      msg === "host_not_ready"
+        ? "host_not_ready"
+        : msg === "upload_failed"
+          ? "upload_failed"
+          : msg === "missing_shots"
+            ? "missing_shots"
+            : "capture_timeout";
+    return { ok: false, reason };
+  } finally {
+    const leftover = platformPending.get(request.id);
+    if (leftover) {
+      clearTimeout(leftover.ackTimer);
+      if (leftover.uploadTimer) clearTimeout(leftover.uploadTimer);
+      platformPending.delete(request.id);
+    }
+    releaseSlot();
+  }
+}
+
 /** Test seam — clears in-process maps. */
 export function resetLiveCaptureForTests(): void {
   for (const p of pending.values()) {
@@ -442,6 +657,13 @@ export function resetLiveCaptureForTests(): void {
     p.reject(new Error("reset"));
   }
   pending.clear();
+  for (const p of platformPending.values()) {
+    clearTimeout(p.ackTimer);
+    if (p.uploadTimer) clearTimeout(p.uploadTimer);
+    p.reject(new Error("reset"));
+  }
+  platformPending.clear();
+  platformTabAt = 0;
   lastCaptures.clear();
   liveTabs.clear();
   active = 0;

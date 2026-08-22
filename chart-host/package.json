@@ -1,0 +1,15 @@
+{
+  "name": "aichart-chart-host",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Isolated Playwright host for the platform's one chart tab. Hosts /chart-host only; never screenshots — the page's TradingView takeClientScreenshot does.",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "test": "tsx --test src/__tests__/session.test.ts"
+  },
+  "dependencies": {
+    "playwright": "1.49.1",
+    "tsx": "^4.19.2"
+  }
+}

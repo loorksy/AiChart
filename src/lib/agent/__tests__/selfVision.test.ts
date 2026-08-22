@@ -9,7 +9,7 @@
  * image source can creep back into the vision path.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
@@ -114,6 +114,7 @@ describe("TradingView-only: no other image source can reach the vision path", ()
     for (const rel of [
       "chart/liveCapture.ts",
       "chart/multiTimeframeCapture.ts",
+      "chart/platformCapture.ts",
       "agent/visualEvidence.ts",
     ]) {
       const source = read(rel);
@@ -131,6 +132,56 @@ describe("TradingView-only: no other image source can reach the vision path", ()
         rel,
       );
     }
+  });
+
+  it("browser automation exists NOWHERE in the app — chart-host is the only module allowed to drive a browser", () => {
+    // The narrow exception (owner decision): a Playwright process inside the
+    // chart-host container, hosting the internal /chart-host page ONLY, so
+    // chart snapshots work unattended. Everything else stays rejected:
+    // no playwright/puppeteer import anywhere in src/ or mcp/src, ever.
+    const roots = [SRC, path.join(SRC, "..", "..", "mcp", "src")];
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name === "__tests__") continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+          continue;
+        }
+        if (!/\.(ts|tsx|mts)$/.test(entry.name)) continue;
+        const source = readFileSync(full, "utf8");
+        if (
+          /from ["'](playwright|puppeteer)|require\(["'](playwright|puppeteer)|import\(["'](playwright|puppeteer)|chromium\.launch|\.launch\(\{\s*headless/i.test(
+            source,
+          )
+        ) {
+          offenders.push(full);
+        }
+      }
+    };
+    for (const root of roots) walk(root);
+    assert.deepEqual(offenders, [], "browser automation leaked outside chart-host");
+  });
+
+  it("chart-host itself never captures — it HOSTS the page, takeClientScreenshot does the capturing", () => {
+    const hostDir = path.join(SRC, "..", "..", "chart-host", "src");
+    const forbidden =
+      /\.screenshot\s*\(|page\.pdf\s*\(|newCDPSession|createCDPSession/i;
+    for (const entry of readdirSync(hostDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+      const source = readFileSync(path.join(hostDir, entry.name), "utf8");
+      assert.doesNotMatch(
+        source,
+        forbidden,
+        `chart-host/src/${entry.name} must not capture, render, or open CDP itself`,
+      );
+    }
+    // And the single-page restriction is structural, not advisory: the
+    // session layer refuses navigation outside /chart-host by name.
+    const session = readFileSync(path.join(hostDir, "session.ts"), "utf8");
+    assert.match(session, /host_navigation_refused/);
+    assert.match(session, /allowedPagePrefix/);
   });
 
   it("the vision path never serves a cached snapshot as this run's eyes", () => {

@@ -10,7 +10,8 @@
  * without its numeric counterpart being present in the same payload.
  */
 
-import { captureChartImage, LIVE_CAPTURE_ACK_MS } from "@/lib/chart/liveCapture";
+import { LIVE_CAPTURE_ACK_MS } from "@/lib/chart/liveCapture";
+import { captureChartWithPlatformFallback } from "@/lib/chart/platformCapture";
 import { canonicalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { getUnifiedSnapshot } from "@/lib/markets";
@@ -164,10 +165,13 @@ export type CaptureTimeframeResult =
  * One timeframe → the two-shot TradingView pair, or a named failure.
  *
  * TradingView's client-side snapshot in a live browser session is the ONLY
- * image source. No cache is consulted and none is written: serving a stored
- * snapshot as this run's eyes is exactly the stale-substitute the vision
- * contract forbids. A browserless caller gets `{ ok: false }` and the
- * analysis proceeds on numbers alone.
+ * image source — the operator's own tab first, else the platform's shared
+ * chart session (chart-host container), whose page runs the same
+ * takeClientScreenshot. This module itself consults no snapshot cache and
+ * writes none: the platform path's moment-cache lives behind the fallback
+ * and refuses anything older than its short window, so a stale substitute
+ * still cannot become this run's eyes. A caller with neither tab gets
+ * `{ ok: false }` and the analysis proceeds on numbers alone.
  */
 export async function captureTimeframeImage(
   userId: number,
@@ -179,7 +183,7 @@ export async function captureTimeframeImage(
   );
 
   const captured = await withDeadline(
-    captureChartImage({
+    captureChartWithPlatformFallback({
       userId,
       layoutId: input.layoutId,
       symbol: input.symbol,
@@ -188,6 +192,8 @@ export async function captureTimeframeImage(
       liveSession: input.liveSession,
       includeDrawings: input.includeDrawings,
       includeStudies: input.includeStudies,
+      // `fresh=true` from the caller skips the platform moment-cache read.
+      bypassCache: input.skipCache === true,
       ackTimeoutMs: Math.min(timeoutMs, LIVE_CAPTURE_ACK_MS),
     }),
     timeoutMs,
@@ -204,7 +210,9 @@ export async function captureTimeframeImage(
     images: captured.images,
     source: captured.image_source,
     capturedAt: Date.now(),
-    fromCache: false,
+    // True only when the platform moment-cache answered — same capture,
+    // same short window, stated rather than passed off as a fresh shot.
+    fromCache: captured.fromCache === true,
     drawings_included: captured.drawings_included,
     studies_included: captured.studies_included,
     fallback_reason: captured.fallback_reason,
