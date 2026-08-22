@@ -171,13 +171,10 @@ export function recordLLMUsage(entry: LLMUsageEntry): void {
           model: priceModelKey(entry.provider, entry.model),
         });
       }
-      // V2-A2: the retail cost drains the user's credit buckets. Dynamic
-      // import keeps the ledger out of this module's dependency edge for
-      // callers that only need the context helpers.
-      if (ctx?.userId != null && costs.retail != null && costs.retail > 0) {
-        const { burn } = await import("./creditLedger");
-        await burn(ctx.userId, costs.retail, ctx.requestId);
-      }
+      // Billing v3: usage_events stays the platform's COST measurement, but
+      // token cost no longer drains anyone's balance — users pay the
+      // admin-set credit price per OPERATION (spend.ts), not per token. The
+      // legacy USD ledger is read-only history now.
     } catch (e) {
       log.warn("record.failed", { error: e instanceof Error ? e.message : String(e) });
     }

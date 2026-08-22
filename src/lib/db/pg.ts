@@ -214,6 +214,95 @@ const SCHEMA = `
     ts   BIGINT NOT NULL
   );
 
+  -- ── Credit era (billing v3) ─────────────────────────────────────────────
+  -- The user balance is CREDITS (integers), not dollars. The legacy USD
+  -- tables above (credit_ledger / credit_balances) are retained READ-ONLY
+  -- for audit; nothing writes them anymore.
+
+  CREATE TABLE IF NOT EXISTS billing_plan (
+    id                     INTEGER PRIMARY KEY CHECK (id = 1),
+    current_price_id       BIGINT,
+    trial_recommendations  INTEGER NOT NULL DEFAULT 3,
+    trial_duration_minutes INTEGER NOT NULL DEFAULT 0,
+    low_balance_threshold  INTEGER NOT NULL DEFAULT 0,
+    expiry_warn_days       INTEGER NOT NULL DEFAULT 0,
+    updated_at             BIGINT NOT NULL,
+    updated_by             INTEGER
+  );
+
+  -- Immutable price rows: "changing the price" INSERTS a new row and archives
+  -- the old one. Existing subscribers keep pointing at their row forever.
+  CREATE TABLE IF NOT EXISTS plan_prices (
+    id                BIGSERIAL PRIMARY KEY,
+    price_cents       INTEGER NOT NULL CHECK (price_cents >= 0),
+    credits_per_cycle INTEGER NOT NULL CHECK (credits_per_cycle >= 0),
+    cycle_days        INTEGER NOT NULL CHECK (cycle_days > 0),
+    stripe_price_id   TEXT,
+    created_at        BIGINT NOT NULL,
+    archived_at       BIGINT
+  );
+
+  -- Per-operation credit prices. 0 = the operation is free/unpriced.
+  CREATE TABLE IF NOT EXISTS credit_prices (
+    op         TEXT PRIMARY KEY,
+    credits    INTEGER NOT NULL DEFAULT 0 CHECK (credits >= 0),
+    updated_at BIGINT NOT NULL,
+    updated_by INTEGER
+  );
+
+  -- Top-up packs the admin curates. Archived packs stay for history; open
+  -- checkout sessions carry their terms in metadata and never re-read a row.
+  CREATE TABLE IF NOT EXISTS topup_packs (
+    id          BIGSERIAL PRIMARY KEY,
+    credits     INTEGER NOT NULL CHECK (credits > 0),
+    price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
+    active      INTEGER NOT NULL DEFAULT 1,
+    sort        INTEGER NOT NULL DEFAULT 0,
+    created_at  BIGINT NOT NULL,
+    archived_at BIGINT
+  );
+
+  -- Offers apply ONLY to checkouts created inside their window — evaluated at
+  -- session-create time, never retroactively, never after ends_at.
+  CREATE TABLE IF NOT EXISTS offers (
+    id               BIGSERIAL PRIMARY KEY,
+    kind             TEXT NOT NULL CHECK (kind IN ('percent','fixed_cents')),
+    value            INTEGER NOT NULL CHECK (value > 0),
+    starts_at        BIGINT NOT NULL,
+    ends_at          BIGINT NOT NULL,
+    active           INTEGER NOT NULL DEFAULT 1,
+    stripe_coupon_id TEXT,
+    created_by       INTEGER,
+    created_at       BIGINT NOT NULL
+  );
+
+  -- The balance itself. The CHECK is the platform's blood line: no code path,
+  -- however buggy, can take a balance below zero — the write itself fails.
+  CREATE TABLE IF NOT EXISTS credit_accounts (
+    user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    balance    INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
+    updated_at BIGINT NOT NULL
+  );
+
+  -- Every movement, signed, with the balance it left behind. The partial
+  -- UNIQUE below is the idempotency guarantee for grants AND debits: a
+  -- replayed webhook or a redelivered queue turn hits the constraint, not the
+  -- balance. Keep the constraint the guarantee — never replace it with a
+  -- read-then-write check in code.
+  CREATE TABLE IF NOT EXISTS credit_entries (
+    id            BIGSERIAL PRIMARY KEY,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ts            BIGINT NOT NULL,
+    kind          TEXT NOT NULL,
+    amount        INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    ref           TEXT,
+    note          TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_credit_entries_user_ts ON credit_entries(user_id, ts);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_entries_ref
+    ON credit_entries(user_id, kind, ref) WHERE ref IS NOT NULL;
+
   -- V2-C: support tickets, answered first by the docs-grounded bot.
   CREATE TABLE IF NOT EXISTS support_tickets (
     id          BIGSERIAL PRIMARY KEY,
