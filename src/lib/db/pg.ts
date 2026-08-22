@@ -303,6 +303,26 @@ const SCHEMA = `
   CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_entries_ref
     ON credit_entries(user_id, kind, ref) WHERE ref IS NOT NULL;
 
+  -- ── Ads (billing v3 companion) ─────────────────────────────────────────
+  CREATE TABLE IF NOT EXISTS ads (
+    id          BIGSERIAL PRIMARY KEY,
+    slides_json TEXT NOT NULL,
+    audience    TEXT NOT NULL DEFAULT 'all'
+                CHECK (audience IN ('all','subscribers','non_subscribers','trial')),
+    active      INTEGER NOT NULL DEFAULT 1,
+    starts_at   BIGINT,
+    ends_at     BIGINT,
+    created_by  INTEGER,
+    created_at  BIGINT NOT NULL,
+    updated_at  BIGINT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ad_dismissals (
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ad_id        BIGINT NOT NULL REFERENCES ads(id) ON DELETE CASCADE,
+    dismissed_at BIGINT NOT NULL,
+    PRIMARY KEY (user_id, ad_id)
+  );
+
   -- V2-C: support tickets, answered first by the docs-grounded bot.
   CREATE TABLE IF NOT EXISTS support_tickets (
     id          BIGSERIAL PRIMARY KEY,

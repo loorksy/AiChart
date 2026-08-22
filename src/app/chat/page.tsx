@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getOrCreateChartLayout } from "@/lib/store";
 import { SmartChartWorkspace } from "@/components/SmartChartWorkspace";
+import { AdModal } from "@/components/ads/AdModal";
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { SubscribeClient } from "@/components/subscription/SubscribeClient";
 import { isLLMConfiguredAsync } from "@/lib/llm";
@@ -51,6 +52,8 @@ export default async function ChatPage() {
   }
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      {/* One ad per session at most; the refusal modal always outranks it. */}
+      <AdModal />
       <ChartErrorBoundary>
         <SmartChartWorkspace
           agentReady={await isLLMConfiguredAsync()}

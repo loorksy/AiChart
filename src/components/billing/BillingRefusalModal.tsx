@@ -39,6 +39,7 @@ export function BillingRefusalModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="billing-refusal-title"
+      data-refusal-modal=""
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >

@@ -303,6 +303,30 @@ const SCHEMA = `
   CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_entries_ref
     ON credit_entries(user_id, kind, ref) WHERE ref IS NOT NULL;
 
+  -- ── Ads (billing v3 companion) ─────────────────────────────────────────
+  -- Slides are JSON [{image_path?, text?}]; text renders as TEXT, never
+  -- HTML. Targeting is by account state; dismissal is per (user, ad).
+  CREATE TABLE IF NOT EXISTS ads (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slides_json TEXT NOT NULL,
+    audience    TEXT NOT NULL DEFAULT 'all'
+                CHECK (audience IN ('all','subscribers','non_subscribers','trial')),
+    active      INTEGER NOT NULL DEFAULT 1,
+    starts_at   INTEGER,
+    ends_at     INTEGER,
+    created_by  INTEGER,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ad_dismissals (
+    user_id      INTEGER NOT NULL,
+    ad_id        INTEGER NOT NULL,
+    dismissed_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, ad_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (ad_id) REFERENCES ads(id) ON DELETE CASCADE
+  );
+
   -- V2-C: support tickets, answered first by the docs-grounded bot.
   CREATE TABLE IF NOT EXISTS support_tickets (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
