@@ -135,6 +135,13 @@ export interface SearchSimilarLessonsQuery {
   snapshot?: Record<string, unknown>;
   limit?: number;
   minScore?: number;
+  /**
+   * Set false to forbid the embedding call and read lessons by symbol alone —
+   * a plain DB filter, deterministic and free. The MCP create path uses this
+   * (Phase B): that surface promises zero platform model spend, and
+   * `createEmbedding` is exactly such spend. Platform paths keep the default.
+   */
+  embeddings?: boolean;
 }
 
 export async function searchSimilarLessons(
@@ -143,6 +150,9 @@ export async function searchSimilarLessons(
 ): Promise<TradeLessonMatch[]> {
   const limit = q.limit ?? 3;
   const minScore = q.minScore ?? MEMORY_SCORE_THRESHOLD;
+  if (q.embeddings === false) {
+    return filterBySymbolFallback(userId, q.symbol, limit);
+  }
   const parts = [
     q.symbol ? `symbol ${q.symbol}` : "",
     q.pattern ? `pattern ${q.pattern}` : "",

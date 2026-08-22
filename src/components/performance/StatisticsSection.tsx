@@ -171,6 +171,20 @@ export function StatisticsSection() {
               groups={stats.byDirection}
               renderKey={(k) => (k === "buy" ? t("decision.buy") : t("decision.sell"))}
             />
+            {/* Phase B: the platform agent's record and MCP-client records are
+                separate claims by separate brains — shown apart because a
+                blended win-rate would measure neither. */}
+            <RecommendationPerformanceTable
+              titleKey="stats.by_decision_source"
+              groups={stats.byDecisionSource}
+              renderKey={(k) =>
+                k === "platform_agent"
+                  ? t("rec.source.platform_agent")
+                  : k === "mcp_client"
+                    ? t("rec.source.mcp_client")
+                    : k
+              }
+            />
           </div>
         </>
       )}

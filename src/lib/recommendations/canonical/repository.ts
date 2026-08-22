@@ -46,6 +46,8 @@ interface RecommendationRow {
   chart_drawings_json: string | null;
   plan_type: string | null;
   execution_state: string | null;
+  decision_source: string | null;
+  decision_model: string | null;
 }
 
 interface TransitionRow {
@@ -144,6 +146,10 @@ function toCanonical(row: RecommendationRow): CanonicalRecommendation {
     chartDrawingsJson: row.chart_drawings_json ?? undefined,
     planType: row.plan_type ?? null,
     executionState: row.execution_state ?? null,
+    // Pre-column rows read as platform_agent — the only producer that existed
+    // before the distinction did — never as an implied external client.
+    decisionSource: row.decision_source ?? "platform_agent",
+    decisionModel: row.decision_model ?? null,
   };
 }
 
@@ -344,9 +350,9 @@ export async function createCanonicalRecommendation(
          confidence, market_regime, expires_at, status, status_reason,
          source, engine_version, entry_type, legacy_tracking_id, rationale, factors,
          chart_drawings_json, pattern_name, analysis_tier, context_json,
-         evidence_source, plan_type, execution_state,
+         evidence_source, plan_type, execution_state, decision_source, decision_model,
          updated_at, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
       [
         input.userId,
         input.analysisId ?? null,
@@ -380,10 +386,25 @@ export async function createCanonicalRecommendation(
         input.evidenceSource ?? "direct_analysis",
         input.planType ?? null,
         input.executionState ?? null,
+        input.decisionSource ?? "platform_agent",
+        input.decisionModel ?? null,
         now,
         now,
       ],
     );
+    // Phase B: consumption by path is a stated fact. One increment per real
+    // creation — legacy migrations re-record history, they do not consume.
+    // A counter only: nothing bills or blocks on it.
+    if (!input.legacyImport) {
+      await db.execute(
+        `INSERT INTO recommendation_counters (user_id, decision_source, count, updated_at)
+         VALUES (?,?,1,?)
+         ON CONFLICT (user_id, decision_source) DO UPDATE SET
+           count = recommendation_counters.count + 1,
+           updated_at = excluded.updated_at`,
+        [input.userId, input.decisionSource ?? "platform_agent", now],
+      );
+    }
     const publicSnapshot = {
       analysisId: input.analysisId,
       sessionId: input.sessionId,

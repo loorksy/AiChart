@@ -115,6 +115,15 @@ export interface TrackedRecommendation {
   lastCheckedAt?: number;
   /** Serialized chart drawings captured with the plan (JSON string). */
   chartDrawingsJson?: string;
+  /**
+   * Which brain produced the decision: 'platform_agent' (the platform's own
+   * synthesizer) or 'mcp_client' (an external model thinking through MCP).
+   * Statistics group on this — mixing the two would corrupt the platform
+   * agent's own performance record.
+   */
+  decisionSource?: string;
+  /** The model behind the decision when known; null = not declared, never guessed. */
+  decisionModel?: string | null;
 }
 
 /** True when a record is finished and must never be re-evaluated. */

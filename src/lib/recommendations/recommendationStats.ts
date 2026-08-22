@@ -41,6 +41,13 @@ export interface RecommendationStats {
   byTimeframe: GroupStat[];
   bySetupType: GroupStat[];
   byDirection: GroupStat[];
+  /**
+   * platform_agent vs mcp_client, kept apart in computation — a client-authored
+   * plan graded into the platform's row (or the reverse) corrupts both records.
+   * Rows from before the column read as platform_agent, the only producer that
+   * existed then.
+   */
+  byDecisionSource: GroupStat[];
   scalp: GroupStat;
   avgPlannedRr: number | null;
   avgAchievedRr: number | null;
@@ -185,6 +192,7 @@ export function computeRecommendationStats(
     byTimeframe: groupBy(recs, (r) => r.interval),
     bySetupType: groupBy(recs, (r) => r.setupType),
     byDirection: groupBy(recs, (r) => r.direction),
+    byDecisionSource: groupBy(recs, (r) => r.decisionSource ?? "platform_agent"),
     scalp: groupStat("scalp", recs.filter((r) => r.setupType === "scalp")),
     avgPlannedRr: mean(plannedRrs),
     avgAchievedRr: mean(achievedRrs),

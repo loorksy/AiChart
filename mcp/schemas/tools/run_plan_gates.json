@@ -5,70 +5,15 @@
     "symbol": {
       "type": "string"
     },
-    "analysis_id": {
-      "description": "The gate-chain run this plan passed: run_plan_gates's analysis_id when you authored the plan, or run_market_analysis's. REQUIRED for the write to be authorized — a buy/sell without a fresh recorded chain is refused.",
-      "type": "string",
-      "minLength": 4,
-      "maxLength": 64
-    },
-    "client_model": {
-      "description": "Your own model id (e.g. claude-opus-5) when you authored the plan yourself via run_plan_gates. Recorded so outcome statistics keep client-authored plans apart from the platform agent's own. Omit if unknown.",
-      "type": "string",
-      "minLength": 2,
-      "maxLength": 120
-    },
-    "action": {
+    "direction": {
       "type": "string",
       "enum": [
         "buy",
         "sell"
       ]
     },
-    "plan_type": {
-      "type": "string",
-      "enum": [
-        "immediate",
-        "anticipatory",
-        "conditional"
-      ]
-    },
-    "confidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 100
-    },
-    "rationale": {
-      "type": "string",
-      "minLength": 10
-    },
-    "factors": {
-      "minItems": 1,
-      "maxItems": 8,
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
     "timeframe": {
       "type": "string"
-    },
-    "pattern_name": {
-      "type": "string"
-    },
-    "chart_drawings": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "propertyNames": {
-          "type": "string"
-        },
-        "additionalProperties": {}
-      }
-    },
-    "market_regime": {
-      "type": "string",
-      "minLength": 3,
-      "maxLength": 64
     },
     "entry": {
       "type": "number",
@@ -83,7 +28,7 @@
       "exclusiveMinimum": 0
     },
     "take_profits": {
-      "description": "Every profit target in order (TP1..TP3). The card shows one row per unique target. take_profit is TP1; include the rest here or repeat TP1 in this array.",
+      "description": "Every profit target in order (TP1..TP3). take_profit is TP1.",
       "maxItems": 3,
       "type": "array",
       "items": {
@@ -91,20 +36,17 @@
         "exclusiveMinimum": 0
       }
     },
-    "visual_confirmation": {
-      "description": "Did the chart images agree with the numbers? confirmed | contradicted | not_checked. confirmed is only valid when a live TradingView capture included drawings (drawings_included=true). Contradicted lowers the DISPLAYED model-judgement confidence.",
-      "anyOf": [
-        {
-          "type": "string",
-          "enum": [
-            "confirmed",
-            "contradicted",
-            "not_checked"
-          ]
-        },
-        {
-          "type": "boolean"
-        }
+    "entry_type": {
+      "description": "Your declared fill semantics (market | limit_touch | confirmation_close | retest_zone, broker spellings accepted). The server resolves the canonical type from the plan's structure — a close-based activation_rule always resolves to confirmation_close.",
+      "type": "string",
+      "maxLength": 32
+    },
+    "plan_type": {
+      "type": "string",
+      "enum": [
+        "immediate",
+        "anticipatory",
+        "conditional"
       ]
     },
     "timeframes_reviewed": {
@@ -736,10 +678,9 @@
   },
   "required": [
     "symbol",
-    "action",
-    "plan_type",
-    "rationale",
-    "factors",
+    "direction",
+    "entry",
+    "stop_loss",
     "invalidation_rule",
     "alternative_scenario",
     "validity_candles"

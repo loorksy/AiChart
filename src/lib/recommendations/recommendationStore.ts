@@ -380,6 +380,8 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     alternativeScenario: effective?.alternativeScenario ?? undefined,
     evidenceSnapshot: effective?.evidence,
     chartDrawingsJson: recommendation.chartDrawingsJson,
+    decisionSource: recommendation.decisionSource,
+    decisionModel: recommendation.decisionModel ?? null,
   };
 }
 
@@ -422,6 +424,8 @@ export async function createTrackedRecommendation(
     planType: input.planType ?? null,
     executionState: input.executionState ?? null,
     evidenceSource: input.evidenceSource ?? null,
+    decisionSource: input.decisionSource,
+    decisionModel: input.decisionModel ?? null,
     initialRevision: {
       entryLow: input.entryLow ?? null,
       entryHigh: input.entryHigh ?? null,

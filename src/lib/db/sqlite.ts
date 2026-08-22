@@ -101,11 +101,31 @@ const SCHEMA = `
     -- NULL on rows written before it existed — never given a
     -- value that would imply evidence the row does not have.
     evidence_source TEXT,
+    -- Which brain produced the decision: 'platform_agent' (the platform's own
+    -- synthesizer) or 'mcp_client' (an external model thinking through MCP).
+    -- Outcome statistics separate on this column — mixing the two would
+    -- corrupt the platform agent's own performance record.
+    decision_source TEXT NOT NULL DEFAULT 'platform_agent',
+    -- The model behind the decision when known: the platform's active model
+    -- id, or whatever an MCP client declared. NULL = not declared, never guessed.
+    decision_model  TEXT,
     updated_at      INTEGER,
     rationale       TEXT,
     factors         TEXT,
     chart_image_url TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- Phase B: recommendation creations counted per user and per decision path
+  -- (platform_agent | mcp_client). A counter only — nothing bills or blocks
+  -- on it; it exists so consumption by path is a stated fact, not a guess.
+  CREATE TABLE IF NOT EXISTS recommendation_counters (
+    user_id         INTEGER NOT NULL,
+    decision_source TEXT NOT NULL,
+    count           INTEGER NOT NULL DEFAULT 0,
+    updated_at      INTEGER NOT NULL,
+    PRIMARY KEY (user_id, decision_source),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -1281,6 +1301,10 @@ function migrate(db: Database.Database) {
     ["plan_type", "TEXT"],
     ["execution_state", "TEXT"],
     ["evidence_source", "TEXT"],
+    // Phase B: which brain produced the decision, and which model when known.
+    // The default names the only producer that existed before the column did.
+    ["decision_source", "TEXT NOT NULL DEFAULT 'platform_agent'"],
+    ["decision_model", "TEXT"],
   ];
   // Additive for databases created before the parity key existed.
   const parityCols = db

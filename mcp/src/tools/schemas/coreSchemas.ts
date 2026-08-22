@@ -172,11 +172,26 @@ const planContractFields = {
 const recommendationSharedFields = {
   symbol: zSymbol,
   /**
-   * The analysis this plan came from (run_market_analysis result's
-   * analysis_id). The platform checks the RECORDED gate chain under this id
-   * before writing — a buy/sell publish without a fresh analysis is refused.
+   * The analysis this plan came from — run_market_analysis's analysis_id, or
+   * run_plan_gates's when YOU authored the plan. The platform checks the
+   * RECORDED gate chain under this id before writing — a buy/sell publish
+   * without a fresh, complete, non-vetoed record is refused.
    */
   analysis_id: z.string().min(4).max(64).optional(),
+  /**
+   * Which model authored the decision, when the plan came through
+   * run_plan_gates rather than the platform's own analysis. Recorded on the
+   * row so outcome statistics never blend an external client's record into
+   * the platform agent's own. Omitted = unknown, never guessed.
+   */
+  client_model: z
+    .string()
+    .min(2)
+    .max(120)
+    .optional()
+    .describe(
+      "Your own model id (e.g. claude-opus-5) when you authored the plan yourself via run_plan_gates. Omit if unknown.",
+    ),
   // Optional — the model's own judgement. Never a statistically calibrated figure.
   confidence: zConfidence.optional(),
   rationale: z.string().min(10),
@@ -306,9 +321,94 @@ const findSimilarCasesShape = {
 
 export const findSimilarCasesInput = z.object(findSimilarCasesShape).strict();
 
+/**
+ * The client-authored-plan gate run (Phase B): the fields of ONE plan, stated
+ * exactly as create_recommendation will receive them. The server rebuilds its
+ * deterministic evidence (structure, liquidity, zones, MTF, news window, ATR,
+ * live price) and runs the same mandatory G1–G7 chain over this plan in forced
+ * order — no platform model is consulted at any point.
+ */
+const runPlanGatesShape = {
+  symbol: zSymbol,
+  direction: z.enum(["buy", "sell"]),
+  timeframe: z.string().optional(),
+  entry: z.number().positive(),
+  stop_loss: z.number().positive(),
+  take_profit: z.number().positive().optional(),
+  take_profits: z
+    .array(z.number().positive())
+    .max(3)
+    .optional()
+    .describe("Every profit target in order (TP1..TP3). take_profit is TP1."),
+  entry_type: z
+    .string()
+    .max(32)
+    .optional()
+    .describe(
+      "Your declared fill semantics (market | limit_touch | confirmation_close | retest_zone, broker spellings accepted). The server resolves the canonical type from the plan's structure — a close-based activation_rule always resolves to confirmation_close.",
+    ),
+  plan_type: z.enum(["immediate", "anticipatory", "conditional"]).optional(),
+  timeframes_reviewed: zTimeframesReviewed,
+  ...planContractFields,
+};
+
+export const runPlanGatesInput = z
+  .object(runPlanGatesShape)
+  .strict()
+  .superRefine((body, ctx) => {
+    const hasTp =
+      typeof body.take_profit === "number" ||
+      (Array.isArray(body.take_profits) && body.take_profits.length > 0);
+    if (!hasTp) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["take_profit"],
+        message:
+          "take_profit (or take_profits) is required — a plan without a target cannot be gated",
+      });
+    }
+    if (body.plan_type === "conditional" || body.plan_type === "anticipatory") {
+      if (!body.activation_condition) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["activation_condition"],
+          message: `a ${body.plan_type} plan requires activation_condition — the exact event that turns it on`,
+        });
+      }
+      if (!body.activation_rule) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["activation_rule"],
+          message: `a ${body.plan_type} plan requires activation_rule — the same condition as structured data the tracker can grade`,
+        });
+      }
+    }
+  });
+
 /** Catalog shape stays a ZodRawShape so MCP SDK handler inference remains intact. */
 const createRecommendationCatalogShape = {
   symbol: zSymbol,
+  /**
+   * Advertised in the catalog (Phase B): without this key on the wire the
+   * client-authored flow cannot name the gate run that authorizes its write,
+   * and the write boundary refuses every such publish.
+   */
+  analysis_id: z
+    .string()
+    .min(4)
+    .max(64)
+    .optional()
+    .describe(
+      "The gate-chain run this plan passed: run_plan_gates's analysis_id when you authored the plan, or run_market_analysis's. REQUIRED for the write to be authorized — a buy/sell without a fresh recorded chain is refused.",
+    ),
+  client_model: z
+    .string()
+    .min(2)
+    .max(120)
+    .optional()
+    .describe(
+      "Your own model id (e.g. claude-opus-5) when you authored the plan yourself via run_plan_gates. Recorded so outcome statistics keep client-authored plans apart from the platform agent's own. Omit if unknown.",
+    ),
   // No "wait": every successful analysis ends in a direction. An unreadable
   // market is an operational blocker reported as such, not a recommendation.
   action: z.enum(["buy", "sell"]),
@@ -384,10 +484,18 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: READ_ONLY,
   },
   {
+    name: "run_plan_gates",
+    domain: "core",
+    description:
+      "Runs the platform's mandatory gate chain over a plan YOU authored — news window → liquidity → supply/demand zones → structure → plan coherence → live-price revalidation, in forced order, in this one call — records the verdicts server-side, and returns analysis_id. When: after your own analysis settles on a direction and plan, immediately before create_recommendation — not needed after run_market_analysis, whose run already recorded a chain under its own analysis_id. This is the required step between your own analysis and create_recommendation when you did NOT use run_market_analysis: the write boundary refuses any buy/sell publish without a fresh recorded chain under its analysis_id. Deterministic server-side checks only — no platform model is consulted at any point; the analytical decision stays yours. State the SAME plan you will submit (direction, levels, fill semantics, activation rule): the chain grades that exact plan, and a close-based activation_rule resolves to confirmation_close regardless of what entry_type declared. allowed=true → call create_recommendation with the returned analysis_id (and client_model = your model id) within records_expire_in_seconds (~10 minutes) — stale records refuse the write. allowed=false → the refusal names the gate that fell and why (e.g. blocked 25 minutes around a high-impact event, or entry unreachable from the live price); that refusal is the platform's answer — report it and what to wait for, and do NOT resubmit the same plan unchanged or publish it in prose as if it were issued. JSON only, no card. Pass timeframes_reviewed with the frames you actually looked at (capture tools) — an unseen chart costs confidence honestly rather than silently. side-effect: writes gate records.",
+    inputSchema: runPlanGatesShape,
+    annotations: IDEMPOTENT_WRITE,
+  },
+  {
     name: "create_recommendation",
     domain: "core",
     description:
-      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server \u2014 do not send it. Call this in the SAME turn as the analysis BEFORE any operator-facing reply \u2014 never describe entry/SL/targets in prose first and wait to be asked for the card. On success the host AUTOMATICALLY shows recommendation-card plus the live platform chart (inline image + display_markdown) \u2014 present that card and paste display_markdown verbatim. Pass EVERY target: take_profit is TP1 and take_profits is the full list (2\u20133 numbers). Do not also present lessons, jobs, scan, snapshot, or levels JSON as cards; those tools have no UI. The only MCP cards are recommendation-card (this tool) and live-chart (show_live_chart). When: after the analysis settles on a direction \u2014 every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data \u2014 never looser than the sentence). side-effect: writes recommendation. activation_rule examples \u2014 timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} \u00b7 {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} \u00b7 {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} \u00b7 {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} \u00b7 composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. Confidence is the model's own judgement \u2014 never a statistically calibrated figure. Do not send backtested_confidence, statistical_support, strategy_id, or backtest_evidence; those fields no longer exist. Pass visual_confirmation + timeframes_reviewed after a live TradingView capture \u2014 confirmed is only valid when drawings_included=true; otherwise use not_checked.",
+      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server \u2014 do not send it. Pass analysis_id from the gate run that authorized this plan \u2014 run_plan_gates when YOU authored it (also pass client_model = your model id), run_market_analysis otherwise; a buy/sell without a fresh recorded gate chain is refused by name. Call this in the SAME turn as the analysis BEFORE any operator-facing reply \u2014 never describe entry/SL/targets in prose first and wait to be asked for the card. On success the host AUTOMATICALLY shows recommendation-card plus the live platform chart (inline image + display_markdown) \u2014 present that card and paste display_markdown verbatim. Pass EVERY target: take_profit is TP1 and take_profits is the full list (2\u20133 numbers). Do not also present lessons, jobs, scan, snapshot, or levels JSON as cards; those tools have no UI. The only MCP cards are recommendation-card (this tool) and live-chart (show_live_chart). When: after the analysis settles on a direction \u2014 every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. This platform places no orders: recording the plan IS the outcome, and acting on it is the operator's own decision elsewhere. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data \u2014 never looser than the sentence). side-effect: writes recommendation. activation_rule examples \u2014 timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} \u00b7 {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} \u00b7 {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} \u00b7 {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} \u00b7 composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. Confidence is the model's own judgement \u2014 never a statistically calibrated figure. Do not send backtested_confidence, statistical_support, strategy_id, or backtest_evidence; those fields no longer exist. Pass visual_confirmation + timeframes_reviewed after a live TradingView capture \u2014 confirmed is only valid when drawings_included=true; otherwise use not_checked.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },

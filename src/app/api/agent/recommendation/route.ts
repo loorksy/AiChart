@@ -76,12 +76,20 @@ const schema = z
     symbol: z.string().min(1),
     action: z.enum(["buy", "sell", "wait"]),
     /**
-     * The analysis this plan came from (returned by the analyze endpoint).
+     * The analysis this plan came from — the analyze endpoint's, or
+     * /api/agent/gates/run's when the client authored the plan itself.
      * The write boundary checks the RECORDED gate chain under this id — a
      * buy/sell create without a fresh, complete, non-vetoed record is
-     * refused in code, so publishing without analyzing first cannot work.
+     * refused in code, so publishing without running the gates cannot work.
      */
     analysis_id: z.string().min(4).max(64).optional(),
+    /**
+     * The CLIENT model that authored this plan, when it came through
+     * run_plan_gates rather than the platform's own analysis. Recorded on the
+     * row (decision_model) so the outcome record can separate client-authored
+     * plans from the platform agent's — never guessed when omitted.
+     */
+    client_model: z.string().min(2).max(120).nullish(),
     /**
      * How the plan is entered — the contract's second layer. Optional in the
      * SCHEMA so a legacy client is not broken at parse time, then required for a
@@ -288,10 +296,15 @@ export async function POST(req: NextRequest) {
       profile,
     );
 
+    // Phase B: this surface promises ZERO platform model spend, and the
+    // embedding behind semantic lesson search is exactly such spend (an
+    // unmetered OpenAI call). Lessons still attach — read by symbol, a plain
+    // deterministic DB filter. The platform's own paths keep embeddings as-is.
     const similarLessons = await searchSimilarLessons(userId, {
       symbol: body.symbol,
       pattern: body.pattern_name ?? undefined,
       limit: 3,
+      embeddings: false,
     });
     const memoryBlock = formatLessonsForPrompt(similarLessons);
     const rationale =
@@ -524,6 +537,11 @@ export async function POST(req: NextRequest) {
       market_regime: body.market_regime ?? null,
       source: "agent",
       market: DEFAULT_MARKET,
+      // Phase B: this surface's rows are the CLIENT's claims, kept apart from
+      // the platform agent's record in display and computation alike. The
+      // model is whatever the client declared — never guessed when omitted.
+      decision_source: "mcp_client",
+      decision_model: body.client_model ?? null,
     });
 
     // Deferred #10: the MCP-hosted model writing its own plan IS a decision on

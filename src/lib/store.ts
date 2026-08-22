@@ -438,6 +438,14 @@ export async function saveRecommendation(
     /** Where the support came from, distinct from its grade. */
     evidence_source?: string | null;
     /**
+     * Which brain produced the decision: 'platform_agent' | 'mcp_client'.
+     * Defaults to platform_agent in the canonical creator; the MCP surface
+     * passes mcp_client so its record never blends into the platform's own.
+     */
+    decision_source?: string | null;
+    /** The producing model's id when known; null = not declared, never guessed. */
+    decision_model?: string | null;
+    /**
      * The contract's third layer and the revision-1 seed. This adapter is the
      * MCP surface's only bridge to the canonical creator; before these fields
      * existed it structurally could not carry the plan, which is how MCP rows
@@ -503,6 +511,8 @@ export async function saveRecommendation(
     entryType: rec.entry_type ?? undefined,
     planType: rec.plan_type ?? null,
     evidenceSource: rec.evidence_source ?? null,
+    decisionSource: rec.decision_source ?? undefined,
+    decisionModel: rec.decision_model ?? null,
     executionState,
     initialRevision: {
       entryLow: rec.entry_low ?? null,

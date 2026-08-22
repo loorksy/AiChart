@@ -32,6 +32,11 @@ export interface CanonicalRecommendationAnalytics {
   bySession: AnalyticsGroup[];
   byExitReason: AnalyticsGroup[];
   byEntryType: AnalyticsGroup[];
+  /**
+   * platform_agent vs mcp_client, computed apart — a client-authored plan
+   * graded into the platform agent's record (or the reverse) corrupts both.
+   */
+  byDecisionSource: AnalyticsGroup[];
   byMonth: AnalyticsGroup[];
   byDay: AnalyticsGroup[];
 }
@@ -44,6 +49,7 @@ interface AnalyticsRow {
   confidence: number;
   session_id: string | null;
   entry_type: string | null;
+  decision_source: string | null;
   status: string;
   created_at: string | number;
   r_multiple: number | null;
@@ -121,7 +127,8 @@ export async function computeCanonicalRecommendationAnalytics(
   const rows = await query<AnalyticsRow>(
     `SELECT r.id AS recommendation_id, r.symbol, r.timeframe,
             'direct_analysis' AS strategy_id,
-            r.confidence, r.session_id, r.entry_type, r.status, r.created_at,
+            r.confidence, r.session_id, r.entry_type, r.decision_source,
+            r.status, r.created_at,
             o.r_multiple, o.holding_ms, o.mae, o.mfe, o.outcome_type
        FROM recommendations r
        LEFT JOIN recommendation_outcomes o
@@ -154,6 +161,8 @@ export async function computeCanonicalRecommendationAnalytics(
     bySession: group(items, (item) => item.row.session_id ?? "unknown"),
     byExitReason: group(items, (item) => item.row.status),
     byEntryType: group(items, (item) => item.row.entry_type ?? "unknown"),
+    // Pre-column rows read as platform_agent — the only producer that existed.
+    byDecisionSource: group(items, (item) => item.row.decision_source ?? "platform_agent"),
     byMonth: group(items, (item) => createdDate(item.row.created_at).toISOString().slice(0, 7)),
     byDay: group(items, (item) => createdDate(item.row.created_at).toISOString().slice(0, 10)),
   };

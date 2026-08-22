@@ -9,6 +9,7 @@ import { mcpToolConfig, TOOL_CATALOG } from "./schemas/index.js";
 import {
   createRecommendationInput,
   findSimilarCasesInput,
+  runPlanGatesInput,
   setAgentTradeModeInput,
   zActivationRuleStrict,
 } from "./schemas/coreSchemas.js";
@@ -301,6 +302,52 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         };
       });
       return formatBridgeResult({ jobs: records, count: records.length });
+    },
+  );
+
+  server.registerTool(
+    "run_plan_gates",
+    mcpToolConfig("run_plan_gates"),
+    async (body) => {
+      const parsed = runPlanGatesInput.safeParse(body ?? {});
+      if (!parsed.success) {
+        const issues = parsed.error.issues
+          .slice(0, 6)
+          .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`);
+        return formatBridgeError(
+          new Error(
+            `${issues.join("; ")}\nFix ONLY the fields above and call again — state the SAME plan you will submit to create_recommendation.`,
+          ),
+        );
+      }
+      // Same stale-client transport decode as create_recommendation: a cached
+      // schema that predates the plan-contract fields serializes them as
+      // strings. Decode deterministically; the contract does not get looser.
+      const body2: Record<string, unknown> = { ...parsed.data };
+      if (typeof body2.activation_rule === "string") {
+        let decoded: unknown;
+        try {
+          decoded = JSON.parse(body2.activation_rule);
+        } catch {
+          return formatBridgeError(
+            new Error("activation_rule: not valid JSON — send the rule object itself."),
+          );
+        }
+        const strict = zActivationRuleStrict.safeParse(decoded);
+        if (!strict.success) {
+          const issues = strict.error.issues
+            .slice(0, 4)
+            .map((issue) => `activation_rule.${issue.path.join(".") || "kind"}: ${issue.message}`);
+          return formatBridgeError(new Error(issues.join("; ")));
+        }
+        body2.activation_rule = strict.data;
+      }
+      for (const key of ["validity_candles", "entry_low", "entry_high"] as const) {
+        if (typeof body2[key] === "string") body2[key] = Number(body2[key]);
+      }
+      return bridgeCall("run_plan_gates", body2, () =>
+        bridge.post("/api/agent/gates/run", body2),
+      );
     },
   );
 

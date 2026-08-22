@@ -32,7 +32,7 @@ import {
 } from "./intentRouter";
 import { handleUserDrawingCommand } from "./drawingCommands/handleUserDrawingCommand";
 import { withTimeout, withDeadline, createRunBudget, AGENT_TIMEOUTS } from "./timeout";
-import { getQuickModel } from "@/lib/llm";
+import { getActiveModel, getQuickModel } from "@/lib/llm";
 import { isReasoningModel } from "@/lib/modelCatalog";
 import {
   buildInformationalResult,
@@ -2747,6 +2747,11 @@ async function persistTrackedRecommendation(
         : undefined,
     evidenceSnapshot: explanation?.evidenceSnapshot,
     evidenceSourceSurface: "platform",
+    // Phase B: this row is the PLATFORM's own claim, produced by its active
+    // model — recorded explicitly so client-authored MCP rows can never blend
+    // into (or borrow from) the platform agent's performance record.
+    decisionSource: "platform_agent",
+    decisionModel: getActiveModel(),
   });
   // The birth announcement (plan §8 C.1), through the lifecycle notifier so it
   // shares the (recommendation, event, revision) dedupe with every later event

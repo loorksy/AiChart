@@ -88,6 +88,15 @@ export interface CanonicalRecommendation {
    * waiting plan executable — the card badge reads this, never the revision.
    */
   executionState?: string | null;
+  /**
+   * Which brain produced the decision: 'platform_agent' (the platform's own
+   * synthesizer) or 'mcp_client' (an external model thinking through MCP).
+   * The outcome record separates on this — in display and in computation —
+   * because mixing the two corrupts the platform agent's own measurement.
+   */
+  decisionSource: string;
+  /** The model behind the decision when known; null = not declared, never guessed. */
+  decisionModel?: string | null;
 }
 
 export interface CreateCanonicalRecommendationInput {
@@ -142,6 +151,14 @@ export interface CreateCanonicalRecommendationInput {
    * Left null rather than guessed, so a row never implies evidence it lacks.
    */
   evidenceSource?: string | null;
+  /**
+   * Which brain produced the decision. Defaults to 'platform_agent' — the only
+   * producer that existed before the column did. The MCP create surface passes
+   * 'mcp_client' so its rows never blend into the platform's own record.
+   */
+  decisionSource?: string;
+  /** The producing model's id when known (platform: active model; MCP: client-declared). */
+  decisionModel?: string | null;
   /**
    * The plan fields and evidence that seed revision 1.
    *

@@ -113,10 +113,29 @@ const SCHEMA = `
     -- direct_analysis | historical_memory | deep_research.
     -- NULL on pre-existing rows; never backfilled with an implied source.
     evidence_source TEXT,
+    -- Which brain produced the decision: 'platform_agent' (the platform's own
+    -- synthesizer) or 'mcp_client' (an external model thinking through MCP).
+    -- Outcome statistics separate on this column — mixing the two would
+    -- corrupt the platform agent's own performance record.
+    decision_source TEXT NOT NULL DEFAULT 'platform_agent',
+    -- The model behind the decision when known: the platform's active model
+    -- id, or whatever an MCP client declared. NULL = not declared, never guessed.
+    decision_model  TEXT,
     rationale       TEXT,
     factors         TEXT,
     chart_image_url TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  -- Phase B: recommendation creations counted per user and per decision path
+  -- (platform_agent | mcp_client). A counter only — nothing bills or blocks
+  -- on it; it exists so consumption by path is a stated fact, not a guess.
+  CREATE TABLE IF NOT EXISTS recommendation_counters (
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    decision_source TEXT NOT NULL,
+    count           INTEGER NOT NULL DEFAULT 0,
+    updated_at      BIGINT NOT NULL,
+    PRIMARY KEY (user_id, decision_source)
   );
 
   CREATE TABLE IF NOT EXISTS claude_usage (
@@ -1378,7 +1397,9 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS effective_revision_no INTEGER,
       ADD COLUMN IF NOT EXISTS plan_type TEXT,
       ADD COLUMN IF NOT EXISTS execution_state TEXT,
-      ADD COLUMN IF NOT EXISTS evidence_source TEXT
+      ADD COLUMN IF NOT EXISTS evidence_source TEXT,
+      ADD COLUMN IF NOT EXISTS decision_source TEXT NOT NULL DEFAULT 'platform_agent',
+      ADD COLUMN IF NOT EXISTS decision_model TEXT
   `).catch(() => {});
   await client.query(`
     UPDATE recommendations
