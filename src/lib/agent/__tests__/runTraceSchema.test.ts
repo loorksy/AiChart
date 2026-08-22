@@ -19,7 +19,9 @@ test("trace contracts contain no raw reasoning field and stay flag-gated", () =>
   assert.match(flags, /agentRunTraceV1:\s*\(\)\s*=>\s*flag\("AGENT_RUN_TRACE_V1",\s*true\)/);
 });
 
-test("route writes traces only behind AGENT_RUN_TRACE_V1", () => {
-  const route = readFileSync(new URL("../../../app/api/agent/chat/stream/route.ts", import.meta.url), "utf8");
-  assert.match(route, /FEATURES\.agentRunTraceV1\(\)[\s\S]*?startAgentRun/);
+test("the web turn writes traces only behind AGENT_RUN_TRACE_V1", () => {
+  // The turn body moved from the stream route into webTurn.ts (Work ب);
+  // the pinned property is unchanged: trace writes stay flag-gated.
+  const turn = readFileSync(new URL("../webTurn.ts", import.meta.url), "utf8");
+  assert.match(turn, /FEATURES\.agentRunTraceV1\(\)[\s\S]*?startAgentRun/);
 });

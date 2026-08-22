@@ -12,7 +12,7 @@
   "src/app/api/agent/chart/layout/route.ts": 3,
   "src/app/api/agent/chart/multi-snapshot/route.ts": 1,
   "src/app/api/agent/chart/snapshot/route.ts": 1,
-  "src/app/api/agent/chat/stream/route.ts": 6,
+  "src/app/api/agent/chat/stream/route.ts": 5,
   "src/app/api/agent/chats/[chatId]/messages/route.ts": 1,
   "src/app/api/agent/chats/[chatId]/route.ts": 2,
   "src/app/api/agent/market/analyze/route.ts": 6,

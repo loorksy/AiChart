@@ -11,8 +11,10 @@ const orchestrator = readFileSync(
   new URL("../orchestrator.ts", import.meta.url),
   "utf8",
 );
+// The turn pipeline moved out of the route into webTurn.ts (Work ب) so the
+// worker can run it too — the failure contract now lives there, unchanged.
 const streamRoute = readFileSync(
-  new URL("../../../app/api/agent/chat/stream/route.ts", import.meta.url),
+  new URL("../webTurn.ts", import.meta.url),
   "utf8",
 );
 const analyzeRoute = readFileSync(

@@ -1,269 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { getLimits, getSettings } from "@/lib/store";
-import {
-  isLLMConfiguredAsync,
-  resolveUserModelSelection,
-  withRequestModel,
-} from "@/lib/llm";
-import { withUsageContext } from "@/lib/billing/usageMeter";
-import { resolveSpendGate, authorizeAndDebit } from "@/lib/billing/spend";
+import { isLLMConfiguredAsync } from "@/lib/llm";
+import { resolveSpendGate } from "@/lib/billing/spend";
 import { t } from "@/lib/i18n";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
-import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import {
   claimTrialInteraction,
-  commitTrialInteraction,
   releaseTrialInteraction,
   subscriptionRequiredMessage,
 } from "@/lib/subscription/trialQuota";
-import {
-  createActivityEvent,
-  newId,
-  shouldShowActivity,
-} from "@/lib/agent/activity";
-import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
-import {
-  updateSessionFromMessage,
-  rememberContext,
-} from "@/lib/agent/sessionMemory";
-import {
-  resolveOptionReply,
-  rememberOptions,
-  clearOptions,
-} from "@/lib/agent/sessionOptions";
-import { routeIntent } from "@/lib/agent/intentRouter";
-import { generateAgentSuggestions } from "@/lib/agent/suggestions/generateAgentSuggestions";
+import { newId } from "@/lib/agent/activity";
 import { createLogger } from "@/lib/logger";
-import { recordRequestWithoutFinal } from "@/lib/metrics";
-import { writeAgentAudit } from "@/lib/agent/auditLog";
-import { buildAgentFallbackResult } from "@/lib/agent/fallback";
-import { classifyAgentError, userMessageForFailure } from "@/lib/agent/errorTaxonomy";
-import type { AgentActivityEvent, AgentFinalResult } from "@/lib/agent/types";
-import { unfinishedStages, type AgentStageEvent } from "@/lib/agent/stageEvents";
-import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
-import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
-import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
-import { appendMessage } from "@/lib/agent/chatHistory/chatStore";
-import { refreshChatMetaAfterAssistantTurn } from "@/lib/agent/chatHistory/refreshChatMeta";
-import { stripInternalFieldsFromClientResult } from "@/lib/agent/userSafeOutbound";
+import { runWebChatTurn, webChatBodySchema } from "@/lib/agent/webTurn";
+import { publishResidentEvent } from "@/lib/resident/dispatch";
 import {
-  buildAgentConversationContext,
-  type AgentConversationContext,
-  type SafeRecommendationContext,
-  resolveActiveRecommendationContext,
-} from "@/lib/agent/context";
-import {
-  bindChannel,
-  buildSessionConversationContext,
-  maybeSummarizeResidentSession,
-} from "@/lib/resident/sessions";
+  createTurnStreamClient,
+  registerTurnOwner,
+  relayTurnStream,
+  turnOwner,
+  turnQueueEnabled,
+  type TurnStreamClient,
+} from "@/lib/resident/turnStream";
+import { getSettings } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
 const log = createLogger("agent.chat.stream");
 
-const drawingTypes = [
-  "price_line",
-  "trend_line",
-  "forecast_path",
-  "channel",
-  "zone",
-  "fib_retracement",
-  "baseline",
-  "marker",
-  "histogram_band",
-  "polyline_pattern",
-  "risk_reward_box",
-  "neckline",
-  "breakout_arrow",
-  "retest_zone",
-  "pattern_label",
-  "range_box",
-  "supply_zone",
-  "demand_zone",
-  "decision_zone",
-  "labeled_arrow",
-  "long_position",
-  "short_position",
-  "parallel_channel",
-  "regression_trend",
-  "hline",
-  "vline",
-  "trend",
-  "trendline",
-  "ray",
-  "rectangle",
-  "triangle",
-  "ellipse",
-  "arrow_down",
-  "arrow_sell",
-  "arrow_up",
-  "arrow_buy",
-  "arrow_stop",
-  "arrow_check",
-  "arrow_thumb_up",
-  "arrow_thumb_down",
-  "arrow",
-  "fibo",
-  "fibonacci",
-  "fibo_fan",
-  "fibo_arc",
-  "expansion",
-  "pitchfork",
-  "gann_line",
-  "gann_fan",
-  "text",
-  "label",
-] as const;
-
-const semanticRoles = [
-  "support",
-  "resistance",
-  "demand_zone",
-  "supply_zone",
-  "range",
-  "trendline",
-  "channel",
-  "neckline",
-  "breakout",
-  "retest",
-  "entry",
-  "stop_loss",
-  "take_profit",
-  "risk_reward",
-  "pattern",
-  "forecast",
-  "liquidity_sweep",
-  "decision_zone",
-] as const;
-
-const patternTypes = [
-  "double_bottom",
-  "double_top",
-  "w_pattern",
-  "m_pattern",
-  "head_and_shoulders",
-  "inverse_head_and_shoulders",
-  "ascending_triangle",
-  "descending_triangle",
-  "symmetrical_triangle",
-  "cup_and_handle",
-  "flag",
-  "pennant",
-  "wedge",
-  "channel",
-  "range",
-] as const;
-
-const chartPointSchema = z
-  .object({
-    price: z.number(),
-    time: z.number().optional(),
-    barsAhead: z.number().optional(),
-    time_offset: z.number().optional(),
-  })
-  .passthrough();
-
-const chartDrawingSchema = z
-  .object({
-    type: z.enum(drawingTypes),
-    confidence: z.number().default(0.75),
-    label: z.string().max(160).optional(),
-    color: z.string().max(40).optional(),
-    points: z.array(chartPointSchema).max(12).default([]),
-    semanticRole: z.enum(semanticRoles).optional(),
-    patternType: z.enum(patternTypes).optional(),
-    drawingPurpose: z.string().max(240).optional(),
-    price: z.number().optional(),
-    price2: z.number().optional(),
-    price3: z.number().optional(),
-    meta: z.record(z.string(), z.unknown()).optional(),
-  })
-  .passthrough();
-
-// Safe, bounded transport for user-created drawings read from the chart. Mirrors
-// DRAWING_LIMITS (max 50 drawings, 8 points, label 200) and requires finite
-// numeric prices/times — no raw TradingView objects ever cross this boundary.
-const serializedDrawingPointSchema = z
-  .object({
-    time: z.number().finite().optional(),
-    price: z.number().finite().positive().optional(),
-  })
-  .strip();
-
-const serializedUserDrawingSchema = z
-  .object({
-    id: z.string().min(1).max(80),
-    owner: z.enum(["user", "agent", "recommendation"]).default("user"),
-    type: z.string().min(1).max(60),
-    symbol: z.string().max(20).default(""),
-    interval: z.string().max(8).default(""),
-    points: z.array(serializedDrawingPointSchema).max(8).default([]),
-    priceLevels: z.array(z.number().finite().positive()).max(8).optional(),
-    label: z.string().max(200).optional(),
-    color: z.string().max(40).optional(),
-    lineStyle: z.string().max(20).optional(),
-    visible: z.boolean().optional(),
-    locked: z.boolean().optional(),
-    createdAt: z.number().finite().optional(),
-    updatedAt: z.number().finite().optional(),
-    source: z.enum(["tradingview", "lonora"]).default("tradingview"),
-  })
-  .strip();
-
-const chartRecommendationSchema = z
-  .object({
-    id: z.string().max(96).optional(),
-    status: z.string().max(40).optional(),
-    action: z.enum(["buy", "sell", "wait"]),
-    entry: z.number().optional(),
-    entryType: z
-      .enum(["market", "buy_limit", "buy_stop", "sell_limit", "sell_stop"])
-      .optional(),
-    stop_loss: z.number().optional(),
-    take_profit: z.number().optional(),
-    targets: z.array(z.number()).max(5).optional(),
-    rr: z.number().optional(),
-  })
-  .passthrough();
-
-const schema = z.object({
-  message: z.string().min(1).max(4000),
-  sessionId: z.string().min(1).max(64).optional(),
-  chartContext: z
-    .object({
-      symbol: z.string().max(20).optional(),
-      interval: z.string().max(8).optional(),
-      layoutId: z.string().max(32).optional(),
-      visibleRange: z
-        .object({ from: z.number(), to: z.number() })
-        .optional(),
-      latestCandle: z
-        .object({
-          // symbol/interval let the Market Sync Guard reject chart drift.
-          symbol: z.string().max(20).optional(),
-          interval: z.string().max(8).optional(),
-          time: z.number(),
-          open: z.number().optional(),
-          high: z.number().optional(),
-          low: z.number().optional(),
-          close: z.number(),
-          volume: z.number().optional(),
-        })
-        .optional(),
-      drawings: z.array(chartDrawingSchema).max(80).optional(),
-      userDrawings: z.array(serializedUserDrawingSchema).max(50).optional(),
-      selectedDrawingId: z.string().max(80).optional(),
-      recommendation: chartRecommendationSchema.optional(),
-      dataSource: z.enum(["oanda"]).optional(),
-    })
-    .optional(),
-  locale: z.enum(["ar", "en"]).optional(),
-});
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+  // nginx buffers proxied responses by default, which would hold every
+  // stage event until the run ends and defeat the whole live checklist.
+  "X-Accel-Buffering": "no",
+} as const;
 
 export async function POST(req: NextRequest) {
   let release: (() => void) | null = null;
@@ -277,7 +51,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = schema.parse(await req.json());
+    const body = webChatBodySchema.parse(await req.json());
     const locale = body.locale ?? "ar";
     const requestId = newId();
 
@@ -313,7 +87,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const sessionId = body.sessionId ?? newId();
+
+    // Work B (design A2): with REDIS_URL the web process never runs the
+    // agent. The turn is published to the resident queue — the worker runs
+    // it, meters usage, and commits the balance — and this route becomes a
+    // relay over the per-turn stream. Closing the tab only stops the relay;
+    // the run completes and the answer waits in history. Without REDIS_URL
+    // the in-process path below is exactly the pre-queue behavior.
+    if (turnQueueEnabled()) {
+      const client = await createTurnStreamClient();
+      try {
+        await registerTurnOwner(client, requestId, user.id);
+        await publishResidentEvent({
+          kind: "user_message",
+          userId: user.id,
+          channel: { type: "web", id: sessionId },
+          text: body.message,
+          web: {
+            turnId: requestId,
+            locale,
+            // Pin the user's model choice at send time, like the price of a
+            // checkout: a settings change mid-queue does not retarget a
+            // turn the user already sent.
+            modelRef: (await getSettings(user.id)).preferred_model_ref ?? null,
+            trialMetered,
+            chartContext: body.chartContext,
+          },
+          enqueuedAt: Date.now(),
+        });
+      } catch (err) {
+        await client.quit().catch(() => {});
+        if (trialMetered) await releaseTrialInteraction(user.id, requestId);
+        throw err;
+      }
+      return relayResponse({ client, turnId: requestId, cursor: "0", signal: req.signal });
+    }
+
     // Burst guard: one heavy agent run per user + global cap (rate limiting).
+    // Queue mode replaces this with the worker's own slot wait — one gate.
     const slot = acquireAnalyzeSlot(user.id);
     if (!slot.ok) {
       if (trialMetered) await releaseTrialInteraction(user.id, requestId);
@@ -328,400 +140,31 @@ export async function POST(req: NextRequest) {
     }
     release = slot.release;
 
-    const limits = await getLimits(user.id);
-    const canExecute = limits.can_execute !== 0;
-
-    const sessionId = body.sessionId ?? newId();
-
-    // If the last assistant turn offered numbered options and the user replied
-    // with a bare index ("1" / "١"), resolve it to that option's real prompt
-    // instead of treating it as a new general question.
-    const resolvedMessage =
-      resolveOptionReply(sessionId, body.message) ?? body.message;
-
-    // Fold any preference directives into session memory before the run.
-    const session = updateSessionFromMessage(sessionId, resolvedMessage);
-    const activityEvents: AgentActivityEvent[] = [];
-    let conversationContext: AgentConversationContext | undefined;
-    if (FEATURES.agentContextV2()) {
-      try {
-        // channel !== session: the web thread binds into the USER's one
-        // session, so context includes turns from every channel (Telegram
-        // included) plus the rolling cross-channel summary.
-        await bindChannel("web", String(user.id), user.id);
-        const recalled = await recallAgentMemoryForContext({
-          userId: user.id,
-          query: resolvedMessage,
-          symbol: body.chartContext?.symbol,
-          timeframe: body.chartContext?.interval,
-          locale: body.locale ?? "ar",
-          memoryLimit: 5,
-          lessonLimit: 3,
-        });
-        conversationContext = await buildSessionConversationContext({
-          userId: user.id,
-          sessionId,
-          userMessage: resolvedMessage,
-          locale: body.locale ?? "ar",
-          chartContext: body.chartContext,
-          activeRecommendation: recommendationContextFromChart(body.chartContext),
-          recalledMemories: recalled.memories,
-          tradeLessons: recalled.tradeLessons,
-          tokenBudget: 2_400,
-          includeDiagnostics: process.env.NODE_ENV === "development",
-        });
-      } catch (error) {
-        // Context V2 is an optional language aid. Failure must not block the
-        // current route or weaken market/risk/execution controls.
-        log.warn("agent.context_v2.failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
     const stream = new ReadableStream({
       async start(controller) {
-        // Phase-0 SLO instrumentation (item 9): every request must end with a
-        // complete `final`. This flag is the ONLY source of that measurement.
-        let sentFinal = false;
         const send = (event: string, data: unknown) => {
-          if (event === "final") sentFinal = true;
           try {
             controller.enqueue(sseEncode(event, data));
           } catch {
             /* client gone — keep working so audit + state persist */
           }
         };
-
-        const emitActivity = (
-          ev: Omit<AgentActivityEvent, "id" | "timestamp">,
-        ) => {
-          const full = createActivityEvent(ev);
-          // Only real, meaningful tool/agent work reaches the client. Internal
-          // narration and scripted intent messages are suppressed.
-          if (!shouldShowActivity(full)) return;
-          activityEvents.push(full);
-          send("activity", full);
-        };
-
-        // Run-stage protocol (Phase 3.1): the orchestrator narrates its own
-        // fleet boundaries; this only forwards them and keeps the run's list
-        // so the final result persists the checklist with the message.
-        const stageEvents: AgentStageEvent[] = [];
-        const emitStage = (ev: Omit<AgentStageEvent, "timestamp">) => {
-          const full: AgentStageEvent = { ...ev, timestamp: Date.now() };
-          stageEvents.push(full);
-          send("stage", full);
-        };
-
         // Heartbeat: long stages (decision model, captures) must never read as
         // a dead stream. Unknown SSE event names are ignored by old clients.
         const heartbeat = setInterval(() => {
           send("heartbeat", { t: Date.now() });
         }, 3000);
-
-        // Live answer text (Phase 3.3, general answers): cumulative sanitized
-        // text with REPLACE semantics — the final event remains authoritative.
-        const emitAnswerText = (fullText: string) => {
-          send("answer_text", { text: fullText });
-        };
-
-        // The pending bubble narrates itself from REAL work only: `stage` and
-        // `activity` events emitted by the engine at the moment things happen.
-        // A model-generated "ticker plan" used to be produced up front and
-        // played on a timer here — pre-printed thinking with its own LLM cost,
-        // scrolling regardless of what the run was actually doing. Deleted:
-        // the honest narration was already streaming underneath it.
-        const previewIntents = routeIntent({
-          message: resolvedMessage,
-          chartContext: body.chartContext,
-          ctx: { requestId, emitActivity: () => {} },
-        });
-        const traceRunId = FEATURES.agentRunTraceV1()
-          ? await startAgentRun({
-              userId: user.id,
-              chatId: sessionId,
-              sessionId,
-              requestId,
-              symbol: body.chartContext?.symbol,
-              timeframe: body.chartContext?.interval,
-              intents: previewIntents,
-              featureFlags: {
-                ...featureFlagSnapshot(),
-                // Safe identity provenance: hash + source only, never content.
-                [`prompt:${canonicalIdentityHash()}`]: canonicalIdentity().source === "file",
-              },
-              contextVersion: conversationContext ? "v2" : "legacy",
-              contextMessageCount: conversationContext?.messages.length ?? 0,
-              recalledMemoryCount: conversationContext?.recalledMemoryIds.length ?? 0,
-            })
-          : null;
-
         try {
-          // The user's own model choice governs every LLM call in this run.
-          // Falls back to the platform default when unset or when its
-          // provider has no configured key.
-          const modelSelection = await resolveUserModelSelection(
-            (await getSettings(user.id)).preferred_model_ref,
-          );
-          const result = await withUsageContext(
-            { userId: user.id, kind: "chat" },
-            () =>
-              withRequestModel(modelSelection, () =>
-                runUnifiedChartAgent({
-              userMessage: resolvedMessage,
-              chartContext: body.chartContext,
-              locale: body.locale,
-              liveSession: true,
-              requestContext: {
-                requestId,
-                userId: user.id,
-                sessionId,
-                emitActivity,
-                emitStage,
-                emitAnswerText,
-                emitDebug: () => {},
-                signal: req.signal,
-                session,
-              },
-              account: null,
-              canExecute,
-              conversationContext,
-            }),
-              ),
-          );
-
-          if (traceRunId) {
-            await addAgentRunStep({
-              userId: user.id,
-              runId: traceRunId,
-              type: "final_decision",
-              status: "completed",
-              summary: result.summary,
-              evidence: {
-                decision: result.decision,
-                confidence: result.confidence,
-                // Names/versions only — safe skill diagnostics, never content.
-                selectedSkills: result.selectedSkills ?? [],
-                skillLoadFailures: result.skillLoadFailures ?? [],
-                // Full research transparency stays in runTrace only (not SSE).
-                researchEvidence: result.researchEvidence ?? null,
-                evidenceTimeline: result.evidenceTimeline ?? null,
-                skillNames: (result.selectedSkills ?? []).map((s) => s.name),
-              },
-            });
-            await finalizeAgentRun({
-              userId: user.id,
-              runId: traceRunId,
-              status: "completed",
-              decision: result.decision,
-              confidence: result.confidence,
-              skillNames: (result.selectedSkills ?? []).map((s) => s.name),
-            });
-          }
-
-          rememberContext(sessionId, {
-            symbol: body.chartContext?.symbol,
-            interval: body.chartContext?.interval,
-            analysisId: result.analysisId,
-          });
-
-          await writeAgentAudit({
-            userId: user.id,
+          await runWebChatTurn({
+            user,
+            body,
             requestId,
             sessionId,
-            symbol: body.chartContext?.symbol,
-            interval: body.chartContext?.interval,
-            decision: result.decision,
-            confidence: result.confidence,
-            newsRisk: result.newsRisk?.level,
-            executionRequiresConfirmation: result.requiresConfirmation,
-            executionConfirmed: false,
-            summary: result.summary,
-            metadata: {
-              sessionId,
-              // Blocker diagnostics — without these, a Request ID resolved from
-              // the DB said only "unexpected error" while the real cause lived
-              // (briefly) in stdout. Codes only, never provider payloads.
-              ...(result.envelope?.outcome_class === "operational_blocker"
-                ? {
-                    outcome_class: result.envelope.outcome_class,
-                    failure_code: result.envelope.failure_code ?? null,
-                    failure_stage: result.envelope.failure_stage ?? null,
-                    retryable: result.envelope.retryable ?? null,
-                    // The provider's own words (e.g. "no credits remaining") —
-                    // the difference between a diagnosable Request ID and a
-                    // dead end once pm2 logs rotate.
-                    error_detail: result.operatorFailureDetail ?? null,
-                  }
-                : {}),
-              ...(result.envelope?.degraded_stages?.length
-                ? { degraded_stages: result.envelope.degraded_stages }
-                : {}),
-            },
+            trialMetered,
+            signal: req.signal,
+            emit: send,
           });
-
-          // Dynamic, model-generated follow-up suggestions for THIS turn/state.
-          // No static fallback: a failure yields [] and the UI shows nothing.
-          const suggestions = await generateAgentSuggestions({
-            locale: body.locale ?? "ar",
-            userMessage: resolvedMessage,
-            result,
-            symbol: body.chartContext?.symbol,
-            interval: body.chartContext?.interval,
-            activeRecommendation: result.activeRecommendation,
-            maxSuggestions: 4,
-          }).catch(() => []);
-
-          // Number-reply resolver targets the suggestions actually shown.
-          if (suggestions.length) {
-            rememberOptions(sessionId, suggestions);
-          } else {
-            clearOptions(sessionId);
-          }
-
-          if (trialMetered) {
-            await commitTrialInteraction(user.id, requestId);
-          }
-
-          // Chat pricing (admin-set, 0 = free): charged only on a COMPLETED
-          // turn — a failed run costs nothing. The upfront gate was the
-          // refusal point; if a concurrent spend emptied the balance since,
-          // the conditional debit refuses silently and the balance still
-          // never goes below zero. ref = requestId, so the same turn can
-          // never charge twice (queue redelivery included).
-          await authorizeAndDebit({
-            userId: user.id,
-            op: "chat_turn",
-            ref: `chat:${requestId}`,
-          }).catch(() => {});
-
-          const safeResult = stripInternalFieldsFromClientResult(result);
-          // Persist even if the browser dropped — a reconnecting client
-          // polls history and claims this turn instead of dying mid-run.
-          await persistStreamAssistant(user.id, sessionId, safeResult, {
-            symbol: body.chartContext?.symbol,
-            interval: body.chartContext?.interval,
-          });
-          send("final", {
-            ...safeResult,
-            sessionId,
-            activityEvents,
-            // The run's stage checklist, persisted with the message so a
-            // reopened chat still shows HOW the answer was produced.
-            stages: stageEvents,
-            // Replace static contextual options with the dynamic suggestions.
-            options: suggestions,
-            suggestions,
-            debugDecisionFlow:
-              process.env.NODE_ENV === "development"
-                ? result.debugDecisionFlow
-                : undefined,
-          });
-        } catch (error) {
-          if (trialMetered) {
-            await releaseTrialInteraction(user.id, requestId);
-          }
-          if (req.signal.aborted) {
-            if (traceRunId) {
-              await finalizeAgentRun({ userId: user.id, runId: traceRunId, status: "cancelled" });
-            }
-            // Cancelled by the user — no partial result, no error badge.
-          } else {
-            const classified = classifyAgentError(error);
-            if (traceRunId) {
-              await finalizeAgentRun({
-                userId: user.id,
-                runId: traceRunId,
-                status: "failed",
-                // The taxonomy code, not a constant — "AGENT_RUN_FAILED" told
-                // a Request ID lookup nothing about what actually broke.
-                errorCode: classified.code,
-              });
-            }
-            // A thrown run previously wrote NO audit row at all, so the
-            // Request ID shown to the operator resolved to nothing.
-            await writeAgentAudit({
-              userId: user.id,
-              requestId,
-              sessionId,
-              symbol: body.chartContext?.symbol,
-              interval: body.chartContext?.interval,
-              decision: "informational",
-              summary: userMessageForFailure(classified.code, body.locale ?? "ar", {
-                stages: unfinishedStages(stageEvents),
-              }),
-              metadata: {
-                sessionId,
-                outcome_class: "operational_blocker",
-                failure_code: classified.code,
-                failure_stage: "transport",
-                retryable: classified.retryable,
-                error_name: error instanceof Error ? error.name : typeof error,
-                error_detail: classified.detail.slice(0, 500),
-              },
-            });
-            const failed = createActivityEvent({
-              type: "final",
-              status: "failed",
-              message: "تعذّر إكمال الطلب بسبب خطأ أثناء تشغيل الوكيل.",
-            });
-            send("activity", failed);
-            // Contract guarantee (RELIABILITY_PLAN.md phase-0 SLO): even a
-            // crashed run ends with a COMPLETE `final` event carrying an
-            // operational_blocker envelope — never only a bare `error` event.
-            const fallbackResult = buildAgentFallbackResult(
-              "Agent run failed before producing a result.",
-              activityEvents,
-              body.locale ?? "ar",
-              {
-                detail: userMessageForFailure(classified.code, body.locale ?? "ar"),
-                retryable: classified.retryable,
-                failureStage: "transport",
-                failureCode: classified.code,
-                traceId: requestId,
-                // Name what actually stalled. The run already emitted a stage
-                // event per step, so the stages left running or failed at the
-                // moment it died ARE the cause — the operator should not have
-                // to open a support ticket to learn which one.
-                degradedStages: unfinishedStages(stageEvents),
-              },
-            );
-            const safeFallback = stripInternalFieldsFromClientResult(fallbackResult);
-            await persistStreamAssistant(user.id, sessionId, safeFallback, {
-              symbol: body.chartContext?.symbol,
-              interval: body.chartContext?.interval,
-            });
-            send("final", {
-              ...safeFallback,
-              sessionId,
-              activityEvents,
-              stages: stageEvents,
-              options: [],
-              suggestions: [],
-            });
-            // Legacy clients still listen for `error` — keep it, without
-            // leaking the raw provider message to the operator.
-            send("error", {
-              error: userMessageForFailure(classified.code, body.locale ?? "ar", {
-                stages: unfinishedStages(stageEvents),
-              }),
-              code: classified.code,
-              trace_id: requestId,
-            });
-            log.error("agent.stream.failed", {
-              requestId,
-              code: classified.code,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
         } finally {
-          // SLO: a run that ended without a complete `final` is a contract
-          // breach. A user cancellation is NOT a breach (nobody is waiting).
-          if (!sentFinal && !req.signal.aborted) {
-            recordRequestWithoutFinal("agent.chat.stream", "no_final_event");
-            log.error("agent.stream.slo_breach", { requestId, reason: "no_final_event" });
-          }
           clearInterval(heartbeat);
           release?.();
           try {
@@ -741,14 +184,7 @@ export async function POST(req: NextRequest) {
     });
 
     return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        // nginx buffers proxied responses by default, which would hold every
-        // stage event until the run ends and defeat the whole live checklist.
-        "X-Accel-Buffering": "no",
-      },
+      headers: { ...SSE_HEADERS, "X-Turn-Id": requestId },
     });
   } catch (err) {
     release?.();
@@ -762,52 +198,112 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function persistStreamAssistant(
-  userId: number,
-  chatId: string,
-  result: AgentFinalResult,
-  refs: { symbol?: string; interval?: string },
-): Promise<void> {
+const resumeQuerySchema = z.object({
+  turn: z.string().min(1).max(64),
+  cursor: z.string().min(1).max(64),
+});
+
+/**
+ * Resume (approved decision 2): a client that lost the relay mid-run
+ * reconnects with the last stream-entry id it read and the relay continues
+ * from that position — same events, same payloads, nothing replayed twice.
+ * Queue mode only; inline runs die with their connection (as before) and
+ * the history-recovery poll remains the fallback everywhere.
+ */
+export async function GET(req: NextRequest) {
   try {
-    await appendMessage(userId, chatId, {
-      role: "assistant",
-      content: result.summary,
-      result,
-      recommendationId: result.recommendationId ?? result.activeRecommendation?.id,
-      analysisId: result.analysisId,
-      symbol: refs.symbol,
-      interval: refs.interval,
+    const user = await requirePlatformAccess();
+    if (!turnQueueEnabled()) {
+      return NextResponse.json({ error: "turn relay not enabled" }, { status: 404 });
+    }
+    const params = resumeQuerySchema.parse({
+      turn: req.nextUrl.searchParams.get("turn"),
+      cursor: req.nextUrl.searchParams.get("cursor"),
     });
-    void refreshChatMetaAfterAssistantTurn(userId, chatId);
-    // Fold older cross-channel turns into the rolling session summary once
-    // they pile up — summarize, never truncate blindly. Best-effort.
-    void maybeSummarizeResidentSession(userId).catch(() => {});
-  } catch (error) {
-    log.warn("agent.stream.persist_failed", {
-      error: error instanceof Error ? error.message : String(error),
+    const client = await createTurnStreamClient();
+    const owner = await turnOwner(client, params.turn).catch(() => null);
+    if (owner !== user.id) {
+      await client.quit().catch(() => {});
+      return NextResponse.json({ error: "unknown turn" }, { status: 404 });
+    }
+    return relayResponse({
+      client,
+      turnId: params.turn,
+      cursor: params.cursor,
+      signal: req.signal,
     });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return NextResponse.json({ error: "بيانات غير صالحة." }, { status: 400 });
+    }
+    return handleError(err);
   }
 }
 
-function recommendationContextFromChart(
-  chartContext: z.infer<typeof schema>["chartContext"],
-): SafeRecommendationContext | null {
-  const recommendation = chartContext?.recommendation;
-  if (!recommendation?.id || recommendation.action === "wait") return null;
-  const candidate: SafeRecommendationContext = {
-    id: recommendation.id,
-    source: "chart",
-    symbol: chartContext?.symbol ?? "",
-    timeframe: chartContext?.interval ?? "",
-    direction: recommendation.action,
-    status: recommendation.status ?? "pending_entry",
-    entry: recommendation.entry,
-    stopLoss: recommendation.stop_loss,
-    targets: recommendation.targets ?? (recommendation.take_profit ? [recommendation.take_profit] : []),
-  };
-  return resolveActiveRecommendationContext({
-    candidates: [candidate],
-    symbol: chartContext?.symbol,
-    timeframe: chartContext?.interval,
-  }) ?? null;
+/**
+ * The relay: translate per-turn stream entries into SSE frames verbatim.
+ * Each frame carries an `id:` line (the resume cursor) ahead of the exact
+ * `event:`/`data:` lines the inline path emits — parsers that only read
+ * event/data are byte-compatible. Heartbeats are generated HERE: they are
+ * transport liveness, not agent output, so they never enter the stream.
+ */
+function relayResponse(opts: {
+  client: TurnStreamClient;
+  turnId: string;
+  cursor: string;
+  signal: AbortSignal;
+}): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const push = (chunk: string) => {
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          /* client gone — the worker keeps running regardless */
+        }
+      };
+      const heartbeat = setInterval(() => {
+        push(`event: heartbeat\ndata: ${JSON.stringify({ t: Date.now() })}\n\n`);
+      }, 3000);
+      // Break the blocking XREAD promptly when the client goes away.
+      const onAbort = () => {
+        void opts.client.quit().catch(() => {});
+      };
+      opts.signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        await relayTurnStream({
+          client: opts.client,
+          turnId: opts.turnId,
+          cursor: opts.cursor,
+          signal: opts.signal,
+          onFrame: (frame) => {
+            push(`id: ${frame.id}\nevent: ${frame.event}\ndata: ${frame.data}\n\n`);
+          },
+        });
+      } catch (err) {
+        if (!opts.signal.aborted) {
+          log.warn("turn relay failed", {
+            turnId: opts.turnId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } finally {
+        clearInterval(heartbeat);
+        opts.signal.removeEventListener("abort", onAbort);
+        await opts.client.quit().catch(() => {});
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+      }
+    },
+    cancel() {
+      void opts.client.quit().catch(() => {});
+    },
+  });
+  return new Response(stream, {
+    headers: { ...SSE_HEADERS, "X-Turn-Id": opts.turnId },
+  });
 }

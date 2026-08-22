@@ -30,6 +30,25 @@ export const channelRefSchema = z.object({
 });
 export type ChannelRef = z.infer<typeof channelRefSchema>;
 
+/**
+ * Web-turn payload riding a user_message. The web route stays the entry
+ * point (auth + billing gates + turn id), then publishes and turns into a
+ * relay; the worker runs the turn and writes every SSE event into the
+ * per-turn stream `lonora:turn:<turnId>` this id names.
+ */
+export const webTurnRequestSchema = z.object({
+  /** Names the per-turn relay stream; doubles as the run's requestId. */
+  turnId: z.string().min(1).max(64),
+  locale: z.enum(["ar", "en"]).optional(),
+  /** The user's preferred_model_ref at send time (worker resolves it). */
+  modelRef: z.string().max(200).nullable().optional(),
+  /** Whether the route's trial claim metered this turn (commit/release). */
+  trialMetered: z.boolean().optional(),
+  /** Already validated against the route's bounded schema before publish. */
+  chartContext: z.record(z.string(), z.unknown()).optional(),
+});
+export type WebTurnRequest = z.infer<typeof webTurnRequestSchema>;
+
 export const userMessageEventSchema = z.object({
   kind: z.literal("user_message"),
   /** Resolved platform user. Channel adapters resolve BEFORE publishing. */
@@ -38,6 +57,8 @@ export const userMessageEventSchema = z.object({
   text: z.string().min(1).max(8_000),
   /** Channel-native message reference for reply threading (optional). */
   messageRef: z.string().max(64).optional(),
+  /** Present only on web turns queued for the per-turn stream relay. */
+  web: webTurnRequestSchema.optional(),
   enqueuedAt: z.number().int().positive(),
 });
 

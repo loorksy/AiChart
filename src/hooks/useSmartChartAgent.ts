@@ -129,6 +129,11 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   // single action; plain errors stay in `error`.
   const [billingRefusal, setBillingRefusal] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Work B: the server names each turn (X-Turn-Id). Under the queue,
+  // aborting the fetch only stops the RELAY — the worker keeps running and
+  // the answer lands in history — so the cancel button also posts an
+  // explicit cancel for this turn id.
+  const activeTurnIdRef = useRef<string | null>(null);
   const sessionIdRef = useRef<string>(opts.chatId ?? uuid());
   // Idempotency: a mutationId is applied to the chart at most once, ever.
   const appliedMutationsRef = useRef<Set<string>>(new Set());
@@ -141,6 +146,15 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   const recoverInFlightRef = useRef(false);
 
   const cancel = useCallback(() => {
+    const turnId = activeTurnIdRef.current;
+    if (turnId) {
+      activeTurnIdRef.current = null;
+      void fetch("/api/agent/chat/stream/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ turnId }),
+      }).catch(() => {});
+    }
     abortRef.current?.abort();
     abortRef.current = null;
     recoverRef.current = null;
@@ -442,30 +456,26 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
           throw new Error(data?.error ?? t(opts.locale ?? "ar", "agent.error"));
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+        // Work B transport: the queue relay stamps each frame with an `id:`
+        // line (the stream cursor) and names the turn in X-Turn-Id. Event
+        // names and payloads are unchanged — the two extras only feed the
+        // explicit cancel and the live resume below.
+        activeTurnIdRef.current = response.headers.get("x-turn-id");
+        let resumeCursor: string | null = null;
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const chunks = buffer.split("\n\n");
-          buffer = chunks.pop() ?? "";
-          for (const chunk of chunks) {
-            const evLine = chunk
-              .split("\n")
-              .find((l) => l.startsWith("event:"));
-            const dataLine = chunk
-              .split("\n")
-              .find((l) => l.startsWith("data:"));
-            if (!evLine || !dataLine) continue;
+        const handleChunk = (chunk: string) => {
+            const lines = chunk.split("\n");
+            const idLine = lines.find((l) => l.startsWith("id:"));
+            if (idLine) resumeCursor = idLine.slice(3).trim();
+            const evLine = lines.find((l) => l.startsWith("event:"));
+            const dataLine = lines.find((l) => l.startsWith("data:"));
+            if (!evLine || !dataLine) return;
             const eventName = evLine.slice(6).trim();
             let data: unknown;
             try {
               data = JSON.parse(dataLine.slice(5).trim());
             } catch {
-              continue;
+              return;
             }
             if (eventName === "answer_text") {
               // Cumulative sanitized text — replace, never append, so a
@@ -575,13 +585,58 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               // The failure path now emits a COMPLETE `final` (fallback bubble)
               // before the legacy `error` event. If that final already landed,
               // showing the banner too would surface the same failure twice.
-              if (finalized) continue;
+              if (finalized) return;
               const msg =
                 (data as { error?: string }).error ?? t(opts.locale ?? "ar", "agent.error");
               setError(msg);
             }
+        };
+
+        const pumpStream = async (res: Response) => {
+          const reader = res.body!.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const chunks = buffer.split("\n\n");
+            buffer = chunks.pop() ?? "";
+            for (const chunk of chunks) handleChunk(chunk);
           }
+        };
+
+        // Live resume (queue relay only): re-attach from the last cursor —
+        // the worker kept running, so nothing is lost and nothing replays
+        // twice. A non-OK response means the relay is gone (inline mode or
+        // expired stream) and history recovery below takes over.
+        const attemptLiveResume = async () => {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            if (finalized || controller.signal.aborted) return;
+            const turnId = activeTurnIdRef.current;
+            if (!turnId || !resumeCursor) return;
+            try {
+              const res = await fetch(
+                `/api/agent/chat/stream?turn=${encodeURIComponent(turnId)}&cursor=${encodeURIComponent(resumeCursor)}`,
+                { signal: controller.signal },
+              );
+              if (!res.ok || !res.body) return;
+              await pumpStream(res);
+            } catch (err) {
+              if (err instanceof DOMException && err.name === "AbortError") return;
+              await new Promise((r) => setTimeout(r, 1_000 * (attempt + 1)));
+            }
+          }
+        };
+
+        try {
+          await pumpStream(response);
+        } catch (err) {
+          // An abort stays an abort; any other mid-stream drop falls
+          // through to live resume, then to history recovery.
+          if (err instanceof DOMException && err.name === "AbortError") throw err;
         }
+        await attemptLiveResume();
         if (!finalized && !controller.signal.aborted) {
           recoverRef.current = { chatId, pendingId, userContent: text, inputMode };
           setReconnecting(true);
@@ -609,6 +664,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         if (finalized) {
+          activeTurnIdRef.current = null;
           setLiveNote(null);
           setRunning(false);
         } else if (recoverRef.current?.pendingId === pendingId) {

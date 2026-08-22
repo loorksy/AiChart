@@ -311,6 +311,7 @@ export const ar: Record<TranslationKey, string> = {
   "agent.stage.resumed": "(من تشغيل سابق)",
   "agent.run_details": "تفاصيل التنفيذ",
   "agent.error": "حدث خطأ",
+  "agent.run_failed": "تعذّر إكمال الطلب بسبب خطأ أثناء تشغيل الوكيل.",
   "agent.reconnecting": "انقطع الاتصال — نعيد المحاولة…",
   "agent.copy": "نسخ الرسالة",
   "agent.copied": "تم نسخ الرسالة",

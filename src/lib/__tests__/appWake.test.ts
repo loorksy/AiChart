@@ -60,7 +60,10 @@ describe("app wake + live reconnect", () => {
   });
 
   it("the agent stream persists the assistant so a dropped client can recover", () => {
-    const src = read("app/api/agent/chat/stream/route.ts");
+    // The turn body moved into webTurn.ts (Work ب) so the worker runs it
+    // too; the pinned property is unchanged: the assistant is persisted
+    // even when the browser dropped.
+    const src = read("lib/agent/webTurn.ts");
     assert.match(src, /persistStreamAssistant/);
     assert.match(src, /appendMessage/);
   });

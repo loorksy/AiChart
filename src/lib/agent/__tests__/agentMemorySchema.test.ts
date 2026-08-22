@@ -15,10 +15,12 @@ test("semantic memory metadata stays in PostgreSQL/SQLite parity", () => {
   }
 });
 
-test("Context V2 route keeps recall inside the disabled-by-default flag", () => {
-  const route = readFileSync(new URL("../../../app/api/agent/chat/stream/route.ts", import.meta.url), "utf8");
-  const flag = route.indexOf("if (FEATURES.agentContextV2())");
-  const recall = route.indexOf("recallAgentMemoryForContext(");
-  const stream = route.indexOf("const stream = new ReadableStream");
-  assert.ok(flag > 0 && recall > flag && recall < stream);
+test("Context V2 keeps recall inside the disabled-by-default flag", () => {
+  // The turn body moved into webTurn.ts (Work ب); the pinned property is
+  // unchanged: recall runs only under the flag, before the agent run.
+  const turn = readFileSync(new URL("../webTurn.ts", import.meta.url), "utf8");
+  const flag = turn.indexOf("if (FEATURES.agentContextV2())");
+  const recall = turn.indexOf("recallAgentMemoryForContext(");
+  const run = turn.indexOf("withUsageContext(");
+  assert.ok(flag > 0 && recall > flag && recall < run);
 });

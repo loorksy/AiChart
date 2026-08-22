@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const orchestrator = readFileSync(new URL("../../orchestrator.ts", import.meta.url), "utf8");
-const route = readFileSync(new URL("../../../../app/api/agent/chat/stream/route.ts", import.meta.url), "utf8");
+// The turn body moved from the stream route into webTurn.ts (Work ب).
+const route = readFileSync(new URL("../../webTurn.ts", import.meta.url), "utf8");
 const flags = readFileSync(new URL("../../featureFlags.ts", import.meta.url), "utf8");
 
 test("context v2 stays flag-gated so an explicit 0 preserves the legacy route path", () => {

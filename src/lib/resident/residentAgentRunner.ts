@@ -91,6 +91,18 @@ export class ResidentAgentRunner extends BaselineRunner {
   }
 
   override async onUserMessage(event: UserMessageEvent, ctx: AgentRunContext): Promise<void> {
+    // Queued web turns (Work B): the full web pipeline runs HERE — usage
+    // metering and the balance commit included — and every SSE event lands
+    // in the per-turn stream the web route relays. The consumer reports
+    // refusals into that stream itself and never throws for a run failure:
+    // a bus retry would re-run a whole model turn, and crash redelivery is
+    // XAUTOCLAIM's job with the stream's own terminal guard.
+    if (event.channel.type === "web" && event.web) {
+      const { runQueuedWebTurn } = await import("./webTurnConsumer");
+      const outcome = await runQueuedWebTurn(event);
+      log.info("web user_message answered", { turnId: event.web.turnId, outcome });
+      return;
+    }
     // Telegram gets the presenter's full-parity turn — the same live
     // progress bubble, derived cards, suggestion buttons, and chart photos
     // the direct webhook path produces — so riding the event queue never

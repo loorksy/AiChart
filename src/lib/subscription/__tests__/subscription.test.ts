@@ -128,9 +128,15 @@ test("subscription message is user-facing, price-free, without internal codes", 
 });
 
 test("chat stream gates access before provider work", () => {
+  // The turn body moved into webTurn.ts (Work ب): the route still claims
+  // the trial BEFORE it either runs the turn inline or publishes it to the
+  // queue — on both paths, gates precede any provider work.
   const stream = read("app/api/agent/chat/stream/route.ts");
   assert.match(stream, /claimTrialInteraction/);
-  assert.ok(stream.indexOf("claimTrialInteraction") < stream.indexOf("runUnifiedChartAgent"));
+  assert.ok(stream.indexOf("claimTrialInteraction") < stream.indexOf("publishResidentEvent"));
+  assert.ok(stream.indexOf("claimTrialInteraction") < stream.indexOf("runWebChatTurn"));
+  const turn = read("lib/agent/webTurn.ts");
+  assert.match(turn, /runUnifiedChartAgent/);
 });
 
 test("MCP gate admits valid trials and blocks everyone else", () => {
