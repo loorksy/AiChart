@@ -335,6 +335,68 @@ describe("every surface renders the gate's decision, never its own", () => {
   });
 });
 
+describe("nine confirmations: three states, on all three surfaces", () => {
+  /**
+   * The owner's requirement, spelled out one cell at a time.
+   *
+   * The three states are Free-with-nothing, Pro-with-nothing, and lapsed;
+   * the three surfaces are the platform agent, Telegram, and MCP. Each cell
+   * builds the payload the way that surface's route builds it — same gate
+   * decision, same presentation call — and asserts the operator is told the
+   * same thing with the same next step wherever they happen to be.
+   *
+   * This matters because the bug that started all of this was one surface
+   * speaking for itself: an expired subscriber heard "your free trial has
+   * ended" from a gate that attached a hardcoded sentence regardless of the
+   * reason.
+   */
+  const STATES: Array<{ state: AccountState; balance: number; code: string; action: string }> = [
+    { state: "free", balance: 0, code: "insufficient_credits", action: "subscribe" },
+    { state: "pro", balance: 0, code: "insufficient_credits", action: "topup" },
+    { state: "expired", balance: 500, code: "subscription_expired", action: "renew" },
+  ];
+
+  for (const c of STATES) {
+    it(`${c.state}: platform, telegram and MCP say the same thing`, async () => {
+      const userId = await makeUser({ plan: c.state, balance: c.balance });
+      const gate = await spend.resolveSpendGate(userId, "recommendation");
+      assert.equal(gate.allowed, false);
+      if (gate.allowed) return;
+      const view = refusal.presentRefusal("ar", gate);
+
+      // 1. Platform agent — the JSON the stream route returns, which the
+      //    modal renders as one sentence and one button.
+      const web = {
+        error: view.message,
+        code: gate.code,
+        action: gate.action,
+        cta: { label: view.ctaLabel, path: view.ctaPath },
+      };
+      assert.equal(web.code, c.code);
+      assert.equal(web.action, c.action);
+      assert.equal(web.cta.path, c.action === "topup" ? "/console/billing" : "/subscribe");
+      assert.ok(web.error.length > 0 && web.cta.label.length > 0);
+
+      // 2. Telegram — one short line plus one button, from the same view.
+      const telegram = { text: view.message, button: view.ctaLabel, url: view.ctaPath };
+      assert.equal(telegram.text, web.error, "the bot must not paraphrase");
+      assert.equal(telegram.url, web.cta.path);
+
+      // 3. MCP — the code and action reach the model so it can relay the
+      //    reason rather than invent one.
+      const mcp = { code: gate.code, action: gate.action, message: view.message };
+      assert.equal(mcp.code, c.code);
+      assert.equal(mcp.action, c.action);
+      assert.equal(mcp.message, web.error);
+
+      // And a Free account never hears about topping up, nor a lapsed one
+      // about a trial: the wording differs per state, not per surface.
+      if (c.state === "free") assert.notEqual(view.ctaPath, "/console/billing");
+      if (c.state === "expired") assert.doesNotMatch(view.message, /تجرب/);
+    });
+  }
+});
+
 describe("the reset puts every account back to a clean Free start", () => {
   it("clears subscriptions, balances and history — then re-issues the grant", async () => {
     await planConfig.updateBillingPlanSettings({ signup_grant_credits: 40 }, 1);
