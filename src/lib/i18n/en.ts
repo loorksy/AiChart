@@ -563,6 +563,9 @@ export const en = {
   "agent.card.tracked": "Being tracked",
   "agent.card.skills": "Skills loaded",
 
+  "outcome.execution_validated": "Analysis with execution authority",
+  "outcome.descriptive_only": "Analysis for reading — no execution authority",
+  "outcome.operational_blocker": "Could not complete — an operational blocker",
   "decision.buy": "Buy",
   "decision.sell": "Sell",
   "decision.wait": "No recommendation",
@@ -879,7 +882,7 @@ export const en = {
   "account.badge.pro": "Pro",
   "account.credits_unit": "credits",
   "account.expires_on": "Subscribed until {date}",
-  "account.trial_left": "Trial: {remaining} of {limit} recommendations left",
+  "account.free_balance": "Your balance: {credits} credits",
   "account.alert.low_balance": "Your balance is running low.",
   "account.alert.expiring_soon": "Your subscription is ending soon.",
   "account.ledger_link": "Credit ledger",

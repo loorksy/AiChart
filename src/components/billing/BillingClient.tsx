@@ -26,9 +26,10 @@ interface BalanceData {
   plan_status: string;
   has_paid_access: boolean;
   expires_at: string | null;
-  trial_used: number;
-  trial_limit: number;
-  trial_remaining: number;
+  // No trial counters: the trial became a credit grant, and a Free account
+  // simply has a balance like everyone else. They were declared here (and in
+  // two other client copies) long after the server stopped sending them,
+  // which is precisely why TypeScript never objected to reading them.
   ledger: LedgerRow[];
 }
 

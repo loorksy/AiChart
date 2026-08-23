@@ -23,7 +23,6 @@ import { BillingRefusalModal } from "@/components/billing/BillingRefusalModal";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTraceLive } from "./AgentThinkingTrace";
 import { AgentChatInput } from "./AgentChatInput";
-import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
 import { AgentModeBadge, AgentFaultCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
 import { AgentCards } from "./cards/AgentCards";
 import { isOperationalBlocker } from "@/lib/agent/envelopeBadge";
@@ -34,7 +33,6 @@ import {
   trackedRecommendationFromResult,
 } from "@/lib/recommendations/fromAgentResult";
 import { ChevronDown } from "lucide-react";
-import type { AgentSuggestion } from "@/lib/agent/suggestions/types";
 import { MessageCopyMeta } from "./MessageCopyMeta";
 import { messageCopyText } from "./messageCopy";
 
@@ -115,8 +113,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
     const { t, dir, locale } = useLocale();
     const [emptyState, setEmptyState] = useState<{
       greeting: string | null;
-      suggestions: AgentSuggestion[];
-    }>({ greeting: null, suggestions: [] });
+    }>({ greeting: null });
     const {
       messages,
       stageEvents,
@@ -164,11 +161,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         signal: controller.signal,
       })
         .then((response) => response.ok ? response.json() : null)
-        .then((data: { greeting?: string | null; suggestions?: AgentSuggestion[] } | null) => {
+        .then((data: { greeting?: string | null } | null) => {
           if (!data) return;
           setEmptyState({
             greeting: data.greeting ?? null,
-            suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
           });
         })
         .catch(() => undefined);
@@ -278,17 +274,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 {emptyState.greeting ?? t("agent.empty")}
               </h2>
               <div className="w-full">{composer}</div>
-              {emptyState.suggestions.length ? (
-                <div className="flex flex-wrap justify-center gap-2 px-4">
-                  {emptyState.suggestions.map((suggestion) => (
-                    <LiquidMetalButton
-                      key={suggestion.id}
-                      label={suggestion.label}
-                      onClick={() => void sendAndFollow(suggestion.prompt)}
-                    />
-                  ))}
-                </div>
-              ) : null}
             </div>
           )}
 

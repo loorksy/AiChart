@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { AccountSummary } from "@/lib/billing/accountSummary";
 
 /**
  * The live account-status feed for the badge and the account panel.
@@ -9,16 +10,18 @@ import { useCallback, useEffect, useState } from "react";
  * (a completed turn, a purchase return, a broker link) calls
  * `notifyBillingChanged()`, and every mounted consumer refetches.
  */
-export interface BillingSummaryView {
-  status: "free" | "pro";
-  plan_status: string;
-  balance: number;
-  trial_used: number;
-  trial_limit: number;
-  trial_remaining: number;
-  expires_at: string | null;
-  alerts: { low_balance: boolean; expiring_soon: boolean };
-}
+/**
+ * The view IS the server's own summary type — imported, not re-declared.
+ *
+ * It used to be a hand-written copy that still carried `trial_used`,
+ * `trial_limit` and `trial_remaining` long after the server stopped sending
+ * them (there is no trial any more: a Free account simply has a balance).
+ * Because the copy declared them, TypeScript saw nothing wrong with reading
+ * them — so the account menu rendered `String(undefined)` and shipped the
+ * literal word "undefined" to the user, and the top bar drew an empty "/"
+ * between two of them. A duplicated type is a type that stops checking.
+ */
+export type BillingSummaryView = AccountSummary;
 
 const EVENT = "lonora:billing-changed";
 

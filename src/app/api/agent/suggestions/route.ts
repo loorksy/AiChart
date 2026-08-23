@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       hasActiveRecommendation: Boolean(activeRecommendation),
       accountConnected: marketAvailable,
     });
-    return NextResponse.json(state ?? { greeting: null, suggestions: [] });
+    return NextResponse.json(state ?? { greeting: null });
   } catch (error) {
     return handleError(error);
   }

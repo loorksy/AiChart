@@ -414,7 +414,11 @@ function CardView({
         <AgentFaultCard envelope={card.envelope} />
       ) : (
         <p className="mt-1 text-[11px] text-muted-foreground">
-          {card.envelope.outcome_class}
+          {/* Through the locale, not raw. This printed the enum member itself
+              — an Arabic-speaking operator read the literal token
+              "descriptive_only" on their screen. An internal name is not a
+              sentence, and it is not in any language. */}
+          {t(`outcome.${card.envelope.outcome_class}`)}
         </p>
       );
 

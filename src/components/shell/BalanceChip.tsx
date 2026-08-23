@@ -64,13 +64,13 @@ export function BalanceChip() {
       <span className="hidden sm:inline text-[10px] font-medium opacity-70">
         {pro ? t("balance.credit_short") : t("account.badge.free")}
       </span>
-      {pro ? (
-        <span dir="ltr">{summary.balance}</span>
-      ) : (
-        <span dir="ltr">
-          {summary.trial_remaining}/{summary.trial_limit}
-        </span>
-      )}
+      {/* ONE currency, so one number — for a Free account exactly as much as
+          for a subscriber. This used to draw the trial counters for a Free
+          account, and those fields stopped existing when the trial became a
+          credit grant: the chip rendered two `undefined`s around a slash, so
+          the operator saw "Free" and a bare "/" where their 50 credits should
+          have been. */}
+      <span dir="ltr">{summary.balance}</span>
       {(empty || low) && (
         <span className="hidden sm:inline">
           {empty ? t("balance.add_credit") : t("balance.low")}

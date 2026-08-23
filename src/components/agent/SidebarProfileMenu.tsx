@@ -522,9 +522,13 @@ function AccountFacts() {
                 date: new Date(summary.expires_at).toLocaleDateString(locale),
               })
             : t("billing.status_active")
-          : t("account.trial_left", {
-              remaining: String(summary.trial_remaining),
-              limit: String(summary.trial_limit),
+          : // A Free account has a balance, not a trial allowance. This read two
+            // fields the server stopped sending when the trial became a credit
+            // grant, and `String(undefined)` is the literal text "undefined" —
+            // which is exactly what the operator was shown:
+            // "Trial: undefined of undefined recommendations remaining".
+            t("account.free_balance", {
+              credits: String(summary.balance),
             })}
       </p>
       {summary.alerts.low_balance && (

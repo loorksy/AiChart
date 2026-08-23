@@ -546,6 +546,9 @@ export const ar: Record<TranslationKey, string> = {
   "agent.card.tracked": "قيد المتابعة",
   "agent.card.skills": "المهارات المُحمّلة",
 
+  "outcome.execution_validated": "تحليل مع صلاحية تنفيذ",
+  "outcome.descriptive_only": "تحليل للاطّلاع — بلا صلاحية تنفيذ",
+  "outcome.operational_blocker": "تعذّر الإكمال لسبب تشغيلي",
   "decision.buy": "شراء",
   "decision.sell": "بيع",
   "decision.wait": "لا توصية",
@@ -862,7 +865,7 @@ export const ar: Record<TranslationKey, string> = {
   "account.badge.pro": "Pro",
   "account.credits_unit": "كريدت",
   "account.expires_on": "الاشتراك حتى {date}",
-  "account.trial_left": "التجربة: متبقي {remaining} من {limit} توصيات",
+  "account.free_balance": "رصيدك: {credits} كريدت",
   "account.alert.low_balance": "رصيدك قارب على النفاد.",
   "account.alert.expiring_soon": "اشتراكك يقارب الانتهاء.",
   "account.ledger_link": "سجل حركة الكريدت",

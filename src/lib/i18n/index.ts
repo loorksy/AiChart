@@ -40,6 +40,33 @@ function reportMissingKey(locale: AppLocale, key: string): void {
   }
 }
 
+/**
+ * Placeholder values that must never reach a reader: the literal words
+ * "undefined", "null" and "NaN", produced by stringifying a value that was
+ * not there. Recorded like a missing key — visible to the tests, logged once
+ * at runtime — because a sentence that reads "undefined of undefined" is a
+ * worse failure than a missing translation, and it shipped for weeks.
+ */
+const placeholderValues = new Set<string>();
+
+function reportPlaceholderValue(key: string, slot: string, value: string): void {
+  const id = `${key}:{${slot}}=${value}`;
+  if (placeholderValues.has(id)) return;
+  placeholderValues.add(id);
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(`[i18n] "${value}" interpolated into {${slot}} of "${key}"`);
+  }
+}
+
+/** Test seam: every placeholder value that reached interpolation. */
+export function interpolatedPlaceholders(): string[] {
+  return [...placeholderValues];
+}
+
+export function clearInterpolatedPlaceholders(): void {
+  placeholderValues.clear();
+}
+
 /** Test seam: every (locale, key) miss seen so far. */
 export function missingTranslationKeys(): string[] {
   return [...missingKeys];
@@ -80,6 +107,20 @@ export function t(
   }
   if (replacements) {
     for (const [k, v] of Object.entries(replacements)) {
+      // "undefined" is not a value a user should ever read.
+      //
+      // The account menu shipped the sentence "Trial: undefined of undefined
+      // recommendations remaining" for weeks, because a client type still
+      // declared two fields the server had stopped sending, `String(undefined)`
+      // produced the word, and interpolation pasted it in without comment.
+      // The type is honest again — but the seam where the word would appear is
+      // right here, so this is where it gets caught, for every caller, forever.
+      if (v === "undefined" || v === "null" || v === "NaN") {
+        reportPlaceholderValue(key, k, v);
+        // Better an empty slot than a lie about the account.
+        text = text.replace(new RegExp(`\\{${k}\\}`, "g"), "—");
+        continue;
+      }
       text = text.replace(new RegExp(`\\{${k}\\}`, "g"), v);
     }
   }
