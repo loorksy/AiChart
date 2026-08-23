@@ -195,6 +195,47 @@ describe("the acceptance case: a real recommendation, not a timeout", () => {
     );
   });
 
+  it("the crumb trail survives a caller that gives up on its own deadline", async () => {
+    // The orchestrator races this function against a 95s timer and DISCARDS
+    // the outcome when the timer wins. Progress is reported as it happens so
+    // the operator still learns whether the provider ever answered — the one
+    // fact that separates a hung connection from a rejected payload.
+    const seen: Array<{ attempt: number; completedCalls: number; kind?: string }> = [];
+    await runFinalDecisionSynthesizer(ctx, input(), {
+      configured: true,
+      onProgress: (p) =>
+        seen.push({
+          attempt: p.attempt,
+          completedCalls: p.completedCalls,
+          kind: p.lastFailureKind,
+        }),
+      callModel: async () => {
+        throw new TruncatedDecisionError(DECISION_OUTPUT_TOKENS);
+      },
+    });
+    assert.ok(seen.length >= 2, "progress is reported as the work advances");
+    const last = seen[seen.length - 1]!;
+    assert.equal(last.kind, "truncated", "the last failure is named while in flight");
+    assert.ok(last.completedCalls >= 1, "a provider that ANSWERED is recorded as such");
+  });
+
+  it("a provider that never answers is distinguishable from one that answers badly", async () => {
+    // completedCalls === 0 is the discriminator: nothing came back at all.
+    const seen: number[] = [];
+    await runFinalDecisionSynthesizer(ctx, input(), {
+      configured: true,
+      onProgress: (p) => seen.push(p.completedCalls),
+      callModel: async () => {
+        throw new Error("fetch failed");
+      },
+    });
+    assert.deepEqual(
+      [...new Set(seen)],
+      [0],
+      "no reply ever counted — the operator is pointed at egress, not the prompt",
+    );
+  });
+
   it("an untruncated model answers on the first attempt", async () => {
     let calls = 0;
     const out = await runFinalDecisionSynthesizer(ctx, input(), {

@@ -359,6 +359,32 @@ export interface SynthesizerOutcome {
   failure?: SynthesizerFailure;
 }
 
+/**
+ * Did the provider actually SEND something before this failure?
+ *
+ * The distinction is the whole point of the progress trail: a reply that was
+ * truncated, malformed, or refused still travelled the wire, so the network is
+ * fine and the fault is in the payload or the account. A timeout or a network
+ * error means nothing came back, and the operator should be looking at egress
+ * rather than at the prompt. Counting only successes made a truncated answer —
+ * the very failure this file now names — look like silence.
+ */
+function providerAnswered(kind: SynthesizerFailureKind): boolean {
+  switch (kind) {
+    case "timeout":
+    case "network":
+    case "llm_not_configured":
+    case "unknown":
+      return false;
+    default:
+      // truncated / invalid_json / schema_mismatch / empty_response /
+      // provider_auth / provider_billing / provider_rate_limit /
+      // provider_bad_request / provider_unavailable — all of these are the
+      // provider having responded.
+      return true;
+  }
+}
+
 /** Classify a raw provider/parse error into an actionable failure kind. */
 export function classifySynthesizerError(error: unknown): {
   kind: SynthesizerFailureKind;
@@ -436,10 +462,44 @@ export function classifySynthesizerError(error: unknown): {
   return { kind: "unknown", retryable: false, detail: message };
 }
 
+/**
+ * What the synthesizer was doing, for a caller whose deadline may fire first.
+ *
+ * The stage that wraps this function races it against a 95s timer and takes
+ * the fallback when the timer wins — which THROWS AWAY the outcome object,
+ * `failure` and all. So on the one path where the operator most needs to know
+ * what happened, they were told only "the stage ran out of time": a hung
+ * first HTTP call and two truncated attempts produce the identical sentence
+ * at the identical second, and nothing in the run distinguishes them.
+ *
+ * This is the crumb trail that survives the race. It says how far the work
+ * got — which matters more than any single value, because "no attempt ever
+ * finished" and "two attempts finished and both were rejected" have different
+ * causes and different fixes.
+ */
+export interface SynthesizerProgress {
+  /** Which attempt is in flight (1-based); 0 before the first call. */
+  attempt: number;
+  /** Attempts that returned SOMETHING from the provider, good or bad. */
+  completedCalls: number;
+  /** How the last completed attempt failed, when one did. */
+  lastFailureKind?: SynthesizerFailureKind;
+  lastFailureDetail?: string;
+  /** ms since the synthesizer started, at the last update. */
+  elapsedMs: number;
+  /** Browse rounds served after a decision was already in hand. */
+  browseRounds: number;
+}
+
 export interface SynthesizerDeps {
   /** Injectable model call (tests). Returns raw model text. */
   callModel?: (system: string, user: string) => Promise<string>;
   configured?: boolean;
+  /**
+   * Called as the work advances, so a caller that gives up on its own deadline
+   * can still report what was happening rather than only when it stopped.
+   */
+  onProgress?: (progress: SynthesizerProgress) => void;
   /**
    * Capture one timeframe as an image for a `view_timeframe` round. Injectable
    * for tests; defaults to the same visual-evidence collector the first round
@@ -783,7 +843,20 @@ export async function runFinalDecisionSynthesizer(
   // — measured on XAUUSD conditional plans, where both attempts failed on the
   // same activationRule shape and the operator saw a generic timeout.
   let correction: string | null = null;
+  const startedAt = Date.now();
+  const progress: SynthesizerProgress = {
+    attempt: 0,
+    completedCalls: 0,
+    elapsedMs: 0,
+    browseRounds: 0,
+  };
+  const report = (): void => {
+    progress.elapsedMs = Date.now() - startedAt;
+    deps.onProgress?.({ ...progress });
+  };
   for (let attempt = 1; attempt <= 2; attempt++) {
+    progress.attempt = attempt;
+    report();
     try {
       const userMsg = correction
         ? `${user}
@@ -792,6 +865,11 @@ export async function runFinalDecisionSynthesizer(
 ${correction}`
         : user;
       const raw = await callModel(system, userMsg);
+      // The provider ANSWERED. Whether the answer survives validation is the
+      // next question — but "a call completed" is exactly the fact that
+      // separates a slow payload from a socket that never replied.
+      progress.completedCalls += 1;
+      report();
       const candidate = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
       // Issue-time price coherence (the XAUUSD conditional-sell incident):
       // schema validation cannot see the live price, so a rule that is
@@ -825,6 +903,10 @@ ${correction}`
     } catch (error) {
       const classified = classifySynthesizerError(error);
       failure = { ...classified, attempts: attempt };
+      progress.lastFailureKind = classified.kind;
+      progress.lastFailureDetail = classified.detail.slice(0, 200);
+      if (providerAnswered(classified.kind)) progress.completedCalls += 1;
+      report();
       if (classified.kind === "schema_mismatch" || classified.kind === "invalid_json") {
         correction = classified.detail;
       }
@@ -926,6 +1008,8 @@ ${correction}`
 
     const request = decision.request;
     spent += 1;
+    progress.browseRounds = spent;
+    report();
     servedKeys.add(browseRequestKey(request));
     metrics.browseRounds.inc({ outcome: "requested", verb: request.verb });
 

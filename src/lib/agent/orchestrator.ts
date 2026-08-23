@@ -95,6 +95,7 @@ import {
   type RiskAgentResult,
 } from "./agents/riskAgent";
 import { chartHostUnavailableReason } from "@/lib/chart/platformCapture";
+import type { SynthesizerProgress } from "./agents/finalDecisionSynthesizer";
 import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
 import {
   runFinalDecisionSynthesizer,
@@ -1259,6 +1260,14 @@ async function runUnifiedChartAgentInner(
   const decisionStartedAt = performance.now();
   ctx.emitStage?.({ stage: "final_decision", status: "running" });
   let synthError: unknown = null;
+  // The deadline race below discards the synthesizer's outcome — `failure`
+  // and all — whenever the timer wins. Without this the operator was told
+  // "the stage ran out of time" and nothing else, and a first HTTP call that
+  // never returned looked exactly like two attempts that answered and were
+  // rejected. Those have different causes and different fixes.
+  // A holder, not a bare `let`: the assignment happens inside a callback, and
+  // control-flow analysis would otherwise narrow the variable to `null`.
+  const synthProgress: { current: SynthesizerProgress | null } = { current: null };
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
   // rather than leave it running behind an answer the user already received.
@@ -1306,6 +1315,9 @@ async function runUnifiedChartAgentInner(
         },
         {
           ...input.synthesizerDeps,
+          onProgress: (p) => {
+            synthProgress.current = p;
+          },
           // A browse round captures through the SAME collector the first round
           // used — one image, tight budget, failure returns null and the
           // decision already in hand stands.
@@ -1364,16 +1376,36 @@ async function runUnifiedChartAgentInner(
     const code = thrownFailure?.code ?? "timeout";
     // Operator-only raw cause → server logs (correlated by requestId). It must
     // NEVER reach the user-facing activity/summary (RELIABILITY_PLAN item 7).
+    // What the synthesizer had managed to do, in words. `completedCalls === 0`
+    // is the load-bearing one: it means the provider never answered even once,
+    // which points at the connection rather than at the payload.
+    const p = synthProgress.current;
+    const trail = p
+      ? ` [attempt ${p.attempt}, provider replies ${p.completedCalls}` +
+        `${p.lastFailureKind ? `, last failure ${p.lastFailureKind}: ${p.lastFailureDetail ?? ""}` : ""}` +
+        `${p.browseRounds ? `, browse rounds ${p.browseRounds}` : ""}` +
+        `, ${Math.round(p.elapsedMs / 1000)}s in]`
+      : " [the decision call never started]";
+    const stalled = p != null && p.completedCalls === 0;
     const operatorReason = synthError
       ? `Decision model call threw: ${
           synthError instanceof Error ? synthError.message : String(synthError)
-        }`
-      : `Decision model exceeded its ${AGENT_TIMEOUTS.finalDecision / 1000}s deadline.`;
+        }${trail}`
+      : `Decision model exceeded its ${AGENT_TIMEOUTS.finalDecision / 1000}s deadline.${trail}` +
+        (stalled
+          ? " No reply was received from the provider at all — check egress to" +
+            " the provider's API from THIS process before looking at the prompt."
+          : "");
     log.warn("agent.final_decision.failed", {
       requestId: ctx.requestId,
       cause: synthError ? "threw" : "timeout",
       code,
       detail: operatorReason,
+      // Structured twin of the sentence above, so this is greppable.
+      attempt: p?.attempt ?? 0,
+      providerReplies: p?.completedCalls ?? 0,
+      lastFailureKind: p?.lastFailureKind ?? null,
+      noProviderReply: stalled,
     });
     trackedCtx.emitActivity({
       type: "analysis",
