@@ -889,7 +889,16 @@ class DiagnosticsReport {
     return DiagnosticsReport(
       critical: _numbers(j['critical']),
       parityTotals: _numbers(parity['totals']),
-      parityUnpaired: (parity['unpaired'] as List?)?.length ?? 0,
+      // The server sends a COUNT here, not a list of moments
+      // (`parityLog.ts`: `unpaired: number`, computed by `COUNT(*)`). This
+      // line read it as a list and took `.length`, so `7 as List?` threw and
+      // — because the screen loads its four sources with `Future.wait` — the
+      // single bad cast killed the whole Operations screen for the operator
+      // while health, usage and the audit trail all parsed fine.
+      //
+      // It goes through the same coercer every other number in this file uses;
+      // it was the one field bypassing them with a raw cast.
+      parityUnpaired: asInt(parity['unpaired']),
       counters: _numbers(j['counters']),
       reevaluation: _numbers(j['reevaluation']),
       caseMemory: _numbers(j['caseMemory']),

@@ -1,0 +1,297 @@
+{
+  "_comment": [
+    "Canonical server responses for the admin API — ONE file, read by BOTH sides.",
+    "",
+    "Defect 9 is why this exists. The Dart client read `parity.unpaired` as a list",
+    "and called .length on it; the server has always sent a count. `7 as List?`",
+    "threw, and because the Operations screen loads four sources with Future.wait,",
+    "that one cast killed the entire screen for the operator. Every test in the repo",
+    "stayed green: they checked that the endpoint had a caller, never that the two",
+    "sides agreed about the SHAPE of what crosses the wire.",
+    "",
+    "The contract is checked from both ends against these samples:",
+    "  - src/lib/__tests__/adminContract.test.ts asserts the SERVER's declared",
+    "    types still match the types recorded here (a field that changes from",
+    "    number to array fails there);",
+    "  - admin_flutter/test/contract_test.dart feeds each sample through the real",
+    "    fromJson and asserts it parses (a client that expects the wrong type",
+    "    fails there).",
+    "",
+    "Values are representative, not real. Shapes are the point."
+  ],
+
+  "admin/diagnostics": {
+    "critical": {
+      "hiddenWaitWrites": 0,
+      "executionInWrongMode": 0,
+      "planEditOutsideRevisions": 0,
+      "unexplainedParity": 2,
+      "criticalAlerts": 0
+    },
+    "parity": {
+      "totals": {
+        "pairs": 12,
+        "agreeing": 10,
+        "differing": 2,
+        "unexplained": 2,
+        "byClassification": { "direction": 1, "levels": 1 }
+      },
+      "unpaired": 7
+    },
+    "reevaluation": { "confirmed": 4, "revised": 1 },
+    "caseMemory": { "open": 3, "closed": 9 },
+    "counters": {
+      "completeContracts": 41,
+      "invalidLevelRecommendations": 0
+    }
+  },
+
+  "admin/health": {
+    "status": "ok",
+    "timestamp": "2026-08-23T20:00:00.000Z",
+    "llm": true,
+    "ai_provider": "anthropic",
+    "telegram": true,
+    "cron_secret_set": true,
+    "users": { "total": 12, "active": 9 },
+    "recent_audit": [
+      {
+        "id": 5,
+        "user_id": 1,
+        "action": "platform_config",
+        "detail": "AI_PROVIDER",
+        "created_at": "2026-08-23T19:00:00.000Z"
+      }
+    ]
+  },
+
+  "admin/usage": {
+    "usage": [
+      { "user_id": 3, "email": "a@b.c", "status": "active", "used_today": 4, "quota": 1000 }
+    ]
+  },
+
+  "admin/overview/users": {
+    "rows": [
+      {
+        "user_id": 3,
+        "email": "a@b.c",
+        "tier": "full",
+        "revenue_usd": 18.0,
+        "provider_cost_usd": 2.5,
+        "profit_usd": 15.5,
+        "events": 22
+      }
+    ]
+  },
+
+  "admin/subscriptions": {
+    "users": [
+      {
+        "user_id": 3,
+        "email": "a@b.c",
+        "role": "user",
+        "status": "active",
+        "plan_status": "trial",
+        "subscription_expires_at": null,
+        "note": null,
+        "credits": 50
+      }
+    ]
+  },
+
+  "admin/billing/config": {
+    "ok": true,
+    "plan": {
+      "id": 1,
+      "current_price_id": 3,
+      "signup_grant_credits": 50,
+      "low_balance_threshold": 10,
+      "expiry_warn_days": 5,
+      "min_rr_first_target_bp": 250,
+      "updated_at": 1787000000000,
+      "updated_by": 1
+    },
+    "current_price": {
+      "id": 3,
+      "price_cents": 18000,
+      "credits_per_cycle": 1200,
+      "cycle_days": 30,
+      "stripe_price_id": null,
+      "created_at": 1787000000000,
+      "archived_at": null
+    },
+    "credit_prices": { "recommendation": 10, "chat_turn": 0, "mt5_link": 0 },
+    "packs": [
+      {
+        "id": 1,
+        "credits": 500,
+        "price_cents": 9000,
+        "active": 1,
+        "sort": 0,
+        "created_at": 1787000000000,
+        "archived_at": null
+      }
+    ],
+    "offers": [
+      {
+        "id": 2,
+        "kind": "percent",
+        "value": 20,
+        "starts_at": 1787000000000,
+        "ends_at": 1787600000000,
+        "active": 1,
+        "stripe_coupon_id": null,
+        "created_by": 1,
+        "created_at": 1787000000000
+      }
+    ],
+    "payments_configured": false
+  },
+
+  "admin/config/providers": {
+    "ok": true,
+    "active": "anthropic",
+    "providers": [
+      {
+        "id": "anthropic",
+        "label": "Anthropic (Claude)",
+        "active": true,
+        "keyConfigured": true,
+        "keyField": "ANTHROPIC_API_KEY",
+        "model": "claude-sonnet-4-6",
+        "lastSuccessAt": 1787000000000,
+        "lastFailureAt": null,
+        "lastFailureCode": null
+      }
+    ]
+  },
+
+  "admin/agent-model-status": {
+    "channel": "mcp",
+    "platformModel": "claude-sonnet-4-6",
+    "platformRef": "anthropic/claude-sonnet-4-6",
+    "fallbacks": ["anthropic/claude-opus-4-6"]
+  },
+
+  "admin/model-prices": {
+    "ok": true,
+    "prices": [
+      {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "input_usd_per_m": 3.0,
+        "output_usd_per_m": 15.0,
+        "updated_at": 1787000000000
+      }
+    ]
+  },
+
+  "admin/ads": {
+    "ok": true,
+    "ads": [
+      {
+        "id": 1,
+        "slides_json": "[{\"text\":\"hello\",\"image_path\":\"a.png\"}]",
+        "audience": "subscribers",
+        "active": 1,
+        "starts_at": null,
+        "ends_at": null,
+        "created_by": 1,
+        "created_at": 1787000000000,
+        "updated_at": 1787000000000
+      }
+    ]
+  },
+
+  "admin/users": {
+    "users": [
+      {
+        "id": 3,
+        "email": "a@b.c",
+        "role": "user",
+        "status": "active",
+        "username": null,
+        "telegram_id": null,
+        "access_expires_at": null,
+        "created_at": "2026-08-01T00:00:00.000Z",
+        "signup_via": "email",
+        "can_execute": 0,
+        "claude_quota": 1000
+      }
+    ]
+  },
+
+  "admin/roles": {
+    "admins": [
+      { "user_id": 1, "email": "boss@lonora.test", "admin_role": null, "granted_at": null }
+    ]
+  },
+
+  "admin/support": {
+    "tickets": [
+      {
+        "id": 4,
+        "user_id": 3,
+        "subject": "help",
+        "status": "open",
+        "assigned_to": null,
+        "needs_human": 1,
+        "updated_at": 1787000000000
+      }
+    ]
+  },
+
+  "admin/billing/profit": {
+    "per_user": [
+      {
+        "user_id": 3,
+        "email": "a@b.c",
+        "tier": "full",
+        "revenue_usd": 18.0,
+        "provider_cost_usd": 2.5,
+        "profit_usd": 15.5,
+        "events": 22
+      }
+    ],
+    "totals": { "revenue_usd": 18.0, "provider_cost_usd": 2.5, "profit_usd": 15.5 }
+  },
+
+  "admin/billing/reset-accounts": {
+    "ok": true,
+    "accounts": 12,
+    "granted": 12,
+    "grantEach": 50
+  },
+
+  "admin/config": {
+    "fields": [
+      {
+        "key": "ANTHROPIC_API_KEY",
+        "label": "مفتاح Anthropic (Claude)",
+        "labelEn": "ANTHROPIC_API_KEY",
+        "group": "ai",
+        "configured": true,
+        "source": "db",
+        "secret": true,
+        "masked": "sk-a…9f2"
+      }
+    ]
+  },
+
+  "admin/overview": {
+    "ok": true,
+    "days": 30,
+    "permissions": ["users_read", "profit_read"],
+    "kpis": {
+      "profit_usd": { "value": 15.5, "prev": 10.0, "pct": 55.0 },
+      "revenue_usd": { "value": 18.0, "prev": 12.0, "pct": 50.0 },
+      "provider_cost_usd": { "value": 2.5, "prev": 2.0, "pct": 25.0 },
+      "paying_subscribers": { "value": 3, "prev": 2, "pct": 50.0 },
+      "gift_users": 1,
+      "trial_users": 8,
+      "system_cost_usd": 4.0
+    },
+    "series": [{ "day": "2026-08-22", "revenue": 6.0, "cost": 1.0, "profit": 5.0 }]
+  }
+}

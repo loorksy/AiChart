@@ -412,7 +412,10 @@ class AdminRepository {
   Future<List<ProfitUserRow>> overviewUsers({int days = 30}) async {
     final j = await api
         .getJson('/api/admin/overview/users', query: {'days': '$days'});
-    return ((j['users'] as List?) ?? const [])
+    // The route answers under `rows`, not `users` — reading the wrong key
+    // returned an empty list forever instead of failing, which is the quieter
+    // half of the same contract-drift bug that killed the Operations screen.
+    return ((j['rows'] as List?) ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(ProfitUserRow.fromJson)
         .toList();
