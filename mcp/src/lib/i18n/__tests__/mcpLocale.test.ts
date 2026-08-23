@@ -34,10 +34,17 @@ describe("mcpLocale", () => {
     assert.equal(normalizeLocale(42), null);
   });
 
-  it("defaults to Arabic when nothing resolves", () => {
-    assert.equal(DEFAULT_MCP_LOCALE, "ar");
-    assert.equal(resolveMcpLocale({}), "ar");
-    assert.equal(resolveMcpLocale({ host: "fr-FR" }), "ar");
+  // English is the platform default on every surface now; the account's
+  // saved language (supplied as `account`) is what makes MCP speak Arabic.
+  it("defaults to English when nothing resolves", () => {
+    assert.equal(DEFAULT_MCP_LOCALE, "en");
+    assert.equal(resolveMcpLocale({}), "en");
+    assert.equal(resolveMcpLocale({ host: "fr-FR" }), "en");
+    assert.equal(
+      resolveMcpLocale({ account: "ar" }),
+      "ar",
+      "the account's own language still wins over the default",
+    );
   });
 
   it("applies precedence: explicit > account > request > host", () => {

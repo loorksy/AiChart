@@ -15,7 +15,8 @@
  *     the same ledger the record path uses. Record and delivery are separate
  *     claims: the sweep recording an event is not the user hearing it.
  */
-import { t } from "@/lib/i18n";
+import { DEFAULT_LOCALE, t, type AppLocale } from "@/lib/i18n";
+import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { createLogger } from "@/lib/logger";
 import type {
   LifecycleEvent,
@@ -196,11 +197,12 @@ function extractLifecycle(event: MarketEvent): LifecycleEvent {
 export function formatNotificationMessage(
   lifecycle: LifecycleEvent,
   category: NotificationCategory,
+  locale: AppLocale = DEFAULT_LOCALE,
 ): string {
   return [
-    `🔔 ${t("ar", `notify.category.${category}`)}`,
+    `🔔 ${t(locale, `notify.category.${category}`)}`,
     lifecycle.detail,
-    t("ar", "notify.trace", {
+    t(locale, "notify.trace", {
       id: String(lifecycle.recommendationId),
       symbol: lifecycle.symbol,
       event: lifecycle.type,
@@ -256,7 +258,13 @@ export async function deliverMarketEventNotification(
 
   const { listChannelBindings } = await import("./sessions");
   const bindings = await listChannelBindings(event.userId);
-  const message = formatNotificationMessage(lifecycle, category);
+  // A proactive push is a bot reply like any other: it goes out in the
+  // account's language, not in a language fixed at build time.
+  const message = formatNotificationMessage(
+    lifecycle,
+    category,
+    await resolveUserLocale(event.userId),
+  );
   let delivered = 0;
   for (const binding of bindings) {
     try {
