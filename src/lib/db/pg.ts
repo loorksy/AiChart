@@ -742,6 +742,13 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
     ON decision_parity(created_at DESC);
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS parity_key TEXT;
+  -- Support became a CONVERSATION, not a ticket queue: each side records what
+  -- it has read, and a message may carry a file.
+  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS user_last_read_at BIGINT;
+  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS admin_last_read_at BIGINT;
+  ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_path TEXT;
+  ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT;
+  ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_bytes BIGINT;
   -- V2-C: dynamic_pages carries blog posts and docs alongside legal pages.
   ALTER TABLE dynamic_pages ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'page';
   CREATE INDEX IF NOT EXISTS idx_decision_parity_key

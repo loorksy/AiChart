@@ -567,6 +567,7 @@ export const en = {
   "outcome.descriptive_only": "Analysis for reading — no execution authority",
   "outcome.operational_blocker": "Could not complete — an operational blocker",
   "config.model_wrong_provider": "The model \"{model}\" does not belong to {provider} — the field {field} takes {provider} models only.",
+  "support.notify.reply": "You have a new reply from support.",
   "decision.buy": "Buy",
   "decision.sell": "Sell",
   "decision.wait": "No recommendation",

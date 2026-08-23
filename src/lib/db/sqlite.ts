@@ -2064,6 +2064,40 @@ function migrate(db: Database.Database) {
     }
   }
 
+  // Support became a CONVERSATION, not a ticket queue: the two sides need to
+  // know what the other has already read, and a message may carry a file.
+  const ticketCols = db
+    .prepare("PRAGMA table_info(support_tickets)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  for (const [column, ddl] of [
+    ["user_last_read_at", "INTEGER"],
+    ["admin_last_read_at", "INTEGER"],
+  ] as const) {
+    if (ticketCols.includes(column)) continue;
+    try {
+      db.exec(`ALTER TABLE support_tickets ADD COLUMN ${column} ${ddl}`);
+    } catch {
+      /* already present on a concurrent boot */
+    }
+  }
+  const supportMsgCols = db
+    .prepare("PRAGMA table_info(support_messages)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  for (const [column, ddl] of [
+    ["attachment_path", "TEXT"],
+    ["attachment_name", "TEXT"],
+    ["attachment_bytes", "INTEGER"],
+  ] as const) {
+    if (supportMsgCols.includes(column)) continue;
+    try {
+      db.exec(`ALTER TABLE support_messages ADD COLUMN ${column} ${ddl}`);
+    } catch {
+      /* already present on a concurrent boot */
+    }
+  }
+
   const planCols = db
     .prepare("PRAGMA table_info(billing_plan)")
     .all()

@@ -22,6 +22,9 @@ export interface TicketRow {
   needs_human: number;
   created_at: number;
   updated_at: number;
+  /** When each side last opened the thread — the basis of "unread". */
+  user_last_read_at: number | null;
+  admin_last_read_at: number | null;
 }
 
 export interface MessageRow {
@@ -31,7 +34,14 @@ export interface MessageRow {
   author_id: number | null;
   body: string;
   created_at: number;
+  /** A file sent with this message; served through the support attachment route. */
+  attachment_path: string | null;
+  attachment_name: string | null;
+  attachment_bytes: number | null;
 }
+
+/** One side of the conversation, for read-state bookkeeping. */
+export type ConversationSide = "user" | "admin";
 
 export async function listUserTickets(userId: number): Promise<TicketRow[]> {
   return query<TicketRow>(
@@ -74,15 +84,116 @@ export async function addMessage(
   author: "user" | "bot" | "admin",
   body: string,
   authorId: number | null,
+  attachment?: { path: string; name: string; bytes: number } | null,
 ): Promise<void> {
+  const now = Date.now();
   await execute(
-    "INSERT INTO support_messages (ticket_id, author, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)",
-    [ticketId, author, authorId, body, Date.now()],
+    `INSERT INTO support_messages
+       (ticket_id, author, author_id, body, created_at,
+        attachment_path, attachment_name, attachment_bytes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      ticketId,
+      author,
+      authorId,
+      body,
+      now,
+      attachment?.path ?? null,
+      attachment?.name ?? null,
+      attachment?.bytes ?? null,
+    ],
   );
-  await execute("UPDATE support_tickets SET updated_at = ? WHERE id = ?", [
+  // The sender has, by definition, read their own message: marking their side
+  // read here is what keeps a reply from showing as unread to its own author.
+  const senderColumn = author === "admin" ? "admin_last_read_at" : "user_last_read_at";
+  await execute(
+    `UPDATE support_tickets SET updated_at = ?, ${senderColumn} = ? WHERE id = ?`,
+    [now, now, ticketId],
+  );
+}
+
+/**
+ * The user's ONE conversation with support.
+ *
+ * Support is a conversation, not a queue of tickets: a person opens the same
+ * thread they were in last time and keeps talking. The open ticket IS that
+ * thread; a new one is created only when there is none.
+ */
+export async function getOrCreateConversation(userId: number): Promise<number> {
+  const open = await queryOne<{ id: number }>(
+    "SELECT id FROM support_tickets WHERE user_id = ? AND status = 'open' ORDER BY updated_at DESC LIMIT 1",
+    [userId],
+  );
+  if (open) return open.id;
+  const now = Date.now();
+  return insertReturningId(
+    `INSERT INTO support_tickets (user_id, subject, created_at, updated_at, user_last_read_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [userId, "support", now, now, now],
+  );
+}
+
+/** Mark the thread read for one side, up to now. */
+export async function markConversationRead(
+  ticketId: number,
+  side: ConversationSide,
+): Promise<void> {
+  const column = side === "admin" ? "admin_last_read_at" : "user_last_read_at";
+  await execute(`UPDATE support_tickets SET ${column} = ? WHERE id = ?`, [
     Date.now(),
     ticketId,
   ]);
+}
+
+/**
+ * How many messages the given side has not seen.
+ *
+ * Counted from the OTHER side's messages only: a thread is never unread
+ * because of something you wrote yourself.
+ */
+export async function unreadCount(
+  ticketId: number,
+  side: ConversationSide,
+): Promise<number> {
+  const ticket = await queryOne<TicketRow>("SELECT * FROM support_tickets WHERE id = ?", [
+    ticketId,
+  ]);
+  if (!ticket) return 0;
+  const since = (side === "admin" ? ticket.admin_last_read_at : ticket.user_last_read_at) ?? 0;
+  const authors = side === "admin" ? ["user"] : ["admin", "bot"];
+  const placeholders = authors.map(() => "?").join(", ");
+  const row = await queryOne<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM support_messages
+      WHERE ticket_id = ? AND created_at > ? AND author IN (${placeholders})`,
+    [ticketId, since, ...authors],
+  );
+  return Number(row?.count ?? 0);
+}
+
+/** Total unread messages waiting for this user, across their conversation. */
+export async function userUnreadTotal(userId: number): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    `SELECT COUNT(*) AS count
+       FROM support_messages m
+       JOIN support_tickets t ON t.id = m.ticket_id
+      WHERE t.user_id = ?
+        AND m.author IN ('admin', 'bot')
+        AND m.created_at > COALESCE(t.user_last_read_at, 0)`,
+    [userId],
+  );
+  return Number(row?.count ?? 0);
+}
+
+/** Conversations with something the admin has not read yet. */
+export async function adminUnreadTotal(): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    `SELECT COUNT(DISTINCT t.id) AS count
+       FROM support_messages m
+       JOIN support_tickets t ON t.id = m.ticket_id
+      WHERE m.author = 'user'
+        AND m.created_at > COALESCE(t.admin_last_read_at, 0)`,
+  );
+  return Number(row?.count ?? 0);
 }
 
 export async function createTicket(
