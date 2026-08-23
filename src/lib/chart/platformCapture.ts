@@ -18,6 +18,7 @@
  *    capture_timeout, …) and the analysis proceeds on numbers, saying so.
  */
 import { createLogger } from "@/lib/logger";
+import { getPlatformValue } from "@/lib/platformConfig";
 import { getPublicAppUrl } from "@/lib/appUrl";
 import {
   captureChartImage,
@@ -136,9 +137,42 @@ export function layoutOverlaysFromState(raw: string | null | undefined): {
 // Chart-host container client
 // ---------------------------------------------------------------------------
 
+/**
+ * Where the chart-host container answers.
+ *
+ * Resolved the way EVERY other platform setting is — the operator's saved
+ * value first, the process environment second. It used to read `process.env`
+ * and nothing else, which made the shared chart session the one piece of
+ * infrastructure an operator could not configure from the admin panel: if the
+ * variable was missing from a process's environment, `chartHostConfigured()`
+ * quietly returned false, the platform fallback was skipped, and every
+ * unattended analysis reported "no chart could be captured" as though no chart
+ * existed — while the container was running and answering the MCP bridge,
+ * which loads the same file explicitly at launch.
+ */
+export function chartHostBaseUrl(): string | null {
+  const raw = getPlatformValue("CHART_HOST_URL")?.trim();
+  if (!raw) return null;
+  return /^https?:\/\//.test(raw) ? raw.replace(/\/$/, "") : null;
+}
+
 export function chartHostConfigured(): boolean {
-  const url = process.env.CHART_HOST_URL?.trim();
-  return Boolean(url && /^https?:\/\//.test(url)) && isChartHostSigningConfigured();
+  return Boolean(chartHostBaseUrl()) && isChartHostSigningConfigured();
+}
+
+/**
+ * Why the shared chart session is unavailable, for the OPERATOR.
+ *
+ * "No chart could be captured" is true of an unconfigured host, an unreachable
+ * one, and a genuinely chartless moment alike — three different problems with
+ * three different fixes, and one sentence covering all of them told the
+ * operator nothing. Null means the host is configured and the reason lies
+ * further down.
+ */
+export function chartHostUnavailableReason(): "not_configured" | "not_signed" | null {
+  if (!chartHostBaseUrl()) return "not_configured";
+  if (!isChartHostSigningConfigured()) return "not_signed";
+  return null;
 }
 
 function chartHostControlToken(): string | null {
@@ -185,7 +219,7 @@ export async function ensureChartHostTab(
 
   if (isTabFresh()) return { ok: true };
 
-  const baseUrl = process.env.CHART_HOST_URL?.trim()?.replace(/\/$/, "");
+  const baseUrl = chartHostBaseUrl();
   const controlToken = chartHostControlToken();
   if (!baseUrl || !controlToken || !isChartHostSigningConfigured()) {
     return { ok: false, reason: "host_unreachable" };

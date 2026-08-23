@@ -33,6 +33,19 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "سلسلة عشوائية طويلة",
   },
   {
+    // The shared TradingView chart session (chart-host container) that gives
+    // unattended runs — Telegram, cron, the worker — real charts to look at.
+    // Labels stay English on both sides deliberately: it is a URL, and the
+    // Arabic ratchet keeps new Arabic out of code.
+    key: "CHART_HOST_URL",
+    label: "Chart host URL",
+    labelEn: "CHART_HOST_URL",
+    group: "ops",
+    secret: false,
+    plainStorage: true,
+    placeholder: "http://127.0.0.1:8788",
+  },
+  {
     key: "AI_MODEL",
     label: "نموذج OpenAI",
     labelEn: "AI_MODEL",

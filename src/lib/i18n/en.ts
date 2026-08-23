@@ -394,6 +394,7 @@ export const en = {
   "orch.visual_reviewed": "Visually reviewed {count} chart snapshots.",
   "orch.visual_partial": "Could not capture {missing} — the analysis reads only what remains.",
   "orch.visual_none": "Could not capture any chart — the analysis reads the numbers alone.",
+  "orch.visual_host_unconfigured": "Could not capture any chart: the shared chart session is not configured on the server — set CHART_HOST_URL in the settings panel. The analysis reads the numbers alone.",
   "orch.no_rec_now": "No recommendation right now.",
   "orch.no_saved_rec": "There is no saved recommendation in this session right now.",
   "orch.restored_trigger": "Recommendation restored from the current chart.",

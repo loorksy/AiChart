@@ -94,6 +94,7 @@ import {
   type AccountRiskSnapshot,
   type RiskAgentResult,
 } from "./agents/riskAgent";
+import { chartHostUnavailableReason } from "@/lib/chart/platformCapture";
 import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
 import {
   runFinalDecisionSynthesizer,
@@ -1232,17 +1233,25 @@ async function runUnifiedChartAgentInner(
     trackedCtx.emitActivity({
       type: "analysis",
       status: "warning",
+      // Name the REASON when there is one. "No chart could be captured" is
+      // equally true of an unconfigured chart host, an unreachable one, and a
+      // genuinely chartless moment — and the operator's fix differs in each
+      // case. It reported the chartless one for all three, which is how a
+      // running chart-host container looked like a missing chart.
       message: visual.snapshots.length
-        ? t("ar", "orch.visual_partial", {
+        ? t(locale, "orch.visual_partial", {
             missing: visual.missing
               .map((m) => m.timeframe)
-              .join(t("ar", "list.separator")),
+              .join(t(locale, "list.separator")),
           })
-        : t("ar", "orch.visual_none"),
+        : chartHostUnavailableReason()
+          ? t(locale, "orch.visual_host_unconfigured")
+          : t(locale, "orch.visual_none"),
       metadata: {
         requested: visual.requested,
         captured: visual.snapshots.map((s) => s.timeframe),
         missing: visual.missing,
+        chartHost: chartHostUnavailableReason() ?? "configured",
       },
     });
   }
