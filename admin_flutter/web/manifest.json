@@ -1,11 +1,11 @@
 {
-    "name": "lonora_admin",
-    "short_name": "lonora_admin",
+    "name": "Lonora \u2014 Admin",
+    "short_name": "Lonora Admin",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Lonora platform administration.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

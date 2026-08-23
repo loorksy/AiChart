@@ -102,3 +102,8 @@ next-env.d.ts
 # It is LICENSED, not open source: this repository is PRIVATE for that reason
 # and must stay private. Making it public would redistribute the library.
 dump.rdb
+
+# The Flutter admin console's BUILT bundle. Source lives in admin_flutter/;
+# infra/build-admin-app.sh compiles it into here at deploy time. Committing
+# ~40MB of generated output on every rebuild is not how it ships.
+/public/admin-app/

@@ -28,6 +28,22 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return {
+      // The admin console is a separate Flutter application whose built
+      // bundle is published into public/admin-app/ (infra/build-admin-app.sh).
+      // Next serves the files inside that folder, but a folder has no index
+      // route of its own: /admin-app/ 308s to /admin-app and 404s, which is
+      // the exact URL an operator types. This rewrite is what makes the
+      // console answer. Assets are unaffected — they resolve through the
+      // bundle's own <base href="/admin-app/">.
+      beforeFiles: [
+        { source: "/admin-app", destination: "/admin-app/index.html" },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
   async headers() {
     return [
       {

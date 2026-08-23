@@ -134,5 +134,27 @@ describe("the admin console is the Flutter app and only the Flutter app", () => 
     // under that path; getting it wrong yields a white page with 404s.
     const build = readFileSync(path.join(REPO, "infra", "build-admin-app.sh"), "utf8");
     assert.match(build, /--base-href[= ]\/admin-app\//);
+
+    // And the rewrite is what makes the URL an operator actually types
+    // answer at all. `public/admin-app/` is a FOLDER, and a folder has no
+    // index route: without this, /admin-app/ 308s to /admin-app and 404s,
+    // while every asset under it serves fine — a console that is broken at
+    // precisely one URL, the only one anybody uses. Verified by hand against
+    // `next start` before it was written down.
+    const config = readFileSync(path.join(REPO, "next.config.ts"), "utf8");
+    assert.match(config, /source: "\/admin-app"/);
+    assert.match(config, /destination: "\/admin-app\/index\.html"/);
+  });
+
+  it("the deploy builds the console, or says out loud that it did not", () => {
+    // It is the only admin surface now: a deploy that silently skips it
+    // leaves the operator with no console and no message saying why.
+    const deploy = readFileSync(path.join(REPO, "infra", "vps-pull-deploy.sh"), "utf8");
+    assert.match(deploy, /build-admin-app\.sh/);
+    assert.match(deploy, /WARN: no flutter SDK and no \/admin-app\/ bundle/);
+    // The same deploy must not resurrect the worker-through-npm shape that
+    // orphaned the health port on every hard kill.
+    assert.doesNotMatch(deploy, /pm2 start npm/);
+    assert.match(deploy, /pm2 start "\$ECOSYSTEM"/);
   });
 });
