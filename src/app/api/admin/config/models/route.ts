@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { handleError } from "@/lib/api";
 import { requireAdminWith } from "@/lib/adminRoles";
-import { listOpenAIChatModels } from "@/lib/openaiCompat";
 import { OPENAI_MODEL_CHOICES } from "@/lib/modelCatalog";
-import { getActiveModel, getProviderApiKey, providerKeyField } from "@/lib/llm";
+import {
+  getProviderApiKey,
+  providerKeyField,
+  resolveActiveSelection,
+  verifyProviderKey,
+} from "@/lib/llm";
 
 const bodySchema = z.object({
   apiKey: z.string().min(10).optional(),
@@ -20,8 +24,16 @@ function missingKeyError(): string {
  * to prove the key works before it is trusted.
  */
 async function curatedModels(key: string) {
-  await listOpenAIChatModels(key);
+  // Key validation goes through the LLM layer, the only module that speaks to
+  // a provider's own endpoint — so this panel cannot grow a second opinion
+  // about providers alongside the resolver.
+  const verified = await verifyProviderKey("openai", key);
+  if (!verified.ok) throw new Error(verified.error);
   return OPENAI_MODEL_CHOICES.map((m) => ({ id: m.id, label: m.label }));
+}
+
+async function activeModelId(): Promise<string> {
+  return (await resolveActiveSelection("deep")).model;
 }
 
 export async function GET() {
@@ -34,7 +46,7 @@ export async function GET() {
     return NextResponse.json({
       provider: "openai",
       models: await curatedModels(key),
-      defaultModel: getActiveModel(),
+      defaultModel: await activeModelId(),
     });
   } catch (err) {
     if (err instanceof Error) {
@@ -56,7 +68,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       provider: "openai",
       models: await curatedModels(key),
-      defaultModel: getActiveModel(),
+      defaultModel: await activeModelId(),
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

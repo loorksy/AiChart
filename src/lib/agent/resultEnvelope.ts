@@ -43,6 +43,12 @@ export interface ResultEnvelope {
   retryable?: boolean;
   failure_stage?: AgentStage;
   failure_code?: AgentFailureCode;
+  /**
+   * WHICH provider produced a provider-class failure ("openai"/"anthropic").
+   * Without it the message can only say "the AI provider", which is what led
+   * an operator to top up the account that was not the failing one.
+   */
+  failure_provider?: string;
   /** Stages that failed but were degraded around (answer still stands). */
   degraded_stages?: AgentStage[];
   /** Correlation id (request id) for support/observability. Not a secret. */
@@ -60,6 +66,7 @@ export function operationalBlockerEnvelope(opts: {
   traceId?: string;
   degradedStages?: AgentStage[];
   cancelled?: boolean;
+  failureProvider?: string;
 }): ResultEnvelope {
   return {
     version: RESULT_ENVELOPE_VERSION,
@@ -72,6 +79,7 @@ export function operationalBlockerEnvelope(opts: {
     retryable: opts.retryable,
     failure_stage: opts.failureStage,
     failure_code: opts.failureCode,
+    ...(opts.failureProvider ? { failure_provider: opts.failureProvider } : {}),
     ...(opts.degradedStages?.length ? { degraded_stages: opts.degradedStages } : {}),
     ...(opts.traceId ? { trace_id: opts.traceId } : {}),
   };

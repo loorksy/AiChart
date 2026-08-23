@@ -423,6 +423,17 @@ export const en = {
   "fault.auth":
     "Cannot reach the service provider due to an authorization problem — the configuration needs review.",
   "fault.rate_limit": "The service provider is busy right now — try again shortly.",
+  // Provider-named variants: the operator must know WHICH account failed —
+  // an unnamed "the AI provider" sent them to top up the wrong one.
+  "fault.named.provider_billing":
+    "The {provider} account is out of credit. Add credit to {provider} or switch the active provider in the keys panel — retrying will not help.",
+  "fault.named.provider_unavailable":
+    "{provider} is temporarily unavailable — try again shortly.",
+  "fault.named.provider_bad_request":
+    "{provider} rejected the request (unknown model or unsupported parameters) — review the model configuration in the keys panel.",
+  "fault.named.auth":
+    "The {provider} key was rejected or is invalid — review it in the keys panel.",
+  "fault.named.rate_limit": "{provider} is busy right now — try again shortly.",
   "api.guest_rate_limit": "Too many requests — sign in to continue.",
   "fault.timeout": "The operation took longer than allowed — try again shortly.",
   "fault.network": "A network connection problem occurred — try again shortly.",
@@ -1104,6 +1115,11 @@ export const en = {
   "tg.model_current": "Current model: {name}",
   "tg.model_changed": "{name} now answers this chat.",
   "tg.model_invalid": "That model is not available right now.",
+  "tg.model_wrong_provider":
+    "That model does not belong to the active provider ({provider}) — pick one of its models.",
+  "settings.model_unavailable": "That model is not available on the platform.",
+  "settings.model_wrong_provider":
+    "That model does not belong to the active provider ({provider}) — pick one of its models.",
   "tg.model_none": "No models available — no provider key is configured yet.",
   "rec.badge.hit": "Hit",
   "rec.badge.pending": "Not reached",

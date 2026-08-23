@@ -8,6 +8,7 @@
 import {
   callAnthropic,
   callAnthropicStream,
+  listAnthropicModels,
   DEFAULT_ANTHROPIC_MODEL,
   type AnthropicResponse,
   type Message,
@@ -18,15 +19,39 @@ import {
 import {
   callOpenAICompat,
   callOpenAICompatStream,
+  listOpenAIChatModels,
   type OpenAICompatTarget,
 } from "./openaiCompat";
 import { AsyncLocalStorage } from "node:async_hooks";
+import {
+  LLM_PROVIDERS,
+  providerLabel,
+  providerOfFailure,
+  tagProviderFailure,
+  type LLMProvider,
+} from "./providerIdentity";
 import { isAllowedModelRef } from "./modelCatalog";
-import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
+import {
+  getPlatformValue,
+  getPlatformValueAsync,
+  refreshPlatformConfigIfStale,
+} from "./platformConfig";
 import { recordLLMUsage } from "./billing/usageMeter";
 import { createLogger } from "./logger";
 
 const llmLog = createLogger("llm");
+
+// Identity (who the providers are) is pure and lives in providerIdentity so a
+// client component can name a provider without importing this server module.
+// Re-exported here because this module is the LLM layer's front door.
+export {
+  LLM_PROVIDERS,
+  providerLabel,
+  providerOfFailure,
+  tagProviderFailure,
+  isLLMProvider,
+} from "./providerIdentity";
+export type { LLMProvider } from "./providerIdentity";
 
 /**
  * Per-request model selection.
@@ -61,19 +86,58 @@ export function currentRequestModel(): RequestModelSelection | undefined {
 /**
  * Resolve a user's stored preference into an applicable selection.
  *
- * Returns null — meaning "use the platform default" — when the preference is
- * unset, malformed, outside the curated model catalogue, or names a provider
- * that is not ready (missing key). A user must never be able to point the
- * platform at a provider it cannot authenticate against, nor at a model the
- * platform has not committed to.
+ * Returns null — meaning "use the operator's active provider and model" —
+ * when the preference is unset, malformed, outside the curated catalogue,
+ * names a provider that is not ready (missing key), or names a provider that
+ * is NOT the operator's active one.
+ *
+ * That last rule is the important one. A stored per-user pick used to be
+ * honoured whenever its provider merely had a key on file, so a preference
+ * saved months ago ("openai/gpt-4.1") kept pinning every one of that user's
+ * runs to OpenAI after the operator had switched the platform to Anthropic —
+ * and since the pin only covers the main run, side generations (suggestions)
+ * followed the new provider while analysis and chat kept failing on the old
+ * one's exhausted billing. A user's convenience pick may narrow WHICH model
+ * of the active provider answers; it may never choose a different provider
+ * than the operator did.
  */
 export async function resolveUserModelSelection(
   ref?: string | null,
 ): Promise<RequestModelSelection | null> {
   const parsed = parseModelRef(ref);
   if (!parsed) return null;
+  if (parsed.provider !== (await getActiveProviderAsync())) return null;
   if (!(await isOfferedModelRef(parsed))) return null;
   return (await isProviderReadyAsync(parsed.provider)) ? parsed : null;
+}
+
+/**
+ * Why a stored/offered model ref is not usable right now — so a picker can
+ * refuse it by NAME instead of letting the run fail later against the wrong
+ * provider's billing.
+ */
+export type ModelRefRejection =
+  | "malformed"
+  | "provider_not_active"
+  | "not_offered"
+  | "provider_not_ready";
+
+export async function checkModelRef(
+  ref?: string | null,
+): Promise<{ ok: true; selection: RequestModelSelection } | { ok: false; reason: ModelRefRejection; activeProvider: LLMProvider }> {
+  const active = await getActiveProviderAsync();
+  const parsed = parseModelRef(ref);
+  if (!parsed) return { ok: false, reason: "malformed", activeProvider: active };
+  if (parsed.provider !== active) {
+    return { ok: false, reason: "provider_not_active", activeProvider: active };
+  }
+  if (!(await isOfferedModelRef(parsed))) {
+    return { ok: false, reason: "not_offered", activeProvider: active };
+  }
+  if (!(await isProviderReadyAsync(parsed.provider))) {
+    return { ok: false, reason: "provider_not_ready", activeProvider: active };
+  }
+  return { ok: true, selection: parsed };
 }
 
 /**
@@ -105,13 +169,6 @@ export function parseModelRef(ref?: string | null): RequestModelSelection | null
   return { provider, model };
 }
 
-export type LLMProvider = "openai" | "anthropic";
-
-export const LLM_PROVIDERS: { id: LLMProvider; label: string }[] = [
-  { id: "openai", label: "OpenAI" },
-  { id: "anthropic", label: "Anthropic (Claude)" },
-];
-
 const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
@@ -126,12 +183,15 @@ async function modelForTierAsync(tier: ModelTier): Promise<string> {
   return modelForTier(tier);
 }
 
+/** Unset/unrecognized falls back to this — Sonnet is the platform's brain. */
+export const PLATFORM_DEFAULT_PROVIDER: LLMProvider = "anthropic";
+
 export function parsePlatformProvider(raw?: string | null): LLMProvider {
   const v = raw?.trim();
   if (v === "openai") return "openai";
   // Unset (or anything unrecognized) means the platform default: Anthropic,
   // whose default model (Sonnet 4.6) is the platform's default brain.
-  return "anthropic";
+  return PLATFORM_DEFAULT_PROVIDER;
 }
 
 /** Key present for this first-class provider. */
@@ -144,18 +204,93 @@ export async function isProviderReadyAsync(provider: LLMProvider): Promise<boole
   return Boolean(key);
 }
 
+/**
+ * The operator's EXPLICIT provider choice, or null when they never made one.
+ *
+ * `parsePlatformProvider` cannot answer this: it folds "unset" and every
+ * unrecognized value into the platform default, which makes an explicit
+ * choice indistinguishable from no choice at all.
+ */
+function operatorProviderChoice(raw: string | undefined): LLMProvider | null {
+  const v = raw?.trim().toLowerCase();
+  if (v === "openai") return "openai";
+  if (v === "anthropic") return "anthropic";
+  return null;
+}
+
+/**
+ * Which provider answers, given an operator choice and the keys on file.
+ *
+ * An EXPLICIT choice is absolute — no path may quietly answer on a provider
+ * the operator did not pick, because a silent substitution is exactly what
+ * makes a failure unreadable ("I switched to Anthropic and it still bills
+ * OpenAI"). When the operator has made NO choice, and only then, the
+ * platform infers one from the keys that exist: that is not overriding
+ * anybody, it is bootstrapping a fresh install.
+ */
+function decideProvider(
+  choice: LLMProvider | null,
+  ready: (p: LLMProvider) => boolean,
+): LLMProvider {
+  if (choice) return choice;
+  if (ready(PLATFORM_DEFAULT_PROVIDER)) return PLATFORM_DEFAULT_PROVIDER;
+  for (const p of LLM_PROVIDERS) {
+    if (ready(p.id)) return p.id;
+  }
+  return PLATFORM_DEFAULT_PROVIDER;
+}
+
 export function getActiveProvider(): LLMProvider {
-  // The user's per-request pick wins over the platform default.
+  // The user's per-request pick wins — but only ever WITHIN the operator's
+  // provider (resolveUserModelSelection refuses to pin anything else).
   const picked = requestModel.getStore();
   if (picked) return picked.provider;
-  const preferred = parsePlatformProvider(getPlatformValue("AI_PROVIDER"));
-  if (isProviderReady(preferred)) return preferred;
-  // A key on the other first-class provider is enough — the operator may
-  // paste Claude without switching AI_PROVIDER off openai.
-  for (const p of LLM_PROVIDERS) {
-    if (p.id !== preferred && isProviderReady(p.id)) return p.id;
-  }
-  return preferred;
+  return decideProvider(operatorProviderChoice(getPlatformValue("AI_PROVIDER")), isProviderReady);
+}
+
+/**
+ * The DB-backed answer, and the one every decision should use.
+ *
+ * The sync reader above can only see what the in-process cache already
+ * holds; this awaits the database, and first lets a stale snapshot refresh
+ * so a provider switched in the admin panel takes effect in a long-lived
+ * worker WITHOUT restarting it.
+ */
+export async function getActiveProviderAsync(): Promise<LLMProvider> {
+  const picked = requestModel.getStore();
+  if (picked) return picked.provider;
+  await refreshPlatformConfigIfStale();
+  const choice = operatorProviderChoice(await getPlatformValueAsync("AI_PROVIDER"));
+  const readiness = await Promise.all(LLM_PROVIDERS.map((p) => isProviderReadyAsync(p.id)));
+  const ready = (p: LLMProvider) =>
+    readiness[LLM_PROVIDERS.findIndex((x) => x.id === p)] ?? false;
+  return decideProvider(choice, ready);
+}
+
+/** The one selection a call should run with: provider + model for a tier. */
+export async function resolveActiveSelection(
+  tier: ModelTier = "deep",
+): Promise<RequestModelSelection> {
+  const picked = requestModel.getStore();
+  if (picked) return picked;
+  const provider = await getActiveProviderAsync();
+  const field =
+    provider === "anthropic"
+      ? tier === "quick"
+        ? "ANTHROPIC_QUICK_MODEL"
+        : "ANTHROPIC_MODEL"
+      : tier === "quick"
+        ? "AI_QUICK_MODEL"
+        : "AI_MODEL";
+  const configured = (await getPlatformValueAsync(field))?.trim();
+  if (configured) return { provider, model: configured };
+  // The quick tier is OPT-IN: with no cheap model configured it falls back
+  // to the deep model rather than inventing one.
+  if (tier === "quick") return resolveActiveSelection("deep");
+  return {
+    provider,
+    model: provider === "anthropic" ? DEFAULT_ANTHROPIC_MODEL : DEFAULT_MODEL,
+  };
 }
 
 /** Active model for the active provider (with safe defaults). */
@@ -206,6 +341,13 @@ export function providerKeyField(provider: LLMProvider = "openai"): string {
 
 export function getProviderApiKey(provider: LLMProvider = "openai"): string | undefined {
   return getPlatformValue(PROVIDER_KEY_FIELD[provider]);
+}
+
+/** DB-backed key read — for processes whose sync cache may be a boot snapshot. */
+export async function getProviderApiKeyAsync(
+  provider: LLMProvider,
+): Promise<string | undefined> {
+  return (await getPlatformValueAsync(PROVIDER_KEY_FIELD[provider]))?.trim() || undefined;
 }
 
 export function isLLMConfigured(): boolean {
@@ -261,6 +403,27 @@ function meterUsage(provider: LLMProvider, model: string, res: AnthropicResponse
   });
 }
 
+/**
+ * Prove a key works, for the admin panel — the ONE place a provider's own
+ * endpoint is probed. It lives here because this module is the only one
+ * allowed to speak to a provider client; the panel asks, it answers.
+ */
+export async function verifyProviderKey(
+  provider: LLMProvider,
+  apiKey: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    if (provider === "openai") {
+      await listOpenAIChatModels(apiKey);
+    } else {
+      await listAnthropicModels(apiKey);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export interface LLMCallParams {
   system: SystemPromptInput;
   messages: Message[];
@@ -290,9 +453,9 @@ export async function callLLM(
   params: LLMCallParams,
   opts?: LLMCallOptions,
 ): Promise<AnthropicResponse> {
-  const provider = getActiveProvider();
   const tier = opts?.tier ?? "deep";
-  const model = await modelForTierAsync(tier);
+  // ONE resolution per call, from the database — never a sync cache guess.
+  const { provider, model } = await resolveActiveSelection(tier);
   const started = performance.now();
   try {
     const res =
@@ -307,6 +470,11 @@ export async function callLLM(
           });
     meterUsage(provider, model, res);
     return res;
+  } catch (err) {
+    // Name the provider ON the error. Downstream the operator reads
+    // "OpenAI is out of credit", not "the AI account is out of credit" —
+    // the ambiguity that had them topping up the wrong account.
+    throw tagProviderFailure(err, provider);
   } finally {
     // Before/after measurement (item 15): tier + model + wall time, no content.
     llmLog.debug("llm.call", { provider, tier, model, durationMs: Math.round(performance.now() - started) });
@@ -318,9 +486,8 @@ export async function callLLMStream(
   handlers?: StreamHandlers,
   opts?: LLMCallOptions,
 ): Promise<AnthropicResponse> {
-  const provider = getActiveProvider();
   const tier = opts?.tier ?? "deep";
-  const model = await modelForTierAsync(tier);
+  const { provider, model } = await resolveActiveSelection(tier);
   const started = performance.now();
   try {
     const res =
@@ -336,6 +503,8 @@ export async function callLLMStream(
           );
     meterUsage(provider, model, res);
     return res;
+  } catch (err) {
+    throw tagProviderFailure(err, provider);
   } finally {
     llmLog.debug("llm.call.stream", { provider, tier, model, durationMs: Math.round(performance.now() - started) });
   }

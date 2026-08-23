@@ -41,7 +41,7 @@
   "src/app/api/me/route.ts": 1,
   "src/app/api/onboarding/route.ts": 1,
   "src/app/api/opportunities/scan/route.ts": 1,
-  "src/app/api/settings/route.ts": 4,
+  "src/app/api/settings/route.ts": 3,
   "src/app/api/skills/[name]/route.ts": 4,
   "src/app/api/skills/route.ts": 3,
   "src/app/api/telegram/link/route.ts": 1,

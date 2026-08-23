@@ -415,6 +415,15 @@ export const ar: Record<TranslationKey, string> = {
     "لم يكتمل التحليل: تغطية {stages} التاريخية غير كافية بعد. ما جُمع من أدلة قبل ذلك معروض أدناه، ولم يُفترض شيء مكانه.",
   "fault.auth": "لا يمكن الاتصال بمزوّد الخدمة بسبب مشكلة صلاحيات — تحتاج مراجعة الإعداد.",
   "fault.rate_limit": "مزوّد الخدمة مشغول حالياً — أعد المحاولة بعد قليل.",
+  // Provider-named variants: the operator must know WHICH account failed —
+  // an unnamed "the AI provider" sent them to top up the wrong one.
+  "fault.named.provider_billing":
+    "رصيد حساب {provider} منتهٍ. أضف رصيداً في حساب {provider} أو بدّل المزوّد النشط من لوحة المفاتيح — إعادة المحاولة لن تُجدي.",
+  "fault.named.provider_unavailable": "مزوّد {provider} غير متاح مؤقتاً — أعد المحاولة بعد قليل.",
+  "fault.named.provider_bad_request":
+    "رفض {provider} الطلب (نموذج غير موجود أو معاملات غير مدعومة) — راجع إعداد النموذج في لوحة المفاتيح.",
+  "fault.named.auth": "مفتاح {provider} مرفوض أو غير صالح — راجعه في لوحة المفاتيح.",
+  "fault.named.rate_limit": "مزوّد {provider} مشغول حالياً — أعد المحاولة بعد قليل.",
   "api.guest_rate_limit": "طلبات كثيرة — سجّل الدخول للمتابعة.",
   "fault.timeout": "استغرقت العملية وقتاً أطول من المسموح — أعد المحاولة بعد قليل.",
   "fault.network": "تعذّر الاتصال بالشبكة — أعد المحاولة بعد قليل.",
@@ -1089,6 +1098,10 @@ export const ar: Record<TranslationKey, string> = {
   "tg.model_current": "النموذج الحالي: {name}",
   "tg.model_changed": "أصبح {name} هو نموذج هذه المحادثة.",
   "tg.model_invalid": "هذا النموذج غير متاح حالياً.",
+  "tg.model_wrong_provider": "هذا النموذج لا يتبع المزوّد النشط ({provider}) — اختر نموذجاً منه.",
+  "settings.model_unavailable": "هذا النموذج غير متاح على المنصة.",
+  "settings.model_wrong_provider":
+    "هذا النموذج لا يتبع المزوّد النشط ({provider}) — اختر نموذجاً منه.",
   "tg.model_none": "لا توجد نماذج متاحة — لم يُضبط أي مفتاح مزوّد بعد.",
   "rec.badge.hit": "تحقق",
   "rec.badge.pending": "لم يتحقق",

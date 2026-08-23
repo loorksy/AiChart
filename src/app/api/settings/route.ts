@@ -7,7 +7,8 @@ import {
   setMarketAssets,
   setWatchlist,
 } from "@/lib/allowedAssets";
-import { isOfferedModelRef, parseModelRef } from "@/lib/llm";
+import { checkModelRef, providerLabel } from "@/lib/llm";
+import { t } from "@/lib/i18n";
 import { RISK_PER_TRADE, riskPerTradeSchema } from "@/lib/productModel";
 
 const assetList = z.array(z.string().trim().min(1).max(20)).max(200);
@@ -77,10 +78,21 @@ export async function PUT(request: NextRequest) {
       // saved — the regex alone would accept any well-formed id the provider's
       // key happens to serve.
       if (input.preferred_model_ref !== null) {
-        const parsed = parseModelRef(input.preferred_model_ref);
-        if (!parsed || !(await isOfferedModelRef(parsed))) {
+        const checked = await checkModelRef(input.preferred_model_ref);
+        if (!checked.ok) {
+          // Refuse by NAME. A model from a provider the platform is not
+          // pointed at used to be accepted and then failed at run time as
+          // that provider's billing error — which reads as a platform fault.
           return NextResponse.json(
-            { error: "هذا النموذج غير متاح على المنصة." },
+            {
+              error:
+                checked.reason === "provider_not_active"
+                  ? t("ar", "settings.model_wrong_provider", {
+                      provider: providerLabel(checked.activeProvider),
+                    })
+                  : t("ar", "settings.model_unavailable"),
+              code: checked.reason,
+            },
             { status: 400 },
           );
         }

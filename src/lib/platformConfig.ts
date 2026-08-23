@@ -295,35 +295,51 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
 
 const cache = new Map<string, string>();
 const rawCache = new Map<string, { value: string; plain: number }>();
+/** When the cache last took a full copy of the DB rows (TTL refresh below). */
+let lastConfigLoadAt = 0;
 
 export function clearPlatformConfigCache(): void {
   cache.clear();
   rawCache.clear();
+  lastConfigLoadAt = 0;
 }
 
-function populateFromRows(
+/**
+ * Swap the cache to exactly what the rows say, in ONE synchronous step.
+ *
+ * Clearing and then awaiting the loader left a window in which every key
+ * read as missing — and a sync read landing in that window fell through to
+ * `process.env`. Building first and swapping after keeps the previous
+ * snapshot readable until the new one is complete.
+ */
+function swapCacheToRows(
   rows: { key: string; value: string; plain: number }[],
 ): void {
+  const nextRaw = new Map<string, { value: string; plain: number }>();
+  const nextDecoded = new Map<string, string>();
   for (const row of rows) {
-    rawCache.set(row.key, { value: row.value, plain: row.plain });
+    nextRaw.set(row.key, { value: row.value, plain: row.plain });
     const decoded = decodeRaw(row.key, row.value, row.plain);
-    if (decoded) cache.set(row.key, decoded);
+    if (decoded) nextDecoded.set(row.key, decoded);
   }
+  cache.clear();
+  rawCache.clear();
+  for (const [k, v] of nextDecoded) cache.set(k, v);
+  for (const [k, v] of nextRaw) rawCache.set(k, v);
+  lastConfigLoadAt = Date.now();
 }
 
 /** Called from initDb to avoid circular initDb calls. */
 export async function refreshPlatformConfigCacheInternal(
   loader: () => Promise<{ key: string; value: string; plain: number }[]>,
 ): Promise<void> {
-  clearPlatformConfigCache();
-  populateFromRows(await loader());
+  swapCacheToRows(await loader());
 }
 
 export async function refreshPlatformConfigCache(): Promise<void> {
   await initDb();
   await purgeRetiredGatewayConfig();
-  clearPlatformConfigCache();
-  populateFromRows(await loadPlatformConfigRows());
+  swapCacheToRows(await loadPlatformConfigRows());
 }
 
 const RETIRED_GATEWAY_KEYS = [
@@ -396,17 +412,20 @@ function readEnv(key: string): string | undefined {
   return v && v.length > 0 ? v : undefined;
 }
 
-/** Resolved value: cache → DB → process.env */
+/**
+ * Resolved value: DB cache → process.env.
+ *
+ * An env value is NEVER written into `cache`. That cache holds what the
+ * DATABASE said, and `getPlatformValueAsync` trusts it without re-reading —
+ * so caching an env fallback here used to make the env value permanent and
+ * unbeatable: after an admin save deleted a key's cache entry, the next sync
+ * read re-seeded it from `.env`, and the panel's own value could never win
+ * again. The panel is the operator's source of truth; env is only the
+ * bootstrap fallback for a key the database does not carry.
+ */
 export function getPlatformValue(key: string): string | undefined {
   if (cache.has(key)) return cache.get(key);
-
-  const fromEnv = readEnv(key);
-  if (fromEnv) {
-    cache.set(key, fromEnv);
-    return fromEnv;
-  }
-
-  return undefined;
+  return readEnv(key);
 }
 
 /** Async variant that loads from DB when cache miss. */
@@ -420,6 +439,33 @@ export async function getPlatformValueAsync(
     return fromDb;
   }
   return getPlatformValue(key);
+}
+
+/**
+ * Re-read the config rows when the in-process copy is older than `ttlMs`.
+ *
+ * Long-lived processes (the resident worker) loaded their config once at
+ * boot, so a key switched in the admin panel only reached them on restart.
+ * Callers that must honour an operator change WITHOUT a restart — the
+ * provider/model resolver above all — await this first; it costs one small
+ * query per TTL window and nothing in between.
+ */
+let inFlightRefresh: Promise<void> | null = null;
+
+export async function refreshPlatformConfigIfStale(ttlMs = 15_000): Promise<void> {
+  if (Date.now() - lastConfigLoadAt < ttlMs) return;
+  if (inFlightRefresh) return inFlightRefresh;
+  inFlightRefresh = (async () => {
+    try {
+      await refreshPlatformConfigCache();
+    } catch {
+      // A transient DB hiccup must not break a model call: the previous
+      // snapshot stays in effect and the next window retries.
+    } finally {
+      inFlightRefresh = null;
+    }
+  })();
+  return inFlightRefresh;
 }
 
 export interface ConfigStatusItem {
@@ -504,6 +550,7 @@ export async function savePlatformConfig(
     }
   });
 
-  clearPlatformConfigCache();
+  // One atomic re-read: the saved rows become the live snapshot without ever
+  // exposing an empty cache (which a sync reader would answer from env).
   await refreshPlatformConfigCache();
 }

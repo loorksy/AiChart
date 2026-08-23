@@ -13,6 +13,9 @@
  *   It never carries provider payloads, keys, or internal module names.
  */
 import { t, type AppLocale } from "@/lib/i18n";
+// Identity only — the taxonomy renders in the browser too, so it must never
+// reach the server-side LLM layer just to name a provider.
+import { providerLabel, providerOfFailure, type LLMProvider } from "@/lib/providerIdentity";
 import type { SynthesizerFailureKind } from "./agents/finalDecisionSynthesizer";
 
 export type AgentFailureCode =
@@ -74,11 +77,32 @@ export function isRetryableFailureCode(code: AgentFailureCode): boolean {
   return RETRYABLE_CODES.has(code);
 }
 
+/** Failures whose message must name the provider that produced them. */
+const PROVIDER_NAMED_CODES: ReadonlySet<AgentFailureCode> = new Set([
+  "provider_billing",
+  "provider_unavailable",
+  "provider_bad_request",
+  "auth",
+  "rate_limit",
+]);
+
 /**
  * Classify a raw thrown error into a taxonomy code. Mirrors (and extends) the
  * synthesizer's message-sniffing rules so every stage shares one vocabulary.
  */
 export function classifyAgentError(error: unknown): {
+  code: AgentFailureCode;
+  retryable: boolean;
+  detail: string;
+  /** Which provider actually failed, when the LLM layer tagged the error. */
+  provider?: LLMProvider;
+} {
+  const classified = classifyAgentErrorCode(error);
+  const provider = providerOfFailure(error);
+  return provider ? { ...classified, provider } : classified;
+}
+
+function classifyAgentErrorCode(error: unknown): {
   code: AgentFailureCode;
   retryable: boolean;
   detail: string;
@@ -261,8 +285,14 @@ function namedStages(stages: readonly string[], locale: AppLocale): string {
 export function userMessageForFailure(
   code: AgentFailureCode,
   locale: AppLocale,
-  cause?: { stages?: readonly string[] },
+  cause?: { stages?: readonly string[]; provider?: LLMProvider | null },
 ): string {
+  // A provider fault is only actionable if it says WHICH provider: the
+  // operator topped up Anthropic while OpenAI was the exhausted account,
+  // because the message only ever said "the AI provider".
+  if (cause?.provider && PROVIDER_NAMED_CODES.has(code)) {
+    return t(locale, `fault.named.${code}`, { provider: providerLabel(cause.provider) });
+  }
   const stages = cause?.stages?.length ? namedStages(cause.stages, locale) : "";
   // Timeout and insufficient_data both carry stage ids, but they are different
   // faults. Folding insufficient_data into the "did not finish in time"

@@ -621,6 +621,7 @@ export async function runWebChatTurn(
         decision: "informational",
         summary: userMessageForFailure(classified.code, body.locale ?? "ar", {
           stages: unfinishedStages(stageEvents),
+          provider: classified.provider,
         }),
         metadata: {
           sessionId,
@@ -630,6 +631,7 @@ export async function runWebChatTurn(
           retryable: classified.retryable,
           error_name: error instanceof Error ? error.name : typeof error,
           error_detail: classified.detail.slice(0, 500),
+          ...(classified.provider ? { provider: classified.provider } : {}),
         },
       });
       const failed = createActivityEvent({
@@ -646,11 +648,14 @@ export async function runWebChatTurn(
         activityEvents,
         body.locale ?? "ar",
         {
-          detail: userMessageForFailure(classified.code, body.locale ?? "ar"),
+          detail: userMessageForFailure(classified.code, body.locale ?? "ar", {
+            provider: classified.provider,
+          }),
           retryable: classified.retryable,
           failureStage: "transport",
           failureCode: classified.code,
           traceId: requestId,
+          provider: classified.provider,
           // Name what actually stalled. The run already emitted a stage
           // event per step, so the stages left running or failed at the
           // moment it died ARE the cause — the operator should not have
@@ -676,6 +681,7 @@ export async function runWebChatTurn(
       send("error", {
         error: userMessageForFailure(classified.code, body.locale ?? "ar", {
           stages: unfinishedStages(stageEvents),
+          provider: classified.provider,
         }),
         code: classified.code,
         trace_id: requestId,

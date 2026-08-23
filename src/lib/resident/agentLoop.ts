@@ -23,7 +23,7 @@ import {
   type ModelMessage,
   type ToolSet,
 } from "ai";
-import { getActiveModel, getActiveProvider, getProviderApiKey } from "@/lib/llm";
+import { getProviderApiKeyAsync, resolveActiveSelection } from "@/lib/llm";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("resident.loop");
@@ -49,12 +49,17 @@ export class AgentModelUnavailableError extends Error {
   }
 }
 
-/** Resolve the platform's active provider/model into an AI-SDK model. */
+/**
+ * Resolve the platform's active provider/model into an AI-SDK model.
+ *
+ * Goes through the ONE resolver in lib/llm.ts — the worker must not decide
+ * for itself which provider answers, or an operator's panel switch would
+ * apply to the web process and not to this one.
+ */
 export async function resolveLoopModel(): Promise<LanguageModel> {
-  const provider = getActiveProvider();
-  const apiKey = getProviderApiKey(provider);
+  const { provider, model: modelId } = await resolveActiveSelection("deep");
+  const apiKey = await getProviderApiKeyAsync(provider);
   if (!apiKey) throw new AgentModelUnavailableError(provider);
-  const modelId = getActiveModel();
   if (provider === "anthropic") {
     const { createAnthropic } = await import("@ai-sdk/anthropic");
     return createAnthropic({ apiKey })(modelId);

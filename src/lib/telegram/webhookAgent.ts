@@ -29,7 +29,14 @@ import {
   setTelegramChatId,
   updateSettings,
 } from "@/lib/store";
-import { resolveUserModelSelection, withRequestModel } from "@/lib/llm";
+import {
+  checkModelRef,
+  getActiveProviderAsync,
+  isProviderReadyAsync,
+  providerLabel,
+  resolveUserModelSelection,
+  withRequestModel,
+} from "@/lib/llm";
 import { withUsageContext } from "@/lib/billing/usageMeter";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
 import {
@@ -225,29 +232,22 @@ function reportLinkButtons(recommendationId?: number | string | null): InlineBut
  */
 const MODEL_CALLBACK_PREFIX = "mdl:";
 
+/**
+ * Only the ACTIVE provider's models are offered.
+ *
+ * Listing every provider that merely has a key on file let a user pick a
+ * model the platform is not currently pointed at; the pick then failed at
+ * run time against that provider's billing, which reads as "the bot is
+ * broken" rather than "that model is not the active one".
+ */
 async function offeredTelegramModels(): Promise<{ ref: string; label: string }[]> {
-  const [openaiKey, anthropicKey] = await Promise.all([
-    getPlatformValueAsync("OPENAI_API_KEY"),
-    getPlatformValueAsync("ANTHROPIC_API_KEY"),
-  ]);
-  const offered: { ref: string; label: string }[] = [];
-  if (anthropicKey) {
-    offered.push(
-      ...ANTHROPIC_MODEL_CHOICES.map((m) => ({
-        ref: `anthropic/${m.id}`,
-        label: shortModelLabel(m.label),
-      })),
-    );
-  }
-  if (openaiKey) {
-    offered.push(
-      ...OPENAI_MODEL_CHOICES.map((m) => ({
-        ref: `openai/${m.id}`,
-        label: shortModelLabel(m.label),
-      })),
-    );
-  }
-  return offered;
+  const provider = await getActiveProviderAsync();
+  if (!(await isProviderReadyAsync(provider))) return [];
+  const choices = provider === "anthropic" ? ANTHROPIC_MODEL_CHOICES : OPENAI_MODEL_CHOICES;
+  return choices.map((m) => ({
+    ref: `${provider}/${m.id}`,
+    label: shortModelLabel(m.label),
+  }));
 }
 
 async function sendModelMenu(
@@ -290,11 +290,21 @@ async function handleModelCallback(
     return "unlinked";
   }
   const ref = callback.data.slice(MODEL_CALLBACK_PREFIX.length);
-  const selection = await resolveUserModelSelection(ref).catch(() => null);
-  if (!selection) {
-    await answerCallbackQuery(callback.callbackId, t("ar", "tg.model_invalid")).catch(() => {});
+  const checked = await checkModelRef(ref).catch(() => null);
+  if (!checked?.ok) {
+    // Say WHY. A model belonging to a provider the platform is not pointed
+    // at is refused by name here, instead of being stored and later failing
+    // as a misleading billing error from a provider nobody selected.
+    const message =
+      checked && checked.reason === "provider_not_active"
+        ? t("ar", "tg.model_wrong_provider", {
+            provider: providerLabel(checked.activeProvider),
+          })
+        : t("ar", "tg.model_invalid");
+    await answerCallbackQuery(callback.callbackId, message).catch(() => {});
     return "ignored";
   }
+  const selection = checked.selection;
   await updateSettings(userId, { telegram_model_ref: ref });
   await logAudit(userId, "telegram_model", ref);
   const label = shortModelLabel(selection.model);

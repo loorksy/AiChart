@@ -18,8 +18,15 @@ export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 // the picker, the settings validator, and this client must never disagree.
 export { ANTHROPIC_MODEL_CHOICES } from "./modelCatalog";
 
+/**
+ * The client does not decide WHICH model runs — lib/llm.ts resolves that from
+ * the operator's configuration and passes it explicitly on every call. This
+ * constant is only the last-resort fallback for a call that named none; it
+ * deliberately does NOT read ANTHROPIC_MODEL, because a second reader of the
+ * same key is a second opinion, and the two can disagree.
+ */
 export function getAnthropicModel(): string {
-  return getPlatformValue("ANTHROPIC_MODEL") || DEFAULT_ANTHROPIC_MODEL;
+  return DEFAULT_ANTHROPIC_MODEL;
 }
 
 const API_URL = "https://api.anthropic.com/v1/messages";

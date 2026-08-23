@@ -158,6 +158,12 @@ export function AgentFaultCard({ envelope }: { envelope: ResultEnvelope }) {
         : [];
   const reason = userMessageForFailure(envelope.failure_code ?? "unknown", locale, {
     stages,
+    // A provider fault names its provider here too — the same sentence the
+    // server logged, not a vaguer client-side paraphrase of it.
+    provider:
+      envelope.failure_provider === "openai" || envelope.failure_provider === "anthropic"
+        ? envelope.failure_provider
+        : null,
   });
   const retryHint = envelope.retryable
     ? t("agent.fault.retryable")

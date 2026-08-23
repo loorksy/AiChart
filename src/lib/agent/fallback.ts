@@ -9,6 +9,7 @@
  * guessing whether "informational" meant analysis or fault.
  */
 import type { AppLocale } from "@/lib/i18n";
+import type { LLMProvider } from "@/lib/providerIdentity";
 import {
   buildInformationalConfidence,
 } from "./confidenceSemantics";
@@ -60,6 +61,8 @@ export function buildAgentFallbackResult(
      * through the same labels the run checklist already shows.
      */
     degradedStages?: readonly string[];
+    /** Which provider failed, when the failure was a provider fault. */
+    provider?: LLMProvider | null;
   } = {},
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({ analysisConfidence: 0 });
@@ -68,6 +71,7 @@ export function buildAgentFallbackResult(
   // Safe, localized, code-specific message — the ONLY thing the user sees.
   const safeMessage = userMessageForFailure(failureCode, locale, {
     stages: options.degradedStages,
+    provider: options.provider,
   });
   const summary =
     locale === "en"
@@ -85,6 +89,7 @@ export function buildAgentFallbackResult(
       failureCode,
       retryable,
       traceId: options.traceId,
+      failureProvider: options.provider ?? undefined,
     }),
     confidence:
       typeof confidenceSemantics.displayValue === "number"
@@ -123,6 +128,7 @@ export function resultForGeneralQuestionFailure(
     retryable: classified.retryable,
     traceId: options.traceId,
     detail: classified.detail,
+    provider: classified.provider,
   });
 }
 

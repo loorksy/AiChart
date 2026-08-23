@@ -42,7 +42,9 @@ function idNum(id: string): number {
 }
 
 /** In-memory stand-in for the ioredis slice the turn stream uses. */
-class FakeTurnRedis implements import("@/lib/resident/turnStream").TurnStreamClient {
+type FakeClient = import("@/lib/resident/turnStream").TurnStreamClient;
+
+class FakeTurnRedis implements FakeClient {
   streams = new Map<string, Array<[string, string[]]>>();
   kv = new Map<string, string>();
   ttls = new Map<string, number>();
