@@ -180,7 +180,7 @@ describe("the surface shares the platform's brain", () => {
     // cannot deliver, the honest failure text goes out, never a substitute
     // image from a different renderer.
     assert.match(agentSource, /captureChartWithPlatformFallback\(/);
-    assert.match(agentSource, /telegramChartFailed\(\)/);
+    assert.match(agentSource, /telegramChartFailed\(locale\)/);
     assert.doesNotMatch(agentSource, /chartSnapshot|buildChartSnapshotBuffer|quickchart/i);
   });
 });
@@ -270,7 +270,7 @@ describe("the professional turn: progress, memory, and the right theatre", () =>
     // finish() must run before the answer replaces the bubble — a trailing
     // progress edit landing after finalize would overwrite the result.
     const finish = agentSource.indexOf("reporter.finish()");
-    const deliver = agentSource.indexOf("renderToolsBlock(reporter.snapshot())");
+    const deliver = agentSource.indexOf("renderToolsBlock(reporter.snapshot(), locale)");
     assert.ok(finish > 0 && deliver > 0 && finish < deliver);
   });
 
@@ -285,7 +285,7 @@ describe("the professional turn: progress, memory, and the right theatre", () =>
     // alone — no cards, no suggestion chips, no report button, no tools block.
     const informational = agentSource.indexOf('result.decision === "informational"');
     assert.ok(informational > 0, "the informational delivery must exist");
-    const cards = agentSource.indexOf("renderCardsForTelegram(deriveCards(result))");
+    const cards = agentSource.indexOf("renderCardsForTelegram(deriveCards(result), locale)");
     assert.ok(informational < cards, "the conversational delivery returns before the card path");
     const informationalBlock = agentSource.slice(informational, cards);
     assert.doesNotMatch(informationalBlock, /generateAgentSuggestions/);

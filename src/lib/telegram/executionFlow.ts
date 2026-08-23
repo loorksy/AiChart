@@ -7,6 +7,11 @@
  * pins that). All real guards live server-side in lib/execution — this file
  * only renders menus and translates the short refusal codes.
  *
+ * Every string here renders in the ACTING user's language: the caller
+ * resolves the account's locale once, at the callback boundary, and threads
+ * it through the menu and the refusals. The guards themselves are unchanged —
+ * only the language they speak.
+ *
  * Callback grammar (compact — Telegram caps callback_data at 64 bytes):
  *   xq:<rec>                 open the volume menu for a recommendation
  *   xv:<rec>:<centi>:<nonce> re-render the menu at a new size (± taps)
@@ -16,7 +21,7 @@
  * tap, so the execute press has a stable idempotency key: a double tap is
  * one order by construction.
  */
-import { t } from "@/lib/i18n";
+import { t, type AppLocale } from "@/lib/i18n";
 import { DATA_SYMBOL } from "@/lib/gold";
 import {
   answerCallbackQuery,
@@ -39,10 +44,10 @@ export function isExecutionCallback(data: string): boolean {
   );
 }
 
-function refusalText(code: ExecutionRefusalCode | string): string {
+function refusalText(code: ExecutionRefusalCode | string, locale: AppLocale): string {
   const key = `exec.err.${code}`;
-  const text = t("ar", key);
-  return text === key ? t("ar", "exec.err.metaapi_error") : text;
+  const text = t(locale, key);
+  return text === key ? t(locale, "exec.err.metaapi_error") : text;
 }
 
 function newNonce(): string {
@@ -57,12 +62,13 @@ function newNonce(): string {
 export async function executionButtonRow(
   userId: number,
   recommendationId: number | string | null | undefined,
+  locale: AppLocale,
 ): Promise<InlineButton[][]> {
   if (recommendationId == null) return [];
   try {
     const context = await buildExecutionContext(userId, String(recommendationId));
     if (!context.executable) return [];
-    return [[{ text: `⚡ ${t("ar", "exec.button")}`, callback_data: `xq:${recommendationId}` }]];
+    return [[{ text: `⚡ ${t(locale, "exec.button")}`, callback_data: `xq:${recommendationId}` }]];
   } catch {
     return [];
   }
@@ -83,19 +89,21 @@ function menuText(input: {
   volume: number;
   balance: number | null;
   currency: string | null;
+  locale: AppLocale;
 }): string {
+  const locale = input.locale;
   const lines = [
-    `<b>${input.symbol} ${t("ar", input.direction === "sell" ? "decision.sell" : "decision.buy")}</b>`,
-    t("ar", "exec.menu.levels", {
+    `<b>${input.symbol} ${t(locale, input.direction === "sell" ? "decision.sell" : "decision.buy")}</b>`,
+    t(locale, "exec.menu.levels", {
       entry: String(input.entry ?? "—"),
       stop: String(input.stopLoss ?? "—"),
       tp: String(input.takeProfit ?? "—"),
     }),
-    t("ar", "exec.menu.volume", { volume: String(input.volume) }),
+    t(locale, "exec.menu.volume", { volume: String(input.volume) }),
   ];
   if (input.balance != null) {
     lines.push(
-      t("ar", "exec.menu.balance", {
+      t(locale, "exec.menu.balance", {
         balance: String(input.balance),
         currency: input.currency ?? "",
       }),
@@ -104,7 +112,12 @@ function menuText(input: {
   return lines.join("\n");
 }
 
-function menuKeyboard(state: MenuState, volume: number, step: number): InlineButton[][] {
+function menuKeyboard(
+  state: MenuState,
+  volume: number,
+  step: number,
+  locale: AppLocale,
+): InlineButton[][] {
   const minus = Math.max(1, Math.round((volume - step) * 100));
   const plus = Math.round((volume + step) * 100);
   return [
@@ -115,11 +128,11 @@ function menuKeyboard(state: MenuState, volume: number, step: number): InlineBut
     ],
     [
       {
-        text: `⚡ ${t("ar", "exec.confirm", { volume: String(volume) })}`,
+        text: `⚡ ${t(locale, "exec.confirm", { volume: String(volume) })}`,
         callback_data: `xg:${state.recommendationId}:${Math.round(volume * 100)}:${state.nonce}`,
       },
     ],
-    [{ text: t("ar", "exec.cancel"), callback_data: "xx" }],
+    [{ text: t(locale, "exec.cancel"), callback_data: "xx" }],
   ];
 }
 
@@ -129,6 +142,8 @@ export interface ExecutionCallbackInput {
   messageId: number;
   callbackId: string;
   data: string;
+  /** The acting account's language, resolved once by the callback router. */
+  locale: AppLocale;
 }
 
 /**
@@ -138,12 +153,12 @@ export interface ExecutionCallbackInput {
 export async function handleExecutionCallback(
   input: ExecutionCallbackInput,
 ): Promise<boolean> {
-  const { data } = input;
+  const { data, locale } = input;
   if (!isExecutionCallback(data)) return false;
 
   if (data === "xx") {
     await answerCallbackQuery(input.callbackId).catch(() => {});
-    await editMessageText(input.chatId, input.messageId, t("ar", "exec.cancelled")).catch(
+    await editMessageText(input.chatId, input.messageId, t(locale, "exec.cancelled")).catch(
       () => {},
     );
     return true;
@@ -155,7 +170,7 @@ export async function handleExecutionCallback(
     if (!context.executable) {
       await answerCallbackQuery(
         input.callbackId,
-        refusalText(context.refusal ?? "metaapi_error"),
+        refusalText(context.refusal ?? "metaapi_error", locale),
       ).catch(() => {});
       return true;
     }
@@ -177,8 +192,9 @@ export async function handleExecutionCallback(
         volume,
         balance: context.balance ?? null,
         currency: context.currency ?? null,
+        locale,
       }),
-      menuKeyboard(state, volume, context.volumeStep ?? 0.01),
+      menuKeyboard(state, volume, context.volumeStep ?? 0.01, locale),
     ).catch(() => {});
     return true;
   }
@@ -190,7 +206,7 @@ export async function handleExecutionCallback(
     if (!context.executable) {
       await answerCallbackQuery(
         input.callbackId,
-        refusalText(context.refusal ?? "metaapi_error"),
+        refusalText(context.refusal ?? "metaapi_error", locale),
       ).catch(() => {});
       return true;
     }
@@ -212,6 +228,7 @@ export async function handleExecutionCallback(
         volume,
         balance: context.balance ?? null,
         currency: context.currency ?? null,
+        locale,
       }),
       {
         parseMode: "HTML",
@@ -219,6 +236,7 @@ export async function handleExecutionCallback(
           { recommendationId: recommendationId!, centiVolume: Math.round(volume * 100), nonce: nonce! },
           volume,
           step,
+          locale,
         ),
       },
     ).catch(() => {});
@@ -238,17 +256,17 @@ export async function handleExecutionCallback(
     });
     const text = result.ok
       ? result.execution.executed_price != null
-        ? `✅ ${t("ar", "exec.done", {
-            direction: t("ar", result.execution.direction === "sell" ? "decision.sell" : "decision.buy"),
+        ? `✅ ${t(locale, "exec.done", {
+            direction: t(locale, result.execution.direction === "sell" ? "decision.sell" : "decision.buy"),
             volume: String(result.execution.volume),
             price: String(result.execution.executed_price),
           })}${
             result.execution.slippage != null
-              ? ` (${t("ar", "exec.done.slippage", { slippage: String(result.execution.slippage) })})`
+              ? ` (${t(locale, "exec.done.slippage", { slippage: String(result.execution.slippage) })})`
               : ""
           }`
-        : `✅ ${t("ar", "exec.done.pending_price")}`
-      : `⛔ ${refusalText(result.code)}`;
+        : `✅ ${t(locale, "exec.done.pending_price")}`
+      : `⛔ ${refusalText(result.code, locale)}`;
     await editMessageText(input.chatId, input.messageId, text).catch(() => {});
     return true;
   }

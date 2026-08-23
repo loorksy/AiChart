@@ -237,7 +237,7 @@ describe("the phone gets the same answer", () => {
     const silent = cards
       .filter((c) => !COLLAPSED_BY_DEFAULT.has(c.kind))
       .filter((c) => {
-        const text = renderCardForTelegram(c);
+        const text = renderCardForTelegram(c, "ar");
         return text == null || !text.trim();
       })
       .map((c) => c.kind)
@@ -255,7 +255,7 @@ describe("the phone gets the same answer", () => {
       const card = deriveCards(fullResult()).find((c) => c.kind === kind);
       if (!card) continue;
       assert.equal(
-        renderCardForTelegram(card),
+        renderCardForTelegram(card, "ar"),
         null,
         `${kind} must not be sent to a phone — there is no disclosure triangle there`,
       );
@@ -266,11 +266,12 @@ describe("the phone gets the same answer", () => {
     // The full fixture carries a closed-market scenario, so THAT leads — an
     // operator must learn the market is closed before reading the plan. The
     // decision follows immediately.
-    const text = renderCardsForTelegram(deriveCards(fullResult()));
+    const text = renderCardsForTelegram(deriveCards(fullResult()), "ar");
     assert.ok(text.startsWith("🕒 <b>السوق مغلق"), "the scenario frames everything below it");
     assert.ok(text.includes("<b>شراء</b>"), "the decision follows the frame");
     const openText = renderCardsForTelegram(
       deriveCards(fullResult({ marketClosedScenario: undefined })),
+      "ar",
     );
     assert.ok(openText.startsWith("<b>شراء</b>"), "mid-session the decision leads");
     assert.ok(text.includes("3980"), "the stop must survive to the phone");
@@ -283,7 +284,7 @@ describe("the phone gets the same answer", () => {
   });
 
   it("answers a refusal without dressing it as a plan", () => {
-    const text = renderCardsForTelegram(deriveCards(minimalResult()));
+    const text = renderCardsForTelegram(deriveCards(minimalResult()), "ar");
     // A refusal is "no recommendation", never a WAIT verdict — the platform
     // decision layer only answers buy or sell.
     assert.ok(text.includes("لا توصية"));
@@ -307,6 +308,7 @@ describe("the phone gets the same answer", () => {
           riskWarnings: ["لم تصدر أي توصية لأن السوق مغلق."],
         }),
       ),
+      "ar",
     );
     assert.equal(text.includes("أهلاً"), true);
     for (const leak of [
@@ -326,12 +328,16 @@ describe("the phone gets the same answer", () => {
       (c) => c.kind === "news_risk",
     );
     assert.ok(card);
-    assert.equal(renderCardForTelegram(card), null, "'nothing to report' is not worth a push");
+    assert.equal(
+      renderCardForTelegram(card, "ar"),
+      null,
+      "'nothing to report' is not worth a push",
+    );
   });
 
   it("refuses an unknown card loudly rather than rendering a blank", () => {
     assert.throws(
-      () => renderCardForTelegram({ kind: "not_a_card" } as unknown as AgentCard),
+      () => renderCardForTelegram({ kind: "not_a_card" } as unknown as AgentCard, "ar"),
       /unhandled agent card/,
     );
     assert.throws(() => assertNeverCard("x" as never), /unhandled agent card/);
@@ -368,7 +374,7 @@ describe("both surfaces are wired to the derivation", () => {
       path.join(SRC, "lib", "telegram", "webhookAgent.ts"),
       "utf8",
     );
-    assert.match(agent, /renderCardsForTelegram\(deriveCards\(result\)\)/);
+    assert.match(agent, /renderCardsForTelegram\(deriveCards\(result\), locale\)/);
     assert.doesNotMatch(
       agent,
       /analysisCard\(/,

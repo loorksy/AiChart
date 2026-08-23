@@ -1103,6 +1103,9 @@ export const ar: Record<TranslationKey, string> = {
   "settings.model_wrong_provider":
     "هذا النموذج لا يتبع المزوّد النشط ({provider}) — اختر نموذجاً منه.",
   "tg.model_none": "لا توجد نماذج متاحة — لم يُضبط أي مفتاح مزوّد بعد.",
+  "tg.lang_menu_title": "اختر اللغة التي يجيب بها البوت:",
+  "tg.lang_current": "اللغة الحالية: {name}",
+  "tg.lang_changed": "أصبحت {name} لغة حسابك على كل الأسطح.",
   "rec.badge.hit": "تحقق",
   "rec.badge.pending": "لم يتحقق",
   "rec.footer.valid_now": "التوصية نشطة الآن.",

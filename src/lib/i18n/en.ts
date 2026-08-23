@@ -1121,6 +1121,9 @@ export const en = {
   "settings.model_wrong_provider":
     "That model does not belong to the active provider ({provider}) — pick one of its models.",
   "tg.model_none": "No models available — no provider key is configured yet.",
+  "tg.lang_menu_title": "Choose the language the bot answers in:",
+  "tg.lang_current": "Current language: {name}",
+  "tg.lang_changed": "{name} is now your account's language, on every surface.",
   "rec.badge.hit": "Hit",
   "rec.badge.pending": "Not reached",
   "rec.footer.valid_now": "The recommendation is live now.",

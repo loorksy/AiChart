@@ -100,9 +100,10 @@ describe("every recommendation carries the visual_review card", () => {
   it("the Telegram rendering includes the line in both states", () => {
     const confirmed = renderCardsForTelegram(
       deriveCards(buyResult({ visualReview: { state: "confirmed", timeframes: ["1h"] } })),
+      "ar",
     );
     assert.match(confirmed, /TradingView/);
-    const blind = renderCardsForTelegram(deriveCards(buyResult()));
+    const blind = renderCardsForTelegram(deriveCards(buyResult()), "ar");
     assert.match(blind, /رقمية/);
   });
 });

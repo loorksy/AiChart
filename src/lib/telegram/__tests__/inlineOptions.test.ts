@@ -40,7 +40,7 @@ describe("agent-authored Telegram inline options", () => {
   });
 
   it("authors greeting chips from the turn, not a standing keypad", () => {
-    const greeting = optionsForTelegramFastPath("greeting");
+    const greeting = optionsForTelegramFastPath("greeting", "ar");
     const labels = greeting.map((o) => o.label);
     assert.ok(labels.includes("تحليل الشارت الحالي"));
     assert.ok(!labels.includes("توصية الذهب"));

@@ -11,6 +11,7 @@
 import { randomBytes } from "node:crypto";
 import type { AgentOption } from "@/lib/agent/types";
 import { contextualOptionsFor } from "@/lib/agent/contextualOptions";
+import type { AppLocale } from "@/lib/i18n";
 import type { InlineButton } from "@/lib/telegram";
 
 export const OPTION_CALLBACK_PREFIX = "o:";
@@ -46,18 +47,23 @@ export function telegramSessionId(chatId: string): string {
   return `tg:${chatId}`;
 }
 
-/** Fast-path turns still get agent-authored chips for that context — never a standing keypad. */
+/**
+ * Fast-path turns still get agent-authored chips for that context — never a
+ * standing keypad, and never a pinned language: the chips are labelled in the
+ * ACCOUNT's locale, which the caller has already resolved.
+ */
 export function optionsForTelegramFastPath(
   kind: "greeting" | "menu" | "session" | "chart_photo" | "chart_failed",
+  locale: AppLocale,
 ): AgentOption[] {
   if (kind === "greeting" || kind === "menu") {
-    return contextualOptionsFor({ decision: "informational", locale: "ar" }) ?? [];
+    return contextualOptionsFor({ decision: "informational", locale }) ?? [];
   }
   return (
     contextualOptionsFor({
       decision: "informational",
       noActiveRecommendation: true,
-      locale: "ar",
+      locale,
     }) ?? []
   );
 }

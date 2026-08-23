@@ -26,6 +26,7 @@ import { escapeTelegramHtml } from "@/lib/telegram/html";
 import {
   alreadyHandled,
   handleTelegramCallback,
+  localeForChat,
   parseTelegramCallback,
   parseTelegramUpdate,
   prepareTelegramTurn,
@@ -107,9 +108,12 @@ export async function dispatchTelegramUpdate(
       updateId,
       error: error instanceof Error ? error.message : String(error),
     });
+    // Even the apology belongs to the account: the chat's linked user decides
+    // the language, and an unlinked chat gets the platform default.
+    const chatId = (callback ?? message)!.chatId;
     await sendMessage(
-      (callback ?? message)!.chatId,
-      t("ar", "tg.analysis_failed"),
+      chatId,
+      t(await localeForChat(chatId), "tg.analysis_failed"),
     ).catch(() => {});
     return { kind: "handled", action: "failed" };
   }

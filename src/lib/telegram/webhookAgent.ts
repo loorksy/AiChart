@@ -11,9 +11,15 @@
  * for a linked account with an executable plan — the manual execute button.
  * The AGENT never presses it: execution callbacks are human taps routed
  * straight to lib/execution, outside the model loop entirely.
+ *
+ * Every reply — prose, buttons, refusals, receipts — renders in the ACCOUNT's
+ * language, resolved once per entry point from the linked user and threaded
+ * down. A chat with no linked account gets the platform default; the language
+ * is never guessed from the message text.
  */
 import { newId } from "@/lib/agent/activity";
-import { t } from "@/lib/i18n";
+import { DEFAULT_LOCALE, isAppLocale, t, type AppLocale } from "@/lib/i18n";
+import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
 import { rememberOptions, resolveOptionReply } from "@/lib/agent/sessionOptions";
 import { generateAgentSuggestions } from "@/lib/agent/suggestions/generateAgentSuggestions";
@@ -58,7 +64,7 @@ import {
 } from "@/lib/telegram";
 import { TelegramLiveTurn } from "@/lib/telegram/liveReply";
 import {
-  stageLabelAr,
+  stageLabel,
   TelegramProgressReporter,
 } from "@/lib/telegram/liveProgress";
 import { escapeTelegramHtml, TELEGRAM_TEXT_LIMIT } from "@/lib/telegram/html";
@@ -215,11 +221,24 @@ export function resetTelegramDedupe(): void {
 }
 
 /** Like OpenClaw's "Open Report" — a link on a recommendation, not a standing menu. */
-function reportLinkButtons(recommendationId?: number | string | null): InlineButton[][] {
+function reportLinkButtons(
+  locale: AppLocale,
+  recommendationId?: number | string | null,
+): InlineButton[][] {
   const url = recommendationId
     ? `${getPublicAppUrl()}/recommendations/${recommendationId}`
     : `${getPublicAppUrl()}/chat`;
-  return [[{ text: t("ar", "tg.open_report"), url }]];
+  return [[{ text: t(locale, "tg.open_report"), url }]];
+}
+
+/**
+ * The language a chat is answered in: the linked account's, or the platform
+ * default when no account owns this chat yet. Used by the error paths, which
+ * have no user in hand and must still speak the right language.
+ */
+export async function localeForChat(chatId: string): Promise<AppLocale> {
+  const userId = await getUserByTelegramChatId(chatId).catch(() => null);
+  return resolveUserLocale(userId);
 }
 
 /**
@@ -253,6 +272,7 @@ async function offeredTelegramModels(): Promise<{ ref: string; label: string }[]
 async function sendModelMenu(
   userId: number,
   chatId: string,
+  locale: AppLocale,
   replyToMessageId?: number,
 ): Promise<void> {
   const [settings, offered] = await Promise.all([
@@ -260,7 +280,7 @@ async function sendModelMenu(
     offeredTelegramModels(),
   ]);
   if (!offered.length) {
-    await sendMessage(chatId, t("ar", "tg.model_none"), undefined, { replyToMessageId });
+    await sendMessage(chatId, t(locale, "tg.model_none"), undefined, { replyToMessageId });
     return;
   }
   const current = settings.telegram_model_ref ?? PLATFORM_DEFAULT_MODEL_REF;
@@ -274,8 +294,8 @@ async function sendModelMenu(
     },
   ]);
   const text = [
-    t("ar", "tg.model_menu_title"),
-    t("ar", "tg.model_current", { name: currentLabel }),
+    t(locale, "tg.model_menu_title"),
+    t(locale, "tg.model_current", { name: currentLabel }),
   ].join("\n");
   await sendMessage(chatId, text, rows, { replyToMessageId });
 }
@@ -286,9 +306,10 @@ async function handleModelCallback(
 ): Promise<"answered" | "unlinked" | "ignored"> {
   const userId = await getUserByTelegramChatId(callback.chatId);
   if (userId == null) {
-    await answerCallbackQuery(callback.callbackId, t("ar", "tg.link_prompt")).catch(() => {});
+    await answerCallbackQuery(callback.callbackId, linkPrompt(DEFAULT_LOCALE)).catch(() => {});
     return "unlinked";
   }
+  const locale = await resolveUserLocale(userId);
   const ref = callback.data.slice(MODEL_CALLBACK_PREFIX.length);
   const checked = await checkModelRef(ref).catch(() => null);
   if (!checked?.ok) {
@@ -297,10 +318,10 @@ async function handleModelCallback(
     // as a misleading billing error from a provider nobody selected.
     const message =
       checked && checked.reason === "provider_not_active"
-        ? t("ar", "tg.model_wrong_provider", {
+        ? t(locale, "tg.model_wrong_provider", {
             provider: providerLabel(checked.activeProvider),
           })
-        : t("ar", "tg.model_invalid");
+        : t(locale, "tg.model_invalid");
     await answerCallbackQuery(callback.callbackId, message).catch(() => {});
     return "ignored";
   }
@@ -308,10 +329,86 @@ async function handleModelCallback(
   await updateSettings(userId, { telegram_model_ref: ref });
   await logAudit(userId, "telegram_model", ref);
   const label = shortModelLabel(selection.model);
-  await answerCallbackQuery(callback.callbackId, t("ar", "tg.model_changed", { name: label })).catch(
-    () => {},
-  );
-  const confirmation = t("ar", "tg.model_changed", { name: label });
+  await answerCallbackQuery(
+    callback.callbackId,
+    t(locale, "tg.model_changed", { name: label }),
+  ).catch(() => {});
+  const confirmation = t(locale, "tg.model_changed", { name: label });
+  try {
+    await editMessageText(callback.chatId, callback.messageId, confirmation);
+  } catch {
+    await editMessageReplyMarkup(callback.chatId, callback.messageId).catch(() => {});
+  }
+  return "answered";
+}
+
+/**
+ * The account's language, switchable from the bot.
+ *
+ * Same shape as the model picker above — an inline keyboard and one callback
+ * — because it is the same kind of thing: a stored preference, changed by a
+ * tap, confirmed in place. What differs is the SCOPE. A model pick belongs to
+ * this surface (`telegram_model_ref`); a language belongs to the PERSON, so
+ * this writes `trading_settings.language`, the one column the web app, the
+ * bot and the MCP tools all read. Switching here switches everywhere.
+ */
+const LANGUAGE_CALLBACK_PREFIX = "lang:";
+
+/** Each language named in itself — an endonym reads the same in both dictionaries. */
+const LANGUAGE_CHOICES: readonly { ref: AppLocale; nameKey: string }[] = [
+  { ref: "ar", nameKey: "language.arabic" },
+  { ref: "en", nameKey: "language.english" },
+] as const;
+
+function languageName(ref: AppLocale, locale: AppLocale): string {
+  const choice = LANGUAGE_CHOICES.find((c) => c.ref === ref);
+  return choice ? t(locale, choice.nameKey) : ref;
+}
+
+async function sendLanguageMenu(
+  chatId: string,
+  locale: AppLocale,
+  replyToMessageId?: number,
+): Promise<void> {
+  const rows: InlineButton[][] = LANGUAGE_CHOICES.map((choice) => [
+    {
+      text: `${choice.ref === locale ? "✅ " : ""}${t(locale, choice.nameKey)}`,
+      callback_data: `${LANGUAGE_CALLBACK_PREFIX}${choice.ref}`,
+    },
+  ]);
+  const text = [
+    t(locale, "tg.lang_menu_title"),
+    t(locale, "tg.lang_current", { name: languageName(locale, locale) }),
+  ].join("\n");
+  await sendMessage(chatId, text, rows, { replyToMessageId });
+}
+
+/**
+ * A tap on a language button: store it on the ACCOUNT, then confirm in the
+ * language just chosen — the first sentence a user reads after switching is
+ * the proof that the switch took.
+ */
+async function handleLanguageCallback(
+  callback: TelegramCallback,
+): Promise<"answered" | "unlinked" | "ignored"> {
+  const userId = await getUserByTelegramChatId(callback.chatId);
+  if (userId == null) {
+    await answerCallbackQuery(callback.callbackId, linkPrompt(DEFAULT_LOCALE)).catch(() => {});
+    return "unlinked";
+  }
+  const ref = callback.data.slice(LANGUAGE_CALLBACK_PREFIX.length);
+  if (!isAppLocale(ref)) {
+    // A locale this build no longer offers: the button is stale, not the user.
+    const current = await resolveUserLocale(userId);
+    await answerCallbackQuery(callback.callbackId, t(current, "tg.option_expired")).catch(
+      () => {},
+    );
+    return "ignored";
+  }
+  await updateSettings(userId, { language: ref });
+  await logAudit(userId, "telegram_language", ref);
+  const confirmation = t(ref, "tg.lang_changed", { name: languageName(ref, ref) });
+  await answerCallbackQuery(callback.callbackId, confirmation).catch(() => {});
   try {
     await editMessageText(callback.chatId, callback.messageId, confirmation);
   } catch {
@@ -330,13 +427,14 @@ async function handleModelCallback(
  */
 export function renderToolsBlock(
   stages: readonly { stage: string; status: "running" | "done" | "failed" }[],
+  locale: AppLocale,
 ): string {
   const finished = stages.filter((row) => row.status !== "running");
   if (!finished.length) return "";
   const lines = finished.map(
-    (row) => `${row.status === "failed" ? "✗" : "✓"} ${stageLabelAr(row.stage)}`,
+    (row) => `${row.status === "failed" ? "✗" : "✓"} ${stageLabel(row.stage, locale)}`,
   );
-  return `<blockquote expandable>🛠 ${t("ar", "tg.tools_used", {
+  return `<blockquote expandable>🛠 ${t(locale, "tg.tools_used", {
     count: String(finished.length),
   })}\n${lines.join("\n")}</blockquote>`;
 }
@@ -373,7 +471,9 @@ async function deliverReply(input: {
   );
 }
 
-const LINK_PROMPT = t("ar", "tg.link_prompt");
+function linkPrompt(locale: AppLocale): string {
+  return t(locale, "tg.link_prompt");
+}
 
 /**
  * `/start`, `/start@bot`, `/start CODE`, `/start@bot CODE`, or a bare
@@ -415,13 +515,16 @@ export async function handleTelegramCallback(
   if (callback.data.startsWith(MODEL_CALLBACK_PREFIX)) {
     return handleModelCallback(callback);
   }
+  if (callback.data.startsWith(LANGUAGE_CALLBACK_PREFIX)) {
+    return handleLanguageCallback(callback);
+  }
   // Manual execution taps — a HUMAN pressing a button, never the agent. The
   // flow module renders menus only; every real guard is server-side in
   // lib/execution, and an unlinked chat gets the same short refusal.
   if (isExecutionCallback(callback.data)) {
     const executionUserId = await getUserByTelegramChatId(callback.chatId);
     if (executionUserId == null) {
-      await answerCallbackQuery(callback.callbackId, t("ar", "tg.link_prompt")).catch(
+      await answerCallbackQuery(callback.callbackId, linkPrompt(DEFAULT_LOCALE)).catch(
         () => {},
       );
       return "ignored";
@@ -432,14 +535,16 @@ export async function handleTelegramCallback(
       messageId: callback.messageId,
       callbackId: callback.callbackId,
       data: callback.data,
+      locale: await resolveUserLocale(executionUserId),
     });
     return "answered";
   }
   const resolved = resolveInlineOption(callback.data, callback.chatId);
   if (!resolved) {
-    await answerCallbackQuery(callback.callbackId, t("ar", "tg.option_expired")).catch(
-      () => {},
-    );
+    await answerCallbackQuery(
+      callback.callbackId,
+      t(await localeForChat(callback.chatId), "tg.option_expired"),
+    ).catch(() => {});
     await editMessageReplyMarkup(callback.chatId, callback.messageId).catch(() => {});
     return "ignored";
   }
@@ -491,22 +596,26 @@ export async function prepareTelegramTurn(
   if (startMatch) {
     const code = startMatch.code;
     if (!code) {
-      await sendMessage(message.chatId, LINK_PROMPT);
+      // No account owns this chat yet, and the message text is not evidence
+      // of anything: the platform default answers, never a guess.
+      await sendMessage(message.chatId, linkPrompt(DEFAULT_LOCALE));
       return { kind: "handled", outcome: "unlinked" };
     }
     const userId = await consumeLinkCode(code);
     if (userId == null) {
       await sendMessage(
         message.chatId,
-        t("ar", "tg.link_code_invalid"),
+        t(DEFAULT_LOCALE, "tg.link_code_invalid"),
       );
       return { kind: "handled", outcome: "unlinked" };
     }
     await setTelegramChatId(userId, message.chatId);
     await logAudit(userId, "telegram_linked", `chat=${message.chatId}`);
+    // The chat now belongs to an account, so the receipt is already in that
+    // account's language — the first sentence the bot says is the right one.
     await deliverReply({
       chatId: message.chatId,
-      text: telegramLinkedWelcome(),
+      text: telegramLinkedWelcome(await resolveUserLocale(userId)),
       replyToMessageId: message.messageId,
     });
     return { kind: "handled", outcome: "linked" };
@@ -514,9 +623,11 @@ export async function prepareTelegramTurn(
 
   const userId = await getUserByTelegramChatId(message.chatId);
   if (userId == null) {
-    await sendMessage(message.chatId, LINK_PROMPT);
+    await sendMessage(message.chatId, linkPrompt(DEFAULT_LOCALE));
     return { kind: "handled", outcome: "unlinked" };
   }
+  // ONE resolve for the whole turn's mechanics, threaded down from here.
+  const locale = await resolveUserLocale(userId);
 
   // Explicit commands are the ONE mechanical path: /chart produces a photo
   // (which the agent cannot send as prose); the other menu commands expand
@@ -542,7 +653,7 @@ export async function prepareTelegramTurn(
       liveSession: false,
     });
     if (!captured.ok) {
-      await sendMessage(message.chatId, telegramChartFailed(), undefined, {
+      await sendMessage(message.chatId, telegramChartFailed(locale), undefined, {
         replyToMessageId: message.messageId,
       }).catch(() => {});
       return { kind: "handled", outcome: "answered" };
@@ -555,7 +666,7 @@ export async function prepareTelegramTurn(
     await sendPhotoBuffer(
       message.chatId,
       contextShot,
-      telegramChartCaption(closed),
+      telegramChartCaption(closed, locale),
       undefined,
       { replyToMessageId: message.messageId },
     );
@@ -563,13 +674,17 @@ export async function prepareTelegramTurn(
       await sendPhotoBuffer(
         message.chatId,
         zoomShot,
-        t("ar", "tg.chart_zoom_caption"),
+        t(locale, "tg.chart_zoom_caption"),
       ).catch(() => {});
     }
     return { kind: "handled", outcome: "answered" };
   }
   if (command?.kind === "model_menu") {
-    await sendModelMenu(userId, message.chatId, message.messageId);
+    await sendModelMenu(userId, message.chatId, locale, message.messageId);
+    return { kind: "handled", outcome: "answered" };
+  }
+  if (command?.kind === "language_menu") {
+    await sendLanguageMenu(message.chatId, locale, message.messageId);
     return { kind: "handled", outcome: "answered" };
   }
   if (command?.kind === "account_status") {
@@ -587,14 +702,14 @@ export async function prepareTelegramTurn(
       const line =
         summary.status === "pro"
           ? summary.expires_at
-            ? t("ar", "account.tg_line_pro", {
+            ? t(locale, "account.tg_line_pro", {
                 balance: String(summary.balance),
-                date: new Date(summary.expires_at).toLocaleDateString("ar"),
+                date: new Date(summary.expires_at).toLocaleDateString(locale),
               })
-            : t("ar", "account.tg_line_pro_no_date", {
+            : t(locale, "account.tg_line_pro_no_date", {
                 balance: String(summary.balance),
               })
-          : t("ar", "account.tg_line_free", {
+          : t(locale, "account.tg_line_free", {
               balance: String(summary.balance),
               remaining: String(summary.trial_remaining),
               limit: String(summary.trial_limit),
@@ -632,9 +747,11 @@ export async function handleTelegramMessage(
       chatId: message.chatId,
       error: error instanceof Error ? error.message : String(error),
     });
+    // The mechanics failed before a locale was in hand — resolve it from the
+    // chat's own link so even the apology is in the operator's language.
     await sendMessage(
       message.chatId,
-      t("ar", "tg.analysis_failed"),
+      t(await localeForChat(message.chatId), "tg.analysis_failed"),
     ).catch(() => {});
     return "failed";
   }
@@ -654,6 +771,9 @@ export async function runTelegramAgentTurn(input: {
   messageId?: number;
 }): Promise<"answered" | "failed"> {
   const { userId, chatId, text: turnMessage, messageId } = input;
+  // Resolved ONCE for the whole turn — including the failure path below, and
+  // including the locale the engine itself thinks and answers in.
+  const locale = await resolveUserLocale(userId);
   const message = { chatId, messageId };
   try {
     // Billing v3 — the same three account states as web and MCP, refused
@@ -665,13 +785,13 @@ export async function runTelegramAgentTurn(input: {
         gate.code === "insufficient_credits" ? "/console/billing" : "/subscribe";
       const label =
         gate.code === "insufficient_credits"
-          ? t("ar", "billing.cta.topup")
+          ? t(locale, "billing.cta.topup")
           : gate.code === "subscription_expired"
-            ? t("ar", "billing.cta.renew")
-            : t("ar", "billing.cta.subscribe");
+            ? t(locale, "billing.cta.renew")
+            : t(locale, "billing.cta.subscribe");
       await sendMessage(
         chatId,
-        t("ar", `billing.refusal.${gate.code}`),
+        t(locale, `billing.refusal.${gate.code}`),
         [[{ text: label, url: `${getPublicAppUrl()}${target}` }]],
         { replyToMessageId: messageId },
       ).catch(() => {});
@@ -696,14 +816,14 @@ export async function runTelegramAgentTurn(input: {
         userId,
         symbol: DATA_SYMBOL,
         interval: "15m",
-        title: t("ar", "tg.chat_title"),
+        title: t(locale, "tg.chat_title"),
       });
       const recalled = await recallAgentMemoryForContext({
         userId,
         query: turnMessage,
         symbol: DATA_SYMBOL,
         timeframe: "15m",
-        locale: "ar",
+        locale,
         memoryLimit: 5,
         lessonLimit: 3,
       });
@@ -711,7 +831,7 @@ export async function runTelegramAgentTurn(input: {
         userId,
         sessionId,
         userMessage: turnMessage,
-        locale: "ar",
+        locale,
         chartContext: { symbol: DATA_SYMBOL, interval: "15m" },
         recalledMemories: recalled.memories,
         tradeLessons: recalled.tradeLessons,
@@ -746,7 +866,7 @@ export async function runTelegramAgentTurn(input: {
       }
       // Rolling summarization keeps the cross-channel session bounded without
       // blind truncation. Best-effort: a failure defers to the next turn.
-      void maybeSummarizeResidentSession(userId, { locale: "ar" }).catch(() => {});
+      void maybeSummarizeResidentSession(userId, { locale }).catch(() => {});
     };
 
     // ── Conversational turns: the right theatre ──────────────────────────
@@ -761,8 +881,10 @@ export async function runTelegramAgentTurn(input: {
     // sentence beneath it. Nothing pre-printed ever renders: before the first
     // event, the native typing indicator is the only "working" signal.
     const live = new TelegramLiveTurn(message.chatId, message.messageId);
-    const reporter = TelegramProgressReporter.forLiveTurn(live, () =>
-      sendChatAction(message.chatId),
+    const reporter = TelegramProgressReporter.forLiveTurn(
+      live,
+      () => sendChatAction(message.chatId),
+      locale,
     );
     await reporter.start();
 
@@ -798,7 +920,7 @@ export async function runTelegramAgentTurn(input: {
       conversationContext,
       account: null,
       canExecute: false,
-      locale: "ar",
+      locale,
     })));
     // Stop the clocks BEFORE finalize: a trailing progress edit landing after
     // the answer would overwrite it.
@@ -832,13 +954,13 @@ export async function runTelegramAgentTurn(input: {
     // The collapsed tools block is Telegram-native (<blockquote expandable>):
     // the checks that produced the answer, one tap away, never a wall.
     const text = [
-      renderCardsForTelegram(deriveCards(result)),
-      renderToolsBlock(reporter.snapshot()),
+      renderCardsForTelegram(deriveCards(result), locale),
+      renderToolsBlock(reporter.snapshot(), locale),
     ]
       .filter(Boolean)
       .join("\n\n");
     const generated = await generateAgentSuggestions({
-      locale: "ar",
+      locale,
       userMessage: turnMessage,
       result,
       symbol: DATA_SYMBOL,
@@ -851,8 +973,8 @@ export async function runTelegramAgentTurn(input: {
         ? [
             // Present only when the server says this user can execute this
             // plan right now — a human tap opens the volume menu.
-            ...(await executionButtonRow(userId, result.recommendationId)),
-            ...reportLinkButtons(result.recommendationId),
+            ...(await executionButtonRow(userId, result.recommendationId, locale)),
+            ...reportLinkButtons(locale, result.recommendationId),
           ]
         : undefined;
 
@@ -876,7 +998,7 @@ export async function runTelegramAgentTurn(input: {
     });
     await sendMessage(
       message.chatId,
-      t("ar", "tg.analysis_failed"),
+      t(locale, "tg.analysis_failed"),
     ).catch(() => {});
     return "failed";
   }

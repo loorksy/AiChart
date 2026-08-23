@@ -56,7 +56,7 @@ describe("no canned conversation survives", () => {
   });
 
   it("the link receipt stays mechanical and free of envelope vocabulary", () => {
-    const text = telegramLinkedWelcome();
+    const text = telegramLinkedWelcome("ar");
     assert.ok(text.includes("تم الربط"));
     for (const leak of [
       "informational",

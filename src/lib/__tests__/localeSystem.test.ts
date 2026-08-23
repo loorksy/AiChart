@@ -108,6 +108,65 @@ describe("the choice belongs to the account, not the channel", () => {
   });
 });
 
+describe("changing the language on the platform changes the bot too", () => {
+  it("the Telegram surface renders in the language chosen on the web", async () => {
+    const userId = await makeUser();
+    // The web switcher writes exactly this.
+    await store.updateSettings(userId, { language: "en" });
+
+    const { formatNotificationMessage } = await import("@/lib/resident/notifications");
+    const lifecycle = {
+      type: "tp1_hit" as const,
+      recommendationId: "rec-42",
+      symbol: "XAUUSD",
+      revisionNo: 1,
+      dedupeKey: "k1",
+      detail: "T1 reached",
+      terminal: false,
+      occurredAt: 1_700_000_000_000,
+    };
+    const english = formatNotificationMessage(
+      lifecycle,
+      "target",
+      await userLocale.resolveUserLocale(userId),
+    );
+
+    await store.updateSettings(userId, { language: "ar" });
+    const arabic = formatNotificationMessage(
+      lifecycle,
+      "target",
+      await userLocale.resolveUserLocale(userId),
+    );
+
+    assert.notEqual(english, arabic, "the same event reads differently per language");
+    assert.match(arabic, /[\u0600-\u06FF]/, "the Arabic account gets Arabic");
+    assert.doesNotMatch(
+      english.replace(lifecycle.detail, ""),
+      /[\u0600-\u06FF]/,
+      "the English account gets no Arabic chrome",
+    );
+  });
+
+  it("no Telegram-facing module hardcodes a language any more", async () => {
+    const { listSourceFiles } = await import("./helpers/importGraph");
+    const offenders: string[] = [];
+    for (const dir of ["lib/telegram", "lib/channels", "lib/agent/cards"]) {
+      for (const file of listSourceFiles(path.join(process.cwd(), "src", dir))) {
+        if (file.includes("__tests__")) continue;
+        const source = readFileSync(file, "utf8");
+        if (/\bt\(\s*"ar"\s*,/.test(source) || /locale:\s*"ar"/.test(source)) {
+          offenders.push(path.relative(process.cwd(), file));
+        }
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      `These bot-facing modules pin a language instead of using the account's:\n  ${offenders.join("\n  ")}`,
+    );
+  });
+});
+
 describe("a missing translation is never silent", () => {
   it("records every key the requested locale does not carry", () => {
     i18n.clearMissingTranslationKeys();

@@ -28,6 +28,9 @@ export const MODEL_ACTION = MENU_ACTIONS.model;
 /** The marker the /hisab (account status) command resolves to. */
 export const ACCOUNT_ACTION = MENU_ACTIONS.hisab;
 
+/** The marker the /lugha (account language) command resolves to. */
+export const LANGUAGE_ACTION = MENU_ACTIONS.lugha;
+
 /** Telegram setMyCommands entries (Latin command + Arabic description). */
 export function arabicBotCommands(): BotCommandDef[] {
   return arMenu.botCommands as BotCommandDef[];

@@ -27,7 +27,7 @@
  * overwrite the result.
  */
 import { KNOWN_STAGES } from "@/lib/agent/stageEvents";
-import { t } from "@/lib/i18n";
+import { t, type AppLocale } from "@/lib/i18n";
 import { TelegramLiveTurn } from "./liveReply";
 
 export const EDIT_GAP_MS = 2_500;
@@ -50,22 +50,26 @@ export interface ProgressTransport {
   typing: () => Promise<void>;
 }
 
-export function stageLabelAr(stage: string): string {
-  return KNOWN_STAGES.has(stage) ? t("ar", `agent.stage.${stage}`) : stage;
+export function stageLabel(stage: string, locale: AppLocale): string {
+  return KNOWN_STAGES.has(stage) ? t(locale, `agent.stage.${stage}`) : stage;
 }
 
 /**
  * The bubble body: the task checklist plus the engine's latest sentence.
  * Empty string when the engine has said nothing — the caller then shows no
  * bubble at all rather than inventing a line to fill one.
+ *
+ * The narration is the specialist's own sentence and is passed through as
+ * authored; only the chrome around it follows the reader's language.
  */
-export function renderProgressAr(
+export function renderProgress(
   rows: readonly StageRow[],
+  locale: AppLocale,
   narration?: string | null,
 ): string {
   const lines = rows.map((row) => {
     const mark = row.status === "done" ? "✓" : row.status === "failed" ? "✗" : "⏳";
-    return `${mark} ${stageLabelAr(row.stage)}`;
+    return `${mark} ${stageLabel(row.stage, locale)}`;
   });
   const note = narration?.trim() ? `«${narration.trim()}»` : null;
   if (!lines.length && !note) return "";
@@ -82,15 +86,23 @@ export class TelegramProgressReporter {
 
   constructor(
     private readonly transport: ProgressTransport,
+    private readonly locale: AppLocale,
     private readonly now: () => number = Date.now,
   ) {}
 
   /** Wrap a live turn as the transport — the production wiring. */
-  static forLiveTurn(live: TelegramLiveTurn, sendTyping: () => Promise<void>) {
-    return new TelegramProgressReporter({
-      show: (text) => live.show(text),
-      typing: sendTyping,
-    });
+  static forLiveTurn(
+    live: TelegramLiveTurn,
+    sendTyping: () => Promise<void>,
+    locale: AppLocale,
+  ) {
+    return new TelegramProgressReporter(
+      {
+        show: (text) => live.show(text),
+        typing: sendTyping,
+      },
+      locale,
+    );
   }
 
   /**
@@ -167,7 +179,7 @@ export class TelegramProgressReporter {
   }
 
   private flush(): void {
-    const text = renderProgressAr(this.rows, this.narration);
+    const text = renderProgress(this.rows, this.locale, this.narration);
     if (!text) return; // nothing real to say yet — no bubble
     this.lastEditAt = this.now();
     void this.transport.show(text).catch(() => {});

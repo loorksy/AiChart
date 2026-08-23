@@ -19,11 +19,11 @@
  * wall of stage timings buries the answer. The operator who wants them opens
  * the platform, which is a different surface, not a different answer.
  *
- * Arabic only, deliberately: this is the operator's language throughout the
- * decision path, and a bilingual card would mean two strings drifting apart.
+ * The card's LANGUAGE is the account's, not the surface's: both renderers
+ * take the reader's locale and read the same keys out of the one dictionary,
+ * so a phone and a panel cannot drift into two strings either.
  */
-import { GATE_LABELS_AR } from "../gates/chain";
-import { t } from "@/lib/i18n";
+import { t, type AppLocale } from "@/lib/i18n";
 import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency";
 import { escapeTelegramHtml as esc } from "@/lib/telegram/html";
 import {
@@ -32,11 +32,28 @@ import {
   type AgentCard,
 } from "./types";
 
-const DECISION_AR: Record<string, string> = {
-  buy: t("ar", "decision.buy"),
-  sell: t("ar", "decision.sell"),
-  wait: t("ar", "decision.wait"),
-};
+/** The three decision words, in the reader's language. */
+function decisionLabel(decision: string, locale: AppLocale): string {
+  const key =
+    decision === "buy"
+      ? "decision.buy"
+      : decision === "sell"
+        ? "decision.sell"
+        : decision === "wait"
+          ? "decision.wait"
+          : null;
+  return key ? t(locale, key) : decision;
+}
+
+/**
+ * A gate's name in the reader's language. Falls back to the bare id rather
+ * than to a dotted key: an unnamed gate must still be identifiable.
+ */
+function gateLabel(id: string, locale: AppLocale): string {
+  const key = `gate.label.${id}`;
+  const label = t(locale, key);
+  return label === key ? id : label;
+}
 
 /** Values the model/envelope use internally — never show these on a phone. */
 const INTERNAL_LABEL = /^(not_applicable|informational|action_required|descriptive_only|operational_blocker|execution_validated|[a-z_]+)$/;
@@ -57,7 +74,10 @@ function bullets(lines: string[], mark = "•"): string {
  * nothing on this surface — and is distinct from a missing case, which cannot
  * compile.
  */
-export function renderCardForTelegram(card: AgentCard): string | null {
+export function renderCardForTelegram(
+  card: AgentCard,
+  locale: AppLocale,
+): string | null {
   // Depth belongs on the platform. Dropping these keeps the phone message
   // about the decision instead of about the run that produced it.
   if (COLLAPSED_BY_DEFAULT.has(card.kind)) return null;
@@ -66,13 +86,13 @@ export function renderCardForTelegram(card: AgentCard): string | null {
     case "scenario_notice": {
       // Leads the message. The next-open time renders in Riyadh time — the
       // operator's clock — matching the deterministic summary notice.
-      const opens = new Intl.DateTimeFormat("ar", {
+      const opens = new Intl.DateTimeFormat(locale, {
         timeZone: "Asia/Riyadh",
         weekday: "long",
         hour: "numeric",
         minute: "2-digit",
       }).format(card.nextOpenAt);
-      return `🕒 <b>${t("ar", "tg.scenario.title")}</b>\n${t("ar", "tg.scenario.body", {
+      return `🕒 <b>${t(locale, "tg.scenario.title")}</b>\n${t(locale, "tg.scenario.body", {
         reason: esc(card.reasonAr),
         opens,
       })}`;
@@ -83,7 +103,7 @@ export function renderCardForTelegram(card: AgentCard): string | null {
       if (card.decision === "informational" || card.decision === "action_required") {
         return card.summary;
       }
-      const head = `<b>${DECISION_AR[card.decision] ?? card.decision}</b>`;
+      const head = `<b>${decisionLabel(card.decision, locale)}</b>`;
       // The bare percentage is deliberately absent: `confidenceSemantics`
       // exists because one number meant three different things depending on
       // which path produced it, and a phone is the worst place to guess which.
@@ -98,59 +118,59 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 
     case "plan_levels": {
       const lines = [
-        `${t("ar", "agent.card.entry")}: ${price(card.entry)}${
+        `${t(locale, "agent.card.entry")}: ${price(card.entry)}${
           card.entryZone
             ? ` (${price(card.entryZone.low)}–${price(card.entryZone.high)})`
             : ""
         }`,
-        `${t("ar", "agent.card.stop")}: ${price(card.stopLoss)}`,
-        `${t("ar", "agent.card.targets")}: ${card.targets.map(price).join(" / ")}`,
+        `${t(locale, "agent.card.stop")}: ${price(card.stopLoss)}`,
+        `${t(locale, "agent.card.targets")}: ${card.targets.map(price).join(" / ")}`,
       ];
       // Net of costs or not at all. A gross reward:risk is a number the
       // operator cannot actually obtain.
       if (card.netRr != null)
-        lines.push(`${t("ar", "agent.card.net_rr")}: ${card.netRr.toFixed(2)}`);
-      return `<b>${t("ar", "agent.card.plan")}</b>\n${bullets(lines)}`;
+        lines.push(`${t(locale, "agent.card.net_rr")}: ${card.netRr.toFixed(2)}`);
+      return `<b>${t(locale, "agent.card.plan")}</b>\n${bullets(lines)}`;
     }
 
     case "activation":
       return card.triggerCondition
-        ? `<b>${t("ar", "agent.card.activation")}</b>\n${esc(card.triggerCondition)}${
+        ? `<b>${t(locale, "agent.card.activation")}</b>\n${esc(card.triggerCondition)}${
             card.validityCandles
-              ? `\n${t("ar", "tg.validity_candles", { count: String(card.validityCandles) })}`
+              ? `\n${t(locale, "tg.validity_candles", { count: String(card.validityCandles) })}`
               : ""
           }`
         : card.activationClass === "immediate"
-          ? `<b>${t("ar", "agent.card.activation")}</b>\n${t("ar", "agent.card.activation_immediate")}`
+          ? `<b>${t(locale, "agent.card.activation")}</b>\n${t(locale, "agent.card.activation_immediate")}`
           : null;
 
     case "invalidation": {
       const parts = [
         card.rule ? esc(card.rule) : card.rule,
         card.level != null
-          ? `${t("ar", "agent.card.level")}: ${price(card.level)}`
+          ? `${t(locale, "agent.card.level")}: ${price(card.level)}`
           : null,
       ].filter(Boolean);
       return parts.length
-        ? `<b>${t("ar", "agent.card.invalidation")}</b>\n${parts.join("\n")}`
+        ? `<b>${t(locale, "agent.card.invalidation")}</b>\n${parts.join("\n")}`
         : null;
     }
 
 
     case "alternative_scenario":
-      return `<b>${t("ar", "agent.card.alternative")}</b>\n${esc(card.scenario)}`;
+      return `<b>${t(locale, "agent.card.alternative")}</b>\n${esc(card.scenario)}`;
 
     case "gate_checklist": {
       const lines = card.verdicts.map((v) => {
         const mark = v.status === "pass" ? "✅" : v.status === "veto" ? "⛔" : "⚠️";
-        const label = GATE_LABELS_AR[v.id] ?? v.id;
+        const label = gateLabel(v.id, locale);
         return v.reasonAr ? `${mark} ${label} — ${esc(v.reasonAr)}` : `${mark} ${label}`;
       });
-      return `<b>${t("ar", "agent.card.gates")}</b>\n${lines.join("\n")}`;
+      return `<b>${t(locale, "agent.card.gates")}</b>\n${lines.join("\n")}`;
     }
 
     case "key_reasons":
-      return `<b>${t("ar", "agent.card.reasons")}</b>\n${bullets(card.reasons.map(esc))}`;
+      return `<b>${t(locale, "agent.card.reasons")}</b>\n${bullets(card.reasons.map(esc))}`;
 
     case "public_reasoning":
       return bullets(card.points.map(esc));
@@ -159,41 +179,41 @@ export function renderCardForTelegram(card: AgentCard): string | null {
       const c = card.card;
       const wf =
         c.walkForward === "passed"
-          ? t("ar", "tg.walkforward.passed")
+          ? t(locale, "tg.walkforward.passed")
           : c.walkForward === "failed"
-            ? t("ar", "tg.walkforward.failed")
-            : t("ar", "tg.walkforward.none");
+            ? t(locale, "tg.walkforward.failed")
+            : t(locale, "tg.walkforward.none");
       // The shortfall is part of the evidence, not a footnote: a card that
       // shows only the trade count reads as validated when it is not.
       const grade = c.meetsExecutionGates
         ? ""
-        : `\n${t("ar", "tg.evidence.below_threshold")}`;
-      return `<b>${t("ar", "agent.card.evidence_history")}</b>\n${t("ar", "tg.trades_count", {
+        : `\n${t(locale, "tg.evidence.below_threshold")}`;
+      return `<b>${t(locale, "agent.card.evidence_history")}</b>\n${t(locale, "tg.trades_count", {
         count: String(c.tradeCount),
       })} · ${wf}${
         c.liveSampleSize > 0
-          ? ` · ${t("ar", "tg.live_results", { count: String(c.liveSampleSize) })}`
+          ? ` · ${t(locale, "tg.live_results", { count: String(c.liveSampleSize) })}`
           : ""
       }${grade}`;
     }
 
     case "evidence_dimensions":
-      return `<b>${t("ar", "tg.evidence")}</b>\n${bullets(
+      return `<b>${t(locale, "tg.evidence")}</b>\n${bullets(
         card.dimensions.map((d) => `${esc(d.key)}: ${esc(d.detail)}`),
       )}`;
 
     case "risk_warnings":
-      return `<b>${t("ar", "tg.warnings")}</b>\n${bullets(card.warnings.map(esc), "⚠️")}`;
+      return `<b>${t(locale, "tg.warnings")}</b>\n${bullets(card.warnings.map(esc), "⚠️")}`;
 
     case "news_risk":
       return card.risk.level === "low"
         ? null
-        : `<b>${t("ar", "agent.card.news")}: ${card.risk.level}</b>\n${esc(card.risk.reason)}`;
+        : `<b>${t(locale, "agent.card.news")}: ${card.risk.level}</b>\n${esc(card.risk.reason)}`;
 
     case "cost_evidence":
-      return t("ar", "tg.cost_line", {
+      return t(locale, "tg.cost_line", {
         pips: String(card.spreadPips?.toFixed(1)),
-        suffix: card.fallbackUsed ? ` (${t("ar", "tg.estimate")})` : "",
+        suffix: card.fallbackUsed ? ` (${t(locale, "tg.estimate")})` : "",
       });
 
     case "candle_coverage":
@@ -202,9 +222,10 @@ export function renderCardForTelegram(card: AgentCard): string | null {
       return card.report.sufficientForTrade ? null : esc(card.report.summaryAr);
 
     case "tracked_recommendation":
-      return `<b>${t("ar", "agent.card.tracked")}</b>\n${card.symbol} ${card.interval} · ${
-        DECISION_AR[card.direction] ?? card.direction
-      } · ${card.status}`;
+      return `<b>${t(locale, "agent.card.tracked")}</b>\n${card.symbol} ${card.interval} · ${decisionLabel(
+        card.direction,
+        locale,
+      )} · ${card.status}`;
 
     case "envelope_status":
       return null;
@@ -220,10 +241,13 @@ export function renderCardForTelegram(card: AgentCard): string | null {
     // never show a plan without saying whether the agent's eyes were open.
     case "visual_review":
       return esc(
-        visualTransparencyLine({
-          state: card.state,
-          timeframesReviewed: card.timeframes,
-        }),
+        visualTransparencyLine(
+          {
+            state: card.state,
+            timeframesReviewed: card.timeframes,
+          },
+          locale,
+        ),
       );
 
     case "decision_trace":
@@ -239,7 +263,10 @@ export function renderCardForTelegram(card: AgentCard): string | null {
 }
 
 /** The whole answer as one Telegram message body. */
-export function renderCardsForTelegram(cards: AgentCard[]): string {
+export function renderCardsForTelegram(
+  cards: AgentCard[],
+  locale: AppLocale,
+): string {
   const decision = cards.find((c) => c.kind === "decision");
   const talkOnly =
     decision?.kind === "decision" &&
@@ -263,7 +290,7 @@ export function renderCardsForTelegram(cards: AgentCard[]): string {
 
   return cards
     .filter((card) => !skip.has(card.kind))
-    .map(renderCardForTelegram)
+    .map((card) => renderCardForTelegram(card, locale))
     .filter((block): block is string => block != null && block.trim().length > 0)
     .join("\n\n");
 }

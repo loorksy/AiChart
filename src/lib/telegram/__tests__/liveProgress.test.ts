@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   EDIT_GAP_MS,
-  renderProgressAr,
-  stageLabelAr,
+  renderProgress,
+  stageLabel,
   TelegramProgressReporter,
 } from "@/lib/telegram/liveProgress";
 
@@ -29,6 +29,7 @@ function harness(startMs = 100_000) {
         typings += 1;
       },
     },
+    "ar",
     () => nowMs,
   );
   return {
@@ -43,21 +44,25 @@ function harness(startMs = 100_000) {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-describe("renderProgressAr", () => {
+describe("renderProgress", () => {
   it("labels known stages in Arabic and shows the honest mark per status", () => {
-    const text = renderProgressAr([
-      { stage: "market_data", status: "done" },
-      { stage: "structure", status: "running" },
-      { stage: "news", status: "failed" },
-    ]);
+    const text = renderProgress(
+      [
+        { stage: "market_data", status: "done" },
+        { stage: "structure", status: "running" },
+        { stage: "news", status: "failed" },
+      ],
+      "ar",
+    );
     assert.ok(text.includes("✓ بيانات السوق"));
     assert.ok(text.includes("⏳ البنية السعرية"));
     assert.ok(text.includes("✗ الأخبار"));
   });
 
   it("shows the specialist's own sentence under the checklist", () => {
-    const text = renderProgressAr(
+    const text = renderProgress(
       [{ stage: "structure", status: "done" }],
+      "ar",
       "حدّدت بنية السوق: اتجاه صاعد فوق 4010",
     );
     assert.ok(text.includes("«حدّدت بنية السوق: اتجاه صاعد فوق 4010»"));
@@ -66,12 +71,12 @@ describe("renderProgressAr", () => {
   it("renders NOTHING when the engine has said nothing — no invented line", () => {
     // The empty state used to be "⌛ أفكّر…", a pre-printed thought. An empty
     // string here is what keeps the bubble from existing before real work.
-    assert.equal(renderProgressAr([]), "");
-    assert.equal(renderProgressAr([], "   "), "");
+    assert.equal(renderProgress([], "ar"), "");
+    assert.equal(renderProgress([], "ar", "   "), "");
   });
 
   it("renders an unknown stage as its raw name instead of hiding it", () => {
-    assert.equal(stageLabelAr("mystery_stage"), "mystery_stage");
+    assert.equal(stageLabel("mystery_stage", "ar"), "mystery_stage");
   });
 });
 
@@ -130,6 +135,7 @@ describe("TelegramProgressReporter", () => {
           throw new Error("telegram down");
         },
       },
+      "ar",
       () => 0,
     );
     await reporter.start(); // must not throw
