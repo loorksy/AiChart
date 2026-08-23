@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 import { activeNav, APP_NAV, navForRole } from "@/components/shell/navConfig";
-import { adminGroupsFor } from "@/components/admin/chrome/adminNavTree";
 
 const root = resolve(process.cwd(), "src");
 const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
@@ -25,13 +24,9 @@ test("trial nav is limited to the workspace only", () => {
 
 
 test("Account, Integrations, Settings are not primary destinations", () => {
-  // The admin hrefs come from the tree the rail actually renders
-  // (adminGroupsFor) — the parallel ADMIN_NAV list this test used to read was
-  // dead at runtime and has been deleted.
-  const adminHrefs = adminGroupsFor().flatMap((g) =>
-    g.items.map((i) => `/console/platform?tab=${i.id}`),
-  );
-  const hrefs = new Set([...APP_NAV.map((i) => i.href), ...adminHrefs]);
+  // One rail now: the admin console is a separate app reached by a single
+  // link, so there is no second nav definition to keep in step.
+  const hrefs = new Set(APP_NAV.map((i) => i.href));
   for (const hidden of ["/console/account", "/console/connect", "/console/settings", "/console/chats"]) {
     assert.equal(hrefs.has(hidden), false, hidden);
   }
@@ -45,13 +40,19 @@ test("activeNav exact vs prefix", () => {
   assert.equal(activeNav("/performance", performance), true);
 });
 
-test("shell mounts conversations for traders; admin uses admin nav", () => {
+test("shell mounts conversations for traders; admins get one link out", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /SidebarConversations/);
   assert.match(shell, /canonical-desktop-sidebar/);
   assert.match(shell, /canonical-mobile-drawer/);
-  assert.match(shell, /canonical-admin-nav|navForRole/);
+  assert.match(shell, /navForRole/);
   assert.match(shell, /ShellMenuProvider/);
+  // The admin console is its own application: a plain anchor to /admin-app/,
+  // never a client route, and never a second grouped nav tree in this rail.
+  assert.match(shell, /href=\{ADMIN_APP_PATH\}/);
+  assert.match(shell, /ADMIN_APP_PATH = "\/admin-app\/"/);
+  assert.doesNotMatch(shell, /canonical-admin-nav/);
+  assert.doesNotMatch(shell, /adminGroupsFor|adminTabHref/);
   assert.equal((shell.match(/data-testid="canonical-desktop-sidebar"/g) ?? []).length, 1);
   // Floating overlay hamburger removed from shell — chart toolbar / page header host it.
   assert.doesNotMatch(shell, /fixed start-3 top-3 z-30/);
@@ -84,10 +85,12 @@ test("both consoles share one top bar: account and nav", () => {
     assert.ok(at > cursor, marker);
     cursor = at;
   }
-  // The admin console had its own header carrying the same three controls.
-  const adminHeader = read("components/admin/chrome/AdminHeader.tsx");
-  assert.doesNotMatch(adminHeader, /ThemeToggle|window\.location\.reload/);
-  assert.doesNotMatch(adminHeader, /sticky/);
+  // There is one console header now. The admin console had a second one
+  // carrying the same three controls; it went with the in-app panel.
+  assert.equal(
+    existsSync(resolve(root, "components/admin/chrome/AdminHeader.tsx")),
+    false,
+  );
 });
 
 test("subscription credit chip renders regardless of billing enforcement flag", () => {

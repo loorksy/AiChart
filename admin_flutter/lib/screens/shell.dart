@@ -4,9 +4,12 @@ import '../api/models.dart';
 import '../api/repository.dart';
 import '../i18n.dart';
 import 'admins.dart';
+import 'ads.dart';
 import 'billing.dart';
 import 'config.dart';
+import 'operations.dart';
 import 'overview.dart';
+import 'pricing.dart';
 import 'support.dart';
 import 'users.dart';
 
@@ -38,6 +41,8 @@ class _AdminShellState extends State<AdminShell> {
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
+    // Below this the rail would eat the content; the same destinations move
+    // into a drawer instead of a bottom bar, which cannot hold nine of them.
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
     // The roles surface is owner territory — hidden without roles_write
@@ -45,11 +50,14 @@ class _AdminShellState extends State<AdminShell> {
     final canManageRoles =
         widget.user.adminPermissions.contains('roles_write');
 
-    final destinations = [
+    final destinations = <(IconData, IconData, String)>[
       (Icons.dashboard_outlined, Icons.dashboard, l.t('overview')),
       (Icons.group_outlined, Icons.group, l.t('users')),
       (Icons.payments_outlined, Icons.payments, l.t('billing')),
+      (Icons.sell_outlined, Icons.sell, l.t('pricing')),
+      (Icons.campaign_outlined, Icons.campaign, l.t('ads')),
       (Icons.key_outlined, Icons.key, l.t('config')),
+      (Icons.monitor_heart_outlined, Icons.monitor_heart, l.t('operations')),
       (Icons.support_agent_outlined, Icons.support_agent, l.t('support')),
       if (canManageRoles)
         (
@@ -59,18 +67,21 @@ class _AdminShellState extends State<AdminShell> {
         ),
     ];
 
-    final pages = [
+    final pages = <Widget>[
       OverviewScreen(repo: widget.repo),
       UsersScreen(repo: widget.repo, adminId: widget.user.id),
       BillingScreen(repo: widget.repo),
+      PricingScreen(repo: widget.repo),
+      AdsScreen(repo: widget.repo),
       ConfigScreen(repo: widget.repo),
+      OperationsScreen(repo: widget.repo),
       SupportScreen(repo: widget.repo),
       if (canManageRoles)
         AdminsScreen(repo: widget.repo, selfId: widget.user.id),
     ];
 
     final appBar = AppBar(
-      title: Text(l.t('appTitle')),
+      title: Text(destinations[_index].$3),
       actions: [
         IconButton(
           tooltip: l.t('language'),
@@ -93,6 +104,8 @@ class _AdminShellState extends State<AdminShell> {
       ],
     );
 
+    // IndexedStack, not a rebuild per tab: a half-typed price or an open
+    // search survives a look at another screen.
     final body = IndexedStack(index: _index, children: pages);
 
     if (wide) {
@@ -135,19 +148,50 @@ class _AdminShellState extends State<AdminShell> {
 
     return Scaffold(
       appBar: appBar,
-      body: body,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: [
-          for (final d in destinations)
-            NavigationDestination(
-              icon: Icon(d.$1),
-              selectedIcon: Icon(d.$2),
-              label: d.$3,
-            ),
-        ],
+      drawer: Drawer(
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              DrawerHeader(
+                margin: EdgeInsets.zero,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      l.t('appTitle'),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 18),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.user.email,
+                      textDirection: TextDirection.ltr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              for (var i = 0; i < destinations.length; i++)
+                ListTile(
+                  leading: Icon(
+                      i == _index ? destinations[i].$2 : destinations[i].$1),
+                  title: Text(destinations[i].$3),
+                  selected: i == _index,
+                  onTap: () {
+                    setState(() => _index = i);
+                    Navigator.pop(context);
+                  },
+                ),
+            ],
+          ),
+        ),
       ),
+      body: body,
     );
   }
 }

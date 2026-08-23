@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../api/repository.dart';
 import '../i18n.dart';
+import 'credit_dialog.dart';
 import 'shell.dart';
 
 class UsersScreen extends StatefulWidget {
@@ -109,6 +110,13 @@ class _UsersScreenState extends State<UsersScreen> {
                   user: filtered[i],
                   isSelf: filtered[i].id == widget.adminId,
                   onSetStatus: (s) => _setStatus(filtered[i], s),
+                  onAdjustCredits: () => adjustCreditsDialog(
+                    context: context,
+                    repo: widget.repo,
+                    userId: filtered[i].id,
+                    email: filtered[i].email,
+                    onDone: _load,
+                  ),
                 ),
               );
             },
@@ -123,11 +131,13 @@ class _UserTile extends StatelessWidget {
   final AdminUserView user;
   final bool isSelf;
   final ValueChanged<String> onSetStatus;
+  final VoidCallback onAdjustCredits;
 
   const _UserTile({
     required this.user,
     required this.isSelf,
     required this.onSetStatus,
+    required this.onAdjustCredits,
   });
 
   @override
@@ -188,20 +198,29 @@ class _UserTile extends StatelessWidget {
             ],
           ),
         ),
-        trailing: isSelf
-            ? null
-            : PopupMenuButton<String>(
-                onSelected: onSetStatus,
-                itemBuilder: (context) => [
-                  if (user.status != 'active')
-                    PopupMenuItem(value: 'active', child: Text(l.t('approve'))),
-                  if (user.status == 'active')
-                    PopupMenuItem(
-                        value: 'suspended', child: Text(l.t('disable'))),
-                  if (user.status == 'suspended')
-                    PopupMenuItem(value: 'active', child: Text(l.t('enable'))),
-                ],
-              ),
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == 'credits') {
+              onAdjustCredits();
+            } else {
+              onSetStatus(value);
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(value: 'credits', child: Text(l.t('adjustCredits'))),
+            // Status changes stop at your own account: locking yourself out
+            // of the console is not an action worth offering.
+            if (!isSelf) ...[
+              const PopupMenuDivider(),
+              if (user.status != 'active')
+                PopupMenuItem(value: 'active', child: Text(l.t('approve'))),
+              if (user.status == 'active')
+                PopupMenuItem(value: 'suspended', child: Text(l.t('disable'))),
+              if (user.status == 'suspended')
+                PopupMenuItem(value: 'active', child: Text(l.t('enable'))),
+            ],
+          ],
+        ),
       ),
     );
   }

@@ -161,6 +161,7 @@ export const en = {
   "shell.close": "Close",
   "shell.navigation_account": "Navigation and account",
   "shell.product": "Product",
+  "shell.adminConsole": "Admin console",
   "shell.chat": "Chat",
   "shell.account": "Account",
   "shell.language": "Language",

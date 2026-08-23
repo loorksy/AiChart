@@ -4,10 +4,16 @@ import 'package:intl/intl.dart' as intl;
 import '../api/models.dart';
 import '../api/repository.dart';
 import '../i18n.dart';
+import 'credit_dialog.dart';
 import 'shell.dart';
 
-/// Billing = profit report + subscription search + credit adjustments,
-/// backed by /api/admin/billing/* and /api/admin/subscriptions.
+/// Subscriptions, manual credit top-ups, the profit report, and what each
+/// model costs us.
+///
+/// Two things here move real money. Activating a plan is a manual grant
+/// (there is no payment provider wired up), and adjusting credits writes
+/// straight to the ledger — which is why the reason is mandatory and travels
+/// with the amount.
 class BillingScreen extends StatefulWidget {
   final AdminRepository repo;
   const BillingScreen({super.key, required this.repo});
@@ -125,64 +131,6 @@ class _BillingScreenState extends State<BillingScreen> {
     }
   }
 
-  Future<void> _adjustDialog(int userId, String email) async {
-    final l = L.of(context);
-    final amount = TextEditingController();
-    final reason = TextEditingController();
-    final messenger = ScaffoldMessenger.of(context);
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${l.t('adjustCredits')} — $email'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: amount,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true, signed: true),
-              textDirection: TextDirection.ltr,
-              decoration: InputDecoration(
-                  labelText: '${l.t('amount')} (USD)', hintText: '5 / -5'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: reason,
-              decoration: InputDecoration(labelText: l.t('reason')),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(l.t('close')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(l.t('apply')),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-    final value = double.tryParse(amount.text.trim());
-    if (value == null || value == 0 || reason.text.trim().length < 5) {
-      messenger.showSnackBar(SnackBar(content: Text(l.t('saveFailed'))));
-      return;
-    }
-    try {
-      await widget.repo.adjustCredits(
-          userId: userId, amountUsd: value, reason: reason.text.trim());
-      messenger.showSnackBar(SnackBar(content: Text(l.t('saved'))));
-      _load();
-    } catch (e) {
-      messenger
-          .showSnackBar(SnackBar(content: Text('${l.t('saveFailed')} $e')));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
@@ -224,7 +172,8 @@ class _BillingScreenState extends State<BillingScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 2),
                     Text(
-                      '${l.t('plan')}: ${u.planStatus}'
+                      '${l.t('plan')}: ${u.planStatus} · '
+                      '${u.credits} ${l.t('credits')}'
                       '${u.subscriptionExpiresAt == null ? '' : ' · ${u.subscriptionExpiresAt}'}',
                       style: const TextStyle(fontSize: 12),
                     ),
@@ -250,11 +199,21 @@ class _BillingScreenState extends State<BillingScreen> {
                             u.planStatus == 'expired')
                           OutlinedButton(
                             onPressed: () => _subscriptionAction(
-                                u.userId, u.email, 'restore_trial'),
-                            child: Text(l.t('restoreTrial')),
+                                u.userId, u.email, 'restore_free'),
+                            child: Text(l.t('restoreFree')),
                           ),
                         OutlinedButton(
-                          onPressed: () => _adjustDialog(u.userId, u.email),
+                          onPressed: () => adjustCreditsDialog(
+                            context: context,
+                            repo: widget.repo,
+                            userId: u.userId,
+                            email: u.email,
+                            currentBalance: u.credits,
+                            onDone: () {
+                              _load();
+                              _search(u.email);
+                            },
+                          ),
                           child: Text(l.t('adjustCredits')),
                         ),
                       ],
@@ -264,6 +223,8 @@ class _BillingScreenState extends State<BillingScreen> {
               ),
             ),
         ],
+        const SizedBox(height: 16),
+        _ModelPricesCard(repo: widget.repo),
         const SizedBox(height: 16),
         AsyncBody<ProfitReport>(
           future: _future,
@@ -327,7 +288,13 @@ class _BillingScreenState extends State<BillingScreen> {
                               : scheme.error,
                         ),
                       ),
-                      onTap: () => _adjustDialog(row.userId, row.email),
+                      onTap: () => adjustCreditsDialog(
+                        context: context,
+                        repo: widget.repo,
+                        userId: row.userId,
+                        email: row.email,
+                        onDone: _load,
+                      ),
                     ),
                   ),
               ],
@@ -335,6 +302,166 @@ class _BillingScreenState extends State<BillingScreen> {
           },
         ),
       ],
+    );
+  }
+}
+
+/// What each model costs US per million tokens — the numbers the usage meter
+/// turns into the provider-cost column of the profit report. Read per call,
+/// so an edit applies to the very next LLM call with nothing to restart.
+class _ModelPricesCard extends StatefulWidget {
+  final AdminRepository repo;
+  const _ModelPricesCard({required this.repo});
+
+  @override
+  State<_ModelPricesCard> createState() => _ModelPricesCardState();
+}
+
+class _ModelPricesCardState extends State<_ModelPricesCard> {
+  late Future<List<ModelPrice>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    _future = widget.repo.modelPrices();
+    setState(() {});
+  }
+
+  Future<void> _edit(ModelPrice price) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final input = TextEditingController(text: '${price.inputUsdPerM}');
+    final output = TextEditingController(text: '${price.outputUsdPerM}');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(price.model, textDirection: TextDirection.ltr),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: input,
+              textDirection: TextDirection.ltr,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: l.t('inputPerM')),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: output,
+              textDirection: TextDirection.ltr,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: l.t('outputPerM')),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l.t('close')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l.t('save')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final inValue = double.tryParse(input.text.trim());
+    final outValue = double.tryParse(output.text.trim());
+    if (inValue == null || outValue == null) {
+      messenger.showSnackBar(SnackBar(content: Text(l.t('amountInvalid'))));
+      return;
+    }
+    try {
+      await widget.repo.saveModelPrice(ModelPrice(
+        provider: price.provider,
+        model: price.model,
+        inputUsdPerM: inValue,
+        outputUsdPerM: outValue,
+      ));
+      messenger.showSnackBar(SnackBar(content: Text(l.t('saved'))));
+      _load();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('${l.t('saveFailed')} $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    l.t('modelPrices'),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 15),
+                  ),
+                ),
+                IconButton(
+                  tooltip: l.t('refresh'),
+                  icon: const Icon(Icons.refresh, size: 20),
+                  onPressed: _load,
+                ),
+              ],
+            ),
+            Text(
+              l.t('modelPricesNote'),
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 8),
+            FutureBuilder<List<ModelPrice>>(
+              future: _future,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snap.hasError) {
+                  return Text('${l.t('loadFailed')} ${snap.error}',
+                      style: TextStyle(color: scheme.error));
+                }
+                final prices = snap.data ?? const <ModelPrice>[];
+                return Column(
+                  children: [
+                    for (final price in prices)
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(price.model,
+                            textDirection: TextDirection.ltr),
+                        subtitle: Text(
+                          '${price.provider} · in ${price.inputUsdPerM} · '
+                          'out ${price.outputUsdPerM}',
+                          textDirection: TextDirection.ltr,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        trailing: const Icon(Icons.edit_outlined, size: 18),
+                        onTap: () => _edit(price),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -3,6 +3,7 @@ import { handleError } from "@/lib/api";
 import { requireAdminWith } from "@/lib/adminRoles";
 import { initDb, query } from "@/lib/db";
 import { ensureEntitlementRow } from "@/lib/subscription/entitlement";
+import { getCreditBalance } from "@/lib/billing/credits";
 
 export async function GET(req: NextRequest) {
   try {
@@ -37,6 +38,9 @@ export async function GET(req: NextRequest) {
         plan_status: ent.plan_status,
         subscription_expires_at: ent.subscription_expires_at,
         note: ent.note,
+        // The balance an admin is about to change: a manual top-up decided
+        // without seeing the current number is a guess.
+        credits: await getCreditBalance(u.id),
       });
     }
 

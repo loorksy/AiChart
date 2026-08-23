@@ -160,6 +160,7 @@ export const ar: Record<TranslationKey, string> = {
   "shell.close": "إغلاق",
   "shell.navigation_account": "التنقل والحساب",
   "shell.product": "المنتج",
+  "shell.adminConsole": "لوحة الإدارة",
   "shell.chat": "المحادثة",
   "shell.account": "الحساب",
   "shell.language": "اللغة",

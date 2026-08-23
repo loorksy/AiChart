@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, PanelLeft, PanelLeftClose, X } from "lucide-react";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { PanelLeft, PanelLeftClose, ShieldCheck, X } from "lucide-react";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { ProfileAccountSheet } from "@/components/agent/SidebarProfileMenu";
 import { ConsoleOverlaysProvider } from "@/components/shell/ConsoleOverlays";
@@ -21,21 +20,17 @@ import {
   type NavItem,
   type NavRole,
 } from "@/components/shell/navConfig";
-import {
-  ADMIN_CONSOLE_TITLE,
-  ADMIN_PROFILE_ITEM,
-  adminGroupsFor,
-  adminLabel,
-  adminTabHref,
-  isAdminTabId,
-  type AdminNavItem,
-  type AdminTabId,
-} from "@/components/admin/chrome/adminNavTree";
 import { useLocale } from "@/hooks/useLocale";
 import { useMe } from "@/hooks/useMe";
 import { cn } from "@/lib/utils";
 
-const PLATFORM_PATH = "/console/platform";
+/**
+ * The admin console is a separate application (see admin_flutter/), served
+ * at this path. An admin's rail is the ordinary product rail plus this one
+ * link out: the grouped admin tree that used to live here belonged to the
+ * in-app panel, which no longer exists.
+ */
+const ADMIN_APP_PATH = "/admin-app/";
 
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar";
@@ -118,10 +113,6 @@ function ConsoleShellBody({
   const access =
     me?.entitlement?.access ?? (isAdmin ? "admin" : "trial");
   const items = navForRole(role, access);
-  const adminGroups = useMemo(
-    () => (isAdmin ? adminGroupsFor(me?.admin_permissions) : []),
-    [isAdmin, me?.admin_permissions],
-  );
   const paidWorkspace = access === "full" || access === "admin";
   const conversationsEnabled =
     showConversations ?? (!isAdmin && paidWorkspace);
@@ -130,17 +121,6 @@ function ConsoleShellBody({
     pathname === "/chat" ||
     pathname.startsWith("/chart") ||
     pathname === "/subscribe";
-  /**
-   * Which admin panel the platform route is showing. An absent or unknown
-   * `?tab=` lands on the overview server-side (resolveAdminTab), so the rail has
-   * to highlight the same thing or a bare /console/platform looks unvisited.
-   */
-  const platformTab: AdminTabId | null =
-    pathname === PLATFORM_PATH
-      ? isAdminTabId(currentTab)
-        ? currentTab
-        : "overview"
-      : null;
 
   if (pathname !== navPath) {
     setNavPath(pathname);
@@ -228,97 +208,6 @@ function ConsoleShellBody({
     );
   };
 
-  const adminLink = (item: AdminNavItem, iconOnly: boolean, onNavigate?: () => void) => {
-    const active = platformTab === item.id;
-    const label = adminLabel(item, locale);
-    return (
-      <Link
-        key={item.id}
-        href={adminTabHref(item.id)}
-        onClick={onNavigate}
-        title={iconOnly ? label : undefined}
-        aria-current={active ? "page" : undefined}
-        data-active={active ? "true" : undefined}
-        className={navLinkClass(active, iconOnly)}
-      >
-        {active && <ActiveMarker />}
-        <HugeiconsIcon
-          icon={item.icon}
-          strokeWidth={2}
-          className={cn("shrink-0", iconOnly ? "size-5" : "size-4")}
-        />
-        {!iconOnly && <span className="truncate">{label}</span>}
-        {iconOnly && <span className="sr-only">{label}</span>}
-      </Link>
-    );
-  };
-
-  const adminNav = (iconOnly: boolean, onNavigate?: () => void) => (
-    <nav
-      data-testid="canonical-admin-nav"
-      aria-label={adminLabel(ADMIN_CONSOLE_TITLE, locale)}
-      className={cn(
-        "flex min-h-0 flex-col gap-0.5 overflow-y-auto px-2 py-2",
-        // Owns the leftover height unless the conversation list is also mounted,
-        // in which case that section is the one that should stretch.
-        !conversationsEnabled && "flex-1",
-      )}
-    >
-      {adminGroups.map((group) => {
-        // The disclosure control is the group label, and the label is what the
-        // icon rail hides — so a folded group would become unreachable there.
-        // Force every group open for as long as the rail is icon-only.
-        const expanded = iconOnly || !closedGroups[group.id];
-        const groupId = `admin-nav-group-${group.id}`;
-        return (
-          <div key={group.id} className={cn("flex flex-col", iconOnly && "mt-1")}>
-            {iconOnly ? (
-              <span
-                aria-hidden
-                className="mx-auto my-1 h-px w-6 shrink-0 rounded-full bg-sidebar-border"
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() =>
-                  setClosedGroups((previous) => ({
-                    ...previous,
-                    [group.id]: !previous[group.id],
-                  }))
-                }
-                aria-expanded={expanded}
-                // A folded group is unmounted, not display:none — leaving its
-                // links in the DOM would put unreachable nodes in the mobile
-                // drawer's focus trap. So the controlled id only exists when open.
-                aria-controls={expanded ? groupId : undefined}
-                className={cn(
-                  "mt-2 flex min-h-9 w-full items-center gap-2 rounded-md px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground",
-                  FOCUS_RING,
-                )}
-              >
-                <span className="truncate">{adminLabel(group, locale)}</span>
-                <ChevronDown
-                  aria-hidden
-                  className={cn(
-                    "ms-auto h-3.5 w-3.5 shrink-0 transition-transform duration-200 ease-out",
-                    !expanded && "ltr:-rotate-90 rtl:rotate-90",
-                  )}
-                />
-              </button>
-            )}
-            {expanded ? (
-              <div id={groupId} className="flex flex-col gap-0.5">
-                {group.items.map((item) => adminLink(item, iconOnly, onNavigate))}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-      <span aria-hidden className="my-2 h-px shrink-0 bg-sidebar-border" />
-      {adminLink(ADMIN_PROFILE_ITEM, iconOnly, onNavigate)}
-    </nav>
-  );
-
   const productNav = (iconOnly: boolean, onNavigate?: () => void) => (
     <nav
       data-testid="canonical-product-nav"
@@ -326,16 +215,39 @@ function ConsoleShellBody({
       className="flex shrink-0 flex-col gap-0.5 px-2 py-2"
     >
       {items.map((item) => productLink(item, iconOnly, onNavigate))}
+      {isAdmin && (
+        <>
+          <span aria-hidden className="my-2 h-px shrink-0 bg-sidebar-border" />
+          {/* A plain anchor, not next/link: the console is a separate
+              application served at this path, so the client router must not
+              try to resolve it as a route of this app. */}
+          <a
+            data-testid="admin-console-link"
+            href={ADMIN_APP_PATH}
+            onClick={onNavigate}
+            title={iconOnly ? t("shell.adminConsole") : undefined}
+            className={navLinkClass(false, iconOnly)}
+          >
+            <ShieldCheck
+              className={cn("shrink-0", iconOnly ? "h-5 w-5" : "h-4 w-4")}
+            />
+            {!iconOnly && (
+              <span className="truncate">{t("shell.adminConsole")}</span>
+            )}
+            {iconOnly && <span className="sr-only">{t("shell.adminConsole")}</span>}
+          </a>
+        </>
+      )}
     </nav>
   );
 
   const navList = (onNavigate?: () => void) => {
     // The drawer is never icon-only: it is only ever mounted at full width.
     const iconOnly = collapsed && !onNavigate;
-    return isAdmin ? adminNav(iconOnly, onNavigate) : productNav(iconOnly, onNavigate);
+    return productNav(iconOnly, onNavigate);
   };
 
-  const brandHref = isAdmin ? "/console/platform?tab=overview" : "/chat";
+  const brandHref = "/chat";
 
   const sidebarHeader = (
     <div

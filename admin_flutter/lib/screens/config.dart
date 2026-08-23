@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../api/repository.dart';
 import '../i18n.dart';
+import 'providers.dart';
 import 'shell.dart';
 
-/// Platform keys & config — the Flutter counterpart of AdminKeysPanel.
-/// Groups mirror the server's field metadata; secrets show masked values and
-/// are only sent when the admin typed a replacement.
+/// Platform keys and settings — every credential and switch the platform
+/// runs on. Groups mirror the server's own field metadata, so a field added
+/// there appears here without a change in this file. Secrets show a masked
+/// value and are only sent when the admin typed a replacement, which is why
+/// an empty box means "keep what is stored" rather than "clear it".
 class ConfigScreen extends StatefulWidget {
   final AdminRepository repo;
   const ConfigScreen({super.key, required this.repo});
@@ -39,6 +42,9 @@ class _ConfigScreenState extends State<ConfigScreen> {
     'ANTHROPIC_MODEL',
     'AI_QUICK_MODEL',
     'ANTHROPIC_QUICK_MODEL',
+    // Owned by the provider card above: a free-text copy here would let an
+    // operator type a provider that does not exist.
+    'AI_PROVIDER',
   };
 
   @override
@@ -129,6 +135,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                 children: [
+                  ProvidersCard(repo: widget.repo, onChanged: _load),
                   for (final group in _groupOrder)
                     if (fields.any((f) => f.group == group))
                       _GroupCard(

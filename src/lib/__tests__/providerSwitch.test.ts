@@ -160,14 +160,25 @@ describe("the operator can see which provider is failing", () => {
     assert.equal(anthropic?.last_failure_code ?? null, null);
   });
 
-  it("the panel offers a closed provider list, not a free-text field", () => {
-    const panel = readFileSync(
-      path.join(process.cwd(), "src/components/admin/AdminKeysPanel.tsx"),
+  it("the console offers a closed provider list, not a free-text field", () => {
+    // The admin console is the Flutter app; the invariant is unchanged and
+    // this now reads the code that actually renders it. A free-text
+    // AI_PROVIDER field would let an operator type a provider that does not
+    // exist and take the platform down by typo.
+    const card = readFileSync(
+      path.join(process.cwd(), "admin_flutter/lib/screens/providers.dart"),
       "utf8",
     );
-    assert.match(panel, /data-testid="ai-provider-select"/);
-    assert.match(panel, /<select/, "AI_PROVIDER is picked from a list");
-    assert.match(panel, /ProviderStatusCard/, "per-provider status is on the page");
+    assert.match(card, /DropdownButtonFormField<String>/, "picked from a list");
+    assert.match(card, /for \(final p in data\.providers\)/, "the list IS the server's");
+    assert.match(card, /_providerRow\(p\)/, "per-provider status is on the page");
+
+    // And the config screen must not grow a second, free-text copy of it.
+    const config = readFileSync(
+      path.join(process.cwd(), "admin_flutter/lib/screens/config.dart"),
+      "utf8",
+    );
+    assert.match(config, /'AI_PROVIDER',/, "hidden from the raw key editor");
   });
 });
 

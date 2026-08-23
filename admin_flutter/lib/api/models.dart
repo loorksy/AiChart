@@ -3,6 +3,8 @@
 /// installs stringify numbers/booleans differently.
 library;
 
+import 'dart:convert';
+
 int asInt(dynamic v, [int fallback = 0]) {
   if (v is int) return v;
   if (v is num) return v.toInt();
@@ -255,14 +257,16 @@ class OverviewResponse {
       );
 }
 
+/// One account as the billing surfaces see it. There is ONE currency —
+/// credits — so there are no trial counters here: `plan_status` says whether
+/// the account is Free, subscribed or lapsed, and `credits` is the balance.
 class SubscriptionUser {
   final int userId;
   final String email;
   final String role;
   final String status;
   final String planStatus;
-  final int trialInteractionsUsed;
-  final int trialRecommendationsUsed;
+  final int credits;
   final String? subscriptionExpiresAt;
   final String? note;
 
@@ -272,8 +276,7 @@ class SubscriptionUser {
     required this.role,
     required this.status,
     required this.planStatus,
-    required this.trialInteractionsUsed,
-    required this.trialRecommendationsUsed,
+    required this.credits,
     this.subscriptionExpiresAt,
     this.note,
   });
@@ -285,8 +288,7 @@ class SubscriptionUser {
         role: j['role']?.toString() ?? 'user',
         status: j['status']?.toString() ?? '',
         planStatus: j['plan_status']?.toString() ?? '',
-        trialInteractionsUsed: asInt(j['trial_interactions_used']),
-        trialRecommendationsUsed: asInt(j['trial_recommendations_used']),
+        credits: asInt(j['credits']),
         subscriptionExpiresAt: asStringOrNull(j['subscription_expires_at']),
         note: asStringOrNull(j['note']),
       );
@@ -434,4 +436,483 @@ class AdminHealth {
       usersActive: asInt(users['active']),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Billing v3 configuration — every priced or bounded number the platform
+// enforces. These mirror `lib/billing/planConfig.ts` row for row.
+// ─────────────────────────────────────────────────────────────────────
+
+class BillingPlan {
+  /// Credits a NEW account is handed once, forever. 0 = no welcome balance.
+  final int signupGrantCredits;
+
+  /// Minimum reward:risk on the FIRST target, x100 (250 = 2.5:1). 0 = off.
+  final int minRrFirstTargetBp;
+  final int lowBalanceThreshold;
+  final int expiryWarnDays;
+
+  BillingPlan({
+    required this.signupGrantCredits,
+    required this.minRrFirstTargetBp,
+    required this.lowBalanceThreshold,
+    required this.expiryWarnDays,
+  });
+
+  factory BillingPlan.fromJson(Map<String, dynamic> j) => BillingPlan(
+        signupGrantCredits: asInt(j['signup_grant_credits']),
+        minRrFirstTargetBp: asInt(j['min_rr_first_target_bp']),
+        lowBalanceThreshold: asInt(j['low_balance_threshold']),
+        expiryWarnDays: asInt(j['expiry_warn_days']),
+      );
+}
+
+/// A published plan price. Rows are IMMUTABLE: "changing the price" writes a
+/// new row and archives this one, so a subscriber keeps the terms they bought.
+class PlanPrice {
+  final int id;
+  final int priceCents;
+  final int creditsPerCycle;
+  final int cycleDays;
+  final int? archivedAt;
+
+  PlanPrice({
+    required this.id,
+    required this.priceCents,
+    required this.creditsPerCycle,
+    required this.cycleDays,
+    this.archivedAt,
+  });
+
+  factory PlanPrice.fromJson(Map<String, dynamic> j) => PlanPrice(
+        id: asInt(j['id']),
+        priceCents: asInt(j['price_cents']),
+        creditsPerCycle: asInt(j['credits_per_cycle']),
+        cycleDays: asInt(j['cycle_days']),
+        archivedAt: j['archived_at'] == null ? null : asInt(j['archived_at']),
+      );
+}
+
+class TopupPack {
+  final int id;
+  final int credits;
+  final int priceCents;
+  final bool active;
+  final int sort;
+  final int? archivedAt;
+
+  TopupPack({
+    required this.id,
+    required this.credits,
+    required this.priceCents,
+    required this.active,
+    required this.sort,
+    this.archivedAt,
+  });
+
+  bool get archived => archivedAt != null;
+
+  factory TopupPack.fromJson(Map<String, dynamic> j) => TopupPack(
+        id: asInt(j['id']),
+        credits: asInt(j['credits']),
+        priceCents: asInt(j['price_cents']),
+        active: asBool(j['active']),
+        sort: asInt(j['sort']),
+        archivedAt: j['archived_at'] == null ? null : asInt(j['archived_at']),
+      );
+}
+
+/// A discount window. It applies ONLY to checkouts created inside it —
+/// evaluated when the checkout opens, never retroactively.
+class Offer {
+  final int id;
+  final String kind; // percent | fixed_cents
+  final int value;
+  final int startsAt;
+  final int endsAt;
+  final bool active;
+
+  Offer({
+    required this.id,
+    required this.kind,
+    required this.value,
+    required this.startsAt,
+    required this.endsAt,
+    required this.active,
+  });
+
+  factory Offer.fromJson(Map<String, dynamic> j) => Offer(
+        id: asInt(j['id']),
+        kind: j['kind']?.toString() ?? 'percent',
+        value: asInt(j['value']),
+        startsAt: asInt(j['starts_at']),
+        endsAt: asInt(j['ends_at']),
+        active: asBool(j['active']),
+      );
+}
+
+class BillingConfig {
+  final BillingPlan plan;
+  final PlanPrice? currentPrice;
+
+  /// Credits charged per operation, keyed by SpendOp.
+  final Map<String, int> creditPrices;
+  final List<TopupPack> packs;
+  final List<Offer> offers;
+  final bool paymentsConfigured;
+
+  BillingConfig({
+    required this.plan,
+    this.currentPrice,
+    required this.creditPrices,
+    required this.packs,
+    required this.offers,
+    required this.paymentsConfigured,
+  });
+
+  factory BillingConfig.fromJson(Map<String, dynamic> j) => BillingConfig(
+        plan: BillingPlan.fromJson(
+            (j['plan'] as Map<String, dynamic>?) ?? const {}),
+        currentPrice: j['current_price'] == null
+            ? null
+            : PlanPrice.fromJson(j['current_price'] as Map<String, dynamic>),
+        creditPrices: {
+          for (final e in
+              ((j['credit_prices'] as Map<String, dynamic>?) ?? const {})
+                  .entries)
+            e.key: asInt(e.value),
+        },
+        packs: ((j['packs'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(TopupPack.fromJson)
+            .toList(),
+        offers: ((j['offers'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(Offer.fromJson)
+            .toList(),
+        paymentsConfigured: asBool(j['payments_configured']),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Ads
+// ─────────────────────────────────────────────────────────────────────
+
+class AdSlide {
+  final String? text;
+  final String? imagePath;
+
+  AdSlide({this.text, this.imagePath});
+
+  factory AdSlide.fromJson(Map<String, dynamic> j) => AdSlide(
+        text: asStringOrNull(j['text']),
+        imagePath: asStringOrNull(j['image_path']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (text != null && text!.isNotEmpty) 'text': text,
+        if (imagePath != null && imagePath!.isNotEmpty) 'image_path': imagePath,
+      };
+}
+
+class AdCampaign {
+  final int id;
+  final List<AdSlide> slides;
+
+  /// all | subscribers | non_subscribers | trial
+  final String audience;
+  final bool active;
+  final int? startsAt;
+  final int? endsAt;
+
+  AdCampaign({
+    required this.id,
+    required this.slides,
+    required this.audience,
+    required this.active,
+    this.startsAt,
+    this.endsAt,
+  });
+
+  factory AdCampaign.fromJson(Map<String, dynamic> j) {
+    // The server stores slides as a JSON string column; some responses
+    // hand back the decoded list. Accept both.
+    final raw = j['slides'] ?? j['slides_json'];
+    final list = raw is List
+        ? raw
+        : (raw is String && raw.isNotEmpty ? jsonDecode(raw) as List : const []);
+    return AdCampaign(
+      id: asInt(j['id']),
+      slides: list
+          .whereType<Map<String, dynamic>>()
+          .map(AdSlide.fromJson)
+          .toList(),
+      audience: j['audience']?.toString() ?? 'all',
+      active: asBool(j['active']),
+      startsAt: j['starts_at'] == null ? null : asInt(j['starts_at']),
+      endsAt: j['ends_at'] == null ? null : asInt(j['ends_at']),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AI providers
+// ─────────────────────────────────────────────────────────────────────
+
+/// One provider's live standing. `active` is the operator's explicit choice
+/// (AI_PROVIDER) — the platform never switches provider on its own, so a
+/// failure here names the account to top up instead of reading as
+/// "the AI is down".
+class ProviderStatus {
+  final String id;
+  final String label;
+  final bool active;
+  final bool keyConfigured;
+  final String keyField;
+
+  /// The model this provider answers with — only set for the active one.
+  final String? model;
+  final int? lastSuccessAt;
+  final int? lastFailureAt;
+  final String? lastFailureCode;
+
+  ProviderStatus({
+    required this.id,
+    required this.label,
+    required this.active,
+    required this.keyConfigured,
+    required this.keyField,
+    this.model,
+    this.lastSuccessAt,
+    this.lastFailureAt,
+    this.lastFailureCode,
+  });
+
+  factory ProviderStatus.fromJson(Map<String, dynamic> j) => ProviderStatus(
+        id: j['id']?.toString() ?? '',
+        label: j['label']?.toString() ?? '',
+        active: asBool(j['active']),
+        keyConfigured: asBool(j['keyConfigured']),
+        keyField: j['keyField']?.toString() ?? '',
+        model: asStringOrNull(j['model']),
+        lastSuccessAt:
+            j['lastSuccessAt'] == null ? null : asInt(j['lastSuccessAt']),
+        lastFailureAt:
+            j['lastFailureAt'] == null ? null : asInt(j['lastFailureAt']),
+        lastFailureCode: asStringOrNull(j['lastFailureCode']),
+      );
+}
+
+class ProviderOverview {
+  final String active;
+  final List<ProviderStatus> providers;
+
+  ProviderOverview({required this.active, required this.providers});
+
+  factory ProviderOverview.fromJson(Map<String, dynamic> j) => ProviderOverview(
+        active: j['active']?.toString() ?? '',
+        providers: ((j['providers'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(ProviderStatus.fromJson)
+            .toList(),
+      );
+}
+
+class ModelChoice {
+  final String id;
+  final String label;
+
+  ModelChoice({required this.id, required this.label});
+
+  factory ModelChoice.fromJson(Map<String, dynamic> j) => ModelChoice(
+        id: j['id']?.toString() ?? '',
+        label: j['label']?.toString() ?? '',
+      );
+}
+
+class ModelCatalogue {
+  final String provider;
+  final List<ModelChoice> models;
+  final String? defaultModel;
+
+  ModelCatalogue({
+    required this.provider,
+    required this.models,
+    this.defaultModel,
+  });
+
+  factory ModelCatalogue.fromJson(Map<String, dynamic> j) => ModelCatalogue(
+        provider: j['provider']?.toString() ?? '',
+        models: ((j['models'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(ModelChoice.fromJson)
+            .toList(),
+        defaultModel: asStringOrNull(j['defaultModel']),
+      );
+}
+
+/// What the MCP channel would actually call with, and what it falls back to.
+class AgentModelStatus {
+  final String channel;
+  final String platformModel;
+  final String? platformRef;
+  final List<String> fallbacks;
+
+  AgentModelStatus({
+    required this.channel,
+    required this.platformModel,
+    this.platformRef,
+    required this.fallbacks,
+  });
+
+  factory AgentModelStatus.fromJson(Map<String, dynamic> j) => AgentModelStatus(
+        channel: j['channel']?.toString() ?? '',
+        platformModel: j['platformModel']?.toString() ?? '',
+        platformRef: asStringOrNull(j['platformRef']),
+        fallbacks: ((j['fallbacks'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+      );
+}
+
+/// What a million tokens costs us, per model. The usage meter reads these
+/// per call, so an edit lands on the very next LLM call.
+class ModelPrice {
+  final String provider;
+  final String model;
+  final double inputUsdPerM;
+  final double outputUsdPerM;
+
+  ModelPrice({
+    required this.provider,
+    required this.model,
+    required this.inputUsdPerM,
+    required this.outputUsdPerM,
+  });
+
+  factory ModelPrice.fromJson(Map<String, dynamic> j) => ModelPrice(
+        provider: j['provider']?.toString() ?? '',
+        model: j['model']?.toString() ?? '',
+        inputUsdPerM: asDouble(j['input_usd_per_m']),
+        outputUsdPerM: asDouble(j['output_usd_per_m']),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Operations
+// ─────────────────────────────────────────────────────────────────────
+
+class UsageRow {
+  final int userId;
+  final String email;
+  final String status;
+  final int usedToday;
+  final int quota;
+
+  UsageRow({
+    required this.userId,
+    required this.email,
+    required this.status,
+    required this.usedToday,
+    required this.quota,
+  });
+
+  factory UsageRow.fromJson(Map<String, dynamic> j) => UsageRow(
+        userId: asInt(j['user_id']),
+        email: j['email']?.toString() ?? '',
+        status: j['status']?.toString() ?? '',
+        usedToday: asInt(j['used_today']),
+        quota: asInt(j['quota'], 1000),
+      );
+}
+
+class AuditRow {
+  final int id;
+  final int? userId;
+  final String action;
+  final String? detail;
+  final String createdAt;
+
+  AuditRow({
+    required this.id,
+    this.userId,
+    required this.action,
+    this.detail,
+    required this.createdAt,
+  });
+
+  factory AuditRow.fromJson(Map<String, dynamic> j) => AuditRow(
+        id: asInt(j['id']),
+        userId: j['user_id'] == null ? null : asInt(j['user_id']),
+        action: j['action']?.toString() ?? '',
+        detail: asStringOrNull(j['detail']),
+        createdAt: j['created_at']?.toString() ?? '',
+      );
+}
+
+/// The counters that say whether the doctrine is holding: hidden writes,
+/// executions in the wrong mode, plan edits outside the revision path, and
+/// surfaces that disagreed about the same moment.
+class DiagnosticsReport {
+  final Map<String, num> critical;
+  final Map<String, num> parityTotals;
+  final int parityUnpaired;
+  final Map<String, num> counters;
+  final Map<String, num> reevaluation;
+  final Map<String, num> caseMemory;
+
+  DiagnosticsReport({
+    required this.critical,
+    required this.parityTotals,
+    required this.parityUnpaired,
+    required this.counters,
+    required this.reevaluation,
+    required this.caseMemory,
+  });
+
+  static Map<String, num> _numbers(dynamic raw) {
+    final map = (raw as Map<String, dynamic>?) ?? const {};
+    final out = <String, num>{};
+    for (final e in map.entries) {
+      if (e.value is num) {
+        out[e.key] = e.value as num;
+      } else if (e.value is String) {
+        final parsed = num.tryParse(e.value as String);
+        if (parsed != null) out[e.key] = parsed;
+      }
+    }
+    return out;
+  }
+
+  factory DiagnosticsReport.fromJson(Map<String, dynamic> j) {
+    final parity = (j['parity'] as Map<String, dynamic>?) ?? const {};
+    return DiagnosticsReport(
+      critical: _numbers(j['critical']),
+      parityTotals: _numbers(parity['totals']),
+      parityUnpaired: (parity['unpaired'] as List?)?.length ?? 0,
+      counters: _numbers(j['counters']),
+      reevaluation: _numbers(j['reevaluation']),
+      caseMemory: _numbers(j['caseMemory']),
+    );
+  }
+}
+
+/// Outcome of the one-time "everyone starts clean" reset.
+class AccountResetResult {
+  final int accounts;
+  final int granted;
+  final int grantEach;
+
+  AccountResetResult({
+    required this.accounts,
+    required this.granted,
+    required this.grantEach,
+  });
+
+  factory AccountResetResult.fromJson(Map<String, dynamic> j) =>
+      AccountResetResult(
+        accounts: asInt(j['accounts']),
+        granted: asInt(j['granted']),
+        grantEach: asInt(j['grantEach']),
+      );
 }
