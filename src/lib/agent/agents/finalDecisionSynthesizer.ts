@@ -408,7 +408,7 @@ export function classifySynthesizerError(error: unknown): {
     return { kind: "truncated", retryable: true, detail: error.message };
   }
   // Matched by TYPE, not by reading its text. The message is written in the
-  // operator's language ("انتهت مهلة الاتصال بـ …"), and the substring checks
+  // operator's language (Arabic, from the i18n layer), and the substring checks
   // further down look for the English words "timeout"/"timed out"/"abort" — so
   // a real per-attempt timeout fell through to `unknown`, which is NOT
   // retryable, and the loop broke after attempt 1. The retry the deadline was
