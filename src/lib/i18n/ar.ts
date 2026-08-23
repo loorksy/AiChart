@@ -549,6 +549,7 @@ export const ar: Record<TranslationKey, string> = {
   "outcome.execution_validated": "تحليل مع صلاحية تنفيذ",
   "outcome.descriptive_only": "تحليل للاطّلاع — بلا صلاحية تنفيذ",
   "outcome.operational_blocker": "تعذّر الإكمال لسبب تشغيلي",
+  "config.model_wrong_provider": "النموذج «{model}» لا يخصّ {provider} — الحقل {field} يقبل نماذج {provider} وحدها.",
   "decision.buy": "شراء",
   "decision.sell": "بيع",
   "decision.wait": "لا توصية",

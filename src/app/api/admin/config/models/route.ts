@@ -2,20 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { handleError } from "@/lib/api";
 import { requireAdminWith } from "@/lib/adminRoles";
-import { OPENAI_MODEL_CHOICES } from "@/lib/modelCatalog";
+import { ANTHROPIC_MODEL_CHOICES, OPENAI_MODEL_CHOICES } from "@/lib/modelCatalog";
 import {
+  getActiveProviderAsync,
   getProviderApiKey,
   providerKeyField,
   resolveActiveSelection,
   verifyProviderKey,
+  type LLMProvider,
 } from "@/lib/llm";
 
 const bodySchema = z.object({
   apiKey: z.string().min(10).optional(),
 });
 
-function missingKeyError(): string {
-  return `أدخل مفتاح ${providerKeyField("openai")} أو احفظه أولاً.`;
+function missingKeyError(provider: LLMProvider): string {
+  return `أدخل مفتاح ${providerKeyField(provider)} أو احفظه أولاً.`;
+}
+
+/** The curated catalogue for whichever provider is actually active. */
+function choicesFor(provider: LLMProvider) {
+  return provider === "anthropic" ? ANTHROPIC_MODEL_CHOICES : OPENAI_MODEL_CHOICES;
 }
 
 /**
@@ -23,13 +30,13 @@ function missingKeyError(): string {
  * see — not from the provider's full listing. The live API call remains solely
  * to prove the key works before it is trusted.
  */
-async function curatedModels(key: string) {
+async function curatedModels(provider: LLMProvider, key: string) {
   // Key validation goes through the LLM layer, the only module that speaks to
   // a provider's own endpoint — so this panel cannot grow a second opinion
   // about providers alongside the resolver.
-  const verified = await verifyProviderKey("openai", key);
+  const verified = await verifyProviderKey(provider, key);
   if (!verified.ok) throw new Error(verified.error);
-  return OPENAI_MODEL_CHOICES.map((m) => ({ id: m.id, label: m.label }));
+  return choicesFor(provider).map((m) => ({ id: m.id, label: m.label }));
 }
 
 async function activeModelId(): Promise<string> {
@@ -39,13 +46,19 @@ async function activeModelId(): Promise<string> {
 export async function GET() {
   try {
     await requireAdminWith("keys_write");
-    const key = getProviderApiKey("openai");
+    // The ACTIVE provider, not a hard-coded one. This route named OpenAI in
+    // seven places, so with the platform pointed at Anthropic the console's
+    // "verify key and list models" button answered 400 "enter your
+    // OPENAI_API_KEY" — and if an unrelated OpenAI key happened to be stored,
+    // it listed the wrong provider's catalogue as the deep-model picker.
+    const provider = await getActiveProviderAsync();
+    const key = getProviderApiKey(provider);
     if (!key) {
-      return NextResponse.json({ error: missingKeyError() }, { status: 400 });
+      return NextResponse.json({ error: missingKeyError(provider) }, { status: 400 });
     }
     return NextResponse.json({
-      provider: "openai",
-      models: await curatedModels(key),
+      provider,
+      models: await curatedModels(provider, key),
       defaultModel: await activeModelId(),
     });
   } catch (err) {
@@ -61,13 +74,14 @@ export async function POST(req: NextRequest) {
   try {
     await requireAdminWith("keys_write");
     const { apiKey } = bodySchema.parse(await req.json().catch(() => ({})));
-    const key = apiKey ?? getProviderApiKey("openai");
+    const provider = await getActiveProviderAsync();
+    const key = apiKey ?? getProviderApiKey(provider);
     if (!key) {
-      return NextResponse.json({ error: missingKeyError() }, { status: 400 });
+      return NextResponse.json({ error: missingKeyError(provider) }, { status: 400 });
     }
     return NextResponse.json({
-      provider: "openai",
-      models: await curatedModels(key),
+      provider,
+      models: await curatedModels(provider, key),
       defaultModel: await activeModelId(),
     });
   } catch (err) {

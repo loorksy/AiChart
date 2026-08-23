@@ -44,6 +44,44 @@ const ALLOWED_REFS = new Set<string>([
 ]);
 
 /** Is this "provider/model" ref one the platform offers? */
+/**
+ * Does this model id belong to this provider?
+ *
+ * The catalogue is the only model-to-provider binding the platform has, and
+ * nothing infers one from a model's shape — so `anthropic/gpt-4.1` would sail
+ * through any check that only asks "is a model configured?". Asking THIS
+ * instead lets a wrong pairing be refused by name, at the moment it is typed,
+ * rather than surfacing later as a provider error that blames the account.
+ */
+export function modelBelongsToProvider(provider: string, model: string): boolean {
+  const id = model.trim();
+  if (!id) return false;
+  const choices =
+    provider === "anthropic"
+      ? ANTHROPIC_MODEL_CHOICES
+      : provider === "openai"
+        ? OPENAI_MODEL_CHOICES
+        : [];
+  return choices.some((choice) => choice.id === id);
+}
+
+/**
+ * A model id that is plausibly this provider's, by naming convention.
+ *
+ * Deliberately looser than the catalogue: providers ship new models faster
+ * than this repo adds them, and refusing a brand-new, correctly-paired model
+ * would be worse than the problem being solved. What it DOES catch is the
+ * cross-provider mistake — a `gpt-…` id saved as the Anthropic model, or a
+ * `claude-…` id saved as OpenAI's — which is never anything but an error.
+ */
+export function modelLooksLikeProvider(provider: string, model: string): boolean {
+  const id = model.trim().toLowerCase();
+  if (!id) return false;
+  if (provider === "anthropic") return !/^(gpt|o\d|text-|davinci)/.test(id);
+  if (provider === "openai") return !/^claude/.test(id);
+  return true;
+}
+
 export function isAllowedModelRef(ref: string): boolean {
   return ALLOWED_REFS.has(ref);
 }

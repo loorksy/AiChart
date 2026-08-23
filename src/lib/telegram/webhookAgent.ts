@@ -37,6 +37,7 @@ import {
 } from "@/lib/store";
 import {
   checkModelRef,
+  resolveActiveSelection,
   getActiveProviderAsync,
   isProviderReadyAsync,
   providerLabel,
@@ -284,7 +285,22 @@ async function sendModelMenu(
     await sendMessage(chatId, t(locale, "tg.model_none"), undefined, { replyToMessageId });
     return;
   }
-  const current = settings.telegram_model_ref ?? PLATFORM_DEFAULT_MODEL_REF;
+  // What will ACTUALLY answer, from the same resolver the run uses.
+  //
+  // This line used to read the stored per-user pick and, when that was unset,
+  // a compile-time constant — so `/model` reported "Sonnet 4.6" no matter what
+  // the operator had configured, could name an Anthropic model while the
+  // platform was pointed at OpenAI, and displayed a stale pick that the
+  // resolver silently ignores at run time. A "current model" line that cannot
+  // be wrong about the current model is the whole point of the command.
+  const active = await resolveActiveSelection("deep");
+  const activeRef = `${active.provider}/${active.model}`;
+  // A stored pick only counts when the resolver would honour it: same
+  // provider, and offered. Otherwise the platform's own selection stands.
+  const storedRef = settings.telegram_model_ref ?? null;
+  const storedHonoured =
+    storedRef != null && (await checkModelRef(storedRef)).ok ? storedRef : null;
+  const current = storedHonoured ?? activeRef;
   const currentLabel =
     offered.find((m) => m.ref === current)?.label ??
     shortModelLabel(current.split("/").pop() ?? current);
