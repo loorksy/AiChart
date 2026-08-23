@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'client.dart';
 import 'models.dart';
 
@@ -368,13 +370,30 @@ class AdminRepository {
   Future<List<AdCampaign>> deleteAd(int id) async => _ads(await api
       .sendJson('PATCH', '/api/admin/ads', {'id': id, 'remove': true}));
 
-  /// Uploads one image and returns the stored path. The server checks the
-  /// MAGIC BYTES and the size cap — the file name proves nothing.
-  Future<String> uploadAdImage(String base64) async {
-    final j = await api
-        .sendJson('POST', '/api/admin/ads/upload', {'image_base64': base64});
-    return j['image_path']?.toString() ?? '';
+  /// Uploads one image FILE and returns what the server made of it.
+  ///
+  /// The bytes travel as bytes. The server checks the MAGIC BYTES and the size
+  /// cap and ignores the filename and content type entirely, so what comes
+  /// back — including whether the picture actually animates — is measured,
+  /// not claimed by the client.
+  Future<AdImageUpload> uploadAdImage({
+    required Uint8List bytes,
+    required String filename,
+    String? mimeType,
+  }) async {
+    final j = await api.uploadFile(
+      '/api/admin/ads/upload',
+      bytes: bytes,
+      filename: filename,
+      mimeType: mimeType,
+    );
+    return AdImageUpload.fromJson(j);
   }
+
+  /// What the picker may offer, straight from the server, so the dialog's
+  /// filter and the rule that is actually enforced cannot drift apart.
+  Future<AdUploadLimits> adUploadLimits() async =>
+      AdUploadLimits.fromJson(await api.getJson('/api/admin/ads/upload'));
 
   List<AdCampaign> _ads(Map<String, dynamic> j) =>
       ((j['ads'] as List?) ?? const [])

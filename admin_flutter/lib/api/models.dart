@@ -925,3 +925,46 @@ class AccountResetResult {
         grantEach: asInt(j['grantEach']),
       );
 }
+
+/// What the server made of an uploaded ad image.
+class AdImageUpload {
+  final String imagePath;
+  final String ext;
+  final int bytes;
+
+  /// Measured from the file's own bytes, not guessed from its format: an
+  /// operator can see before publishing whether the picture actually moves.
+  final bool animated;
+  final bool animatedCapable;
+
+  AdImageUpload({
+    required this.imagePath,
+    required this.ext,
+    required this.bytes,
+    required this.animated,
+    required this.animatedCapable,
+  });
+
+  factory AdImageUpload.fromJson(Map<String, dynamic> j) => AdImageUpload(
+        imagePath: j['image_path']?.toString() ?? '',
+        ext: j['ext']?.toString() ?? '',
+        bytes: asInt(j['bytes']),
+        animated: asBool(j['animated']),
+        animatedCapable: asBool(j['animated_capable']),
+      );
+}
+
+/// The upload bounds, read from the server rather than guessed client-side.
+class AdUploadLimits {
+  final int maxBytes;
+  final List<String> accepted;
+
+  AdUploadLimits({required this.maxBytes, required this.accepted});
+
+  factory AdUploadLimits.fromJson(Map<String, dynamic> j) => AdUploadLimits(
+        maxBytes: asInt(j['max_bytes'], 2 * 1024 * 1024),
+        accepted: ((j['accepted'] as List?) ?? const ['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+            .map((e) => e.toString())
+            .toList(),
+      );
+}

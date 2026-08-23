@@ -291,11 +291,15 @@ class L {
     'slide': {'ar': 'شريحة', 'en': 'Slide'},
     'addSlide': {'ar': 'إضافة شريحة', 'en': 'Add slide'},
     'attachImage': {'ar': 'إرفاق صورة', 'en': 'Attach image'},
-    'attachImageHint': {
-      'ar': 'الصق الصورة كـ base64 أو data URL. الخادم يفحص بايتات الملف '
-          'نفسها، لا امتداده.',
-      'en': 'Paste the image as base64 or a data URL. The server checks the '
-          'file\'s own bytes, not its extension.'
+    'removeImage': {'ar': 'إزالة الصورة', 'en': 'Remove image'},
+    'imageAnimated': {'ar': 'صورة متحرّكة', 'en': 'Animated'},
+    'imageTooLarge': {
+      'ar': 'الصورة أكبر من الحدّ المسموح.',
+      'en': 'The image is over the size limit.'
+    },
+    'imageWrongType': {
+      'ar': 'نوع الملف غير مقبول — PNG أو JPEG أو GIF أو WebP.',
+      'en': 'Unsupported file type — PNG, JPEG, GIF or WebP.'
     },
     'uploadFailed': {'ar': 'تعذّر الرفع.', 'en': 'Upload failed.'},
     'adNeedsSlide': {

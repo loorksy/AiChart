@@ -48,13 +48,15 @@ before(async () => {
 });
 
 describe("image validation is magic-bytes + size, nothing else", () => {
-  it("accepts the four types by their bytes and flags the animated-capable ones", () => {
+  it("accepts the four types by their bytes, and knows which formats CAN animate", () => {
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8)]);
     const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(8)]);
     const gif = Buffer.concat([Buffer.from("GIF89a", "ascii"), Buffer.alloc(8)]);
     const webp = Buffer.concat([Buffer.from("RIFF", "ascii"), Buffer.alloc(4), Buffer.from("WEBP", "ascii"), Buffer.alloc(4)]);
-    for (const [buf, ext, animated] of [
-      [png, "png", false],
+    for (const [buf, ext, capable] of [
+      // PNG counts now: APNG is a PNG. This row used to say `false`, which
+      // was an assumption about the format rather than a fact about it.
+      [png, "png", true],
       [jpg, "jpg", false],
       [gif, "gif", true],
       [webp, "webp", true],
@@ -63,8 +65,49 @@ describe("image validation is magic-bytes + size, nothing else", () => {
       assert.equal(verdict.ok, true);
       if (verdict.ok) {
         assert.equal(verdict.ext, ext);
-        assert.equal(verdict.animatedCapable, animated);
+        assert.equal(verdict.animatedCapable, capable);
       }
+    }
+  });
+
+  it("reports whether the file ACTUALLY animates, read from its bytes", () => {
+    // The distinction that matters to the operator: "this format could
+    // animate" is not "this picture moves". The old flag answered the first
+    // and was read as the second, so every WebP claimed animation and every
+    // APNG denied it.
+    const stillGif = Buffer.concat([Buffer.from("GIF89a", "ascii"), Buffer.alloc(16)]);
+    const animatedGif = Buffer.concat([
+      Buffer.from("GIF89a", "ascii"),
+      Buffer.alloc(7),
+      Buffer.from("!\u00ffNETSCAPE2.0", "latin1"),
+      Buffer.alloc(8),
+    ]);
+    const stillWebp = Buffer.concat([
+      Buffer.from("RIFF", "ascii"), Buffer.alloc(4), Buffer.from("WEBP", "ascii"), Buffer.alloc(8),
+    ]);
+    const animatedWebp = Buffer.concat([
+      Buffer.from("RIFF", "ascii"), Buffer.alloc(4), Buffer.from("WEBP", "ascii"),
+      Buffer.from("VP8X", "ascii"), Buffer.alloc(4), Buffer.from("ANMF", "ascii"),
+    ]);
+    const apng = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from("acTL", "ascii"), Buffer.alloc(8), Buffer.from("IDAT", "ascii"),
+    ]);
+    const stillPng = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from("IHDR", "ascii"), Buffer.alloc(8), Buffer.from("IDAT", "ascii"),
+    ]);
+    for (const [buf, animated, label] of [
+      [stillGif, false, "single-frame gif"],
+      [animatedGif, true, "netscape-looped gif"],
+      [stillWebp, false, "still webp"],
+      [animatedWebp, true, "ANMF webp"],
+      [apng, true, "apng"],
+      [stillPng, false, "plain png"],
+    ] as const) {
+      const verdict = ads.validateAdImage(buf);
+      assert.equal(verdict.ok, true, label);
+      if (verdict.ok) assert.equal(verdict.animated, animated, label);
     }
   });
 

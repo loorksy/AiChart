@@ -51,8 +51,63 @@ const MAGIC: Array<{ ext: string; test: (b: Buffer) => boolean }> = [
   },
 ];
 
+/** Types the platform accepts, for a picker filter that cannot drift. */
+export const AD_IMAGE_ACCEPTED = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+
+/**
+ * Is this file actually ANIMATED — as opposed to merely being of a format
+ * that could be?
+ *
+ * The old flag answered the second question and was named as though it
+ * answered the first: every WebP reported "animated", every APNG reported
+ * "still", and the public read path re-derived the same guess from the file
+ * extension. The operator could not tell, before publishing, whether the
+ * thing they uploaded would move.
+ *
+ * Read from the bytes, per format:
+ *   - GIF   — more than one Image Descriptor (0x2C) block, which is what a
+ *             multi-frame GIF is; the NETSCAPE2.0 loop extension confirms it.
+ *   - WebP  — an ANIM/ANMF chunk (VP8X animation bit set).
+ *   - PNG   — an `acTL` chunk before the first `IDAT`, i.e. APNG.
+ */
+function detectAnimated(bytes: Buffer, ext: string): boolean {
+  try {
+    if (ext === "gif") {
+      if (bytes.includes(Buffer.from("NETSCAPE2.0", "ascii"))) return true;
+      let frames = 0;
+      // Scan for image descriptors; two or more means it animates.
+      for (let i = 13; i < bytes.length && frames < 2; i += 1) {
+        if (bytes[i] === 0x2c) frames += 1;
+      }
+      return frames >= 2;
+    }
+    if (ext === "webp") {
+      return (
+        bytes.includes(Buffer.from("ANMF", "ascii")) ||
+        bytes.includes(Buffer.from("ANIM", "ascii"))
+      );
+    }
+    if (ext === "png") {
+      const acTL = bytes.indexOf(Buffer.from("acTL", "ascii"));
+      const idat = bytes.indexOf(Buffer.from("IDAT", "ascii"));
+      return acTL !== -1 && (idat === -1 || acTL < idat);
+    }
+  } catch {
+    // A malformed file is not an animated one.
+  }
+  return false;
+}
+
 export type AdImageValidation =
-  | { ok: true; ext: string; animatedCapable: boolean }
+  | {
+      ok: true;
+      ext: string;
+      /** The format COULD animate. */
+      animatedCapable: boolean;
+      /** This file actually DOES animate — read from its bytes. */
+      animated: boolean;
+      bytes: number;
+    }
   | { ok: false; reason: "too_large" | "unsupported_type" };
 
 /** Magic-byte + size validation. Extension and Content-Type are ignored. */
@@ -60,7 +115,13 @@ export function validateAdImage(bytes: Buffer): AdImageValidation {
   if (bytes.length > AD_IMAGE_MAX_BYTES) return { ok: false, reason: "too_large" };
   for (const magic of MAGIC) {
     if (magic.test(bytes)) {
-      return { ok: true, ext: magic.ext, animatedCapable: magic.ext === "gif" || magic.ext === "webp" };
+      return {
+        ok: true,
+        ext: magic.ext,
+        animatedCapable: magic.ext === "gif" || magic.ext === "webp" || magic.ext === "png",
+        animated: detectAnimated(bytes, magic.ext),
+        bytes: bytes.length,
+      };
     }
   }
   return { ok: false, reason: "unsupported_type" };

@@ -12,6 +12,7 @@ import {
   Settings,
   Sun,
   User as UserIcon,
+  ShieldCheck,
 } from "lucide-react";
 import { useMe } from "@/hooks/useMe";
 import { useLocale } from "@/hooks/useLocale";
@@ -55,6 +56,12 @@ function ProfileMenuItems({
   const { t, locale, setLocale } = useLocale();
   const { resolved, setTheme } = useTheme();
   const { openSettings } = useConsoleOverlays();
+  const { data: me } = useMe();
+  // Cosmetic gating only. The console's own data is protected server-side —
+  // every /api/admin route re-checks the caller's role AND the specific
+  // permission with `requireAdminWith`, so hiding this row is a courtesy to
+  // people who are not admins, never the thing that keeps them out.
+  const isAdmin = me?.user?.role === "admin";
   const isDark = resolved === "dark";
   const themeLabel = isDark ? t("shell.theme_to_light") : t("shell.theme_to_dark");
   const rowClass = cn(ITEM_CLASS, touchSize && "min-h-12");
@@ -68,6 +75,26 @@ function ProfileMenuItems({
 
   return (
     <>
+      {isAdmin && (
+        // A plain anchor, not next/link: the console is a SEPARATE
+        // application served at this path, so the client router must not try
+        // to resolve it as a route of this app.
+        //
+        // It also lives here, in the account menu, and not only in the
+        // sidebar: an admin looking for their own admin tools opens their
+        // account, and the sidebar entry is invisible on a phone until the
+        // drawer is pulled out.
+        <a
+          href="/admin-app/"
+          role="menuitem"
+          data-testid="account-admin-console"
+          className={rowClass}
+          onClick={onDone}
+        >
+          <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="truncate">{t("shell.adminConsole")}</span>
+        </a>
+      )}
       <button
         type="button"
         role="menuitem"

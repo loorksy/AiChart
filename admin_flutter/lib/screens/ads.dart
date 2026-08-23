@@ -1,9 +1,8 @@
-import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../api/file_picker.dart';
 import '../api/models.dart';
 import '../api/repository.dart';
 import '../i18n.dart';
@@ -186,6 +185,10 @@ class _AdsScreenState extends State<AdsScreen> {
     final l = L.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final slides = <AdSlide>[AdSlide(text: '')];
+    // What was picked, per slide, so the operator SEES the picture before
+    // saving instead of a stored filename appearing under the text field.
+    final previews = <int, Uint8List>{};
+    final uploaded = <int, AdImageUpload>{};
     var audience = 'all';
     DateTime? starts;
     DateTime? ends;
@@ -195,19 +198,44 @@ class _AdsScreenState extends State<AdsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           Future<void> attach(int index) async {
-            // Flutter web has no file picker in the core SDK; the operator
-            // pastes a data URL or a base64 blob, which is exactly what the
-            // upload endpoint takes. The server still decides if it is an
-            // image.
-            final pasted = await _promptForBase64(context);
-            if (pasted == null || pasted.isEmpty) return;
+            // The device's own file chooser. This used to ask the operator to
+            // paste base64 or a data URL into a text box — unusable with a
+            // photo on a phone, which is why ad images never got uploaded.
+            final limits = await widget.repo.adUploadLimits().catchError(
+                  (_) => AdUploadLimits(
+                    maxBytes: 2 * 1024 * 1024,
+                    accepted: const ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+                  ),
+                );
+            final picked = await pickImageFile(accept: limits.accepted);
+            if (picked == null) return;
+            // A courtesy check so the operator hears about an oversize file
+            // before waiting for the upload. The SERVER is what enforces it.
+            if (picked.sizeBytes > limits.maxBytes) {
+              messenger.showSnackBar(SnackBar(
+                content: Text(
+                  '${l.t('imageTooLarge')} ${(limits.maxBytes / 1024 / 1024).toStringAsFixed(1)}MB',
+                ),
+              ));
+              return;
+            }
+            // Show it immediately; the upload result confirms it afterwards.
+            setDialogState(() => previews[index] = picked.bytes);
             try {
-              final path = await widget.repo.uploadAdImage(pasted);
-              setDialogState(() => slides[index] =
-                  AdSlide(text: slides[index].text, imagePath: path));
+              final result = await widget.repo.uploadAdImage(
+                bytes: picked.bytes,
+                filename: picked.name,
+                mimeType: picked.mimeType,
+              );
+              setDialogState(() {
+                slides[index] =
+                    AdSlide(text: slides[index].text, imagePath: result.imagePath);
+                uploaded[index] = result;
+              });
             } catch (e) {
+              setDialogState(() => previews.remove(index));
               messenger.showSnackBar(
-                  SnackBar(content: Text('${l.t('uploadFailed')} $e')));
+                  SnackBar(content: Text(_uploadError(l, e))));
             }
           }
 
@@ -236,13 +264,17 @@ class _AdsScreenState extends State<AdsScreen> {
                     for (var i = 0; i < slides.length; i++)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        _slidePreview(context, previews[i], uploaded[i]),
+                        Row(
                           children: [
                             Expanded(
                               child: TextField(
                                 decoration: InputDecoration(
                                   labelText: '${l.t('slide')} ${i + 1}',
-                                  helperText: slides[i].imagePath,
+                                      helperText: _slideHelper(l, slides[i], uploaded[i]),
                                   helperStyle:
                                       const TextStyle(fontSize: 11),
                                 ),
@@ -256,12 +288,27 @@ class _AdsScreenState extends State<AdsScreen> {
                               icon: const Icon(Icons.image_outlined),
                               onPressed: () => attach(i),
                             ),
+                            if (previews[i] != null || slides[i].imagePath != null)
+                              IconButton(
+                                tooltip: l.t('removeImage'),
+                                icon: const Icon(Icons.hide_image_outlined),
+                                onPressed: () => setDialogState(() {
+                                  previews.remove(i);
+                                  uploaded.remove(i);
+                                  slides[i] = AdSlide(text: slides[i].text);
+                                }),
+                              ),
                             if (slides.length > 1)
                               IconButton(
                                 icon: const Icon(Icons.remove_circle_outline),
-                                onPressed: () =>
-                                    setDialogState(() => slides.removeAt(i)),
+                                onPressed: () => setDialogState(() {
+                                  slides.removeAt(i);
+                                  previews.remove(i);
+                                  uploaded.remove(i);
+                                }),
                               ),
+                          ],
+                        ),
                           ],
                         ),
                       ),
@@ -343,59 +390,74 @@ class _AdsScreenState extends State<AdsScreen> {
         ));
   }
 
-  /// Reads an image from the clipboard as base64/data-URL text. Kept
-  /// deliberately dumb: the upload endpoint is the one that decides whether
-  /// the bytes are an image the platform accepts.
-  Future<String?> _promptForBase64(BuildContext context) async {
+  /// A picture the operator can SEE before publishing, plus what the server
+  /// measured about it. The dialog used to show only a stored filename.
+  Widget _slidePreview(BuildContext context, Uint8List? bytes, AdImageUpload? info) {
+    if (bytes == null) return const SizedBox.shrink();
     final l = L.of(context);
-    final controller = TextEditingController();
-    final clip = await Clipboard.getData(Clipboard.kTextPlain);
-    if (clip?.text != null) controller.text = clip!.text!.trim();
-    if (!context.mounted) return null;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l.t('attachImage')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l.t('attachImageHint'), style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              maxLines: 4,
-              textDirection: TextDirection.ltr,
-              decoration: const InputDecoration(hintText: 'data:image/png;base64,…'),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            // Image.memory animates a GIF or an animated WebP natively, so the
+            // preview moves exactly as the published ad will.
+            child: Image.memory(
+              bytes,
+              width: 96,
+              height: 96,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const SizedBox(
+                width: 96,
+                height: 96,
+                child: Icon(Icons.broken_image_outlined),
+              ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(l.t('close')),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(l.t('apply')),
-          ),
+          const SizedBox(width: 10),
+          if (info != null)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${info.ext.toUpperCase()} · ${(info.bytes / 1024).round()} KB',
+                    textDirection: TextDirection.ltr,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  // Measured from the bytes, not inferred from the format.
+                  if (info.animated)
+                    Text(
+                      l.t('imageAnimated'),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
     );
-    if (ok != true) return null;
-    var text = controller.text.trim();
-    // A pasted data URL carries a "data:image/png;base64," prefix the API
-    // does not want.
-    final comma = text.indexOf(',');
-    if (text.startsWith('data:') && comma > 0) text = text.substring(comma + 1);
-    if (text.isEmpty) return null;
-    try {
-      base64Decode(text);
-    } catch (_) {
-      if (kDebugMode) debugPrint('not base64');
-      return null;
+  }
+
+  String? _slideHelper(L l, AdSlide slide, AdImageUpload? info) {
+    if (slide.imagePath == null) return null;
+    if (info == null) return slide.imagePath;
+    return '${slide.imagePath} · ${info.ext.toUpperCase()}'
+        '${info.animated ? " · ${l.t('imageAnimated')}" : ""}';
+  }
+
+  /// The server's refusal, in words. It used to print the raw exception.
+  String _uploadError(L l, Object error) {
+    final text = '$error';
+    if (text.contains('too_large') || text.contains('413')) {
+      return l.t('imageTooLarge');
     }
-    return text;
+    if (text.contains('unsupported_type') || text.contains('415')) {
+      return l.t('imageWrongType');
+    }
+    return '${l.t('uploadFailed')} $text';
   }
 
   Future<DateTime?> _pickDate(BuildContext context) {

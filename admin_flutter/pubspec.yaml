@@ -12,6 +12,11 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   http: ^1.5.0
+  # Already present transitively; declared so the file picker may import it.
+  # A web-only picker is enough — the console ships as `flutter build web`.
+  web: ^1.1.0
+  # Transitive via `http`; declared so the multipart helper may name a type.
+  http_parser: ^4.1.0
   google_fonts: ^6.3.2
   intl: any
 

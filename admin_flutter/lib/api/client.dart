@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 
 /// Thrown for non-2xx responses; carries the server's error message when the
 /// body was JSON with an `error` field (the platform's error convention).
@@ -55,6 +57,35 @@ class ApiClient {
     final req = http.Request(method, _uri(path))
       ..headers.addAll(_headers(jsonBody: true))
       ..body = jsonEncode(body);
+    final res = await http.Response.fromStream(await _http.send(req));
+    return _decode(res);
+  }
+
+  /// Upload one file as `multipart/form-data`.
+  ///
+  /// The bytes go as bytes. The console used to make the operator paste a
+  /// base64 string into a text field, which is unusable with a photo from a
+  /// device — and the server still enforces every bound itself, so the
+  /// filename and content type sent here are hints, not permissions.
+  Future<Map<String, dynamic>> uploadFile(
+    String path, {
+    required Uint8List bytes,
+    required String filename,
+    String field = 'file',
+    String? mimeType,
+  }) async {
+    final req = http.MultipartRequest('POST', _uri(path))
+      ..headers.addAll(_headers())
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          field,
+          bytes,
+          filename: filename,
+          contentType: mimeType != null && mimeType.contains('/')
+              ? MediaType(mimeType.split('/').first, mimeType.split('/').last)
+              : null,
+        ),
+      );
     final res = await http.Response.fromStream(await _http.send(req));
     return _decode(res);
   }

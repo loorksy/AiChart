@@ -204,6 +204,29 @@ const NAVIGATION_PATTERNS = [
   /\.(?:push|replace|prefetch)\(\s*["'`](\/[^"'`{}]*)["'`]/g,
 ];
 
+/**
+ * Destinations the app really serves that are NOT Next pages.
+ *
+ * `/admin-app/` is the admin console: a separate Flutter application, built
+ * into `public/admin-app/` and reached through a rewrite. There is no
+ * `page.tsx` for it and there never will be — but it is not a 404 either, so
+ * neither "fail" nor "silently skip" is the right answer. It is allowed here
+ * AND its existence is proved below, so this list cannot become a place to
+ * hide a genuinely broken link.
+ */
+const NON_PAGE_DESTINATIONS = new Set(["/admin-app/", "/admin-app"]);
+
+test("a non-page destination is actually served", () => {
+  // The proof that earns `/admin-app/` its exemption above: something builds
+  // the bundle, and something routes the URL to it.
+  const REPO = path.join(SRC, "..");
+  const config = readFileSync(path.join(REPO, "next.config.ts"), "utf8");
+  assert.match(config, /source: "\/admin-app"/, "no rewrite serves /admin-app");
+  assert.match(config, /destination: "\/admin-app\/index\.html"/);
+  const build = readFileSync(path.join(REPO, "infra", "build-admin-app.sh"), "utf8");
+  assert.match(build, /--base-href[= ]\/admin-app\//, "nothing builds the bundle");
+});
+
 test("every internal link, redirect, and push points at a page that exists", () => {
   const pages = routeSegments("page");
   const violations: string[] = [];
@@ -215,6 +238,8 @@ test("every internal link, redirect, and push points at a page that exists", () 
         // API endpoints, files served from /public, and anchors are not pages.
         if (target.startsWith("/api/")) continue;
         if (/\.[a-z0-9]{2,5}$/i.test(target)) continue;
+        // Served, but not by a page — see NON_PAGE_DESTINATIONS.
+        if (NON_PAGE_DESTINATIONS.has(target)) continue;
         const segments = toSegments(target);
         if (!segments) continue;
         if (segments.length === 0) continue; // "/" is the root page
