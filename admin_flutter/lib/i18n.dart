@@ -132,6 +132,7 @@ class L {
     // ── Navigation ────────────────────────────────────────────────
     'pricing': {'ar': 'التسعير', 'en': 'Pricing'},
     'ads': {'ar': 'الإعلانات', 'en': 'Ads'},
+    'providers': {'ar': 'المزوّدون', 'en': 'Providers'},
     'operations': {'ar': 'التشغيل', 'en': 'Operations'},
 
     // ── Pricing ───────────────────────────────────────────────────

@@ -6,7 +6,12 @@ import '../i18n.dart';
 
 /// Which AI provider the platform is pointed at, and how each one is doing.
 ///
-/// The rule this card enforces in the UI is the operator's rule in code:
+/// This is its OWN destination in the console, not a card buried inside the
+/// keys screen: an operator looking for "providers" has to find something
+/// called providers. It used to be the first card of the keys page, which is
+/// reachable but not findable.
+///
+/// The rule this screen enforces in the UI is the operator's rule in code:
 /// **the platform never switches provider by itself.** There is no automatic
 /// failover, so when one provider's account runs dry the platform says so and
 /// stops — it does not quietly answer from the other one. Choosing is the
@@ -19,14 +24,14 @@ import '../i18n.dart';
 class ProvidersCard extends StatefulWidget {
   final AdminRepository repo;
 
-  /// Called after the active provider changes, so the config screen can
-  /// reload the key fields alongside it.
-  final VoidCallback onChanged;
+  /// Optional: called after the active provider changes, for a host that
+  /// shows related state beside it. The card always reloads itself.
+  final VoidCallback? onChanged;
 
   const ProvidersCard({
     super.key,
     required this.repo,
-    required this.onChanged,
+    this.onChanged,
   });
 
   @override
@@ -78,7 +83,7 @@ class _ProvidersCardState extends State<ProvidersCard> {
       await widget.repo.saveConfig({'AI_PROVIDER': id});
       messenger.showSnackBar(SnackBar(content: Text(l.t('providerSwitched'))));
       await _load();
-      widget.onChanged();
+      widget.onChanged?.call();
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('${l.t('saveFailed')} $e')));
     } finally {
@@ -314,4 +319,16 @@ class _ProvidersCardState extends State<ProvidersCard> {
     if (diff.inHours < 48) return '${diff.inHours}h';
     return '${diff.inDays}d';
   }
+}
+
+/// The Providers destination: the card, on a page of its own.
+class ProvidersScreen extends StatelessWidget {
+  final AdminRepository repo;
+  const ProvidersScreen({super.key, required this.repo});
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [ProvidersCard(repo: repo)],
+      );
 }

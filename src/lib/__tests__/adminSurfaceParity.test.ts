@@ -7,14 +7,19 @@
  * Every setting the platform has is now reachable from the Flutter app and
  * nowhere else.
  *
- * That claim is only worth something if it is checked, so this test checks
- * both halves of it:
+ * What THIS file checks, stated exactly — an earlier version of it claimed
+ * more than it proved and that gap shipped a console missing three screens:
  *
- *  1. Every `/api/admin/*` route has a caller in the Flutter repository.
- *     Add a route without wiring it up and this fails — the endpoint would
- *     otherwise exist with no way for an operator to reach it.
+ *  1. Every `/api/admin/*` route has a CLIENT METHOD in the Flutter
+ *     repository. That is a wiring check on the API layer and nothing more.
+ *     It does NOT show that any screen calls the method, and it does NOT
+ *     show that an operator can navigate anywhere — every path lives in
+ *     `repository.dart`, so deleting a whole screen leaves this green.
+ *     Reachability is tested where it actually lives, against the rendered
+ *     widget tree: `admin_flutter/test/routing_test.dart`.
  *  2. No admin UI grew back inside the web app. The old panel's components
  *     and its console page must stay gone.
+ *  3. The bundle is built and served the way the deploy expects.
  *
  * The one deliberate exception is `mcp-auth/*`: those are callbacks the MCP
  * bridge posts to during a connector handshake, not screens.
@@ -57,20 +62,53 @@ function flutterSource(): string {
 }
 
 describe("the admin console is the Flutter app and only the Flutter app", () => {
-  it("every /api/admin route is reachable from the Flutter client", () => {
+  it("every /api/admin route has a client method (NOT a reachability check)", () => {
+    // Deliberately narrow: an endpoint with no client method cannot be used
+    // by the console at all. That it HAS one says nothing about whether a
+    // screen calls it or an operator can navigate to that screen — see the
+    // file comment, and routing_test.dart for the check that does.
     const dart = flutterSource();
-    const unreachable: string[] = [];
+    const uncalled: string[] = [];
     for (const route of adminRoutes()) {
       // A dynamic segment is an interpolation in Dart ('/api/admin/users/$id'),
       // so compare only the literal prefix before it.
       const literal = route.replace(/\/\[.*$/, "");
-      if (!dart.includes(`/${literal}`)) unreachable.push(route);
+      if (!dart.includes(`/${literal}`)) uncalled.push(route);
     }
     assert.deepEqual(
-      unreachable,
+      uncalled,
       [],
-      `no Flutter caller — an operator cannot reach these:\n${unreachable.join("\n")}`,
+      `no Flutter client method for:\n${uncalled.join("\n")}`,
     );
+  });
+
+  it("reachability is tested against the widget tree, not by grepping files", () => {
+    // The guard that keeps the correction above honest. If the routing test
+    // is deleted or stops pumping the real shell, nothing else in this repo
+    // would notice that screens had become unreachable.
+    const routing = readFileSync(
+      path.join(FLUTTER, "test", "routing_test.dart"),
+      "utf8",
+    );
+    assert.match(routing, /pumpWidget/, "it must build the real shell");
+    assert.match(routing, /NavigationRail/);
+    assert.match(routing, /IndexedStack/);
+    // The required destinations are named there, so adding a screen to the
+    // console means declaring it in the test too.
+    for (const screen of [
+      "OverviewScreen",
+      "UsersScreen",
+      "BillingScreen",
+      "PricingScreen",
+      "AdsScreen",
+      "ProvidersScreen",
+      "ConfigScreen",
+      "OperationsScreen",
+      "SupportScreen",
+      "AdminsScreen",
+    ]) {
+      assert.ok(routing.includes(screen), `${screen} is not in the routing test`);
+    }
   });
 
   it("covers the settings the platform charges and answers on", () => {

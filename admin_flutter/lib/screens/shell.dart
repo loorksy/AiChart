@@ -10,6 +10,7 @@ import 'config.dart';
 import 'operations.dart';
 import 'overview.dart';
 import 'pricing.dart';
+import 'providers.dart';
 import 'support.dart';
 import 'users.dart';
 
@@ -56,6 +57,7 @@ class _AdminShellState extends State<AdminShell> {
       (Icons.payments_outlined, Icons.payments, l.t('billing')),
       (Icons.sell_outlined, Icons.sell, l.t('pricing')),
       (Icons.campaign_outlined, Icons.campaign, l.t('ads')),
+      (Icons.hub_outlined, Icons.hub, l.t('providers')),
       (Icons.key_outlined, Icons.key, l.t('config')),
       (Icons.monitor_heart_outlined, Icons.monitor_heart, l.t('operations')),
       (Icons.support_agent_outlined, Icons.support_agent, l.t('support')),
@@ -73,6 +75,7 @@ class _AdminShellState extends State<AdminShell> {
       BillingScreen(repo: widget.repo),
       PricingScreen(repo: widget.repo),
       AdsScreen(repo: widget.repo),
+      ProvidersScreen(repo: widget.repo),
       ConfigScreen(repo: widget.repo),
       OperationsScreen(repo: widget.repo),
       SupportScreen(repo: widget.repo),
