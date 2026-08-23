@@ -18,6 +18,7 @@ import type { ContentBlock } from "@/lib/anthropic";
 import { extractJson } from "@/lib/extractJson";
 import { isReasoningModel, modelAcceptsVision } from "@/lib/modelCatalog";
 import { createLogger } from "@/lib/logger";
+import { ExternalTimeoutError } from "@/lib/externalFetch";
 import { sanitizePublicText } from "../activity";
 import type { AgentRunContext } from "../types";
 import type {
@@ -154,6 +155,8 @@ async function callModelWithBlocks(
   userMsg: string,
   blocks: ContentBlock[],
   ctx: AgentRunContext,
+  /** What is left of the browse window; keeps a round inside it. */
+  budgetMs?: number,
 ): Promise<string> {
   const res = await callLLM(
     {
@@ -166,8 +169,15 @@ async function callModelWithBlocks(
       ],
       maxTokens: await decisionMaxTokens(),
     },
-    { tier: "deep", signal: ctx.signal },
+    // Bounded like any other decision call. Without this the browse round
+    // inherited the global 120s LLM timeout — longer than the 95s stage that
+    // contains it — and the loop's own 25s window could not stop it, because
+    // that window is only tested at the top of the loop and never during a
+    // call already in flight. A refinement round could therefore outlive the
+    // stage and take a decision already in hand down with it.
+    { tier: "deep", signal: ctx.signal, timeoutMs: budgetMs ?? DECISION_ATTEMPT_TIMEOUT_MS },
   );
+  if (res.stop_reason === "max_tokens") throw new TruncatedDecisionError(await decisionMaxTokens());
   return res.content
     .filter((b): b is { type: "text"; text: string } => b.type === "text")
     .map((b) => b.text)
@@ -396,6 +406,15 @@ export function classifySynthesizerError(error: unknown): {
   // not the model's JSON.
   if (error instanceof TruncatedDecisionError) {
     return { kind: "truncated", retryable: true, detail: error.message };
+  }
+  // Matched by TYPE, not by reading its text. The message is written in the
+  // operator's language ("انتهت مهلة الاتصال بـ …"), and the substring checks
+  // further down look for the English words "timeout"/"timed out"/"abort" — so
+  // a real per-attempt timeout fell through to `unknown`, which is NOT
+  // retryable, and the loop broke after attempt 1. The retry the deadline was
+  // sized to permit could never happen.
+  if (error instanceof ExternalTimeoutError) {
+    return { kind: "timeout", retryable: true, detail: error.message };
   }
   if (error instanceof z.ZodError) {
     return {
@@ -1047,6 +1066,10 @@ ${correction}`
             nextUser,
             buildVisualBlocks(attachedSnapshots),
             ctx,
+            // Never longer than what is left of the browse window. A round
+            // that outlives it takes the decision already in hand down with
+            // the stage — the opposite of what browsing is for.
+            Math.max(1_000, browseDeadline - Date.now()),
           );
       next = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
     } catch {

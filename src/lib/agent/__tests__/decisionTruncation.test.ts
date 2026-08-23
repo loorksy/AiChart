@@ -38,6 +38,7 @@ import {
   runFinalDecisionSynthesizer,
 } from "@/lib/agent/agents/finalDecisionSynthesizer";
 import { AGENT_TIMEOUTS } from "@/lib/agent/timeout";
+import { ExternalTimeoutError } from "@/lib/externalFetch";
 import type { FinalDecisionInput } from "@/lib/agent/agents/finalDecisionAgent";
 import type { AgentMarketContext } from "@/lib/agent/marketContext/buildAgentMarketContext";
 import type { AgentRunContext } from "@/lib/agent/types";
@@ -157,6 +158,39 @@ describe("a truncated reply is named, not disguised as bad JSON", () => {
     const badJson = classifySynthesizerError(new SyntaxError("Unexpected end of JSON input"));
     assert.equal(badJson.kind, "invalid_json");
     assert.notEqual(truncated.kind, badJson.kind, "the two causes must stay distinguishable");
+  });
+});
+
+describe("a per-attempt timeout is recognised as one", () => {
+  it("is classified by TYPE, so the retry it exists to permit can happen", () => {
+    // The trap this pins: ExternalTimeoutError's message is written in the
+    // operator's language, and the substring checks in the classifier look for
+    // the English words "timeout"/"timed out"/"abort". An Arabic timeout
+    // message matched none of them, fell through to `unknown` — which is NOT
+    // retryable — and broke the loop after attempt 1. The per-attempt deadline
+    // would have been structurally unable to do the one thing it was added
+    // for.
+    const classified = classifySynthesizerError(
+      new ExternalTimeoutError("Claude claude-sonnet-4-6", DECISION_ATTEMPT_TIMEOUT_MS),
+    );
+    assert.equal(classified.kind, "timeout");
+    assert.equal(classified.retryable, true, "a timeout must leave the retry open");
+  });
+
+  it("a timed-out first attempt still reaches a recommendation", async () => {
+    let calls = 0;
+    const out = await runFinalDecisionSynthesizer(ctx, input(), {
+      configured: true,
+      callModel: async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new ExternalTimeoutError("Claude", DECISION_ATTEMPT_TIMEOUT_MS);
+        }
+        return goodAnswer();
+      },
+    });
+    assert.equal(calls, 2, "the second attempt runs — this is the whole point");
+    assert.equal(out.result?.decision, "buy");
   });
 });
 
