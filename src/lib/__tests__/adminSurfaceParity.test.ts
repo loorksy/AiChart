@@ -184,15 +184,54 @@ describe("the admin console is the Flutter app and only the Flutter app", () => 
     assert.match(config, /destination: "\/admin-app\/index\.html"/);
   });
 
-  it("the deploy builds the console, or says out loud that it did not", () => {
-    // It is the only admin surface now: a deploy that silently skips it
-    // leaves the operator with no console and no message saying why.
+  it("the deploy rebuilds the console every time, or aborts", () => {
+    // The failure this pins actually happened: the deploy kept an old bundle
+    // when it could not rebuild, logged one quiet line about it, restarted
+    // everything and exited 0. The console stayed three screens out of date
+    // through a whole release with nothing reporting a problem.
     const deploy = readFileSync(path.join(REPO, "infra", "vps-pull-deploy.sh"), "utf8");
-    assert.match(deploy, /build-admin-app\.sh/);
-    assert.match(deploy, /WARN: no flutter SDK and no \/admin-app\/ bundle/);
+    assert.match(deploy, /build-admin-app\.sh/, "the deploy must build the console");
+    assert.match(deploy, /DEPLOY ABORTED/, "and stop when it cannot");
+    assert.match(deploy, /exit 1/);
+    // No path may accept the bundle already on disk as good enough.
+    assert.doesNotMatch(
+      deploy,
+      /elif\s*\[\[\s*-f\s*"\$INSTALL_DIR\/public\/admin-app/,
+      "the keep-the-existing-bundle fallback must not come back",
+    );
     // The same deploy must not resurrect the worker-through-npm shape that
     // orphaned the health port on every hard kill.
-    assert.doesNotMatch(deploy, /pm2 start npm/);
+    assert.doesNotMatch(deploy, /^\s*pm2 start npm/m);
     assert.match(deploy, /pm2 start "\$ECOSYSTEM"/);
+  });
+
+  it("the bundle can never be served stale", () => {
+    // Flutter's web output does not content-hash its filenames — every build
+    // writes the same main.dart.js — so nothing here may be cached blindly,
+    // and the service worker that served an old shell after a deploy is not
+    // generated at all any more.
+    const build = readFileSync(path.join(REPO, "infra", "build-admin-app.sh"), "utf8");
+    assert.match(build, /--pwa-strategy=none/, "no service worker is shipped");
+    assert.match(build, /rm -rf "\$APP\/build\/web"/, "stale artifacts are not republished");
+
+    const config = readFileSync(path.join(REPO, "next.config.ts"), "utf8");
+    assert.match(config, /"\/admin-app\/:path\*"/);
+    assert.match(config, /no-store, must-revalidate/);
+    // Verified live against `next start`: entry points answer no-store and
+    // the rest no-cache. The rule order is what makes that true — the broad
+    // rule first, the entry points last, because the last match wins.
+    const broad = config.indexOf('"/admin-app/:path*"');
+    const entryPoints = config.indexOf("/admin-app/:file(index");
+    assert.ok(
+      broad < entryPoints,
+      "the catch-all must come first or it downgrades the entry points",
+    );
+
+    // A worker registered by an earlier build survives in the browser until
+    // something removes it, so the page removes it.
+    const index = readFileSync(path.join(REPO, "admin_flutter", "web", "index.html"), "utf8");
+    assert.match(index, /getRegistrations/);
+    assert.match(index, /unregister/);
+    assert.match(index, /location\.reload/);
   });
 });

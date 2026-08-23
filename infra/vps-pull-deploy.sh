@@ -32,20 +32,53 @@ npm ci
 log "npm run build..."
 npm run build
 
-# The admin console is a separate Flutter app served at /admin-app/. It is
-# the ONLY admin surface — the in-app panel was deleted — so a missing bundle
-# means no console at all. Build it here when the SDK is present; say so
-# loudly when it is not, rather than leaving a silent 404.
-if command -v flutter >/dev/null 2>&1; then
-  log "Building the admin console (/admin-app/)..."
-  bash "$INSTALL_DIR/infra/build-admin-app.sh"
-elif [[ -f "$INSTALL_DIR/public/admin-app/index.html" ]]; then
-  log "flutter not installed — keeping the existing /admin-app/ bundle"
-else
-  log "WARN: no flutter SDK and no /admin-app/ bundle — the admin console will 404."
-  log "WARN: build it on a machine with Flutter (infra/build-admin-app.sh) and copy"
-  log "WARN: public/admin-app/ across, or install the SDK on this host."
+# The admin console is a separate Flutter app served at /admin-app/, and it
+# is the ONLY admin surface — the in-app panel was deleted. So it is rebuilt
+# on EVERY deploy, and a deploy that cannot rebuild it STOPS here.
+#
+# This used to fall back to "flutter not installed — keeping the existing
+# bundle", one quiet log line among fifty. That is exactly how a console
+# three screens out of date kept being served for a whole release: the pull
+# succeeded, the site restarted, nothing failed, and the operator opened the
+# panel to find the features missing. A stale bundle is not a degraded
+# deploy, it is a wrong one.
+#
+# It runs BEFORE the pm2 restarts on purpose: if the console cannot be built,
+# the platform stays on the version it is already running rather than ending
+# up half-deployed — new server, old console.
+if ! command -v flutter >/dev/null 2>&1; then
+  echo "" >&2
+  echo "═══════════════════════════════════════════════════════════════" >&2
+  echo " DEPLOY ABORTED — no flutter SDK on this host." >&2
+  echo "" >&2
+  echo " /admin-app/ is the platform's only admin console and must be" >&2
+  echo " rebuilt from source on every deploy. Nothing was restarted;" >&2
+  echo " the running version is untouched." >&2
+  echo "" >&2
+  echo " Install the SDK on this host, then re-run this script." >&2
+  echo "═══════════════════════════════════════════════════════════════" >&2
+  exit 1
 fi
+
+log "Rebuilding the admin console (/admin-app/)..."
+if ! bash "$INSTALL_DIR/infra/build-admin-app.sh"; then
+  echo "" >&2
+  echo "═══════════════════════════════════════════════════════════════" >&2
+  echo " DEPLOY ABORTED — the admin console failed to build." >&2
+  echo "" >&2
+  echo " Its analyze/test/build step refused, so the bundle on disk is" >&2
+  echo " the OLD one and would have been served as if it were new." >&2
+  echo " Nothing was restarted; the running version is untouched." >&2
+  echo "═══════════════════════════════════════════════════════════════" >&2
+  exit 1
+fi
+
+# Built, not assumed: the bundle must exist and carry this build's base href.
+if ! grep -q 'base href="/admin-app/"' "$INSTALL_DIR/public/admin-app/index.html" 2>/dev/null; then
+  echo "FATAL: /admin-app/ bundle is missing or has the wrong base href." >&2
+  exit 1
+fi
+log "Admin console rebuilt."
 
 # pm2: restart what is running, and start from the ecosystem file otherwise.
 for app in "$APP_WEB" "$APP_WORKER" "$APP_MCP"; do

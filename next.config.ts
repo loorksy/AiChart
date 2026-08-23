@@ -55,6 +55,37 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // The admin console bundle must never be served stale.
+      //
+      // Flutter's web output does NOT content-hash its filenames: every build
+      // writes the same `main.dart.js`, `flutter_bootstrap.js`, `index.html`
+      // and `assets/…`. So there is no version in any URL for a cache to key
+      // on, and anything cached by default is a previous build wearing the
+      // current build's name — which is how a console three screens out of
+      // date kept being shown after a deploy.
+      //
+      // `no-store` on the entry points: they decide which code runs, and they
+      // are a few KB. `no-cache` on the rest ("cache it, but revalidate every
+      // time"), so the multi-MB canvaskit payload still comes back as a 304
+      // instead of being re-downloaded, while never being used blindly.
+      // Order matters: when several entries match one path, the LAST one
+      // wins. The broad rule therefore comes first and the entry points
+      // override it — written the other way round, the catch-all quietly
+      // downgraded them (confirmed against a running server, which is the
+      // only way that shows).
+      {
+        source: "/admin-app/:path*",
+        headers: [{ key: "Cache-Control", value: "no-cache" }],
+      },
+      {
+        source: "/admin-app",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
+        source:
+          "/admin-app/:file(index\\.html|flutter_bootstrap\\.js|main\\.dart\\.js|version\\.json|flutter_service_worker\\.js)",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
     ];
   },
   // better-sqlite3 is a native module and must not be bundled by Next.

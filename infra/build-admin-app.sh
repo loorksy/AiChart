@@ -14,6 +14,13 @@
 # --base-href /admin-app/ is not optional: without it the bundle asks for
 # /main.dart.js at the domain root, every asset 404s, and the operator gets a
 # white page with no error.
+#
+# --pwa-strategy=none is not optional either. Flutter's default ships a
+# service worker that caches the app shell and serves it offline-first, so a
+# browser that once loaded the console keeps showing THAT build after a
+# deploy. An admin console has no use for offline support and every use for
+# being current, so no service worker is generated at all and caching is
+# plain HTTP, governed by the headers in next.config.ts.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,7 +36,12 @@ echo "→ analyze + test (a broken console must not reach the server)"
 (cd "$APP" && flutter pub get && flutter analyze && flutter test)
 
 echo "→ build web"
-(cd "$APP" && flutter build web --release --base-href /admin-app/)
+# Wipe the output first. `flutter build` writes into build/web without
+# clearing it, so a file an earlier build produced and this one no longer
+# does — flutter_service_worker.js being exactly that — survives and gets
+# published as though it were current.
+rm -rf "$APP/build/web"
+(cd "$APP" && flutter build web --release --base-href /admin-app/ --pwa-strategy=none)
 
 echo "→ publish to $OUT"
 rm -rf "$OUT"

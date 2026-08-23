@@ -34,14 +34,39 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <script>
+    // Evict the service worker this console used to ship.
+    //
+    // Earlier builds registered Flutter's default service worker, which
+    // caches the app shell and serves it offline-first. That is why an
+    // operator kept seeing a console three screens out of date after the new
+    // one was deployed: the browser was answering from the old cache, not
+    // from the server. Builds no longer generate one (--pwa-strategy=none),
+    // but a worker already registered in someone's browser stays registered
+    // and keeps serving until something removes it. This is that something.
+    //
+    // It can run at all because Flutter's worker fetched the index
+    // online-first, so this file reaches the browser even while the rest is
+    // being served from its cache. Unregister, drop the caches, then reload
+    // ONCE so the page comes back cleanly from the network. After that no
+    // worker is ever registered again and this block does nothing.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        if (!regs.length) return;
+        return Promise.all(regs.map(function (r) { return r.unregister(); }))
+          .then(function () {
+            return window.caches ? caches.keys() : [];
+          })
+          .then(function (keys) {
+            return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+          })
+          .then(function () { window.location.reload(); });
+      }).catch(function () {
+        // A browser that refuses the query is a browser with nothing stale
+        // to evict; the console loads normally either way.
+      });
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
