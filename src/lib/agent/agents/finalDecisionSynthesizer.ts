@@ -86,9 +86,61 @@ const log = createLogger("final-decision");
  * tokens for a reasoning model and truncate the decision JSON into a
  * schema mismatch — so both come from the one resolver.
  */
+/**
+ * The decision is ONE large JSON object — three layers, the levels, the
+ * conditions, the trace — and it is written in the operator's language, which
+ * is normally Arabic. Arabic costs several times more tokens per character
+ * than English, so a budget that looks generous in English truncates here.
+ *
+ * 3072 was the old non-reasoning value and it is what broke live analysis:
+ * every Claude model fell into it (`isReasoningModel` only ever matched
+ * o-series and gpt-5), the reply was cut mid-object, the parse failed, and the
+ * retry re-ran the identical too-small call until the stage deadline killed
+ * the run. The schema is the same whoever answers it, so the budget is too —
+ * each provider's own clamp applies its ceiling on top.
+ */
+export const DECISION_OUTPUT_TOKENS = 12000;
+
+/**
+ * Per-ATTEMPT HTTP budget for the decision call.
+ *
+ * The stage that wraps this whole function allows 95s and the loop below
+ * promises ONE retry, so a single attempt cannot be allowed to spend the lot.
+ * It previously could: the global LLM timeout is 120s — longer than the stage
+ * itself — so attempt 1 either answered or held the line until the stage died,
+ * the retry never ran, and the operator got "the final decision did not finish
+ * within the allowed time" with nothing naming the provider or the wait.
+ *
+ * 42s x 2 attempts + the 700ms pause fits inside 95s with room for the browse
+ * round. It is deliberately NOT a raise of the stage deadline: a call that
+ * exceeds this was going to be killed by the stage anyway — the difference is
+ * that now it is killed by name ("Claude claude-sonnet-4-6 timed out after
+ * 42000ms") and the second attempt still gets to run.
+ */
+export const DECISION_ATTEMPT_TIMEOUT_MS = 42_000;
+
+/**
+ * Raised budget for a retry AFTER a truncated reply. Asking again with the
+ * same ceiling that just cut the answer off is how one truncation became two
+ * and then a timeout.
+ */
+export const DECISION_OUTPUT_TOKENS_RETRY = 16000;
+
+/** A reply the provider cut short because it ran out of output budget. */
+export class TruncatedDecisionError extends Error {
+  constructor(readonly budget: number) {
+    // Operator-facing only: this text reaches the server log and the audit
+    // row, never the user's screen — the user sees the taxonomy message.
+    super(
+      `The model hit its ${budget}-token output ceiling before finishing the ` +
+        `decision; the reply was cut off mid-object and cannot be parsed.`,
+    );
+    this.name = "TruncatedDecisionError";
+  }
+}
+
 async function decisionMaxTokens(): Promise<number> {
-  const { model } = await resolveActiveSelection("deep");
-  return isReasoningModel(model) ? 12000 : 3072;
+  return DECISION_OUTPUT_TOKENS;
 }
 
 async function visionSafeBlocks(blocks: ContentBlock[]): Promise<ContentBlock[]> {
@@ -276,6 +328,8 @@ export type SynthesizerFailureKind =
   | "empty_response"
   | "invalid_json"
   | "schema_mismatch"
+  /** The reply hit the output ceiling and was cut off mid-object. */
+  | "truncated"
   | "unknown";
 
 export interface SynthesizerFailure {
@@ -311,6 +365,12 @@ export function classifySynthesizerError(error: unknown): {
   retryable: boolean;
   detail: string;
 } {
+  // Checked FIRST: a truncated reply also fails to parse, and letting it fall
+  // through to `invalid_json` is exactly what hid the real cause — the budget,
+  // not the model's JSON.
+  if (error instanceof TruncatedDecisionError) {
+    return { kind: "truncated", retryable: true, detail: error.message };
+  }
   if (error instanceof z.ZodError) {
     return {
       kind: "schema_mismatch",
@@ -670,6 +730,8 @@ export async function runFinalDecisionSynthesizer(
   // read, it never kills the analysis. Models that reject images drop them
   // on a later attempt rather than killing the run.
   let includeVisuals = modelAcceptsVision((await resolveActiveSelection("deep")).model);
+  // Mutable so a truncated attempt can ask again with room to finish.
+  let outputBudget = await decisionMaxTokens();
   const callModel =
     deps.callModel ??
     (async (system: string, userMsg: string) => {
@@ -677,17 +739,33 @@ export async function runFinalDecisionSynthesizer(
         includeVisuals && visualBlocks.length
           ? [{ type: "text", text: userMsg }, ...visualBlocks]
           : [{ type: "text", text: userMsg }];
+      const budget = outputBudget;
       const res = await callLLM({
         system,
         messages: [{ role: "user", content }],
         // Headroom for reasoning tokens plus the full plan payload: the three
         // layers, the levels, the conditions, and the decision trace.
-        maxTokens: await decisionMaxTokens(),
+        maxTokens: budget,
         // The trade decision ALWAYS runs on the deep model (item 15) — never a
         // quick/auxiliary tier, regardless of any default change.
         // The run signal (stage deadline / total budget / client disconnect)
         // tears the call down instead of leaving it running (item 2).
-      }, { tier: "deep", signal: ctx.signal });
+      }, {
+        tier: "deep",
+        signal: ctx.signal,
+        timeoutMs: DECISION_ATTEMPT_TIMEOUT_MS,
+      });
+      // Truncation is a NAMED failure, not a mystery.
+      //
+      // The provider says plainly that it stopped because it hit the output
+      // ceiling. Ignoring that and handing the cut-off text to JSON.parse
+      // turned "the budget was too small" into "invalid_json", which is
+      // classified retryable — so the run spent a second full model call
+      // reproducing the same truncation and then died on the stage deadline
+      // with nothing pointing at the budget.
+      if (res.stop_reason === "max_tokens") {
+        throw new TruncatedDecisionError(budget);
+      }
       return res.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)
@@ -749,6 +827,17 @@ ${correction}`
       failure = { ...classified, attempts: attempt };
       if (classified.kind === "schema_mismatch" || classified.kind === "invalid_json") {
         correction = classified.detail;
+      }
+      if (classified.kind === "truncated") {
+        // Ask again with room to finish. Without this the retry reproduces the
+        // same truncation and the pair of them eats the stage deadline.
+        outputBudget = Math.max(outputBudget, DECISION_OUTPUT_TOKENS_RETRY);
+        metrics.synthCorrectiveRetries.inc();
+        log.warn("decision reply truncated — retrying with a larger output budget", {
+          symbol: input.market.symbol,
+          budget: outputBudget,
+        });
+        if (attempt < 2) continue;
       }
       log.warn("final decision synthesis failed", {
         attempt,

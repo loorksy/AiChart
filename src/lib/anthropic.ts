@@ -40,10 +40,36 @@ const THINKING_MODELS = /^claude-(fable-5|mythos-5|opus-5|opus-4-[78]|sonnet-5)/
 const THINKING_MIN_TOKENS = 8192;
 const THINKING_MAX_TOKENS = 16000;
 
+/**
+ * Claude 4.6 and later emit far more than the 4096 tokens `clampMaxTokens`
+ * allows — that ceiling is an artifact of the 3.x era.
+ *
+ * Leaving it in place silently truncated any caller that asked for more, and
+ * truncation is not a soft failure here: the final-decision synthesizer asks
+ * for one large JSON object, so a reply cut mid-object is unparseable, gets
+ * classified as "invalid_json", and is RETRIED against the same too-small
+ * budget. Two truncated attempts consume the whole 95s stage deadline and the
+ * operator sees "the final decision did not finish within the allowed time"
+ * with nothing naming the real cause. The same trap was found and fixed on the
+ * OpenAI path (openaiCompat.ts, REASONING_MIN_TOKENS) and never here — which
+ * is why analysis worked on gpt-5 and stopped working the day the operator
+ * switched the provider to Anthropic.
+ *
+ * The ceiling stays: a caller that asks for nothing still gets the routine
+ * default, and an unrecognised (older) model keeps the conservative 4096.
+ */
+const LARGE_OUTPUT_MODELS =
+  /^claude-(fable-5|mythos-5|opus-5|opus-4-[678]|sonnet-5|sonnet-4-6|haiku-4-5)/;
+const LARGE_OUTPUT_MAX_TOKENS = 16000;
+
 function requestBudget(model: string, requested?: number): number {
   if (THINKING_MODELS.test(model)) {
     const v = requested ?? THINKING_MIN_TOKENS;
     return Math.min(Math.max(v, THINKING_MIN_TOKENS), THINKING_MAX_TOKENS);
+  }
+  if (LARGE_OUTPUT_MODELS.test(model)) {
+    const v = requested ?? DEFAULT_MAX_TOKENS;
+    return Math.min(Math.max(v, 256), LARGE_OUTPUT_MAX_TOKENS);
   }
   return clampMaxTokens(requested);
 }
@@ -263,6 +289,8 @@ export async function callAnthropic(params: {
   model?: string;
   /** Caller cancellation — tears down the in-flight HTTP request. */
   signal?: AbortSignal;
+  /** Per-call HTTP budget; falls back to the global LLM timeout. */
+  timeoutMs?: number;
 }): Promise<AnthropicResponse> {
   const apiKey = getPlatformValue("ANTHROPIC_API_KEY");
   if (!apiKey) {
@@ -292,7 +320,7 @@ export async function callAnthropic(params: {
       cache: "no-store",
       signal: params.signal ?? null,
     },
-    { timeoutMs: llmTotalTimeoutMs(), label: "Claude" },
+    { timeoutMs: params.timeoutMs ?? llmTotalTimeoutMs(), label: `Claude ${model}` },
   );
 
   if (!res.ok) {

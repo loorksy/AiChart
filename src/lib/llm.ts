@@ -501,6 +501,18 @@ export interface LLMCallOptions {
    * timed-out or cancelled stage stops burning provider quota and CPU.
    */
   signal?: AbortSignal;
+  /**
+   * Hard budget for THIS call's HTTP request, in ms.
+   *
+   * Without it every call inherits the global LLM timeout (120s), which is
+   * LONGER than some of the stage deadlines that wrap these calls — the
+   * final decision's is 95s. An inner timeout that can never fire before the
+   * outer one is not a safety net: the provider's own failure never gets to
+   * name itself, and every hang reaches the operator as an anonymous
+   * "the stage ran out of time". Callers with a deadline of their own pass it
+   * here so the error says which provider stopped answering, and when.
+   */
+  timeoutMs?: number;
 }
 
 export async function callLLM(
@@ -516,11 +528,17 @@ export async function callLLM(
       provider === "anthropic"
         ? // Native Messages API — the platform's internal wire shape already IS
           // Anthropic's, so no translation layer is needed on this path.
-          await callAnthropic({ ...params, model, signal: opts?.signal })
+          await callAnthropic({
+            ...params,
+            model,
+            signal: opts?.signal,
+            timeoutMs: opts?.timeoutMs,
+          })
         : await callOpenAICompat(openaiCompatTarget(model), {
             ...params,
             system: flattenSystem(params.system),
             signal: opts?.signal,
+            timeoutMs: opts?.timeoutMs,
           });
     meterUsage(provider, model, res);
     void noteProviderOutcome(provider, null);

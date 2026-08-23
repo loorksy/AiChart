@@ -284,6 +284,8 @@ export async function callOpenAICompat(
     maxTokens?: number;
     /** Caller cancellation/deadline — aborts the in-flight HTTP call. */
     signal?: AbortSignal;
+    /** Per-call HTTP budget; falls back to the global LLM timeout. */
+    timeoutMs?: number;
   },
 ): Promise<AnthropicResponse> {
   // Circuit breaker (RELIABILITY_PLAN.md item 6): a provider outage fails fast
@@ -312,7 +314,11 @@ export async function callOpenAICompat(
       }),
       cache: "no-store",
     },
-    { timeoutMs: llmTotalTimeoutMs(), label: target.model, signal: params.signal },
+    {
+      timeoutMs: params.timeoutMs ?? llmTotalTimeoutMs(),
+      label: target.model,
+      signal: params.signal,
+    },
   );
 
   if (!res.ok) throw new Error(await readError(res, target.model));

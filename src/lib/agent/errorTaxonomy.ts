@@ -253,6 +253,11 @@ export function failureCodeFromSynthesizerKind(
       return "invalid_payload";
     case "schema_mismatch":
       return "schema_mismatch";
+    // The model answered, but the answer was cut off by the output ceiling.
+    // It reads to the operator as a malformed payload, which is what it is —
+    // the budget detail rides the operator log, never the user's screen.
+    case "truncated":
+      return "invalid_payload";
     default:
       return "unknown";
   }
