@@ -81,8 +81,11 @@ describe("i18n core", () => {
     assert.equal(t("en", "welcome.title", { name: "Sam" }), "Welcome, Sam 👋");
   });
 
-  it("default locale is Arabic and toggle flips the locale", () => {
-    assert.equal(DEFAULT_LOCALE, "ar");
+  // English is now the platform default on every surface (web, Telegram,
+  // MCP); a user who has never chosen gets it, and the switcher stores their
+  // choice on the ACCOUNT rather than in one browser.
+  it("default locale is English and toggle flips the locale", () => {
+    assert.equal(DEFAULT_LOCALE, "en");
     assert.equal(toggleLocale("ar"), "en");
     assert.equal(toggleLocale("en"), "ar");
   });
@@ -94,7 +97,8 @@ describe("i18n core", () => {
     assert.equal(isAppLocale(null), false);
     assert.equal(detectLocale("en-US,en;q=0.9"), "en");
     assert.equal(detectLocale("ar-SA"), "ar");
-    assert.equal(detectLocale(null), "ar");
+    // No hint at all falls to the platform default, not to Arabic.
+    assert.equal(detectLocale(null), "en");
   });
 });
 

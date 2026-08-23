@@ -13,7 +13,7 @@
  * data failure is an operational blocker with a name, never a decision to wait.
  */
 import { z } from "zod";
-import { callLLM, getActiveModel, isLLMConfiguredAsync } from "@/lib/llm";
+import { callLLM, isLLMConfiguredAsync, resolveActiveSelection } from "@/lib/llm";
 import type { ContentBlock } from "@/lib/anthropic";
 import { extractJson } from "@/lib/extractJson";
 import { isReasoningModel, modelAcceptsVision } from "@/lib/modelCatalog";
@@ -78,13 +78,22 @@ import {
 const log = createLogger("final-decision");
 
 
-/** The default second-round model call, with the extra frame attached. */
-function decisionMaxTokens(): number {
-  return isReasoningModel(getActiveModel()) ? 12000 : 3072;
+/**
+ * The default second-round model call, with the extra frame attached.
+ *
+ * Sized for the model that will ACTUALLY answer. Reading the model through a
+ * different path than the one the call resolves can budget 3072 output
+ * tokens for a reasoning model and truncate the decision JSON into a
+ * schema mismatch — so both come from the one resolver.
+ */
+async function decisionMaxTokens(): Promise<number> {
+  const { model } = await resolveActiveSelection("deep");
+  return isReasoningModel(model) ? 12000 : 3072;
 }
 
-function visionSafeBlocks(blocks: ContentBlock[]): ContentBlock[] {
-  if (modelAcceptsVision(getActiveModel())) return blocks;
+async function visionSafeBlocks(blocks: ContentBlock[]): Promise<ContentBlock[]> {
+  const { model } = await resolveActiveSelection("deep");
+  if (modelAcceptsVision(model)) return blocks;
   return blocks.filter((b) => b.type !== "image");
 }
 
@@ -100,10 +109,10 @@ async function callModelWithBlocks(
       messages: [
         {
           role: "user",
-          content: [{ type: "text", text: userMsg }, ...visionSafeBlocks(blocks)],
+          content: [{ type: "text", text: userMsg }, ...(await visionSafeBlocks(blocks))],
         },
       ],
-      maxTokens: decisionMaxTokens(),
+      maxTokens: await decisionMaxTokens(),
     },
     { tier: "deep", signal: ctx.signal },
   );
@@ -660,7 +669,7 @@ export async function runFinalDecisionSynthesizer(
   // The degradation contract (visualEvidence.ts): a missing view degrades the
   // read, it never kills the analysis. Models that reject images drop them
   // on a later attempt rather than killing the run.
-  let includeVisuals = modelAcceptsVision(getActiveModel());
+  let includeVisuals = modelAcceptsVision((await resolveActiveSelection("deep")).model);
   const callModel =
     deps.callModel ??
     (async (system: string, userMsg: string) => {
@@ -673,7 +682,7 @@ export async function runFinalDecisionSynthesizer(
         messages: [{ role: "user", content }],
         // Headroom for reasoning tokens plus the full plan payload: the three
         // layers, the levels, the conditions, and the decision trace.
-        maxTokens: decisionMaxTokens(),
+        maxTokens: await decisionMaxTokens(),
         // The trade decision ALWAYS runs on the deep model (item 15) — never a
         // quick/auxiliary tier, regardless of any default change.
         // The run signal (stage deadline / total budget / client disconnect)

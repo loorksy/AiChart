@@ -43,23 +43,16 @@ function applyLocale(locale: AppLocale) {
 const localeListeners = new Set<() => void>();
 
 /**
- * First visit speaks the device's language. A stored choice always wins — the
- * switcher is the user overriding their device, and that must survive both
- * reloads and OS-level language changes. Only when nothing is stored do we ask
- * the browser; anything that isn't Arabic falls to English rather than to a
- * hardcoded platform default the visitor may not read.
+ * A signed-out visitor gets the platform default (English). Local storage is
+ * only a paint cache for the ACCOUNT's language: the account is the source of
+ * truth, so the same person sees the same language on the web, in Telegram,
+ * and through MCP — and a new device does not silently disagree with the
+ * choice they already made.
  */
-function deviceLocale(): AppLocale {
-  const candidates = navigator.languages?.length
-    ? navigator.languages
-    : [navigator.language];
-  return candidates.some((tag) => tag?.toLowerCase().startsWith("ar")) ? "ar" : "en";
-}
-
 function readStoredLocale(): AppLocale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
   const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-  return isAppLocale(stored) ? stored : deviceLocale();
+  return isAppLocale(stored) ? stored : DEFAULT_LOCALE;
 }
 
 function subscribeLocale(cb: () => void): () => void {
@@ -100,8 +93,31 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
     applyLocale(locale);
   }, [locale]);
 
+  // The account is authoritative: adopt what the server says this user
+  // chose. Signed-out (or offline) keeps whatever is painted.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { settings?: { language?: string | null } } | null) => {
+        const stored = data?.settings?.language;
+        if (!cancelled && isAppLocale(stored)) writeStoredLocale(stored);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const setLocale = useCallback((next: AppLocale) => {
+    // Paint immediately, then persist to the ACCOUNT so every other surface
+    // (the bot included) speaks the same language from now on.
     writeStoredLocale(next);
+    void fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: next }),
+    }).catch(() => {});
   }, []);
 
   const value: LocaleContextValue = {

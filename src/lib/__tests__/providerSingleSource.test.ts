@@ -198,6 +198,43 @@ test("the sync config reader never caches an env value over the database", () =>
   );
 });
 
+/**
+ * E. Housekeeping never runs on the decision model. Naming a chat in the
+ * sidebar used to ask for the "quick" tier, which falls back to the DEEP
+ * model when no quick model is configured — so every title was billed at
+ * analysis rates.
+ */
+test("chat titling and summarization run on the chore tier, never the decision model", () => {
+  const chores = [
+    "lib/agent/chatHistory/composeChatMeta.ts",
+    "lib/memoryLifecycle.ts",
+  ];
+  for (const file of chores) {
+    const source = readFileSync(path.join(SRC, file), "utf8");
+    assert.match(source, /tier:\s*"chore"/, `${file} must ask for the chore tier`);
+    assert.doesNotMatch(
+      source,
+      /tier:\s*"deep"/,
+      `${file} must never request the decision model`,
+    );
+  }
+  // And the chore tier itself must not be able to reach the deep model.
+  const llm = readFileSync(path.join(SRC, "lib/llm.ts"), "utf8");
+  const resolver = llm.slice(
+    llm.indexOf("export async function resolveActiveSelection"),
+    llm.indexOf("/** Active model for the active provider"),
+  );
+  assert.match(
+    resolver,
+    /if \(tier === "chore"\) return \{ provider, model: CHORE_DEFAULT\[provider\] \}/,
+    "an unconfigured chore falls back to the cheap default, not to deep",
+  );
+  assert.ok(
+    resolver.indexOf('tier === "chore"') < resolver.indexOf('tier === "quick"'),
+    "the chore fallback must be decided before the quick tier's fallback-to-deep",
+  );
+});
+
 test("a provider failure is reported with the provider that produced it", () => {
   const llm = readFileSync(path.join(SRC, "lib/llm.ts"), "utf8");
   assert.match(llm, /tagProviderFailure\(err, provider\)/, "call failures carry their provider");

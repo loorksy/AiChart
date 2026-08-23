@@ -26,11 +26,17 @@ export async function runMemoryLifecycle(
     .map((m) => `${m.role === "user" ? "المستخدم" : "المساعد"}: ${m.content}`)
     .join("\n");
 
-  const res = await callLLM({
-    system,
-    messages: [{ role: "user", content: chatHistoryText }],
-    maxTokens: 500,
-  });
+  const res = await callLLM(
+    {
+      system,
+      messages: [{ role: "user", content: chatHistoryText }],
+      maxTokens: 500,
+    },
+    // Summarizing an old conversation is housekeeping. This call named no
+    // tier at all, so it ran on the DECISION model — the most expensive one
+    // the platform has — for a background chore nobody reads live.
+    { tier: "chore" },
+  );
 
   const summaryText = res.content
     .filter((b) => b.type === "text")

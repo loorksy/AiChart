@@ -9,6 +9,7 @@ import {
 } from "@/lib/allowedAssets";
 import { checkModelRef, providerLabel } from "@/lib/llm";
 import { t } from "@/lib/i18n";
+import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { RISK_PER_TRADE, riskPerTradeSchema } from "@/lib/productModel";
 
 const assetList = z.array(z.string().trim().min(1).max(20)).max(200);
@@ -36,6 +37,9 @@ const settingsPatchSchema = z
       )
       .nullable()
       .optional(),
+    // The ACCOUNT's language — one field every surface reads (web, Telegram,
+    // MCP), so changing it here changes the bot's replies too.
+    language: z.enum(["ar", "en"]).optional(),
     send_screenshot: z.boolean().optional(),
     telegram_chat_id: z.string().trim().max(64).nullable().optional(),
     alerts_enabled: z.boolean().optional(),
@@ -78,6 +82,9 @@ export async function PUT(request: NextRequest) {
       // saved — the regex alone would accept any well-formed id the provider's
       // key happens to serve.
       if (input.preferred_model_ref !== null) {
+        // Answer in the user's own language — a refusal they cannot read is
+        // indistinguishable from a broken button.
+        const locale = await resolveUserLocale(user.id);
         const checked = await checkModelRef(input.preferred_model_ref);
         if (!checked.ok) {
           // Refuse by NAME. A model from a provider the platform is not
@@ -87,10 +94,10 @@ export async function PUT(request: NextRequest) {
             {
               error:
                 checked.reason === "provider_not_active"
-                  ? t("ar", "settings.model_wrong_provider", {
+                  ? t(locale, "settings.model_wrong_provider", {
                       provider: providerLabel(checked.activeProvider),
                     })
-                  : t("ar", "settings.model_unavailable"),
+                  : t(locale, "settings.model_unavailable"),
               code: checked.reason,
             },
             { status: 400 },
@@ -99,6 +106,7 @@ export async function PUT(request: NextRequest) {
       }
       patch.preferred_model_ref = input.preferred_model_ref;
     }
+    if (input.language !== undefined) patch.language = input.language;
     if (input.telegram_chat_id !== undefined) patch.telegram_chat_id = input.telegram_chat_id;
     if (input.send_screenshot !== undefined) patch.send_screenshot = input.send_screenshot ? 1 : 0;
     if (input.alerts_enabled !== undefined) patch.alerts_enabled = input.alerts_enabled ? 1 : 0;

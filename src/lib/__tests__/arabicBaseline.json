@@ -64,7 +64,7 @@
   "src/components/PhoneInput.tsx": 11,
   "src/components/admin/AdminBillingPanel.tsx": 69,
   "src/components/admin/AdminDiagnosticsPanel.tsx": 46,
-  "src/components/admin/AdminKeysPanel.tsx": 35,
+  "src/components/admin/AdminKeysPanel.tsx": 34,
   "src/components/admin/AdminSecurityPanel.tsx": 24,
   "src/components/admin/AdminSubscriptionsPanel.tsx": 29,
   "src/components/admin/AdminSupportPanel.tsx": 30,

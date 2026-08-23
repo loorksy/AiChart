@@ -21,6 +21,34 @@ export { APP_LOCALES, DEFAULT_LOCALE, LOCALE_STORAGE_KEY, isAppLocale };
 
 const DICTIONARIES: Record<AppLocale, Record<string, string>> = { ar, en };
 
+/**
+ * Keys asked for that the requested locale does not carry.
+ *
+ * A missing translation used to fall through to the other locale (or to the
+ * raw dotted key) with nothing recorded anywhere, so a half-translated
+ * surface looked exactly like a finished one. Tests assert this set is
+ * empty; at runtime the miss is logged once per key rather than repeatedly.
+ */
+const missingKeys = new Set<string>();
+
+function reportMissingKey(locale: AppLocale, key: string): void {
+  const id = `${locale}:${key}`;
+  if (missingKeys.has(id)) return;
+  missingKeys.add(id);
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(`[i18n] missing key "${key}" for locale "${locale}"`);
+  }
+}
+
+/** Test seam: every (locale, key) miss seen so far. */
+export function missingTranslationKeys(): string[] {
+  return [...missingKeys];
+}
+
+export function clearMissingTranslationKeys(): void {
+  missingKeys.clear();
+}
+
 /** Text direction for a locale. */
 export function dirForLocale(locale: AppLocale): Direction {
   return locale === "ar" ? "rtl" : "ltr";
@@ -41,8 +69,15 @@ export function t(
   key: TranslationKey | string,
   replacements?: Record<string, string>,
 ): string {
-  let text =
-    DICTIONARIES[locale]?.[key] ?? DICTIONARIES[DEFAULT_LOCALE][key] ?? key;
+  const direct = DICTIONARIES[locale]?.[key];
+  let text = direct ?? DICTIONARIES[DEFAULT_LOCALE][key] ?? key;
+  if (direct === undefined) {
+    // A missing key must never be a silent shrug. In production the raw key
+    // still renders (an ugly label beats a blank screen or a throw), but the
+    // miss is reported so the parity test and the console both catch it —
+    // the alternative is a dotted key quietly shipping to users.
+    reportMissingKey(locale, String(key));
+  }
   if (replacements) {
     for (const [k, v] of Object.entries(replacements)) {
       text = text.replace(new RegExp(`\\{${k}\\}`, "g"), v);
@@ -86,5 +121,8 @@ export function setLocale(locale: AppLocale): void {
 /** Best-effort locale from an Accept-Language header (server-side default). */
 export function detectLocale(acceptLanguage?: string | null): AppLocale {
   if (!acceptLanguage) return DEFAULT_LOCALE;
-  return acceptLanguage.toLowerCase().includes("en") ? "en" : "ar";
+  // Only an explicit Arabic request gets Arabic. Treating "anything that is
+  // not English" as Arabic handed Arabic to a French or German visitor; the
+  // platform default is the honest answer when the hint says neither.
+  return /(^|[,\s])ar\b|-ar\b/i.test(acceptLanguage) ? "ar" : DEFAULT_LOCALE;
 }

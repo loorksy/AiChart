@@ -108,7 +108,10 @@ export async function composeChatMeta(input: {
       system: "Return compact JSON only. No markdown.",
       messages: [{ role: "user", content: prompt }],
       maxTokens: 120,
-    }, { tier: "quick" });
+      // A sidebar title is housekeeping, not analysis: the chore tier keeps
+      // it on the cheap model even when no quick model is configured (where
+      // the quick tier would have fallen back to the decision model).
+    }, { tier: "chore" });
     const text = textFromBlocks(res.content ?? []);
     const parsed = parseMetaJson(text);
     if (!parsed) return fallback;

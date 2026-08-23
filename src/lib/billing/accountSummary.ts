@@ -2,6 +2,8 @@ import type { PublicUser } from "@/lib/types";
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
 import { getCreditBalance } from "./credits";
 import { getBillingPlan } from "./planConfig";
+import { resolveUserLocale } from "@/lib/i18n/userLocale";
+import type { AppLocale } from "@/lib/i18n";
 
 /**
  * The account-status surface (billing v3): ONE composed answer every surface
@@ -15,6 +17,8 @@ import { getBillingPlan } from "./planConfig";
 export interface AccountSummary {
   status: "free" | "pro";
   plan_status: string;
+  /** The account's language — the same one the web and the bot use. */
+  language: AppLocale;
   balance: number;
   trial_used: number;
   trial_limit: number;
@@ -54,6 +58,10 @@ export async function buildAccountSummary(
   return {
     status: pro ? "pro" : "free",
     plan_status: snapshot.planStatus,
+    // The account's language travels with its status, so the MCP surface
+    // answers this user in the language they chose on the web instead of
+    // guessing one per client.
+    language: await resolveUserLocale(user.id),
     balance,
     trial_used: snapshot.trialUsed,
     trial_limit: snapshot.trialLimit,

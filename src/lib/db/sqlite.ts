@@ -40,6 +40,10 @@ const SCHEMA = `
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
     telegram_model_ref       TEXT,
+    -- The user's language, for EVERY surface (web, Telegram, MCP). It belongs
+    -- to the account, not to the channel or the browser: changing it in one
+    -- place changes it everywhere. NULL = never chosen = the platform default.
+    language                 TEXT,
     -- Proactive notification prefs: JSON category → boolean; NULL = all on.
     notification_prefs       TEXT,
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
@@ -207,6 +211,18 @@ const SCHEMA = `
     id   TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     ts   INTEGER NOT NULL
+  );
+
+  -- Provider health: the last outcome the platform actually got from each
+  -- AI provider. The operator could see WHICH provider was selected but not
+  -- which one was failing, so a billing exhaustion on one account read as
+  -- "the AI is down" and sent them to top up the other.
+  CREATE TABLE IF NOT EXISTS provider_health (
+    provider          TEXT PRIMARY KEY,
+    last_success_at   INTEGER,
+    last_failure_at   INTEGER,
+    last_failure_code TEXT,
+    last_failure_note TEXT
   );
 
   -- ── Credit era (billing v3) ─────────────────────────────────────────────
@@ -1620,6 +1636,9 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN alert_signals INTEGER NOT NULL DEFAULT 1",
     );
+  }
+  if (!settingsCols.some((c) => c.name === "language")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN language TEXT");
   }
   if (!settingsCols.some((c) => c.name === "preferred_model_ref")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN preferred_model_ref TEXT");

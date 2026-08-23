@@ -272,18 +272,14 @@ export async function resolveActiveSelection(
   tier: ModelTier = "deep",
 ): Promise<RequestModelSelection> {
   const picked = requestModel.getStore();
-  if (picked) return picked;
-  const provider = await getActiveProviderAsync();
-  const field =
-    provider === "anthropic"
-      ? tier === "quick"
-        ? "ANTHROPIC_QUICK_MODEL"
-        : "ANTHROPIC_MODEL"
-      : tier === "quick"
-        ? "AI_QUICK_MODEL"
-        : "AI_MODEL";
-  const configured = (await getPlatformValueAsync(field))?.trim();
+  // A user's explicit pick governs their analysis, not the platform's
+  // housekeeping: a chore stays on the cheap model whoever asked for it.
+  if (picked && tier !== "chore") return picked;
+  const provider = picked?.provider ?? (await getActiveProviderAsync());
+  const configured = (await getPlatformValueAsync(tierField(provider, tier)!))?.trim();
   if (configured) return { provider, model: configured };
+  // A chore falls back to the cheap default — never to the decision model.
+  if (tier === "chore") return { provider, model: CHORE_DEFAULT[provider] };
   // The quick tier is OPT-IN: with no cheap model configured it falls back
   // to the deep model rather than inventing one.
   if (tier === "quick") return resolveActiveSelection("deep");
@@ -312,7 +308,36 @@ export function getActiveModel(): string {
  * `AI_QUICK_MODEL` configured behavior is byte-for-byte unchanged and the
  * decision path is never downgraded.
  */
-export type ModelTier = "quick" | "deep";
+/**
+ * Three tiers, by what the call is FOR:
+ *
+ *  - "deep"  — the trade decision and any execution-grade reasoning;
+ *  - "quick" — auxiliary generations; OPT-IN, so with nothing configured it
+ *    falls back to the deep model and behaviour is unchanged;
+ *  - "chore" — housekeeping that is not analysis at all (naming a chat in the
+ *    sidebar, folding old turns into a summary). A chore NEVER runs on the
+ *    decision model: naming a conversation is not worth a frontier model, and
+ *    the fallback-to-deep of the quick tier meant that with no quick model
+ *    configured every sidebar title was billed at analysis rates.
+ */
+export type ModelTier = "chore" | "quick" | "deep";
+
+/**
+ * The cheap default per provider — used when the operator has configured no
+ * chore model. Deliberately a small model, and deliberately NOT the deep one.
+ */
+const CHORE_DEFAULT: Record<LLMProvider, string> = {
+  anthropic: "claude-haiku-4-5",
+  openai: "gpt-5.6-luna",
+};
+
+function tierField(provider: LLMProvider, tier: ModelTier): string | null {
+  if (tier === "deep") return provider === "anthropic" ? "ANTHROPIC_MODEL" : "AI_MODEL";
+  if (tier === "quick") {
+    return provider === "anthropic" ? "ANTHROPIC_QUICK_MODEL" : "AI_QUICK_MODEL";
+  }
+  return provider === "anthropic" ? "ANTHROPIC_CHORE_MODEL" : "AI_CHORE_MODEL";
+}
 
 /** Strong model for the final decision + any execution-grade reasoning. */
 export function getDeepModel(): string {
@@ -325,13 +350,19 @@ export function getQuickModel(): string {
   // model across tiers would silently answer with a model they did not choose.
   if (requestModel.getStore()) return getDeepModel();
   const provider = getActiveProvider();
-  if (provider === "anthropic") {
-    return getPlatformValue("ANTHROPIC_QUICK_MODEL")?.trim() || getDeepModel();
-  }
-  return getPlatformValue("AI_QUICK_MODEL")?.trim() || getDeepModel();
+  return getPlatformValue(tierField(provider, "quick")!)?.trim() || getDeepModel();
+}
+
+/** The cheap chore model — never the decision model, even when unset. */
+export function getChoreModel(): string {
+  const provider = getActiveProvider();
+  return (
+    getPlatformValue(tierField(provider, "chore")!)?.trim() || CHORE_DEFAULT[provider]
+  );
 }
 
 export function modelForTier(tier: ModelTier): string {
+  if (tier === "chore") return getChoreModel();
   return tier === "quick" ? getQuickModel() : getDeepModel();
 }
 
@@ -424,6 +455,29 @@ export async function verifyProviderKey(
   }
 }
 
+/**
+ * Record what this provider just did, for the keys panel's per-provider
+ * status. Fire-and-forget and failure-proof: telemetry must never turn a
+ * working answer into an error, nor an error into a different one.
+ *
+ * The taxonomy import is dynamic so the classification vocabulary is not
+ * pulled into every consumer of this module.
+ */
+async function noteProviderOutcome(provider: LLMProvider, err: unknown): Promise<void> {
+  try {
+    const health = await import("./providerHealth");
+    if (!err) {
+      await health.recordProviderSuccess(provider);
+      return;
+    }
+    const { classifyAgentError } = await import("./agent/errorTaxonomy");
+    const classified = classifyAgentError(err);
+    await health.recordProviderFailure(provider, classified.code, classified.detail);
+  } catch {
+    /* health is diagnostics — never let it change what the caller sees */
+  }
+}
+
 export interface LLMCallParams {
   system: SystemPromptInput;
   messages: Message[];
@@ -469,11 +523,13 @@ export async function callLLM(
             signal: opts?.signal,
           });
     meterUsage(provider, model, res);
+    void noteProviderOutcome(provider, null);
     return res;
   } catch (err) {
     // Name the provider ON the error. Downstream the operator reads
     // "OpenAI is out of credit", not "the AI account is out of credit" —
     // the ambiguity that had them topping up the wrong account.
+    void noteProviderOutcome(provider, err);
     throw tagProviderFailure(err, provider);
   } finally {
     // Before/after measurement (item 15): tier + model + wall time, no content.
@@ -502,8 +558,10 @@ export async function callLLMStream(
             handlers,
           );
     meterUsage(provider, model, res);
+    void noteProviderOutcome(provider, null);
     return res;
   } catch (err) {
+    void noteProviderOutcome(provider, err);
     throw tagProviderFailure(err, provider);
   } finally {
     llmLog.debug("llm.call.stream", { provider, tier, model, durationMs: Math.round(performance.now() - started) });

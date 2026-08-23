@@ -328,9 +328,20 @@ describe("visual evidence", () => {
       path.join(import.meta.dirname, "..", "agents", "finalDecisionSynthesizer.ts"),
       "utf8",
     );
-    assert.match(src, /let includeVisuals = modelAcceptsVision\(getActiveModel\(\)\)/);
+    // Same invariant, one layer down: vision support is decided from the
+    // model that will ACTUALLY answer (the single resolver), not from a
+    // separate sync read that can name a different model than the call uses.
+    assert.match(
+      src,
+      /let includeVisuals = modelAcceptsVision\(\(await resolveActiveSelection\("deep"\)\)\.model\)/,
+    );
     assert.match(src, /function visionSafeBlocks/);
     assert.match(src, /decisionMaxTokens/);
+    assert.doesNotMatch(
+      src,
+      /modelAcceptsVision\(getActiveModel\(\)\)/,
+      "the vision decision must not read the model through a second path",
+    );
   });
 
   it("skips snapshots that carry no image rather than sending an empty block", async () => {

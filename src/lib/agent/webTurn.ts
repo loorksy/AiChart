@@ -22,6 +22,7 @@ import { resolveUserModelSelection, withRequestModel } from "@/lib/llm";
 import { withUsageContext } from "@/lib/billing/usageMeter";
 import { authorizeAndDebit } from "@/lib/billing/spend";
 import { t } from "@/lib/i18n";
+import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import {
   commitTrialInteraction,
@@ -314,6 +315,10 @@ export async function runWebChatTurn(
 
   const limits = await getLimits(user.id);
   const canExecute = limits.can_execute !== 0;
+  // The ACCOUNT's language decides how this turn reads. The client may state
+  // a locale, but the stored preference is what the same person sees on the
+  // bot and through MCP — the surfaces must not disagree with each other.
+  const locale = body.locale ?? (await resolveUserLocale(user.id));
 
   // If the last assistant turn offered numbered options and the user replied
   // with a bare index, resolve it to that option's real prompt instead of
@@ -337,7 +342,7 @@ export async function runWebChatTurn(
         query: resolvedMessage,
         symbol: body.chartContext?.symbol,
         timeframe: body.chartContext?.interval,
-        locale: body.locale ?? "ar",
+        locale: locale,
         memoryLimit: 5,
         lessonLimit: 3,
       });
@@ -345,7 +350,7 @@ export async function runWebChatTurn(
         userId: user.id,
         sessionId,
         userMessage: resolvedMessage,
-        locale: body.locale ?? "ar",
+        locale: locale,
         chartContext: body.chartContext,
         activeRecommendation: recommendationContextFromChart(body.chartContext),
         recalledMemories: recalled.memories,
@@ -442,7 +447,9 @@ export async function runWebChatTurn(
           runAgent({
             userMessage: resolvedMessage,
             chartContext: body.chartContext,
-            locale: body.locale,
+            // The account's language, so the answer itself is written in it —
+            // not just the surrounding UI chrome.
+            locale,
             liveSession: true,
             requestContext: {
               requestId,
@@ -535,7 +542,7 @@ export async function runWebChatTurn(
     // Dynamic, model-generated follow-up suggestions for THIS turn/state.
     // No static fallback: a failure yields [] and the UI shows nothing.
     const suggestions = await suggest({
-      locale: body.locale ?? "ar",
+      locale: locale,
       userMessage: resolvedMessage,
       result,
       symbol: body.chartContext?.symbol,
@@ -619,7 +626,7 @@ export async function runWebChatTurn(
         symbol: body.chartContext?.symbol,
         interval: body.chartContext?.interval,
         decision: "informational",
-        summary: userMessageForFailure(classified.code, body.locale ?? "ar", {
+        summary: userMessageForFailure(classified.code, locale, {
           stages: unfinishedStages(stageEvents),
           provider: classified.provider,
         }),
@@ -637,7 +644,7 @@ export async function runWebChatTurn(
       const failed = createActivityEvent({
         type: "final",
         status: "failed",
-        message: t(body.locale ?? "ar", "agent.run_failed"),
+        message: t(locale, "agent.run_failed"),
       });
       send("activity", failed);
       // Contract guarantee (phase-0 SLO): even a crashed run ends with a
@@ -646,9 +653,9 @@ export async function runWebChatTurn(
       const fallbackResult = buildAgentFallbackResult(
         "Agent run failed before producing a result.",
         activityEvents,
-        body.locale ?? "ar",
+        locale,
         {
-          detail: userMessageForFailure(classified.code, body.locale ?? "ar", {
+          detail: userMessageForFailure(classified.code, locale, {
             provider: classified.provider,
           }),
           retryable: classified.retryable,
@@ -679,7 +686,7 @@ export async function runWebChatTurn(
       // Legacy clients still listen for `error` — keep it, without
       // leaking the raw provider message to the operator.
       send("error", {
-        error: userMessageForFailure(classified.code, body.locale ?? "ar", {
+        error: userMessageForFailure(classified.code, locale, {
           stages: unfinishedStages(stageEvents),
           provider: classified.provider,
         }),

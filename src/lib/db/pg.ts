@@ -56,6 +56,9 @@ const SCHEMA = `
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
     telegram_model_ref       TEXT,
+    -- The user's language for EVERY surface (web, Telegram, MCP): it belongs
+    -- to the account, not the channel. NULL = never chosen = platform default.
+    language                 TEXT,
     -- Proactive notification prefs: JSON category → boolean; NULL = all on.
     notification_prefs       TEXT,
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
@@ -212,6 +215,18 @@ const SCHEMA = `
     id   TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     ts   BIGINT NOT NULL
+  );
+
+  -- Provider health: the last outcome the platform actually got from each
+  -- AI provider. The operator could see WHICH provider was selected but not
+  -- which one was failing, so a billing exhaustion on one account read as
+  -- "the AI is down" and sent them to top up the other.
+  CREATE TABLE IF NOT EXISTS provider_health (
+    provider          TEXT PRIMARY KEY,
+    last_success_at   BIGINT,
+    last_failure_at   BIGINT,
+    last_failure_code TEXT,
+    last_failure_note TEXT
   );
 
   -- ── Credit era (billing v3) ─────────────────────────────────────────────
@@ -1470,6 +1485,10 @@ async function migratePg(client: PoolClient) {
     /* table may not exist yet on first boot */
   });
 
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS language TEXT
+  `).catch(() => {});
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS preferred_model_ref TEXT

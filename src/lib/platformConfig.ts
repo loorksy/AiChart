@@ -96,6 +96,30 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "اتركه فارغاً لاستخدام النموذج الأساسي",
   },
   {
+    // Housekeeping model (naming a chat, folding old turns into a summary).
+    // Blank = the cheap per-provider default in lib/llm.ts. It deliberately
+    // never falls back to the analysis model: titling a sidebar entry is not
+    // worth frontier pricing.
+    key: "AI_CHORE_MODEL",
+    // English label: this registry's Arabic is on a shrink-only ratchet, so
+    // fields added after it use English rather than growing the debt.
+    label: "OpenAI housekeeping model (optional)",
+    labelEn: "AI_CHORE_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "blank = cheapest available model",
+  },
+  {
+    key: "ANTHROPIC_CHORE_MODEL",
+    label: "Claude housekeeping model (optional)",
+    labelEn: "ANTHROPIC_CHORE_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "blank = cheapest available model",
+  },
+  {
     key: "TELEGRAM_BOT_TOKEN",
     label: "توكن بوت تليجرام",
     labelEn: "TELEGRAM_BOT_TOKEN",

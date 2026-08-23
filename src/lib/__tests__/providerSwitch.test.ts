@@ -9,9 +9,9 @@
  * and an env value could out-live the panel's own row.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { before, beforeEach, describe, it } from "node:test";
 
 // Env FIRST — static app imports would hoist above these lines and bind the
@@ -142,6 +142,56 @@ describe("no path substitutes a provider on its own", () => {
       "openai",
       "inference is for a fresh install, where no operator choice exists yet",
     );
+  });
+});
+
+describe("the operator can see which provider is failing", () => {
+  it("records the outcome per provider, so a failure names its account", async () => {
+    const health = await import("@/lib/providerHealth");
+    await health.recordProviderFailure("openai", "provider_billing", "insufficient_quota");
+    await health.recordProviderSuccess("anthropic");
+
+    const rows = await health.readProviderHealth();
+    const openai = rows.get("openai");
+    const anthropic = rows.get("anthropic");
+    assert.equal(openai?.last_failure_code, "provider_billing");
+    assert.ok(openai?.last_failure_at, "the failing account is identifiable");
+    assert.ok(anthropic?.last_success_at, "and the working one is not blamed for it");
+    assert.equal(anthropic?.last_failure_code ?? null, null);
+  });
+
+  it("the panel offers a closed provider list, not a free-text field", () => {
+    const panel = readFileSync(
+      path.join(process.cwd(), "src/components/admin/AdminKeysPanel.tsx"),
+      "utf8",
+    );
+    assert.match(panel, /data-testid="ai-provider-select"/);
+    assert.match(panel, /<select/, "AI_PROVIDER is picked from a list");
+    assert.match(panel, /ProviderStatusCard/, "per-provider status is on the page");
+  });
+});
+
+describe("housekeeping stays cheap", () => {
+  it("a chore falls back to a cheap model, never to the decision model", async () => {
+    await setConfig({ AI_PROVIDER: "anthropic", ANTHROPIC_MODEL: "claude-opus-5" });
+    const deep = await llm.resolveActiveSelection("deep");
+    const chore = await llm.resolveActiveSelection("chore");
+    assert.equal(deep.model, "claude-opus-5");
+    assert.notEqual(chore.model, deep.model, "titling must not be billed at analysis rates");
+    assert.match(chore.model, /haiku/, "the unconfigured default is the cheap model");
+  });
+
+  it("the operator can name the chore model from the panel", async () => {
+    await setConfig({ AI_PROVIDER: "anthropic", ANTHROPIC_CHORE_MODEL: "claude-sonnet-4-6" });
+    assert.equal((await llm.resolveActiveSelection("chore")).model, "claude-sonnet-4-6");
+    await setConfig({ ANTHROPIC_CHORE_MODEL: undefined });
+  });
+
+  it("a user's model pick does not drag chores onto their model", async () => {
+    await setConfig({ AI_PROVIDER: "anthropic", ANTHROPIC_MODEL: "claude-sonnet-4-6" });
+    const pinned = await llm.resolveUserModelSelection("anthropic/claude-opus-5");
+    const chore = await llm.withRequestModel(pinned, () => llm.resolveActiveSelection("chore"));
+    assert.notEqual(chore.model, "claude-opus-5", "a chore is the platform's cost, not the user's pick");
   });
 });
 

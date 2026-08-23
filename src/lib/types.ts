@@ -41,6 +41,8 @@ export interface TradingSettings {
    * The admin supplies the API keys; the user picks which brain answers.
    */
   preferred_model_ref?: string | null;
+  /** The account's language for every surface. NULL = platform default. */
+  language?: string | null;
   /** Telegram surface model pick — independent of the platform composer pick. */
   telegram_model_ref?: string | null;
   send_screenshot: number;

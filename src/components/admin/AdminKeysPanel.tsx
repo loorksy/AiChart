@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
 
 import { OpenAIModelPicker } from "@/components/admin/OpenAIModelPicker";
+import { ProviderStatusCard } from "@/components/admin/ProviderStatusCard";
 import {
   ANTHROPIC_MODEL_CHOICES,
   PLATFORM_DEFAULT_MODEL_ID,
@@ -84,6 +85,9 @@ export function AdminKeysPanel() {
     platformRef: string;
     fallbacks: string[];
   } | null>(null);
+  // Bumped after every save so the provider status re-reads immediately —
+  // the operator sees the switch take effect without restarting anything.
+  const [statusKey, setStatusKey] = useState(0);
 
   const loadAgentModelStatus = useCallback(async () => {
     try {
@@ -149,6 +153,7 @@ export function AdminKeysPanel() {
       }
       setFields(data.fields);
       setDraft({});
+      setStatusKey((n) => n + 1);
       await loadAgentModelStatus();
       setMsg({
         type: "ok",
@@ -279,29 +284,26 @@ export function AdminKeysPanel() {
                         AI_PROVIDER
                       </span>
                     </legend>
-                    <div
-                      role="radiogroup"
-                      aria-label="المزوّد الافتراضي"
-                      className="inline-flex flex-wrap gap-1 rounded-lg border border-border bg-background p-1"
+                    {/* A closed list, never a free-text field: the value is
+                        one of exactly two provider ids, and typing it by hand
+                        was both tedious and a way to save a typo that reads
+                        as "no choice recorded". */}
+                    <select
+                      id="ai-provider-select"
+                      data-testid="ai-provider-select"
+                      aria-label="AI_PROVIDER"
+                      dir="ltr"
+                      value={activeProvider}
+                      onChange={(e) => setDraftValue("AI_PROVIDER", e.target.value)}
+                      className="focus-ring tap-target w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     >
                       {PROVIDERS.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={activeProvider === p.id}
-                          onClick={() => setDraftValue("AI_PROVIDER", p.id)}
-                          className={cn(
-                            "focus-ring tap-target rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150 ease-out",
-                            activeProvider === p.id
-                              ? "bg-foreground text-background"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
+                        <option key={p.id} value={p.id}>
                           {p.label}
-                        </button>
+                        </option>
                       ))}
-                    </div>
+                    </select>
+                    <ProviderStatusCard refreshKey={statusKey} />
                   </fieldset>
 
                   <ConfigFieldRow

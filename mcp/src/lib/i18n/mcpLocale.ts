@@ -2,12 +2,18 @@
  * Shared MCP locale resolution — framework-free, safe for server tools,
  * resource templates, and card-runtime code (no React). Normalizes locale
  * variants (ar-SA, en-GB, …) to "ar" | "en" and applies a fixed precedence,
- * defaulting to Arabic. Never guesses the locale from symbols or market data.
+ * defaulting to English — the platform default on every surface. Never
+ * guesses the locale from symbols or market data.
+ *
+ * The ACCOUNT's saved language is what the platform bridge supplies here, so
+ * a user who switches language on the web sees MCP answer in it too. Tool
+ * DESCRIPTIONS are deliberately not localized: the model reads those, not
+ * the user.
  */
 export type McpLocale = "ar" | "en";
 export type McpDirection = "rtl" | "ltr";
 
-export const DEFAULT_MCP_LOCALE: McpLocale = "ar";
+export const DEFAULT_MCP_LOCALE: McpLocale = "en";
 
 /** Normalize a raw locale value to "ar" | "en", or null when unrecognized. */
 export function normalizeLocale(value: unknown): McpLocale | null {
@@ -33,7 +39,7 @@ export interface McpLocaleSources {
   host?: unknown;
 }
 
-/** Resolve the effective locale by precedence, defaulting to Arabic. */
+/** Resolve the effective locale by precedence, defaulting to English. */
 export function resolveMcpLocale(sources: McpLocaleSources): McpLocale {
   const ordered = [
     sources.explicit,
