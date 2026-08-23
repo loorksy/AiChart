@@ -5,6 +5,7 @@ import { buildAccountProfile } from "@/lib/accountProfile";
 import { debugSessionLog } from "@/lib/debugSessionLog";
 import { getTelegramChatId } from "@/lib/store";
 import { sessionStartCard } from "@/lib/telegramCards";
+import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import {
   dismissPersistentKeyboardOnce,
   isTelegramConfigured,
@@ -57,7 +58,8 @@ export async function POST(req: NextRequest) {
     }
 
     const profile = await buildAccountProfile(userId);
-    const text = sessionStartCard(profile);
+    // The welcome card is a bot reply like any other — the account's language.
+    const text = sessionStartCard(profile, await resolveUserLocale(userId));
     await dismissPersistentKeyboardOnce(chatId);
     await sendMessage(chatId, text);
     // #region agent log

@@ -444,6 +444,10 @@ export const ar: Record<TranslationKey, string> = {
   "fault.unknown": "حدث خطأ غير متوقع أثناء التحليل.",
 
   // --- سطح تلجرام: إيصالات وأزرار وأخطاء ---
+  "tg.session_card_title": "👋 مرحباً — Lonora",
+  "tg.session_card_hint": "اسألني أو اختر خياراً من هذه الرسالة",
+  "tg.session_card_instrument": "الأداة: {name}",
+  "tg.session_card_source": "المصدر: {source}",
   "tg.linked_welcome":
     "تم الربط.\nاسألني عن {name} كما تسأل في المنصة — توصية، شرح، أو صورة الشارت.",
   "tg.chart_caption": "{name} · 15م",

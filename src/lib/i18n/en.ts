@@ -460,6 +460,10 @@ export const en = {
   "fault.unknown": "An unexpected error occurred during analysis.",
 
   // --- Telegram surface: receipts, buttons, errors ---
+  "tg.session_card_title": "👋 Welcome — Lonora",
+  "tg.session_card_hint": "Ask me anything, or pick an option from this message",
+  "tg.session_card_instrument": "Instrument: {name}",
+  "tg.session_card_source": "Source: {source}",
   "tg.linked_welcome":
     "Linked.\nAsk me about {name} just as you would on the platform — a recommendation, an explanation, or the chart photo.",
   "tg.chart_caption": "{name} · 15m",

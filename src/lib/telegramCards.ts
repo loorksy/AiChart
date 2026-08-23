@@ -1,5 +1,6 @@
 import { buildAccountProfile, accountFooterLines, type AccountProfile } from "./accountProfile";
-import { DISPLAY_NAME_AR } from "./gold";
+import { DISPLAY_NAME_AR, DISPLAY_NAME_EN } from "./gold";
+import { DEFAULT_LOCALE, t, type AppLocale } from "./i18n";
 import { formatSpreadAr } from "./spread";
 import type { LifecycleEvent, LifecycleEventType } from "./recommendations/lifecycleEvents";
 
@@ -128,13 +129,23 @@ export function lifecycleCard(
   return lines.join("\n");
 }
 
-export function sessionStartCard(profile: AccountProfile): string {
+/**
+ * The one card in this legacy module still on a live path (the menu route).
+ * It renders in the ACCOUNT's language like every other bot reply; the rest
+ * of this file has no callers left and is deliberately untouched rather than
+ * churned.
+ */
+export function sessionStartCard(
+  profile: AccountProfile,
+  locale: AppLocale = DEFAULT_LOCALE,
+): string {
+  const instrument = locale === "ar" ? DISPLAY_NAME_AR : DISPLAY_NAME_EN;
   return formatCard(
-    "👋 مرحباً — Lonora",
+    t(locale, "tg.session_card_title"),
     [
-      "🔹 اسألني أو اختر خياراً من هذه الرسالة",
-      `🔹 الأداة: ${DISPLAY_NAME_AR}`,
-      `🔹 ${envLine(profile)}`,
+      `🔹 ${t(locale, "tg.session_card_hint")}`,
+      `🔹 ${t(locale, "tg.session_card_instrument", { name: instrument })}`,
+      `🔹 ${t(locale, "tg.session_card_instrument", { name: profile.instrument })} · ${t(locale, "tg.session_card_source", { source: profile.dataSource })}`,
     ],
     profile,
   );

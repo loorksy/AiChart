@@ -218,7 +218,7 @@
   "src/lib/subscription/plan.ts": 1,
   "src/lib/support/supportStore.ts": 4,
   "src/lib/telegram.ts": 8,
-  "src/lib/telegramCards.ts": 31,
+  "src/lib/telegramCards.ts": 28,
   "src/lib/tradeMemory.ts": 2,
   "src/lib/tradingview/client.ts": 4
 }
