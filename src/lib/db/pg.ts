@@ -237,10 +237,15 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS billing_plan (
     id                     INTEGER PRIMARY KEY CHECK (id = 1),
     current_price_id       BIGINT,
-    trial_recommendations  INTEGER NOT NULL DEFAULT 3,
-    trial_duration_minutes INTEGER NOT NULL DEFAULT 0,
+    -- ONE currency: credits. A new account is handed this many credits once,
+    -- forever, and spends them at the ordinary prices — there is no separate
+    -- trial allowance, no trial counter, and no trial-only code path.
+    signup_grant_credits   INTEGER NOT NULL DEFAULT 0,
     low_balance_threshold  INTEGER NOT NULL DEFAULT 0,
     expiry_warn_days       INTEGER NOT NULL DEFAULT 0,
+    -- The floor the agent may not publish a plan below (reward:risk on the
+    -- FIRST target, x100 so it stays an integer). 0 = no floor.
+    min_rr_first_target_bp INTEGER NOT NULL DEFAULT 0,
     updated_at             BIGINT NOT NULL,
     updated_by             INTEGER
   );
@@ -1851,11 +1856,10 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     CREATE TABLE IF NOT EXISTS user_entitlements (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      -- 'trial' here means FREE: an account that has never subscribed. It
+      -- carries no allowance of its own — a Free account spends the same
+      -- credits at the same prices as a subscriber.
       plan_status TEXT NOT NULL DEFAULT 'trial',
-      trial_interactions_used INTEGER NOT NULL DEFAULT 0,
-      trial_in_flight INTEGER NOT NULL DEFAULT 0,
-      trial_started_at TIMESTAMPTZ,
-      trial_recommendations_used INTEGER NOT NULL DEFAULT 0,
       subscription_expires_at TIMESTAMPTZ,
       activated_at TIMESTAMPTZ,
       activated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -1876,12 +1880,32 @@ async function migratePg(client: PoolClient) {
   await client.query(
     "CREATE INDEX IF NOT EXISTS idx_trial_ledger_user ON trial_interaction_ledger(user_id, status)",
   ).catch(() => {});
-  await client.query(
-    "ALTER TABLE user_entitlements ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ",
-  ).catch(() => {});
-  await client.query(
-    "ALTER TABLE user_entitlements ADD COLUMN IF NOT EXISTS trial_recommendations_used INTEGER NOT NULL DEFAULT 0",
-  ).catch(() => {});
+  // The trial era is over: ONE currency (credits) and ONE gate. These columns
+  // backed a parallel allowance that could disagree with the balance, so they
+  // are dropped rather than left to rot as a second source of truth.
+  for (const column of [
+    "trial_started_at",
+    "trial_recommendations_used",
+    "trial_interactions_used",
+    "trial_in_flight",
+  ]) {
+    await client.query(
+      `ALTER TABLE user_entitlements DROP COLUMN IF EXISTS ${column}`,
+    ).catch(() => {});
+  }
+  for (const [column, ddl] of [
+    ["signup_grant_credits", "INTEGER NOT NULL DEFAULT 0"],
+    ["min_rr_first_target_bp", "INTEGER NOT NULL DEFAULT 0"],
+  ] as const) {
+    await client.query(
+      `ALTER TABLE billing_plan ADD COLUMN IF NOT EXISTS ${column} ${ddl}`,
+    ).catch(() => {});
+  }
+  for (const column of ["trial_recommendations", "trial_duration_minutes"]) {
+    await client.query(
+      `ALTER TABLE billing_plan DROP COLUMN IF EXISTS ${column}`,
+    ).catch(() => {});
+  }
 
   // Idempotent entitlement backfill (counts only; no private payloads).
   const entFlag = await client.query(
@@ -1889,7 +1913,7 @@ async function migratePg(client: PoolClient) {
   );
   if (entFlag.rowCount === 0) {
     await client.query(`
-      INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
+      INSERT INTO user_entitlements (user_id, plan_status, subscription_expires_at)
       SELECT u.id,
              CASE
                WHEN u.role = 'admin' THEN 'active'
@@ -1897,7 +1921,6 @@ async function migratePg(client: PoolClient) {
                WHEN u.access_expires_at IS NOT NULL AND u.access_expires_at <= NOW() THEN 'expired'
                ELSE 'trial'
              END,
-             0, 0,
              CASE WHEN u.role = 'admin' THEN NULL ELSE u.access_expires_at END
         FROM users u
       ON CONFLICT (user_id) DO NOTHING

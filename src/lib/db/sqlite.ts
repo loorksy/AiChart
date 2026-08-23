@@ -236,10 +236,15 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS billing_plan (
     id                     INTEGER PRIMARY KEY CHECK (id = 1),
     current_price_id       INTEGER,
-    trial_recommendations  INTEGER NOT NULL DEFAULT 3,
-    trial_duration_minutes INTEGER NOT NULL DEFAULT 0,
+    -- ONE currency: credits. A new account is handed this many credits once,
+    -- forever, and spends them at the ordinary prices — there is no separate
+    -- trial allowance, no trial counter, and no trial-only code path.
+    signup_grant_credits   INTEGER NOT NULL DEFAULT 0,
     low_balance_threshold  INTEGER NOT NULL DEFAULT 0,
     expiry_warn_days       INTEGER NOT NULL DEFAULT 0,
+    -- The floor the agent may not publish a plan below (reward:risk on the
+    -- FIRST target, ×100 so it stays an integer). 0 = no floor.
+    min_rr_first_target_bp INTEGER NOT NULL DEFAULT 0,
     updated_at             INTEGER NOT NULL,
     updated_by             INTEGER
   );
@@ -2014,11 +2019,10 @@ function migrate(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_entitlements (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      -- 'trial' here means FREE: an account that has never subscribed. It
+      -- carries no allowance of its own — a Free account spends the same
+      -- credits at the same prices as a subscriber.
       plan_status TEXT NOT NULL DEFAULT 'trial',
-      trial_interactions_used INTEGER NOT NULL DEFAULT 0,
-      trial_in_flight INTEGER NOT NULL DEFAULT 0,
-      trial_started_at TEXT,
-      trial_recommendations_used INTEGER NOT NULL DEFAULT 0,
       subscription_expires_at TEXT,
       activated_at TEXT,
       activated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -2037,19 +2041,50 @@ function migrate(db: Database.Database) {
       ON trial_interaction_ledger(user_id, status);
   `);
 
-  // Timed-trial columns (additive; existing rows keep a null clock until the
-  // trial clock is started).
+  // The trial era is over: ONE currency (credits) and ONE gate. These columns
+  // backed a parallel allowance that could disagree with the balance, so they
+  // are dropped rather than left to rot as a second source of truth. (SQLite
+  // 3.35+ supports DROP COLUMN; an older engine keeps the dead column, which
+  // is harmless because nothing reads it any more.)
   const entCols = db
     .prepare("PRAGMA table_info(user_entitlements)")
     .all()
     .map((c) => (c as { name: string }).name);
-  if (!entCols.includes("trial_started_at")) {
-    db.exec("ALTER TABLE user_entitlements ADD COLUMN trial_started_at TEXT");
+  for (const column of [
+    "trial_started_at",
+    "trial_recommendations_used",
+    "trial_interactions_used",
+    "trial_in_flight",
+  ]) {
+    if (!entCols.includes(column)) continue;
+    try {
+      db.exec(`ALTER TABLE user_entitlements DROP COLUMN ${column}`);
+    } catch {
+      /* older SQLite: the column stays, unread */
+    }
   }
-  if (!entCols.includes("trial_recommendations_used")) {
+
+  const planCols = db
+    .prepare("PRAGMA table_info(billing_plan)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  if (!planCols.includes("signup_grant_credits")) {
     db.exec(
-      "ALTER TABLE user_entitlements ADD COLUMN trial_recommendations_used INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE billing_plan ADD COLUMN signup_grant_credits INTEGER NOT NULL DEFAULT 0",
     );
+  }
+  if (!planCols.includes("min_rr_first_target_bp")) {
+    db.exec(
+      "ALTER TABLE billing_plan ADD COLUMN min_rr_first_target_bp INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  for (const column of ["trial_recommendations", "trial_duration_minutes"]) {
+    if (!planCols.includes(column)) continue;
+    try {
+      db.exec(`ALTER TABLE billing_plan DROP COLUMN ${column}`);
+    } catch {
+      /* older SQLite: the column stays, unread */
+    }
   }
 
   // Billing v3: a subscriber PINS the immutable plan-price row they bought —
@@ -2088,7 +2123,7 @@ function migrate(db: Database.Database) {
     .get() as { value?: string } | undefined;
   if (!entFlag) {
     db.exec(`
-      INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
+      INSERT INTO user_entitlements (user_id, plan_status, subscription_expires_at)
       SELECT u.id,
              CASE
                WHEN u.role = 'admin' THEN 'active'
@@ -2096,7 +2131,6 @@ function migrate(db: Database.Database) {
                WHEN u.access_expires_at IS NOT NULL AND datetime(u.access_expires_at) <= datetime('now') THEN 'expired'
                ELSE 'trial'
              END,
-             0, 0,
              CASE WHEN u.role = 'admin' THEN NULL ELSE u.access_expires_at END
         FROM users u
       WHERE NOT EXISTS (SELECT 1 FROM user_entitlements e WHERE e.user_id = u.id)

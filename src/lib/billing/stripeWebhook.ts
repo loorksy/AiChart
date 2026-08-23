@@ -72,8 +72,8 @@ async function upsertSubscription(row: {
 /** user_entitlements is THE access truth every gate reads — extend it here. */
 async function activateEntitlement(userId: number, periodEnd: number): Promise<void> {
   await execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at, updated_at)
-     VALUES (?, 'active', 0, 0, ?, ${process.env.DATABASE_URL ? "NOW()" : "datetime('now')"})
+    `INSERT INTO user_entitlements (user_id, plan_status, subscription_expires_at, updated_at)
+     VALUES (?, 'active', ?, ${process.env.DATABASE_URL ? "NOW()" : "datetime('now')"})
      ON CONFLICT (user_id) DO UPDATE SET
        plan_status = 'active',
        subscription_expires_at = excluded.subscription_expires_at,

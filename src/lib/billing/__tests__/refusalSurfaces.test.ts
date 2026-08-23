@@ -1,15 +1,20 @@
 /**
- * The three account states against the REAL creation choke point — the one
- * every surface (web, Telegram, MCP) funnels through:
+ * ONE currency, ONE gate, three account states — proven on every surface.
  *
- *  - ONE shared trial counter across all surfaces: exhausting it via one
- *    path refuses the next creation from any path, and the chat/link gates
- *    read the SAME exhaustion — no per-surface allowance exists anywhere;
- *  - the trial cap is the ADMIN's number (billing_plan), not a constant;
- *  - a paid creation debits the credit price ATOMICALLY with the insert:
- *    a refused creation writes no row and moves no balance;
- *  - expired subscription refuses by ITS name before any balance question;
- *  - MT5 linking is refused for trial accounts by the gate itself.
+ * The bug this replaces was exactly a second opinion: an older gate ran in
+ * front of the spend gate and told an EXPIRED SUBSCRIBER that their free
+ * trial had ended, so the correct `subscription_expired` code was never
+ * reached. There is now one decision point, and these tests assert the
+ * three states × three surfaces the product promises:
+ *
+ *   | state                      | code                  | action    |
+ *   | Free (never subscribed), 0 | insufficient_credits  | subscribe |
+ *   | Pro (live), 0              | insufficient_credits  | topup     |
+ *   | expired                    | subscription_expired  | renew     |
+ *
+ * Plus the rules that make the model coherent: the signup grant lands once
+ * and only once, changing its size never touches an existing balance, and
+ * linking a broker is bound to the SUBSCRIPTION rather than the balance.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -32,12 +37,17 @@ let fixtures: typeof import("@/lib/recommendations/__tests__/fixtures/completePl
 let credits: typeof import("@/lib/billing/credits");
 let spend: typeof import("@/lib/billing/spend");
 let planConfig: typeof import("@/lib/billing/planConfig");
+let refusal: typeof import("@/lib/billing/refusal");
+let store: typeof import("@/lib/store");
 let types: typeof import("@/lib/recommendations/canonical/types");
+
+type AccountState = "free" | "pro" | "expired";
 
 let seq = 0;
 
+/** An account in one of the three states, with an exact balance. */
 async function makeUser(state: {
-  plan: "trial" | "active" | "expired";
+  plan: AccountState;
   balance?: number;
 }): Promise<number> {
   seq += 1;
@@ -48,13 +58,13 @@ async function makeUser(state: {
   const expires =
     state.plan === "expired"
       ? new Date(Date.now() - 60_000).toISOString()
-      : state.plan === "active"
+      : state.plan === "pro"
         ? new Date(Date.now() + 30 * 86_400_000).toISOString()
         : null;
   await db.execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
-     VALUES (?, ?, 0, 0, ?)`,
-    [userId, state.plan === "trial" ? "trial" : "active", expires],
+    `INSERT INTO user_entitlements (user_id, plan_status, subscription_expires_at)
+     VALUES (?, ?, ?)`,
+    [userId, state.plan === "free" ? "trial" : "active", expires],
   );
   if (state.balance) {
     await credits.grantCredits({
@@ -88,30 +98,6 @@ async function createRec(userId: number): Promise<number> {
   return rec.recommendationId;
 }
 
-async function expectRefusal(
-  userId: number,
-  code: string,
-): Promise<void> {
-  try {
-    await createRec(userId);
-    assert.fail(`expected ${code} refusal, creation succeeded`);
-  } catch (error) {
-    assert.ok(
-      error instanceof types.RecommendationLifecycleError,
-      `expected a lifecycle refusal, got: ${String(error)}`,
-    );
-    assert.equal((error as InstanceType<typeof types.RecommendationLifecycleError>).code, code);
-  }
-}
-
-async function recommendationCount(userId: number): Promise<number> {
-  const rows = await db.query<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM recommendations WHERE user_id = ?",
-    [userId],
-  );
-  return Number(rows[0]?.n ?? 0);
-}
-
 before(async () => {
   db = await import("@/lib/db");
   await db.initDb();
@@ -120,72 +106,220 @@ before(async () => {
   credits = await import("@/lib/billing/credits");
   spend = await import("@/lib/billing/spend");
   planConfig = await import("@/lib/billing/planConfig");
+  refusal = await import("@/lib/billing/refusal");
+  store = await import("@/lib/store");
   types = await import("@/lib/recommendations/canonical/types");
+  // A recommendation costs credits; chat is free by default.
+  await planConfig.setCreditPrice("recommendation", 10, 1);
+  await planConfig.setCreditPrice("mt5_link", 50, 1);
+  await planConfig.setCreditPrice("chat_turn", 0, 1);
+  planConfig.bustBillingConfigCache();
 });
 
-describe("one trial counter across every surface", () => {
-  it("the admin's cap, consumed anywhere, exhausts the account everywhere", async () => {
-    // The cap is DATA: two recommendations for this platform, says the admin.
-    await planConfig.updateBillingPlanSettings({ trial_recommendations: 2 }, 1);
-    planConfig.bustBillingConfigCache();
-    const userId = await makeUser({ plan: "trial" });
+/**
+ * The state → (code, action) contract. Every surface reads the SAME gate,
+ * so proving it once per operation proves it for web, Telegram and MCP —
+ * and the surface pins below assert that none of them re-decides.
+ */
+describe("the three states answer with one code and one action", () => {
+  const CASES: Array<{
+    state: AccountState;
+    balance: number;
+    code: string;
+    action: string;
+  }> = [
+    // Free with nothing left: top-up packs are subscriber-only, so the only
+    // honest next step is to subscribe.
+    { state: "free", balance: 0, code: "insufficient_credits", action: "subscribe" },
+    // Pro with nothing left: they already subscribe — they top up.
+    { state: "pro", balance: 0, code: "insufficient_credits", action: "topup" },
+    // Lapsed: their balance is frozen, and the fix is renewal, never a top-up.
+    { state: "expired", balance: 500, code: "subscription_expired", action: "renew" },
+  ];
 
-    await createRec(userId); // "web"
-    await createRec(userId); // "telegram" — same account, same counter
-    assert.equal(await recommendationCount(userId), 2);
+  for (const c of CASES) {
+    it(`${c.state} → ${c.code} / ${c.action}`, async () => {
+      const userId = await makeUser({ plan: c.state, balance: c.balance });
+      const decision = await spend.resolveSpendGate(userId, "recommendation");
+      assert.equal(decision.allowed, false);
+      assert.equal(decision.allowed === false && decision.code, c.code);
+      assert.equal(decision.allowed === false && decision.action, c.action);
+    });
+  }
 
-    // Third creation — whichever surface carries it — is refused by name.
-    await expectRefusal(userId, "TRIAL_RECOMMENDATION_LIMIT");
-    assert.equal(await recommendationCount(userId), 2, "no row for a refusal");
+  it("an expired subscriber is NEVER told their trial ended", async () => {
+    const userId = await makeUser({ plan: "expired", balance: 500 });
+    const decision = await spend.resolveSpendGate(userId, "chat_turn");
+    assert.equal(decision.allowed, false);
+    assert.equal(decision.allowed === false && decision.code, "subscription_expired");
+    const view = refusal.presentRefusal("ar", decision as never);
+    assert.doesNotMatch(view.message, /تجرب/, "no trial wording for a subscriber");
+    assert.match(view.message, /اشتراك/);
+    assert.equal(view.ctaPath, "/subscribe");
+  });
 
-    // And the OTHER surfaces' gates read the same exhaustion instantly:
-    // the chat gate (web + Telegram) refuses trial_exhausted…
-    const chat = await spend.resolveSpendGate(userId, "chat_turn");
-    assert.equal(chat.allowed, false);
-    if (!chat.allowed) assert.equal(chat.code, "trial_exhausted");
-    // …and MT5 linking was never a trial feature to begin with.
-    const link = await spend.resolveSpendGate(userId, "mt5_link");
-    assert.equal(link.allowed, false);
-    if (!link.allowed) assert.equal(link.code, "trial_locked_feature");
-
-    await planConfig.updateBillingPlanSettings({ trial_recommendations: 3 }, 1);
-    planConfig.bustBillingConfigCache();
+  it("each state's presentation carries its own message and one button", () => {
+    const free = refusal.presentRefusal("en", {
+      code: "insufficient_credits",
+      action: "subscribe",
+    });
+    const pro = refusal.presentRefusal("en", {
+      code: "insufficient_credits",
+      action: "topup",
+    });
+    assert.notEqual(free.message, pro.message, "same code, different next step");
+    assert.equal(free.ctaPath, "/subscribe");
+    assert.equal(pro.ctaPath, "/console/billing");
   });
 });
 
-describe("paid creations debit atomically at the choke point", () => {
-  it("a priced recommendation charges exactly once, with the insert", async () => {
-    await planConfig.setCreditPrice("recommendation", 10, 1);
-    const userId = await makeUser({ plan: "active", balance: 25 });
-
-    const recId = await createRec(userId);
-    assert.equal(await credits.getCreditBalance(userId), 15);
-    const entries = await credits.listCreditEntries(userId);
-    const debit = entries.find((e) => e.kind === "debit_recommendation");
-    assert.ok(debit, "the ledger names the charge");
-    assert.equal(debit!.ref, `rec:${recId}`, "keyed to the recommendation itself");
+describe("every surface reads that one gate", () => {
+  it("the recommendation choke point refuses with the gate's own code", async () => {
+    const userId = await makeUser({ plan: "free", balance: 0 });
+    await assert.rejects(
+      () => createRec(userId),
+      (err: unknown) => {
+        assert.ok(err instanceof types.RecommendationLifecycleError);
+        assert.equal(err.code, "INSUFFICIENT_CREDITS");
+        return true;
+      },
+    );
+    const rows = await db.query("SELECT id FROM recommendations WHERE user_id = ?", [userId]);
+    assert.equal(rows.length, 0, "a refused creation writes no row");
   });
 
-  it("an empty balance refuses insufficient_credits — no row, no charge", async () => {
-    await planConfig.setCreditPrice("recommendation", 10, 1);
-    const userId = await makeUser({ plan: "active", balance: 4 });
-    await expectRefusal(userId, "INSUFFICIENT_CREDITS");
-    assert.equal(await recommendationCount(userId), 0);
-    assert.equal(await credits.getCreditBalance(userId), 4, "balance untouched");
+  it("a funded account creates, and the credits actually move", async () => {
+    const userId = await makeUser({ plan: "free", balance: 30 });
+    const id = await createRec(userId);
+    assert.ok(id > 0);
+    assert.equal(
+      await credits.getCreditBalance(userId),
+      20,
+      "30 - the admin's recommendation price",
+    );
   });
 
-  it("an expired subscription hears ITS name, never the balance's", async () => {
-    await planConfig.setCreditPrice("recommendation", 10, 1);
-    const userId = await makeUser({ plan: "expired", balance: 100 });
-    await expectRefusal(userId, "SUBSCRIPTION_EXPIRED");
-    assert.equal(await recommendationCount(userId), 0);
-    assert.equal(await credits.getCreditBalance(userId), 100, "the frozen balance is intact");
+  it("Free cannot link a broker however rich it is — the SUBSCRIPTION gates it", async () => {
+    const userId = await makeUser({ plan: "free", balance: 100_000 });
+    const decision = await spend.resolveSpendGate(userId, "mt5_link");
+    assert.equal(decision.allowed, false);
+    assert.equal(decision.allowed === false && decision.code, "subscription_required");
+    assert.equal(decision.allowed === false && decision.action, "subscribe");
   });
 
-  it("with no price configured, a paid creation spends nothing", async () => {
-    await planConfig.setCreditPrice("recommendation", 0, 1);
-    const userId = await makeUser({ plan: "active", balance: 5 });
-    await createRec(userId);
-    assert.equal(await credits.getCreditBalance(userId), 5);
+  it("a subscriber with credits may link", async () => {
+    const userId = await makeUser({ plan: "pro", balance: 100 });
+    const decision = await spend.resolveSpendGate(userId, "mt5_link");
+    assert.equal(decision.allowed, true);
+  });
+});
+
+describe("the signup grant lands once, forever", () => {
+  it("a new account is funded exactly once", async () => {
+    await planConfig.updateBillingPlanSettings({ signup_grant_credits: 25 }, 1);
+    planConfig.bustBillingConfigCache();
+    const { ensureSignupGrant } = await import("@/lib/billing/signupGrant");
+
+    seq += 1;
+    const userId = await db.insertReturningId(
+      "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+      [`grant-${seq}@example.com`, "x", "user", "active"],
+    );
+    await store.ensureUserDefaults(userId);
+    assert.equal(await credits.getCreditBalance(userId), 25);
+
+    // Every way a second grant could be attempted: the account's defaults
+    // being ensured again (a later sign-in), and a direct second call.
+    await store.ensureUserDefaults(userId);
+    const second = await ensureSignupGrant(userId);
+    const third = await ensureSignupGrant(userId);
+    assert.equal(second.granted, false);
+    assert.equal(third.granted, false);
+    assert.equal(
+      await credits.getCreditBalance(userId),
+      25,
+      "the ledger UNIQUE refuses a second grant — the balance never doubles",
+    );
+    const entries = await db.query(
+      "SELECT id FROM credit_entries WHERE user_id = ? AND kind = 'signup_grant'",
+      [userId],
+    );
+    assert.equal(entries.length, 1, "exactly one grant row exists");
+  });
+
+  it("changing the grant does not touch an account that already has one", async () => {
+    await planConfig.updateBillingPlanSettings({ signup_grant_credits: 25 }, 1);
+    planConfig.bustBillingConfigCache();
+    seq += 1;
+    const userId = await db.insertReturningId(
+      "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+      [`grant-change-${seq}@example.com`, "x", "user", "active"],
+    );
+    await store.ensureUserDefaults(userId);
+    assert.equal(await credits.getCreditBalance(userId), 25);
+
+    // The admin raises the grant afterwards.
+    await planConfig.updateBillingPlanSettings({ signup_grant_credits: 900 }, 1);
+    planConfig.bustBillingConfigCache();
+    const { ensureSignupGrant } = await import("@/lib/billing/signupGrant");
+    await ensureSignupGrant(userId);
+    assert.equal(
+      await credits.getCreditBalance(userId),
+      25,
+      "a new number is for NEW accounts — no retroactive grant, no adjustment",
+    );
+
+    // …and a genuinely new account gets the new number.
+    seq += 1;
+    const fresh = await db.insertReturningId(
+      "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+      [`grant-new-${seq}@example.com`, "x", "user", "active"],
+    );
+    await store.ensureUserDefaults(fresh);
+    assert.equal(await credits.getCreditBalance(fresh), 900);
+  });
+
+  it("a zero grant hands out nothing and writes no ledger noise", async () => {
+    await planConfig.updateBillingPlanSettings({ signup_grant_credits: 0 }, 1);
+    planConfig.bustBillingConfigCache();
+    seq += 1;
+    const userId = await db.insertReturningId(
+      "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+      [`grant-zero-${seq}@example.com`, "x", "user", "active"],
+    );
+    await store.ensureUserDefaults(userId);
+    assert.equal(await credits.getCreditBalance(userId), 0);
+    const entries = await db.query(
+      "SELECT id FROM credit_entries WHERE user_id = ?",
+      [userId],
+    );
+    assert.equal(entries.length, 0);
+  });
+});
+
+describe("there is no trial machinery left to disagree with the gate", () => {
+  it("nothing imports a trial quota module or counts trial usage", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const { listSourceFiles } = await import("@/lib/__tests__/helpers/importGraph");
+    const offenders: string[] = [];
+    for (const file of listSourceFiles(path.join(process.cwd(), "src"))) {
+      if (file.includes("__tests__")) continue;
+      // The schema modules must NAME the dead columns in order to drop them.
+      if (/src\/lib\/db\/(sqlite|pg)\.ts$/.test(file.replaceAll("\\", "/"))) continue;
+      const source = readFileSync(file, "utf8");
+      if (
+        /trialQuota|claimTrialInteraction|releaseTrialInteraction|claimTrialRecommendation|trial_recommendations_used|trial_interactions_used/.test(
+          source,
+        )
+      ) {
+        offenders.push(path.relative(process.cwd(), file));
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      `A second allowance is exactly what made an expired subscriber hear "your trial ended":\n  ${offenders.join("\n  ")}`,
+    );
   });
 });

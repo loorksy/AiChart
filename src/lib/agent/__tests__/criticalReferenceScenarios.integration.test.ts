@@ -54,8 +54,8 @@ before(async () => {
     ["critical-scenarios@example.com", "x", "user", "active"],
   );
   await db.execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight)
-     VALUES (?, 'active', 0, 0)
+    `INSERT INTO user_entitlements (user_id, plan_status)
+     VALUES (?, 'active')
      ON CONFLICT (user_id) DO UPDATE SET plan_status = 'active'`,
     [userId],
   );

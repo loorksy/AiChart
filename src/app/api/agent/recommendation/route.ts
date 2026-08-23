@@ -690,7 +690,6 @@ export async function POST(req: NextRequest) {
     // propagates {ok:false, error:{code,message}} bodies verbatim.
     if (e instanceof RecommendationLifecycleError) {
       const billing: Partial<Record<string, { code: string; status: number }>> = {
-        TRIAL_RECOMMENDATION_LIMIT: { code: "trial_exhausted", status: 403 },
         SUBSCRIPTION_EXPIRED: { code: "subscription_expired", status: 403 },
         INSUFFICIENT_CREDITS: { code: "insufficient_credits", status: 402 },
       };

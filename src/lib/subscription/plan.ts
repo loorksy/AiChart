@@ -1,8 +1,10 @@
 /**
- * Canonical Lonora subscription product — ONE paid plan plus a free trial
- * that carries EVERY feature and is bounded by the trial caps the ADMIN
- * sets (billing_plan: recommendation count, optional wall clock — disabled
- * by default). Prices and trial numbers are DATABASE rows (billing v3);
+ * Canonical Lonora subscription product — ONE paid plan, and ONE currency.
+ *
+ * There is no trial allowance any more. A new account is handed a signup
+ * grant of CREDITS (the amount is a billing_plan row the admin sets) and
+ * spends it at the ordinary prices; "Free" simply means an account that has
+ * never subscribed. Prices and grant sizes are DATABASE rows (billing v3);
  * this module keeps only identity and contact facts.
  */
 
@@ -15,14 +17,11 @@ export const AICHART_PLAN = {
   telegramUrl: "https://t.me/aswadtr",
 } as const;
 
-/** The admin-set trial bounds, resolved from billing_plan at read time. */
-export interface TrialConfig {
-  /** Recommendations the trial may create before it ends. */
-  trialLimit: number;
-  /** Wall-clock budget from the first start; 0 = no clock (the default). */
-  trialDurationMs: number;
-}
-
+/**
+ * `trial` is the historical name of the FREE state — an account that has
+ * never subscribed. It is kept as the stored value (a live database uses
+ * it) but carries no allowance: Free and Pro spend the same credits.
+ */
 export type PlanStatus = "trial" | "active" | "suspended" | "expired";
 
 export type EntitlementSnapshot = {
@@ -30,14 +29,11 @@ export type EntitlementSnapshot = {
   planStatus: PlanStatus;
   isAdmin: boolean;
   hasPaidAccess: boolean;
-  /** Trial recommendations consumed / remaining / cap. */
-  trialUsed: number;
-  trialRemaining: number;
-  trialLimit: number;
-  /** When the trial clock started and when it dies. */
-  trialStartedAt: string | null;
-  trialExpiresAt: string | null;
   expiresAt: string | null;
-  /** User-facing status label key — never expose resolver internals. */
-  access: "admin" | "full" | "trial" | "blocked";
+  /**
+   * User-facing status label key — never expose resolver internals.
+   * `free` = never subscribed (spends credits like anyone else);
+   * `full` = live subscription; `blocked` = suspended or expired.
+   */
+  access: "admin" | "full" | "free" | "blocked";
 };

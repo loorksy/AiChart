@@ -11,8 +11,10 @@ import type { AppLocale } from "@/lib/i18n";
  * the user's state is never derived twice in two ways.
  *
  * `status` is the two-value badge: `pro` for a live subscription, `free` for
- * everything else (trial, exhausted trial, expired). The quiet alerts are
- * threshold facts (admin-set numbers), for banners — never modals.
+ * everything else (never subscribed, or expired). There is no trial state to
+ * report any more — a Free account simply has a balance like everyone else.
+ * The quiet alerts are threshold facts (admin-set numbers), for banners —
+ * never modals.
  */
 export interface AccountSummary {
   status: "free" | "pro";
@@ -20,9 +22,6 @@ export interface AccountSummary {
   /** The account's language — the same one the web and the bot use. */
   language: AppLocale;
   balance: number;
-  trial_used: number;
-  trial_limit: number;
-  trial_remaining: number;
   expires_at: string | null;
   alerts: {
     /** Balance at/below the admin threshold (pro accounts only; 0 = off). */
@@ -63,9 +62,6 @@ export async function buildAccountSummary(
     // guessing one per client.
     language: await resolveUserLocale(user.id),
     balance,
-    trial_used: snapshot.trialUsed,
-    trial_limit: snapshot.trialLimit,
-    trial_remaining: snapshot.trialRemaining,
     expires_at: snapshot.expiresAt,
     alerts: { low_balance: lowBalance, expiring_soon: expiringSoon },
     thresholds: {

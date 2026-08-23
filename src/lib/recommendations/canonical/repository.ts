@@ -203,51 +203,25 @@ export async function createCanonicalRecommendation(
   // usageMeter precedent and keep this persistence layer cycle-free.
   let paidDebit: { price: number } | null = null;
   if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
-    const { claimTrialRecommendation } = await import("@/lib/subscription/entitlement");
     const { resolveSpendGate } = await import("@/lib/billing/spend");
-    const { t } = await import("@/lib/i18n");
-    // The gate NAMES the account state FIRST — an expired subscriber must
-    // hear "subscription expired", never the trial's message and never the
-    // balance's — and only an allowed account then consumes a trial slot
-    // (atomic guarded increment; the last-slot race is settled by the SQL
-    // guard, not by this read).
+    const { presentRefusal } = await import("@/lib/billing/refusal");
+    const { resolveUserLocale } = await import("@/lib/i18n/userLocale");
+    // ONE gate names the account state. There is no second allowance to
+    // claim any more: a recommendation costs credits, and Free and Pro pay
+    // the same price from the same balance.
     const decision = await resolveSpendGate(input.userId, "recommendation");
-    const claim = decision.allowed
-      ? await claimTrialRecommendation(input.userId)
-      : ({ ok: false, reason: "blocked" } as const);
     if (!decision.allowed) {
-      if (decision.code === "subscription_expired") {
-        throw new RecommendationLifecycleError(
-          "SUBSCRIPTION_EXPIRED",
-          t("ar", "billing.refusal.subscription_expired"),
-        );
-      }
-      if (decision.code === "insufficient_credits") {
-        throw new RecommendationLifecycleError(
-          "INSUFFICIENT_CREDITS",
-          t("ar", "billing.refusal.insufficient_credits"),
-        );
-      }
-      if (decision.code === "trial_exhausted") {
-        throw new RecommendationLifecycleError(
-          "TRIAL_RECOMMENDATION_LIMIT",
-          t("ar", "billing.refusal.trial_exhausted"),
-        );
-      }
+      const view = presentRefusal(await resolveUserLocale(input.userId), decision);
       throw new RecommendationLifecycleError(
-        "RECOMMENDATION_INVALID_INPUT",
-        t("ar", "billing.refusal.account_blocked"),
+        decision.code === "subscription_expired"
+          ? "SUBSCRIPTION_EXPIRED"
+          : decision.code === "insufficient_credits"
+            ? "INSUFFICIENT_CREDITS"
+            : "RECOMMENDATION_INVALID_INPUT",
+        view.message,
       );
     }
-    if (!claim.ok) {
-      // The gate allowed (e.g. enforcement off) but the trial counter is
-      // spent — the product cap holds regardless of the billing switch.
-      throw new RecommendationLifecycleError(
-        "TRIAL_RECOMMENDATION_LIMIT",
-        t("ar", "billing.refusal.trial_exhausted"),
-      );
-    }
-    if (claim.mode === "paid" && decision.mode === "paid" && decision.price > 0) {
+    if (decision.mode === "paid" && decision.price > 0) {
       paidDebit = { price: decision.price };
     }
   }

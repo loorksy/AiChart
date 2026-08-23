@@ -30,9 +30,6 @@ export async function GET() {
     plan_status: entitlement.planStatus,
     has_paid_access: entitlement.hasPaidAccess,
     expires_at: entitlement.expiresAt,
-    trial_used: entitlement.trialUsed,
-    trial_limit: entitlement.trialLimit,
-    trial_remaining: entitlement.trialRemaining,
     ledger: entries.map((e) => ({
       ts: e.ts,
       kind: e.kind,

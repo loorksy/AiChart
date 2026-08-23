@@ -53,8 +53,8 @@ before(async () => {
   // three-recommendation trial cap is claimed at the same creation choke point.
   // The cap is correct — the fixture was the thing pretending to be a trial.
   await db.execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight)
-     VALUES (?, 'active', 0, 0)
+    `INSERT INTO user_entitlements (user_id, plan_status)
+     VALUES (?, 'active')
      ON CONFLICT (user_id) DO UPDATE SET plan_status = 'active'`,
     [owner],
   );

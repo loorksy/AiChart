@@ -23,7 +23,7 @@ export async function GET() {
     price_cents: price?.price_cents ?? null,
     credits_per_cycle: price?.credits_per_cycle ?? null,
     cycle_days: price?.cycle_days ?? null,
-    trial_recommendations: plan.trial_recommendations,
-    trial_duration_minutes: plan.trial_duration_minutes,
+    /** What a NEW account is handed once — the only "free" there is. */
+    signup_grant_credits: plan.signup_grant_credits,
   });
 }

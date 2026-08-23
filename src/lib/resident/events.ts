@@ -42,8 +42,6 @@ export const webTurnRequestSchema = z.object({
   locale: z.enum(["ar", "en"]).optional(),
   /** The user's preferred_model_ref at send time (worker resolves it). */
   modelRef: z.string().max(200).nullable().optional(),
-  /** Whether the route's trial claim metered this turn (commit/release). */
-  trialMetered: z.boolean().optional(),
   /** Already validated against the route's bounded schema before publish. */
   chartContext: z.record(z.string(), z.unknown()).optional(),
 });

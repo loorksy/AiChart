@@ -179,10 +179,8 @@ export function BillingClient() {
         })
       : t("billing.status_active")
     : data.plan_status === "trial"
-      ? t("billing.trial_line", {
-          remaining: String(data.trial_remaining),
-          limit: String(data.trial_limit),
-        })
+      // Free: no subscription, just a balance like everyone else.
+      ? t("billing.status_free")
       : t("billing.refusal.subscription_expired");
 
   return (

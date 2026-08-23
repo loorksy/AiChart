@@ -53,8 +53,8 @@ async function makeUser(state: {
         ? new Date(Date.now() + 30 * 86_400_000).toISOString()
         : null;
   await db.execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
-     VALUES (?, ?, 0, 0, ?)`,
+    `INSERT INTO user_entitlements (user_id, plan_status, subscription_expires_at)
+     VALUES (?, ?, ?)`,
     [userId, state.plan === "trial" ? "trial" : "active", expires],
   );
   if (state.balance) {

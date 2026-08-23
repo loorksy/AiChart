@@ -15,8 +15,7 @@ import { cn } from "@/lib/utils";
 export interface PlanCardFacts {
   priceCents: number | null;
   creditsPerCycle: number | null;
-  trialLimit: number;
-  trialDurationMinutes: number;
+  signupGrantCredits: number;
 }
 
 /** Billing v3: ONE plan card + checkout kick-off. */
@@ -157,10 +156,11 @@ export function PricingCards({
               تواصل لتفعيل الاشتراك
             </a>
           )}
-          <p className="type-caption mt-3 text-center">
-            تجربة مجانية بكل المزايا — حتى {plan.trialLimit} توصيات
-            {plan.trialDurationMinutes > 0 ? " وضمن مدة محدودة" : ""}.
-          </p>
+          {plan.signupGrantCredits > 0 && (
+            <p className="type-caption mt-3 text-center">
+              الحسابات الجديدة تبدأ بـ {plan.signupGrantCredits} كريدت مجاناً.
+            </p>
+          )}
         </Surface>
       </div>
     </div>

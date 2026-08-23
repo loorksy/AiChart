@@ -56,8 +56,11 @@ export async function GET() {
 
 const putSchema = z
   .object({
-    trial_recommendations: z.number().int().min(0).max(1000).optional(),
-    trial_duration_minutes: z.number().int().min(0).max(30 * 24 * 60).optional(),
+    // Credits handed to a NEW account, once ever. Raising or lowering it
+    // affects new accounts only — existing balances are never touched.
+    signup_grant_credits: z.number().int().min(0).max(1_000_000).optional(),
+    // Reward:risk floor on the first target, x100 (250 = 2.5:1). 0 = off.
+    min_rr_first_target_bp: z.number().int().min(0).max(10_000).optional(),
     low_balance_threshold: z.number().int().min(0).max(1_000_000).optional(),
     expiry_warn_days: z.number().int().min(0).max(90).optional(),
     credit_prices: z

@@ -15,7 +15,6 @@ import {
   updateBrokerLinkStatus,
 } from "@/lib/brokerLink/store";
 import { metaapiConfigured, metaapiRegion, metaapiToken } from "@/lib/brokerLink/token";
-import { startTrialClock } from "@/lib/subscription/entitlement";
 import { resolveSpendGate } from "@/lib/billing/spend";
 import { t } from "@/lib/i18n";
 
@@ -103,9 +102,6 @@ export async function GET(req: Request) {
             // A transiently missing login must not wipe the stored one.
             login: live.login ?? row.login,
           });
-          if (live.state !== "DRAFT") {
-            await startTrialClock(user.id);
-          }
           row = await getBrokerLink(user.id);
         } catch (err) {
           // The cloud account is gone at MetaAPI — a stale local link would
@@ -224,9 +220,6 @@ export async function POST(req: Request) {
         state: live.state,
         login: live.login ?? login,
       });
-      if (live.state !== "DRAFT") {
-        await startTrialClock(user.id);
-      }
       row = (await getBrokerLink(user.id)) ?? row;
     } catch {
       // Best-effort status probe — the link row is already stored.

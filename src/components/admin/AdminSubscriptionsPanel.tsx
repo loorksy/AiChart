@@ -31,8 +31,6 @@ type SubRow = {
   role: string;
   status: string;
   plan_status: string;
-  trial_interactions_used: number;
-  trial_recommendations_used?: number;
   subscription_expires_at: string | null;
   note: string | null;
 };
@@ -223,7 +221,7 @@ export function AdminSubscriptionsPanel() {
                     label: "التجربة",
                     value: (
                       <span dir="ltr" className="type-numeric">
-                        {r.trial_recommendations_used ?? 0}/{trialLimit ?? "—"}
+                        {r.plan_status}
                       </span>
                     ),
                   },
@@ -287,7 +285,7 @@ export function AdminSubscriptionsPanel() {
                       </Badge>
                     </Td>
                     <Td numeric dir="ltr">
-                      {r.trial_recommendations_used ?? 0}/{trialLimit ?? "—"}
+                      {r.plan_status}
                     </Td>
                     <Td className="whitespace-nowrap text-xs text-muted-foreground">
                       {r.subscription_expires_at

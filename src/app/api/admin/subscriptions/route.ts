@@ -35,8 +35,6 @@ export async function GET(req: NextRequest) {
         role: u.role,
         status: u.status,
         plan_status: ent.plan_status,
-        trial_interactions_used: ent.trial_interactions_used,
-        trial_recommendations_used: ent.trial_recommendations_used,
         subscription_expires_at: ent.subscription_expires_at,
         note: ent.note,
       });

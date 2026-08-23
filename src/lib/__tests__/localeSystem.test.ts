@@ -93,8 +93,8 @@ describe("the choice belongs to the account, not the channel", () => {
     // updateSettings already seeded the account's defaults, entitlement row
     // included — insert only if this run somehow got there first.
     await db.execute(
-      `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight)
-       VALUES (?, 'trial', 0, 0)
+      `INSERT INTO user_entitlements (user_id, plan_status)
+       VALUES (?, 'trial')
        ON CONFLICT(user_id) DO NOTHING`,
       [userId],
     );

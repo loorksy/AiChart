@@ -6,35 +6,57 @@ import { debitCredits, getCreditBalance, type DbExecutor } from "./credits";
 import { getCreditPrice, type SpendOp } from "./planConfig";
 
 /**
- * Billing v3 — the ONE spend gate. Every surface (web, Telegram, MCP) asks
- * this module the same question and gets one of the same named answers; no
- * surface invents its own reason. The precedence is contractual and must
- * never blur:
+ * The ONE spend gate. Every surface (web, Telegram, MCP) asks this module the
+ * same question and gets one of the same named answers; no surface invents
+ * its own reason, and nothing else decides access.
  *
- *   1. suspended account            → account_blocked
- *   2. subscription expired          → subscription_expired   (before ANY
- *      look at the balance — an expired subscriber is told to renew, never
- *      "your balance ran out")
- *   3. trial exhausted               → trial_exhausted
- *   4. active but balance < price    → insufficient_credits
+ * There is ONE currency — credits — so there is one question: can this user
+ * afford this operation? What differs is only what the user should DO about
+ * a refusal, and that is decided here too, not guessed by each surface:
  *
- * A frozen balance is exactly that: expiry never spends it, never deletes
- * it, and renewal makes the same number usable again.
+ *   1. suspended account                → account_blocked      (support)
+ *   2. subscription expired             → subscription_expired (renew)
+ *      Checked BEFORE any look at the balance: a lapsed subscriber is told
+ *      to renew, never "your balance ran out". Their credits are frozen —
+ *      expiry never spends or deletes them, renewal makes them usable again.
+ *   3. subscriber-only feature, Free    → subscription_required (subscribe)
+ *      Bound to the SUBSCRIPTION, not the balance: a Free account with
+ *      plenty of credits still cannot link a broker.
+ *   4. balance < price                  → insufficient_credits
+ *      Free  → subscribe (top-ups are for live subscribers only, so
+ *               pointing a Free user at a top-up would be a dead end)
+ *      Pro   → topup
  *
  * BILLING_ENFORCED (platform panel) is the master switch for CREDIT
- * enforcement and the expired/insufficient refusals. The trial
- * recommendation counter is product behavior and stays enforced at the
- * recommendation choke point regardless of the switch.
+ * enforcement. The subscriber-only feature lock is product behaviour and
+ * stays enforced regardless of it.
  */
 
-export type SpendRefusalCode =
-  | "subscription_expired"
-  | "insufficient_credits"
-  | "trial_exhausted"
-  | "trial_locked_feature"
-  | "account_blocked";
+/** Operations only a live subscriber may perform, whatever their balance. */
+const SUBSCRIBER_ONLY_OPS: ReadonlySet<SpendOp> = new Set<SpendOp>(["mt5_link"]);
 
-export type SpendMode = "admin" | "paid" | "trial" | "billing_off";
+export type SpendRefusalCode =
+  | "account_blocked"
+  | "subscription_expired"
+  | "subscription_required"
+  | "insufficient_credits";
+
+/**
+ * What the user should DO about a refusal. The server decides this because
+ * the same code means different things to different accounts: a Free user
+ * out of credits must subscribe (top-ups need a live subscription), while a
+ * subscriber out of credits tops up.
+ */
+export type SpendRefusalAction = "subscribe" | "topup" | "renew" | "support";
+
+export type SpendMode = "admin" | "paid" | "billing_off";
+
+export interface SpendRefusal {
+  allowed: false;
+  code: SpendRefusalCode;
+  action: SpendRefusalAction;
+  balance: number | null;
+}
 
 export type SpendDecision =
   | {
@@ -44,7 +66,7 @@ export type SpendDecision =
       price: number;
       balance: number | null;
     }
-  | { allowed: false; code: SpendRefusalCode; balance: number | null };
+  | SpendRefusal;
 
 export async function billingEnforced(): Promise<boolean> {
   try {
@@ -75,59 +97,62 @@ export async function resolveSpendGate(
 ): Promise<SpendDecision> {
   const user = await loadUser(userId);
   if (!user || user.status === "suspended") {
-    return { allowed: false, code: "account_blocked", balance: null };
+    return { allowed: false, code: "account_blocked", action: "support", balance: null };
   }
   const snapshot = await getEntitlementForUser(user);
   if (snapshot.isAdmin) {
     return { allowed: true, mode: "admin", price: 0, balance: null };
   }
   if (snapshot.planStatus === "suspended") {
-    return { allowed: false, code: "account_blocked", balance: null };
+    return { allowed: false, code: "account_blocked", action: "support", balance: null };
   }
 
-  if (!(await billingEnforced())) {
-    // Credit enforcement off: everything spends nothing. Trial counting at
-    // the recommendation choke point still applies (product behavior).
-    if (snapshot.planStatus === "trial" && snapshot.access !== "trial") {
-      return { allowed: false, code: "trial_exhausted", balance: null };
-    }
-    if (snapshot.planStatus === "trial" && op === "mt5_link") {
-      return { allowed: false, code: "trial_locked_feature", balance: null };
-    }
-    return { allowed: true, mode: "billing_off", price: 0, balance: null };
-  }
-
-  if (snapshot.hasPaidAccess) {
-    const price = await getCreditPrice(op);
-    const balance = await getCreditBalance(userId);
-    if (price > 0 && balance < price) {
-      return { allowed: false, code: "insufficient_credits", balance };
-    }
-    return { allowed: true, mode: "paid", price, balance };
-  }
-
+  // A lapsed subscription outranks every balance question: their credits are
+  // frozen, and the fix is renewal, not a top-up.
   if (snapshot.planStatus === "expired") {
-    // The frozen-balance state: renewal is the fix, never a top-up.
     return {
       allowed: false,
       code: "subscription_expired",
+      action: "renew",
       balance: await getCreditBalance(userId),
     };
   }
 
-  // Trial.
-  if (op === "mt5_link") {
-    return { allowed: false, code: "trial_locked_feature", balance: null };
+  // Subscriber-only features are gated on the SUBSCRIPTION, never the
+  // balance — product behaviour, so it survives the enforcement switch.
+  if (SUBSCRIBER_ONLY_OPS.has(op) && !snapshot.hasPaidAccess) {
+    return {
+      allowed: false,
+      code: "subscription_required",
+      action: "subscribe",
+      balance: null,
+    };
   }
-  if (snapshot.access === "trial") {
-    return { allowed: true, mode: "trial", price: 0, balance: null };
+
+  if (!(await billingEnforced())) {
+    return { allowed: true, mode: "billing_off", price: 0, balance: null };
   }
-  return { allowed: false, code: "trial_exhausted", balance: null };
+
+  // From here Free and Pro are the same question at the same prices: the
+  // only difference is where a refusal sends them.
+  const price = await getCreditPrice(op);
+  const balance = await getCreditBalance(userId);
+  if (price > 0 && balance < price) {
+    return {
+      allowed: false,
+      code: "insufficient_credits",
+      // Top-up packs are sold to live subscribers only, so sending a Free
+      // account to the top-up page would be a dead end.
+      action: snapshot.hasPaidAccess ? "topup" : "subscribe",
+      balance,
+    };
+  }
+  return { allowed: true, mode: "paid", price, balance };
 }
 
 export type SpendCommit =
   | { ok: true; charged: number; balance: number | null }
-  | { ok: false; code: SpendRefusalCode; balance: number | null };
+  | { ok: false; code: SpendRefusalCode; action: SpendRefusalAction; balance: number | null };
 
 const DEBIT_KIND: Record<SpendOp, "debit_recommendation" | "debit_chat" | "debit_mt5_link"> = {
   recommendation: "debit_recommendation",
@@ -147,7 +172,12 @@ export async function authorizeAndDebit(
 ): Promise<SpendCommit> {
   const decision = await resolveSpendGate(input.userId, input.op);
   if (!decision.allowed) {
-    return { ok: false, code: decision.code, balance: decision.balance };
+    return {
+      ok: false,
+      code: decision.code,
+      action: decision.action,
+      balance: decision.balance,
+    };
   }
   if (decision.mode !== "paid" || decision.price <= 0) {
     return { ok: true, charged: 0, balance: decision.balance };
@@ -163,7 +193,14 @@ export async function authorizeAndDebit(
     db,
   );
   if (!debit.ok) {
-    return { ok: false, code: "insufficient_credits", balance: debit.balance };
+    // The balance emptied between the gate and the debit (a concurrent
+    // spend). The conditional debit refused rather than going negative.
+    return {
+      ok: false,
+      code: "insufficient_credits",
+      action: decision.mode === "paid" ? "topup" : "subscribe",
+      balance: debit.balance,
+    };
   }
   return {
     ok: true,

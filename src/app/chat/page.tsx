@@ -7,8 +7,8 @@ import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { SubscribeClient } from "@/components/subscription/SubscribeClient";
 import { isLLMConfiguredAsync } from "@/lib/llm";
 import { initDb } from "@/lib/db";
-import { getEntitlementForUser, loadTrialConfig } from "@/lib/subscription/entitlement";
-import { getCurrentPlanPrice } from "@/lib/billing/planConfig";
+import { getEntitlementForUser } from "@/lib/subscription/entitlement";
+import { getBillingPlan, getCurrentPlanPrice } from "@/lib/billing/planConfig";
 
 export default async function ChatPage() {
   const user = await getCurrentUser();
@@ -23,18 +23,16 @@ export default async function ChatPage() {
 
   await initDb();
   const entitlement = await getEntitlementForUser(user);
-  const [planPrice, trialCfg] = await Promise.all([getCurrentPlanPrice(), loadTrialConfig()]);
+  const [planPrice, plan] = await Promise.all([getCurrentPlanPrice(), getBillingPlan()]);
   const planFacts = {
     priceCents: planPrice?.price_cents ?? null,
-    trialLimit: trialCfg.trialLimit,
-    trialDurationMinutes: Math.round(trialCfg.trialDurationMs / 60000),
+    signupGrantCredits: plan.signup_grant_credits,
   };
 
   if (entitlement.access === "blocked") {
     return (
       <SubscribeClient
         mode="blocked"
-        trialRemaining={entitlement.trialRemaining}
         plan={planFacts}
       />
     );

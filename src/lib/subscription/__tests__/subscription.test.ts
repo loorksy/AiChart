@@ -2,28 +2,19 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
-import { AICHART_PLAN, type TrialConfig } from "@/lib/subscription/plan";
+import { AICHART_PLAN } from "@/lib/subscription/plan";
 import {
   resolveEntitlement,
   type UserEntitlementRow,
 } from "@/lib/subscription/entitlement";
-import { subscriptionRequiredMessage } from "@/lib/subscription/trialQuota";
 
 const root = resolve(process.cwd(), "src");
 const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
-
-/** Admin-set trial bounds; tests pass them explicitly (they are DATA now). */
-const CFG: TrialConfig = { trialLimit: 3, trialDurationMs: 60 * 60 * 1000 };
-const NO_CLOCK: TrialConfig = { trialLimit: 3, trialDurationMs: 0 };
 
 function row(over: Partial<UserEntitlementRow>): UserEntitlementRow {
   return {
     user_id: 2,
     plan_status: "trial",
-    trial_interactions_used: 0,
-    trial_in_flight: 0,
-    trial_started_at: null,
-    trial_recommendations_used: 0,
     subscription_expires_at: null,
     activated_at: null,
     activated_by: null,
@@ -36,120 +27,105 @@ function row(over: Partial<UserEntitlementRow>): UserEntitlementRow {
 test("the plan module carries identity and contact ONLY — every price is data", () => {
   assert.equal(AICHART_PLAN.telegramHandle, "aswadtr");
   assert.equal(AICHART_PLAN.telegramUrl, "https://t.me/aswadtr");
-  // Billing v3: zero priced or bounded constants in code. A price key
-  // reappearing here is the regression this test exists to catch.
+  // Zero priced or bounded constants in code. A price key reappearing here
+  // is the regression this test exists to catch.
   const keys = Object.keys(AICHART_PLAN);
-  for (const banned of ["regularPriceUsd", "promotionalPriceUsd", "trialRecommendations", "trialDurationMs"]) {
+  for (const banned of [
+    "regularPriceUsd",
+    "promotionalPriceUsd",
+    "trialRecommendations",
+    "trialDurationMs",
+    "signupGrantCredits",
+  ]) {
     assert.ok(!keys.includes(banned), `${banned} must live in billing_plan, not code`);
   }
 });
 
-test("admin bypasses subscription gate", () => {
-  const snap = resolveEntitlement(
-    { id: 1, role: "admin", status: "active" },
-    row({ user_id: 1, trial_recommendations_used: 3 }),
-    CFG,
-  );
+test("admin bypasses the subscription gate", () => {
+  const snap = resolveEntitlement({ id: 1, role: "admin", status: "active" }, row({ user_id: 1 }));
   assert.equal(snap.access, "admin");
   assert.equal(snap.hasPaidAccess, true);
 });
 
-test("trial before the clock starts: full access, clock not started", () => {
-  const snap = resolveEntitlement({ id: 2, role: "user", status: "active" }, row({}), CFG);
-  assert.equal(snap.access, "trial");
-  assert.equal(snap.trialStartedAt, null);
-  assert.equal(snap.trialExpiresAt, null);
-  assert.equal(snap.trialRemaining, CFG.trialLimit);
+/**
+ * The four states. A FREE account is NOT blocked: it carries every feature
+ * and pays per operation from its credit balance, so the resolver must not
+ * pre-judge it — that question belongs to the one spend gate.
+ */
+test("a never-subscribed account is FREE — full product access, no allowance", () => {
+  const snap = resolveEntitlement({ id: 2, role: "user", status: "active" }, row({}));
+  assert.equal(snap.access, "free");
+  assert.equal(snap.planStatus, "trial");
+  assert.equal(snap.hasPaidAccess, false);
+  assert.equal(snap.expiresAt, null);
 });
 
-test("trial inside the hour with recommendations left stays open", () => {
-  const started = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const snap = resolveEntitlement(
-    { id: 2, role: "user", status: "active" },
-    row({ trial_started_at: started, trial_recommendations_used: 2 }),
-    CFG,
-  );
-  assert.equal(snap.access, "trial");
-  assert.equal(snap.trialRemaining, 1);
-  assert.ok(snap.trialExpiresAt);
-});
-
-test("with a configured clock, the trial dies when it elapses — recommendations left or not", () => {
-  const started = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  const snap = resolveEntitlement(
-    { id: 2, role: "user", status: "active" },
-    row({ trial_started_at: started, trial_recommendations_used: 0 }),
-    CFG,
-  );
-  assert.equal(snap.access, "blocked");
-});
-
-test("with the clock DISABLED (the default), only the recommendation count bounds the trial", () => {
-  const started = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const snap = resolveEntitlement(
-    { id: 2, role: "user", status: "active" },
-    row({ trial_started_at: started, trial_recommendations_used: 1 }),
-    NO_CLOCK,
-  );
-  assert.equal(snap.access, "trial", "two days in, the trial lives — no clock is configured");
-  assert.equal(snap.trialExpiresAt, null);
-});
-
-test("trial dies on the third recommendation, even inside the hour", () => {
-  const started = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const snap = resolveEntitlement(
-    { id: 2, role: "user", status: "active" },
-    row({ trial_started_at: started, trial_recommendations_used: 3 }),
-    CFG,
-  );
-  assert.equal(snap.access, "blocked");
-  assert.equal(snap.trialRemaining, 0);
-});
-
-test("active subscription grants full access", () => {
+test("an active subscription grants full access", () => {
   const snap = resolveEntitlement(
     { id: 3, role: "user", status: "active" },
-    row({ user_id: 3, plan_status: "active", trial_recommendations_used: 3 }),
-    CFG,
+    row({
+      user_id: 3,
+      plan_status: "active",
+      subscription_expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+    }),
   );
   assert.equal(snap.access, "full");
   assert.equal(snap.hasPaidAccess, true);
 });
 
-test("subscription message is user-facing, price-free, without internal codes", () => {
-  const ar = subscriptionRequiredMessage("ar");
-  const en = subscriptionRequiredMessage("en");
-  // Prices are DATA now — a dollar figure inside a hardcoded message is the
-  // drift this pin prevents.
-  assert.doesNotMatch(ar, /\d+\s*\$|\$\s*\d+/);
-  assert.doesNotMatch(en, /\$\s*\d+/);
-  assert.doesNotMatch(ar, /entitlement|quota_table|plan_status/i);
-  assert.ok(ar.length > 10 && en.length > 10);
+test("a lapsed subscription is blocked and keeps its expiry date", () => {
+  const expired = new Date(Date.now() - 60_000).toISOString();
+  const snap = resolveEntitlement(
+    { id: 4, role: "user", status: "active" },
+    row({ user_id: 4, plan_status: "active", subscription_expires_at: expired }),
+  );
+  assert.equal(snap.planStatus, "expired");
+  assert.equal(snap.access, "blocked");
+  assert.equal(snap.hasPaidAccess, false);
+  assert.equal(snap.expiresAt, expired);
 });
 
-test("chat stream gates access before provider work", () => {
-  // The turn body moved into webTurn.ts (Work ب): the route still claims
-  // the trial BEFORE it either runs the turn inline or publishes it to the
-  // queue — on both paths, gates precede any provider work.
+test("a suspended account is blocked whatever its plan says", () => {
+  const snap = resolveEntitlement(
+    { id: 5, role: "user", status: "suspended" },
+    row({ user_id: 5, plan_status: "active" }),
+  );
+  assert.equal(snap.access, "blocked");
+});
+
+test("the entitlement snapshot carries no trial allowance at all", () => {
+  const snap = resolveEntitlement({ id: 6, role: "user", status: "active" }, row({ user_id: 6 }));
+  for (const banned of ["trialUsed", "trialLimit", "trialRemaining", "trialStartedAt", "trialExpiresAt"]) {
+    assert.ok(
+      !(banned in snap),
+      `${banned} is a second allowance the spend gate would have to reconcile`,
+    );
+  }
+});
+
+test("the chat stream gates access through the ONE spend gate", () => {
   const stream = read("app/api/agent/chat/stream/route.ts");
-  assert.match(stream, /claimTrialInteraction/);
-  assert.ok(stream.indexOf("claimTrialInteraction") < stream.indexOf("publishResidentEvent"));
-  assert.ok(stream.indexOf("claimTrialInteraction") < stream.indexOf("runWebChatTurn"));
+  // The bug this pins: an older trial gate answered FIRST and hardcoded
+  // "your free trial ended", so an expired subscriber never reached the
+  // correct subscription_expired code below it.
+  assert.doesNotMatch(stream, /claimTrialInteraction|trialQuota/);
+  assert.match(stream, /resolveSpendGate/);
+  assert.ok(stream.indexOf("resolveSpendGate") < stream.indexOf("publishResidentEvent"));
+  assert.ok(stream.indexOf("resolveSpendGate") < stream.indexOf("runWebChatTurn"));
   const turn = read("lib/agent/webTurn.ts");
   assert.match(turn, /runUnifiedChartAgent/);
 });
 
-test("MCP gate admits valid trials and blocks everyone else", () => {
-  assert.match(read("app/api/admin/mcp-auth/verify/route.ts"), /subscription_required/);
+test("the MCP bridge admits Free accounts and blocks only blocked ones", () => {
   const auth = read("lib/agentAuth.ts");
   assert.match(auth, /getEntitlementForUser/);
-  assert.match(auth, /access !== "trial"/);
+  assert.match(auth, /access === "blocked"/);
 });
 
-test("the trial recommendation cap is claimed at the canonical choke point", () => {
+test("the recommendation choke point asks the spend gate, and nothing else", () => {
   const repo = read("lib/recommendations/canonical/repository.ts");
-  assert.match(repo, /claimTrialRecommendation/);
-  assert.match(repo, /TRIAL_RECOMMENDATION_LIMIT/);
+  assert.match(repo, /resolveSpendGate/);
+  assert.doesNotMatch(repo, /claimTrialRecommendation|TRIAL_RECOMMENDATION_LIMIT/);
 });
 
 test("landing pricing uses the shared contact facts, no inline dollar prices", () => {

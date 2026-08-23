@@ -41,6 +41,8 @@ const rootDb: DbExecutor = {
 
 /** Ledger vocabulary. Grants are positive, debits negative, one kind each. */
 export type CreditEntryKind =
+  /** The once-ever welcome balance a new account is handed. */
+  | "signup_grant"
   | "cycle_grant"
   | "topup"
   | "admin_adjust"
@@ -134,7 +136,10 @@ export async function grantCredits(
   input: {
     userId: number;
     amount: number;
-    kind: Extract<CreditEntryKind, "cycle_grant" | "topup" | "admin_adjust">;
+    kind: Extract<
+      CreditEntryKind,
+      "signup_grant" | "cycle_grant" | "topup" | "admin_adjust"
+    >;
     ref?: string | null;
     note?: string | null;
   },

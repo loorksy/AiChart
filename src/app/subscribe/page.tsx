@@ -4,8 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { displayNameForUser } from "@/lib/displayName";
 import { AppConsoleShell } from "@/components/shell/AppConsoleShell";
 import { SubscribeClient } from "@/components/subscription/SubscribeClient";
-import { getEntitlementForUser, loadTrialConfig } from "@/lib/subscription/entitlement";
-import { getCurrentPlanPrice } from "@/lib/billing/planConfig";
+import { getEntitlementForUser } from "@/lib/subscription/entitlement";
+import { getBillingPlan, getCurrentPlanPrice } from "@/lib/billing/planConfig";
 import { initDb } from "@/lib/db";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { BRAND_NAME } from "@/lib/brand";
@@ -21,11 +21,10 @@ export default async function SubscribePage() {
   if (!user) redirect("/login?next=/subscribe");
   await initDb();
   const entitlement = await getEntitlementForUser(user);
-  const [planPrice, trialCfg] = await Promise.all([getCurrentPlanPrice(), loadTrialConfig()]);
+  const [planPrice, plan] = await Promise.all([getCurrentPlanPrice(), getBillingPlan()]);
   const planFacts = {
     priceCents: planPrice?.price_cents ?? null,
-    trialLimit: trialCfg.trialLimit,
-    trialDurationMinutes: Math.round(trialCfg.trialDurationMs / 60000),
+    signupGrantCredits: plan.signup_grant_credits,
   };
   if (entitlement.isAdmin || entitlement.hasPaidAccess) {
     redirect("/chat");
@@ -38,8 +37,7 @@ export default async function SubscribePage() {
       showConversations={false}
     >
       <SubscribeClient
-        mode={entitlement.access === "trial" ? "trial" : "blocked"}
-        trialRemaining={entitlement.trialRemaining}
+        mode={entitlement.access === "free" ? "free" : "blocked"}
         plan={planFacts}
       />
     </AppConsoleShell>

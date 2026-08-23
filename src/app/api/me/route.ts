@@ -42,11 +42,6 @@ export async function GET() {
     entitlement: {
       access: entitlement.access,
       planStatus: entitlement.planStatus,
-      trialUsed: entitlement.trialUsed,
-      trialRemaining: entitlement.trialRemaining,
-      trialStartedAt: entitlement.trialStartedAt,
-      trialExpiresAt: entitlement.trialExpiresAt,
-      trialLimit: entitlement.trialLimit,
       expiresAt: entitlement.expiresAt,
       plan: {
         titleEn: AICHART_PLAN.titleEn,

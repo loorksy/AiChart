@@ -9,23 +9,21 @@ import { cn } from "@/lib/utils";
 /** Admin-set plan facts, resolved server-side and passed down — never constants. */
 export interface SubscribePlanFacts {
   priceCents: number | null;
-  trialLimit: number;
-  trialDurationMinutes: number;
+  /** Credits a new account is handed once — the only "free" the product has. */
+  signupGrantCredits: number;
 }
 
 export function SubscribeClient({
-  trialRemaining = 0,
   mode = "blocked",
   plan,
 }: {
-  trialRemaining?: number;
-  mode?: "trial" | "blocked" | "info";
+  /** `free` = never subscribed; `blocked` = suspended or lapsed. */
+  mode?: "free" | "blocked" | "info";
   plan: SubscribePlanFacts;
 }) {
   const { locale, dir, t } = useLocale();
   const isAr = locale === "ar";
   const price = plan.priceCents != null ? plan.priceCents / 100 : null;
-  const withClock = plan.trialDurationMinutes > 0;
 
   return (
     <div dir={dir} className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-10">
@@ -61,16 +59,15 @@ export function SubscribeClient({
             ? "اشتراك شهري واحد يفتح كل الميزات."
             : "One monthly subscription unlocks every feature."}
         </p>
-        {mode === "trial" && trialRemaining > 0 ? (
+        {mode === "free" && plan.signupGrantCredits > 0 ? (
           <p className="mt-3 text-sm text-foreground">
-            {t(withClock ? "billing.trial_remaining_clock" : "billing.trial_remaining", {
-              remaining: String(trialRemaining),
-              limit: String(plan.trialLimit),
+            {t("billing.signup_grant_note", {
+              credits: String(plan.signupGrantCredits),
             })}
           </p>
         ) : null}
         {mode === "blocked" ? (
-          <p className="mt-3 text-sm text-foreground">{t("billing.trial_ended_cta")}</p>
+          <p className="mt-3 text-sm text-foreground">{t("billing.blocked_cta")}</p>
         ) : null}
       </div>
 

@@ -299,7 +299,6 @@ export class RecommendationLifecycleError extends Error {
       | "RECOMMENDATION_INVALID_INPUT"
       | "RECOMMENDATION_DUPLICATE"
       | "RECOMMENDATION_GATES_INCOMPLETE"
-      | "TRIAL_RECOMMENDATION_LIMIT"
       | "SUBSCRIPTION_EXPIRED"
       | "INSUFFICIENT_CREDITS",
     message: string,

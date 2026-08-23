@@ -12,10 +12,12 @@ import { execute, query, queryOne, transaction } from "@/lib/db";
 export interface BillingPlanRow {
   id: 1;
   current_price_id: number | null;
-  trial_recommendations: number;
-  trial_duration_minutes: number;
+  /** Credits a NEW account is handed once, forever. 0 = no welcome balance. */
+  signup_grant_credits: number;
   low_balance_threshold: number;
   expiry_warn_days: number;
+  /** Minimum reward:risk on the FIRST target, x100. 0 = no floor. */
+  min_rr_first_target_bp: number;
   updated_at: number;
   updated_by: number | null;
 }
@@ -45,24 +47,24 @@ export function bustBillingConfigCache(): void {
 
 export async function getBillingPlan(): Promise<BillingPlanRow> {
   if (planCache && Date.now() - planCache.at < CACHE_TTL_MS) return planCache.row;
+  const columns = `id, current_price_id, signup_grant_credits,
+            low_balance_threshold, expiry_warn_days, min_rr_first_target_bp,
+            updated_at, updated_by`;
   let row = await queryOne<BillingPlanRow>(
-    `SELECT id, current_price_id, trial_recommendations, trial_duration_minutes,
-            low_balance_threshold, expiry_warn_days, updated_at, updated_by
-       FROM billing_plan WHERE id = 1`,
+    `SELECT ${columns} FROM billing_plan WHERE id = 1`,
   );
   if (!row) {
-    // Structural defaults only (trial=3 comes from the product spec; every
-    // price stays unset until the admin writes it).
+    // Every priced or bounded number stays ZERO until the admin writes it:
+    // an unset welcome grant hands out nothing rather than a number nobody
+    // chose, and an unset R:R floor refuses nothing.
     await execute(
-      `INSERT INTO billing_plan (id, trial_recommendations, trial_duration_minutes,
-         low_balance_threshold, expiry_warn_days, updated_at)
-       VALUES (1, 3, 0, 0, 0, ?)`,
+      `INSERT INTO billing_plan (id, signup_grant_credits,
+         low_balance_threshold, expiry_warn_days, min_rr_first_target_bp, updated_at)
+       VALUES (1, 0, 0, 0, 0, ?)`,
       [Date.now()],
     ).catch(() => {});
     row = await queryOne<BillingPlanRow>(
-      `SELECT id, current_price_id, trial_recommendations, trial_duration_minutes,
-              low_balance_threshold, expiry_warn_days, updated_at, updated_by
-         FROM billing_plan WHERE id = 1`,
+      `SELECT ${columns} FROM billing_plan WHERE id = 1`,
     );
   }
   if (!row) throw new Error("billing_plan row missing");
@@ -110,10 +112,10 @@ export async function updateBillingPlanSettings(
   patch: Partial<
     Pick<
       BillingPlanRow,
-      | "trial_recommendations"
-      | "trial_duration_minutes"
+      | "signup_grant_credits"
       | "low_balance_threshold"
       | "expiry_warn_days"
+      | "min_rr_first_target_bp"
     >
   >,
   adminId: number,
@@ -121,23 +123,27 @@ export async function updateBillingPlanSettings(
   const current = await getBillingPlan();
   const next = { ...current, ...patch };
   for (const key of [
-    "trial_recommendations",
-    "trial_duration_minutes",
+    "signup_grant_credits",
     "low_balance_threshold",
     "expiry_warn_days",
+    "min_rr_first_target_bp",
   ] as const) {
     const v = next[key];
     if (!Number.isInteger(v) || v < 0) throw new Error(`${key} must be a non-negative integer`);
   }
+  // Changing the welcome grant affects NEW accounts only — this writes a
+  // number, never a balance. Existing accounts already hold their once-ever
+  // ledger entry and can never receive a second one.
   await execute(
-    `UPDATE billing_plan SET trial_recommendations = ?, trial_duration_minutes = ?,
-        low_balance_threshold = ?, expiry_warn_days = ?, updated_at = ?, updated_by = ?
+    `UPDATE billing_plan SET signup_grant_credits = ?,
+        low_balance_threshold = ?, expiry_warn_days = ?, min_rr_first_target_bp = ?,
+        updated_at = ?, updated_by = ?
       WHERE id = 1`,
     [
-      next.trial_recommendations,
-      next.trial_duration_minutes,
+      next.signup_grant_credits,
       next.low_balance_threshold,
       next.expiry_warn_days,
+      next.min_rr_first_target_bp,
       Date.now(),
       adminId,
     ],

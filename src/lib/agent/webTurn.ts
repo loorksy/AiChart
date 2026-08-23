@@ -25,10 +25,6 @@ import { t } from "@/lib/i18n";
 import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import {
-  commitTrialInteraction,
-  releaseTrialInteraction,
-} from "@/lib/subscription/trialQuota";
-import {
   createActivityEvent,
   shouldShowActivity,
 } from "@/lib/agent/activity";
@@ -282,8 +278,6 @@ export interface WebTurnInput {
   requestId: string;
   /** Resolved by the caller (body.sessionId or a fresh id). */
   sessionId: string;
-  /** Whether the route's trial claim metered this turn. */
-  trialMetered: boolean;
   /**
    * The user's preferred_model_ref pinned at send time (queue path).
    * Undefined = read the current setting here (inline path).
@@ -309,7 +303,7 @@ export async function runWebChatTurn(
   input: WebTurnInput,
   deps: WebTurnDeps = {},
 ): Promise<WebTurnOutcome> {
-  const { user, body, requestId, sessionId, trialMetered, signal } = input;
+  const { user, body, requestId, sessionId, signal } = input;
   const runAgent = deps.runAgent ?? runUnifiedChartAgent;
   const suggest = deps.suggest ?? generateAgentSuggestions;
 
@@ -558,9 +552,6 @@ export async function runWebChatTurn(
       clearOptions(sessionId);
     }
 
-    if (trialMetered) {
-      await commitTrialInteraction(user.id, requestId);
-    }
 
     // Chat pricing (admin-set, 0 = free): charged only on a COMPLETED
     // turn — a failed run costs nothing. The upfront gate was the
@@ -597,9 +588,6 @@ export async function runWebChatTurn(
           : undefined,
     });
   } catch (error) {
-    if (trialMetered) {
-      await releaseTrialInteraction(user.id, requestId);
-    }
     if (signal.aborted) {
       if (traceRunId) {
         await finalizeAgentRun({ userId: user.id, runId: traceRunId, status: "cancelled" });

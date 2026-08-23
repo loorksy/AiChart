@@ -104,8 +104,8 @@ async function makeActiveUser(balance: number): Promise<number> {
     [`webqueue-${seq}@example.com`, "x", "user", "active"],
   );
   await db.execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
-     VALUES (?, 'active', 0, 0, ?)`,
+    `INSERT INTO user_entitlements (user_id, plan_status, subscription_expires_at)
+     VALUES (?, 'active', ?)`,
     [userId, new Date(Date.now() + 30 * 86_400_000).toISOString()],
   );
   if (balance) {
@@ -120,7 +120,7 @@ function webEvent(userId: number, turnId: string): import("@/lib/resident/events
     userId,
     channel: { type: "web", id: `chat-${turnId}` },
     text: "analyze gold",
-    web: { turnId, locale: "ar", trialMetered: false, modelRef: null },
+    web: { turnId, locale: "ar", modelRef: null },
     enqueuedAt: Date.now(),
   });
 }

@@ -29,7 +29,6 @@ import {
   type WebChatBody,
   type WebTurnDeps,
 } from "@/lib/agent/webTurn";
-import { releaseTrialInteraction } from "@/lib/subscription/trialQuota";
 import { queryOne } from "@/lib/db";
 import { createLogger } from "@/lib/logger";
 import type { PublicUser } from "@/lib/types";
@@ -76,7 +75,6 @@ export async function runQueuedWebTurn(
   const turnId = web.turnId;
   const locale = web.locale ?? "ar";
   const sessionId = event.channel.id;
-  const trialMetered = web.trialMetered ?? false;
 
   const client = deps.client ?? (await createTurnStreamClient());
   const ownClient = !deps.client;
@@ -106,7 +104,6 @@ export async function runQueuedWebTurn(
     };
 
     const refuse = async (code: AgentFailureCode): Promise<void> => {
-      if (trialMetered) await releaseTrialInteraction(event.userId, turnId);
       const fallback = buildAgentFallbackResult(
         `Queued web turn refused before start (${code}).`,
         [],
@@ -173,7 +170,6 @@ export async function runQueuedWebTurn(
       controller.abort();
     }
     if (controller.signal.aborted) {
-      if (trialMetered) await releaseTrialInteraction(event.userId, turnId);
       await writer.end("cancelled");
       return "cancelled";
     }
@@ -185,7 +181,6 @@ export async function runQueuedWebTurn(
         body,
         requestId: turnId,
         sessionId,
-        trialMetered,
         modelRef: web.modelRef ?? null,
         signal: controller.signal,
         emit,

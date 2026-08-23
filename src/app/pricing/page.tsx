@@ -68,8 +68,7 @@ export default async function PricingPage() {
           plan={{
             priceCents: price?.price_cents ?? null,
             creditsPerCycle: price?.credits_per_cycle ?? null,
-            trialLimit: plan.trial_recommendations,
-            trialDurationMinutes: plan.trial_duration_minutes,
+            signupGrantCredits: plan.signup_grant_credits,
           }}
           signedIn={user != null}
           stripeReady={stripeKeys != null}

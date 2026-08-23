@@ -133,13 +133,22 @@ export async function ensureUserDefaults(userId: number) {
     "INSERT INTO admin_limits (user_id, claude_quota) VALUES (?, ?) ON CONFLICT (user_id) DO NOTHING",
     [userId, FREE_TIER_QUOTA],
   );
-  // Canonical subscription trial row — never resets used count on conflict.
-  await execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight)
-     VALUES (?, 'trial', 0, 0)
+  // The account's billing row. 'trial' is the stored name of FREE — an
+  // account that has never subscribed; it carries no allowance of its own.
+  const created = await execute(
+    `INSERT INTO user_entitlements (user_id, plan_status)
+     VALUES (?, 'trial')
      ON CONFLICT (user_id) DO NOTHING`,
     [userId],
   );
+  // A brand-new account gets its welcome credits here, once. Gating on the
+  // insert keeps this off the hot path — every later call sees changes = 0
+  // and skips it — while the ledger's UNIQUE key is what actually makes the
+  // grant once-ever, whatever calls this.
+  if (created.changes > 0) {
+    const { ensureSignupGrant } = await import("@/lib/billing/signupGrant");
+    await ensureSignupGrant(userId);
+  }
 }
 
 export async function getSettings(userId: number): Promise<TradingSettings> {

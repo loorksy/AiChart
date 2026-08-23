@@ -57,8 +57,8 @@ async function makeUser(state: {
           ? new Date(Date.now() + 30 * 86_400_000).toISOString()
           : null;
   await db.execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
-     VALUES (?, ?, 0, 0, ?)`,
+    `INSERT INTO user_entitlements (user_id, plan_status, subscription_expires_at)
+     VALUES (?, ?, ?)`,
     [userId, planStatus, expires],
   );
   if (state.balance) {
@@ -235,11 +235,16 @@ describe("the spend gate precedence", () => {
     }
   });
 
-  it("MT5 linking inside the trial is refused by the gate itself", async () => {
-    const userId = await makeUser({ plan: "trial" });
+  it("MT5 linking is refused for a Free account by the gate itself", async () => {
+    // Bound to the SUBSCRIPTION, not the balance — the same refusal holds
+    // however many credits a Free account is holding.
+    const userId = await makeUser({ plan: "trial", balance: 100_000 });
     const decision = await spend.resolveSpendGate(userId, "mt5_link");
     assert.equal(decision.allowed, false);
-    if (!decision.allowed) assert.equal(decision.code, "trial_locked_feature");
+    if (!decision.allowed) {
+      assert.equal(decision.code, "subscription_required");
+      assert.equal(decision.action, "subscribe");
+    }
   });
 
   it("a suspended account is blocked outright", async () => {

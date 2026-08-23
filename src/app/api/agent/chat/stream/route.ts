@@ -3,14 +3,10 @@ import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { isLLMConfiguredAsync } from "@/lib/llm";
 import { resolveSpendGate } from "@/lib/billing/spend";
+import { presentRefusal } from "@/lib/billing/refusal";
 import { t } from "@/lib/i18n";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
-import {
-  claimTrialInteraction,
-  releaseTrialInteraction,
-  subscriptionRequiredMessage,
-} from "@/lib/subscription/trialQuota";
 import { newId } from "@/lib/agent/activity";
 import { createLogger } from "@/lib/logger";
 import { runWebChatTurn, webChatBodySchema } from "@/lib/agent/webTurn";
@@ -55,32 +51,22 @@ export async function POST(req: NextRequest) {
     const locale = body.locale ?? "ar";
     const requestId = newId();
 
-    // Trial / subscription gate — blocks before any model-provider work.
-    const trialClaim = await claimTrialInteraction(user, requestId);
-    if (!trialClaim.ok) {
-      return NextResponse.json(
-        {
-          error: subscriptionRequiredMessage(locale),
-          // The three-state contract: the client modal keys off this code.
-          code: trialClaim.reason === "exhausted" ? "trial_exhausted" : "account_blocked",
-        },
-        { status: 403 },
-      );
-    }
-    const trialMetered = trialClaim.mode === "trial";
-
-    // Billing v3: the ONE spend gate, before the burst slot and any model
-    // call. subscription_expired outranks any balance question, and the named
-    // code rides the JSON so every surface shows the same three states. A
-    // plain 402/403 here also leaves the SSE crash path as the only place
-    // that emits an error event, which is the contract phase-0 locks.
+    // THE gate — the only thing that decides whether this turn may run.
+    // There was a second, older gate in front of it whose message was
+    // hardcoded to "your free trial ended"; it answered first, so an expired
+    // SUBSCRIBER was told their trial had ended and the correct
+    // subscription_expired code below was never reached. One gate now.
     const chatGate = await resolveSpendGate(user.id, "chat_turn");
     if (!chatGate.allowed) {
-      if (trialMetered) await releaseTrialInteraction(user.id, requestId);
+      const view = presentRefusal(locale, chatGate);
       return NextResponse.json(
         {
-          error: t(locale, `billing.refusal.${chatGate.code}`),
+          error: view.message,
           code: chatGate.code,
+          // The action decides the button: an empty balance sends a Free
+          // account to subscribe and a subscriber to a top-up.
+          action: chatGate.action,
+          cta: { label: view.ctaLabel, path: view.ctaPath },
           balance: chatGate.balance,
         },
         { status: chatGate.code === "insufficient_credits" ? 402 : 403 },
@@ -111,14 +97,12 @@ export async function POST(req: NextRequest) {
             // checkout: a settings change mid-queue does not retarget a
             // turn the user already sent.
             modelRef: (await getSettings(user.id)).preferred_model_ref ?? null,
-            trialMetered,
             chartContext: body.chartContext,
           },
           enqueuedAt: Date.now(),
         });
       } catch (err) {
         await client.quit().catch(() => {});
-        if (trialMetered) await releaseTrialInteraction(user.id, requestId);
         throw err;
       }
       return relayResponse({ client, turnId: requestId, cursor: "0", signal: req.signal });
@@ -128,7 +112,6 @@ export async function POST(req: NextRequest) {
     // Queue mode replaces this with the worker's own slot wait — one gate.
     const slot = acquireAnalyzeSlot(user.id);
     if (!slot.ok) {
-      if (trialMetered) await releaseTrialInteraction(user.id, requestId);
       const msg =
         slot.reason === "in_flight"
           ? "يوجد تحليل قيد التشغيل. انتظر قليلاً ثم حاول مرة أخرى."
@@ -160,7 +143,6 @@ export async function POST(req: NextRequest) {
             body,
             requestId,
             sessionId,
-            trialMetered,
             signal: req.signal,
             emit: send,
           });
@@ -177,9 +159,6 @@ export async function POST(req: NextRequest) {
       cancel() {
         // Client aborted the fetch — release the slot promptly.
         release?.();
-        if (trialMetered) {
-          void releaseTrialInteraction(user.id, requestId);
-        }
       },
     });
 

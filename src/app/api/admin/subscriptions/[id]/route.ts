@@ -6,12 +6,12 @@ import { initDb, queryOne } from "@/lib/db";
 import { logAudit } from "@/lib/store";
 import {
   activateSubscription,
-  restoreTrial,
+  restoreFreeAccount,
   suspendSubscription,
 } from "@/lib/subscription/entitlement";
 
 const schema = z.object({
-  action: z.enum(["activate", "suspend", "restore_trial"]),
+  action: z.enum(["activate", "suspend", "restore_free", "restore_trial"]),
   expiresAt: z.string().min(1).max(64).nullable().optional(),
   note: z.string().max(500).nullable().optional(),
 });
@@ -54,7 +54,7 @@ export async function POST(
         note: body.note ?? null,
       });
     } else {
-      row = await restoreTrial({
+      row = await restoreFreeAccount({
         userId,
         adminId: admin.id,
         note: body.note ?? null,
@@ -76,7 +76,6 @@ export async function POST(
       ok: true,
       entitlement: {
         plan_status: row.plan_status,
-        trial_interactions_used: row.trial_interactions_used,
         subscription_expires_at: row.subscription_expires_at,
       },
     });

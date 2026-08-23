@@ -711,8 +711,6 @@ export async function prepareTelegramTurn(
               })
           : t(locale, "account.tg_line_free", {
               balance: String(summary.balance),
-              remaining: String(summary.trial_remaining),
-              limit: String(summary.trial_limit),
             });
       await sendMessage(message.chatId, line, undefined, {
         replyToMessageId: message.messageId,

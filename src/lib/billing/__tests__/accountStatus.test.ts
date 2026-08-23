@@ -2,8 +2,8 @@
  * The account-status surface — one derivation for every surface:
  *
  *  - `status` is the two-value badge (pro = live subscription, free =
- *    everything else) with the numbers each state needs: balance, trial
- *    remaining, expiry date;
+ *    everything else) with the numbers each state needs: balance and the
+ *    expiry date;
  *  - the quiet alerts fire exactly on the ADMIN thresholds (data, not
  *    constants) and only for pro accounts;
  *  - the UI reads state as TEXT, never color alone, and the balance chip's
@@ -47,8 +47,8 @@ async function makeUser(state: {
         ? new Date(Date.now() + (state.expiresInDays ?? 30) * 86_400_000).toISOString()
         : null;
   await db.execute(
-    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
-     VALUES (?, ?, 0, 0, ?)`,
+    `INSERT INTO user_entitlements (user_id, plan_status, subscription_expires_at)
+     VALUES (?, ?, ?)`,
     [id, state.plan === "trial" ? "trial" : "active", expires],
   );
   if (state.balance) {
@@ -66,12 +66,14 @@ before(async () => {
 });
 
 describe("buildAccountSummary", () => {
-  it("a trial account reads free, with the remaining count", async () => {
-    const user = await makeUser({ plan: "trial" });
+  it("a never-subscribed account reads free, with its balance", async () => {
+    const user = await makeUser({ plan: "trial", balance: 40 });
     const s = await summaryMod.buildAccountSummary(user);
     assert.equal(s.status, "free");
     assert.equal(s.plan_status, "trial");
-    assert.ok(s.trial_remaining > 0);
+    // ONE currency: a Free account is described by its BALANCE, never by a
+    // separate trial allowance.
+    assert.equal(s.balance, 40);
     assert.equal(s.alerts.low_balance, false);
     assert.equal(s.alerts.expiring_soon, false);
   });

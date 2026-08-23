@@ -98,19 +98,23 @@ export async function requireAdmin(): Promise<PublicUser> {
 }
 
 /**
- * Full paid (or admin) access — protects premium APIs and downloads.
- * Opening Telegram never grants this; only administrator activation does.
+ * Product access — everything except a BLOCKED account.
+ *
+ * A Free account carries every feature: what it can actually do is decided
+ * by its BALANCE at the one spend gate, per operation, not by a wall here.
+ * This gate only turns away accounts that may not use the product at all —
+ * suspended, or a subscription that lapsed — and says which of the two it
+ * is, because "your trial ended" for an expired subscriber is a lie.
  */
 export async function requirePaidAccess(): Promise<PublicUser> {
   const user = await requirePlatformAccess();
   const { getEntitlementForUser } = await import("@/lib/subscription/entitlement");
-  const { subscriptionRequiredMessage } = await import("@/lib/subscription/trialQuota");
   const ent = await getEntitlementForUser(user);
-  // A VALID trial (inside its hour, recommendations remaining) carries every
-  // feature — the trial's caps are enforced where they bind (the clock in the
-  // resolver, the count at recommendation creation), not by feature walls.
-  if (ent.isAdmin || ent.hasPaidAccess || ent.access === "trial") return user;
-  throw new ApiError(403, subscriptionRequiredMessage("ar"));
+  if (ent.access !== "blocked") return user;
+  const { presentAccessBlock } = await import("@/lib/billing/refusal");
+  const { resolveUserLocale } = await import("@/lib/i18n/userLocale");
+  const view = presentAccessBlock(await resolveUserLocale(user.id), ent.planStatus);
+  throw new ApiError(403, view.message);
 }
 
 export function handleError(err: unknown): NextResponse {

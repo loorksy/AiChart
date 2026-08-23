@@ -25,10 +25,10 @@ import {
 } from "@/components/admin/ui/AdminKit";
 
 interface PlanRow {
-  trial_recommendations: number;
-  trial_duration_minutes: number;
+  signup_grant_credits: number;
   low_balance_threshold: number;
   expiry_warn_days: number;
+  min_rr_first_target_bp: number;
 }
 
 interface PriceRow {
@@ -276,26 +276,26 @@ export function AdminBillingConfigPanel() {
       </AdminCard>
 
       <AdminCard>
-        <AdminCardHeader title={t("admin.billing.trial_alerts")} />
+        <AdminCardHeader title={t("admin.billing.grant_alerts")} />
         <AdminCardBody>
           <div className="grid gap-2 sm:grid-cols-4">
-            <Field htmlFor="bcfg-trial-recs" label={t("admin.billing.trial_recs")}>
+            <Field htmlFor="bcfg-grant" label={t("admin.billing.signup_grant")}>
               <Input
-                id="bcfg-trial-recs"
+                id="bcfg-grant"
                 inputMode="numeric"
-                value={String(plan.trial_recommendations)}
+                value={String(plan.signup_grant_credits)}
                 onChange={(e) =>
-                  setPlan((p) => p && { ...p, trial_recommendations: Number(e.target.value) || 0 })
+                  setPlan((p) => p && { ...p, signup_grant_credits: Number(e.target.value) || 0 })
                 }
               />
             </Field>
-            <Field htmlFor="bcfg-trial-clock" label={t("admin.billing.trial_clock")}>
+            <Field htmlFor="bcfg-minrr" label={t("admin.billing.min_rr")}>
               <Input
-                id="bcfg-trial-clock"
+                id="bcfg-minrr"
                 inputMode="numeric"
-                value={String(plan.trial_duration_minutes)}
+                value={String(plan.min_rr_first_target_bp)}
                 onChange={(e) =>
-                  setPlan((p) => p && { ...p, trial_duration_minutes: Number(e.target.value) || 0 })
+                  setPlan((p) => p && { ...p, min_rr_first_target_bp: Number(e.target.value) || 0 })
                 }
               />
             </Field>
@@ -325,10 +325,10 @@ export function AdminBillingConfigPanel() {
             disabled={busy}
             onClick={() =>
               void call("/api/admin/billing/config", "PUT", {
-                trial_recommendations: plan.trial_recommendations,
-                trial_duration_minutes: plan.trial_duration_minutes,
+                signup_grant_credits: plan.signup_grant_credits,
                 low_balance_threshold: plan.low_balance_threshold,
                 expiry_warn_days: plan.expiry_warn_days,
+                min_rr_first_target_bp: plan.min_rr_first_target_bp,
               })
             }
           >
