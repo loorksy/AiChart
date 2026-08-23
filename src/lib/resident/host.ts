@@ -262,6 +262,15 @@ export class ResidentHost {
   }
 
   private async startHealthServer(port: number): Promise<void> {
+    // A crash that orphaned the previous worker leaves this port held, and
+    // every restart then dies on EADDRINUSE with no converging state. Clear
+    // it first — but only when the holder IS an orphaned copy of us.
+    const { reclaimWorkerPort } = await import("./portGuard");
+    const reclaimed = reclaimWorkerPort(port);
+    if (reclaimed.killed.length) {
+      // Give the orphan a moment to release the socket after SIGTERM.
+      await new Promise((r) => setTimeout(r, 500));
+    }
     this.server = http.createServer((req, res) => {
       if (req.url === "/healthz" || req.url === "/") {
         void this.health().then(

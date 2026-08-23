@@ -53,6 +53,18 @@ export interface PlanContractInput {
   invalidationRule?: string | null;
   alternativeScenario?: string | null;
   validityCandles?: number | null;
+  /**
+   * Minimum reward:risk on the FIRST target, x100 (250 = 2.5:1). The number
+   * is the ADMIN's (billing_plan), passed in by the caller so this module
+   * stays a pure leaf. 0 / null = no floor.
+   *
+   * This is the only quality bar the platform imposes on the agent. It does
+   * NOT dictate where a level goes: a wider target simply has to come with
+   * a stop the structure justifies. Without it, a 22-point target against a
+   * 24-point stop is publishable — and a book of sub-1:1 plans grades as a
+   * disaster in the forward record however good each read was.
+   */
+  minRrFirstTargetBp?: number | null;
 }
 
 export interface PlanContractIssue {
@@ -174,6 +186,30 @@ export function validateCompletePlan(input: PlanContractInput): PlanContractIssu
       );
     } else if (!activationRuleSchema.safeParse(rule).success) {
       issue("activationRule", "the structured activation rule does not match any known rule kind");
+    }
+  }
+
+  // The reward:risk floor. Judged on the FIRST target because that is the
+  // one the plan is graded on; later targets are optional upside.
+  const floorBp = Math.max(0, Math.round(input.minRrFirstTargetBp ?? 0));
+  if (
+    floorBp > 0 &&
+    finitePositive(input.entry) &&
+    finitePositive(input.stopLoss) &&
+    targets.length > 0
+  ) {
+    const risk = Math.abs(input.entry - input.stopLoss);
+    const reward = Math.abs(targets[0]! - input.entry);
+    if (risk <= 0) {
+      issue("stopLoss", "the stop loss cannot sit on the entry — that is not a risk");
+    } else {
+      const rrBp = Math.round((reward / risk) * 100);
+      if (rrBp < floorBp) {
+        issue(
+          "targets",
+          `reward:risk on the first target is ${(rrBp / 100).toFixed(2)}:1, below the required ${(floorBp / 100).toFixed(2)}:1 — widen the target to real structure or tighten the stop to structure that justifies it`,
+        );
+      }
     }
   }
 

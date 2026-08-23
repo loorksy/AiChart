@@ -7,31 +7,29 @@ import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
 /**
- * The ONE refusal modal — the three account states, never blurred:
- * expired → renew; empty balance (active sub) → buy credits; trial
- * exhausted → subscribe. One message, one action, no lectures. This modal
- * always outranks any advertisement on screen.
+ * The ONE refusal modal — one message, one action, no lectures. It always
+ * outranks any advertisement on screen.
+ *
+ * The SERVER decides both the sentence and the button, because the same
+ * code means different things to different accounts: an empty balance sends
+ * a Free account to subscribe (top-ups are sold to subscribers only) and a
+ * subscriber to the top-up page. Re-deriving that here is exactly how the
+ * surfaces drifted apart before.
  */
-export type BillingRefusalCode =
-  | "subscription_expired"
-  | "insufficient_credits"
-  | "trial_exhausted";
-
-const ACTION: Record<BillingRefusalCode, { href: string; ctaKey: string }> = {
-  subscription_expired: { href: "/subscribe", ctaKey: "billing.cta.renew" },
-  insufficient_credits: { href: "/console/billing", ctaKey: "billing.cta.topup" },
-  trial_exhausted: { href: "/subscribe", ctaKey: "billing.cta.subscribe" },
-};
+export interface BillingRefusalView {
+  message: string;
+  ctaLabel: string;
+  ctaPath: string;
+}
 
 export function BillingRefusalModal({
-  code,
+  refusal,
   onClose,
 }: {
-  code: BillingRefusalCode;
+  refusal: BillingRefusalView;
   onClose: () => void;
 }) {
   const { t, dir } = useLocale();
-  const action = ACTION[code];
 
   return (
     <div
@@ -49,7 +47,7 @@ export function BillingRefusalModal({
       >
         <div className="flex items-start justify-between gap-3">
           <h2 id="billing-refusal-title" className="text-base font-semibold text-foreground">
-            {t(`billing.refusal.${code}`)}
+            {refusal.message}
           </h2>
           <Button
             type="button"
@@ -62,11 +60,11 @@ export function BillingRefusalModal({
           </Button>
         </div>
         <Link
-          href={action.href}
+          href={refusal.ctaPath}
           className={cn(buttonVariants({ size: "lg" }), "mt-5 w-full")}
           data-testid="billing-refusal-cta"
         >
-          {t(action.ctaKey)}
+          {refusal.ctaLabel}
         </Link>
       </div>
     </div>

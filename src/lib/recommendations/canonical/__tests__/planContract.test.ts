@@ -290,3 +290,62 @@ describe("the canonical creator enforces the contract", () => {
     assert.ok(created.recommendationId > 0);
   });
 });
+
+describe("the reward:risk floor", () => {
+  // The first live recommendation was entry 4602 / stop 4578 (24 points)
+  // for a 4623.79 target (22 points) — under 1:1. A book of those grades as
+  // a disaster in the forward record however sound each read was.
+  const tight = (): PlanContractInput => ({
+    ...completeImmediate(),
+    entry: 4602,
+    stopLoss: 4578,
+    targets: [4623.79],
+  });
+
+  it("refuses a plan below the admin's floor, and names why", () => {
+    const issues = validateCompletePlan({ ...tight(), minRrFirstTargetBp: 200 });
+    const target = issues.find((i) => i.path === "targets");
+    assert.ok(target, "the plan must be refused");
+    assert.match(target.message, /0\.9\d:1/, "the real ratio is stated");
+    assert.match(target.message, /2\.00:1/, "so is the required one");
+  });
+
+  it("accepts the SAME read once the geometry earns it", () => {
+    // The agent decides HOW: a wider target on real structure, or a tighter
+    // stop the structure justifies. The contract only sets the bar.
+    const wider = validateCompletePlan({
+      ...tight(),
+      targets: [4650],
+      minRrFirstTargetBp: 200,
+    });
+    assert.deepEqual(wider, [], "48 points against 24 is 2:1");
+  });
+
+  it("judges the FIRST target — later targets are optional upside", () => {
+    const issues = validateCompletePlan({
+      ...tight(),
+      targets: [4623.79, 4900],
+      minRrFirstTargetBp: 200,
+    });
+    assert.ok(
+      issues.some((i) => i.path === "targets"),
+      "a distant TP2 cannot rescue a TP1 nobody will reach",
+    );
+  });
+
+  it("with no floor configured (0), nothing is imposed", () => {
+    assert.deepEqual(validateCompletePlan({ ...tight(), minRrFirstTargetBp: 0 }), []);
+    assert.deepEqual(validateCompletePlan(tight()), []);
+  });
+
+  it("a stop sitting on the entry is refused as a non-risk", () => {
+    const issues = validateCompletePlan({
+      ...completeImmediate(),
+      entry: 4000,
+      stopLoss: 4000,
+      targets: [4040],
+      minRrFirstTargetBp: 200,
+    });
+    assert.ok(issues.some((i) => i.path === "stopLoss"));
+  });
+});

@@ -58,15 +58,27 @@ export interface SpendRefusal {
   balance: number | null;
 }
 
-export type SpendDecision =
-  | {
-      allowed: true;
-      mode: SpendMode;
-      /** Credits this operation will cost when debited (0 = free). */
-      price: number;
-      balance: number | null;
-    }
-  | SpendRefusal;
+export type SpendAllowance = {
+  allowed: true;
+  mode: SpendMode;
+  /** Credits this operation will cost when debited (0 = free). */
+  price: number;
+  balance: number | null;
+  /**
+   * Whether this account is a live subscriber. Carried on the ALLOWED
+   * decision so a caller whose debit later loses a race can name the right
+   * next step without asking the entitlement layer again: the same balance
+   * refusal sends Free to subscribe and Pro to top-up.
+   */
+  hasPaidAccess: boolean;
+};
+
+export type SpendDecision = SpendAllowance | SpendRefusal;
+
+/** Where an empty balance should send this account. */
+export function balanceRefusalAction(hasPaidAccess: boolean): SpendRefusalAction {
+  return hasPaidAccess ? "topup" : "subscribe";
+}
 
 export async function billingEnforced(): Promise<boolean> {
   try {
@@ -101,7 +113,7 @@ export async function resolveSpendGate(
   }
   const snapshot = await getEntitlementForUser(user);
   if (snapshot.isAdmin) {
-    return { allowed: true, mode: "admin", price: 0, balance: null };
+    return { allowed: true, mode: "admin", price: 0, balance: null, hasPaidAccess: true };
   }
   if (snapshot.planStatus === "suspended") {
     return { allowed: false, code: "account_blocked", action: "support", balance: null };
@@ -130,7 +142,13 @@ export async function resolveSpendGate(
   }
 
   if (!(await billingEnforced())) {
-    return { allowed: true, mode: "billing_off", price: 0, balance: null };
+    return {
+      allowed: true,
+      mode: "billing_off",
+      price: 0,
+      balance: null,
+      hasPaidAccess: snapshot.hasPaidAccess,
+    };
   }
 
   // From here Free and Pro are the same question at the same prices: the
@@ -143,11 +161,17 @@ export async function resolveSpendGate(
       code: "insufficient_credits",
       // Top-up packs are sold to live subscribers only, so sending a Free
       // account to the top-up page would be a dead end.
-      action: snapshot.hasPaidAccess ? "topup" : "subscribe",
+      action: balanceRefusalAction(snapshot.hasPaidAccess),
       balance,
     };
   }
-  return { allowed: true, mode: "paid", price, balance };
+  return {
+    allowed: true,
+    mode: "paid",
+    price,
+    balance,
+    hasPaidAccess: snapshot.hasPaidAccess,
+  };
 }
 
 export type SpendCommit =
@@ -198,7 +222,7 @@ export async function authorizeAndDebit(
     return {
       ok: false,
       code: "insufficient_credits",
-      action: decision.mode === "paid" ? "topup" : "subscribe",
+      action: balanceRefusalAction(decision.hasPaidAccess),
       balance: debit.balance,
     };
   }

@@ -124,10 +124,15 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   const [running, setRunning] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Billing v3: a named account-state refusal from the server (one of the
-  // three contract codes). The workspace renders it as the ONE modal with a
-  // single action; plain errors stay in `error`.
-  const [billingRefusal, setBillingRefusal] = useState<string | null>(null);
+  // A named account-state refusal from the server. The SERVER decides both
+  // the sentence and the next step (the same empty balance means "subscribe"
+  // for a Free account and "top up" for a subscriber), so the client stores
+  // that decision rather than re-deriving it. Plain errors stay in `error`.
+  const [billingRefusal, setBillingRefusal] = useState<{
+    message: string;
+    ctaLabel: string;
+    ctaPath: string;
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Work B: the server names each turn (X-Turn-Id). Under the queue,
   // aborting the fetch only stops the RELAY — the worker keeps running and
@@ -444,14 +449,18 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         if (!response.ok || !response.body) {
           httpFailed = true;
           const data = (await response.json().catch(() => null)) as
-            | { error?: string; code?: string }
+            | {
+                error?: string;
+                code?: string;
+                cta?: { label: string; path: string };
+              }
             | null;
-          if (
-            data?.code === "subscription_expired" ||
-            data?.code === "insufficient_credits" ||
-            data?.code === "trial_exhausted"
-          ) {
-            setBillingRefusal(data.code);
+          if (data?.code && data.cta) {
+            setBillingRefusal({
+              message: data.error ?? "",
+              ctaLabel: data.cta.label,
+              ctaPath: data.cta.path,
+            });
           }
           throw new Error(data?.error ?? t(opts.locale ?? "ar", "agent.error"));
         }

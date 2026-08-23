@@ -87,6 +87,7 @@ import {
 } from "@/lib/telegram/executionFlow";
 import { captureChartWithPlatformFallback } from "@/lib/chart/platformCapture";
 import { resolveSpendGate } from "@/lib/billing/spend";
+import { presentRefusal } from "@/lib/billing/refusal";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
   resolveTelegramCommand,
@@ -779,18 +780,14 @@ export async function runTelegramAgentTurn(input: {
     // button that opens the right page. Hiding UI is never the guard.
     const gate = await resolveSpendGate(userId, "chat_turn");
     if (!gate.allowed) {
-      const target =
-        gate.code === "insufficient_credits" ? "/console/billing" : "/subscribe";
-      const label =
-        gate.code === "insufficient_credits"
-          ? t(locale, "billing.cta.topup")
-          : gate.code === "subscription_expired"
-            ? t(locale, "billing.cta.renew")
-            : t(locale, "billing.cta.subscribe");
+      // The gate already decided the message AND the next step; this surface
+      // only renders them. Re-deriving the button here is how the three
+      // states drift apart between web, bot, and MCP.
+      const view = presentRefusal(locale, gate);
       await sendMessage(
         chatId,
-        t(locale, `billing.refusal.${gate.code}`),
-        [[{ text: label, url: `${getPublicAppUrl()}${target}` }]],
+        view.message,
+        [[{ text: view.ctaLabel, url: `${getPublicAppUrl()}${view.ctaPath}` }]],
         { replyToMessageId: messageId },
       ).catch(() => {});
       return "answered";

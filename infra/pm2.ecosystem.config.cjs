@@ -14,6 +14,14 @@
  * @next/env at boot, and infra/aichart-mcp.sh loads the same file before
  * exec'ing `node mcp/dist/index.js` (rebuilding dist first when sources are
  * newer — see the incident note inside the script).
+ *
+ * Every app execs its real binary DIRECTLY rather than going through `npm
+ * run`. Under npm, the pid pm2 tracks is the npm shell: killing it (a
+ * `kill -9`, an OOM kill, a segfault) left the actual node process alive and
+ * still holding the worker's health port, so every restart died on
+ * EADDRINUSE and the restart counter climbed past a hundred with nothing to
+ * show for it. The process pm2 reports must be the process that holds the
+ * resources.
  */
 const ROOT = process.env.AICHART_INSTALL_DIR || "/opt/aichart";
 
@@ -22,8 +30,10 @@ module.exports = {
     {
       name: "aichart-web",
       cwd: ROOT,
-      script: "npm",
+      // `npm start` → `next start`, without the shell in between.
+      script: "node_modules/.bin/next",
       args: "start",
+      interpreter: "none",
       instances: 1,
       autorestart: true,
       max_memory_restart: "1G",
@@ -52,8 +62,14 @@ module.exports = {
       // process. Requires REDIS_URL in $ROOT/.env for durable events.
       name: "aichart-worker",
       cwd: ROOT,
-      script: "npm",
-      args: "run worker",
+      // `npm run worker` → `tsx src/worker.ts`, without the shell in
+      // between: this pid is the one holding port 8791, so pm2's stop/kill
+      // actually frees it.
+      script: "node_modules/.bin/tsx",
+      args: "src/worker.ts",
+      interpreter: "none",
+      // A stop must reach the real process; the worker drains on SIGTERM.
+      kill_timeout: 10000,
       instances: 1,
       autorestart: true,
       max_memory_restart: "1G",

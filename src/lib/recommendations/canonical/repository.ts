@@ -201,7 +201,7 @@ export async function createCanonicalRecommendation(
   //
   // Legacy imports are history, not new claims. Dynamic imports mirror the
   // usageMeter precedent and keep this persistence layer cycle-free.
-  let paidDebit: { price: number } | null = null;
+  let paidDebit: { price: number; hasPaidAccess: boolean } | null = null;
   if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
     const { resolveSpendGate } = await import("@/lib/billing/spend");
     const { presentRefusal } = await import("@/lib/billing/refusal");
@@ -222,7 +222,10 @@ export async function createCanonicalRecommendation(
       );
     }
     if (decision.mode === "paid" && decision.price > 0) {
-      paidDebit = { price: decision.price };
+      // `hasPaidAccess` rides along so the debit-race path below can name the
+      // right next step without re-reading the entitlement inside the write
+      // transaction.
+      paidDebit = { price: decision.price, hasPaidAccess: decision.hasPaidAccess };
     }
   }
 
@@ -232,6 +235,10 @@ export async function createCanonicalRecommendation(
   // keep readable, not a new claim to grade.
   if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
     const seed = input.initialRevision;
+    // The ONE quality bar the platform imposes, and it is the admin's
+    // number, not a constant in code.
+    const { getBillingPlan } = await import("@/lib/billing/planConfig");
+    const minRrFirstTargetBp = (await getBillingPlan()).min_rr_first_target_bp;
     try {
       assertCompletePlan({
         direction,
@@ -247,6 +254,7 @@ export async function createCanonicalRecommendation(
         invalidationRule: seed?.invalidationRule,
         alternativeScenario: seed?.alternativeScenario,
         validityCandles: seed?.validityCandles,
+        minRrFirstTargetBp,
       });
     } catch (error) {
       if (error instanceof PlanContractViolation) {
@@ -487,11 +495,17 @@ export async function createCanonicalRecommendation(
         db,
       );
       if (!debit.ok) {
-        const { t } = await import("@/lib/i18n");
-        throw new RecommendationLifecycleError(
-          "INSUFFICIENT_CREDITS",
-          t("ar", "billing.refusal.insufficient_credits"),
-        );
+        // The balance emptied between the gate and this debit. Same refusal
+        // the gate would have given, through the same presentation — the
+        // race must not be the one path that speaks with its own voice.
+        const { presentRefusal } = await import("@/lib/billing/refusal");
+        const { balanceRefusalAction } = await import("@/lib/billing/spend");
+        const { resolveUserLocale } = await import("@/lib/i18n/userLocale");
+        const view = presentRefusal(await resolveUserLocale(input.userId), {
+          code: "insufficient_credits",
+          action: balanceRefusalAction(paidDebit.hasPaidAccess),
+        });
+        throw new RecommendationLifecycleError("INSUFFICIENT_CREDITS", view.message);
       }
     }
     return id;

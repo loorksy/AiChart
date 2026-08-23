@@ -16,6 +16,8 @@ import {
 } from "@/lib/brokerLink/store";
 import { metaapiConfigured, metaapiRegion, metaapiToken } from "@/lib/brokerLink/token";
 import { resolveSpendGate } from "@/lib/billing/spend";
+import { presentRefusal } from "@/lib/billing/refusal";
+import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { t } from "@/lib/i18n";
 
 const PostBody = z
@@ -138,13 +140,11 @@ export async function POST(req: Request) {
     // blur. (The one-time link charge itself lands with the charge flow.)
     const linkGate = await resolveSpendGate(user.id, "mt5_link");
     if (!linkGate.allowed) {
+      const view = presentRefusal(await resolveUserLocale(user.id), linkGate);
       return NextResponse.json(
         {
           ok: false,
-          error: {
-            code: linkGate.code,
-            message: t("ar", `billing.refusal.${linkGate.code}`),
-          },
+          error: { code: linkGate.code, action: linkGate.action, message: view.message },
         },
         { status: linkGate.code === "insufficient_credits" ? 402 : 403 },
       );
@@ -188,7 +188,10 @@ export async function POST(req: Request) {
           ok: false,
           error: {
             code: "insufficient_credits",
-            message: t("ar", "billing.refusal.insufficient_credits"),
+            // Reaching here means the charge lost a race with another spend;
+            // this account subscribes already, so a top-up is the step.
+            action: "topup",
+            message: t(await resolveUserLocale(user.id), "billing.refusal.no_credits_pro"),
           },
         },
         { status: 402 },

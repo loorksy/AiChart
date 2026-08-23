@@ -19,6 +19,8 @@ import {
 } from "@/lib/llm";
 import { withUsageContext } from "@/lib/billing/usageMeter";
 import { resolveSpendGate } from "@/lib/billing/spend";
+import { presentRefusal } from "@/lib/billing/refusal";
+import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { t as translate } from "@/lib/i18n";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
@@ -100,10 +102,14 @@ export async function POST(req: NextRequest) {
     // refusing here saves the model spend a doomed creation would waste.
     const gate = await resolveSpendGate(userId, "recommendation");
     if (!gate.allowed) {
+      // Structured for the model to READ and relay: the code names the
+      // state, the action names the step (subscribe vs top up vs renew),
+      // and the message is the same sentence every other surface shows.
+      const view = presentRefusal(await resolveUserLocale(userId), gate);
       return NextResponse.json(
         {
           ok: false,
-          error: { code: gate.code, message: translate("ar", `billing.refusal.${gate.code}`) },
+          error: { code: gate.code, action: gate.action, message: view.message },
           failure_code: gate.code,
         },
         { status: gate.code === "insufficient_credits" ? 402 : 403 },

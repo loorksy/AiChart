@@ -297,6 +297,81 @@ describe("the signup grant lands once, forever", () => {
   });
 });
 
+describe("every surface renders the gate's decision, never its own", () => {
+  it("the web modal, the bot, and the MCP routes all read the shared view", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const read = (rel: string) =>
+      readFileSync(path.join(process.cwd(), "src", rel), "utf8");
+
+    // Web: the server sends message + button; the modal renders them.
+    const modal = read("components/billing/BillingRefusalModal.tsx");
+    assert.match(modal, /refusal\.message/);
+    assert.match(modal, /refusal\.ctaPath/);
+    assert.doesNotMatch(
+      modal,
+      /insufficient_credits/,
+      "the client must not map codes to destinations itself",
+    );
+
+    // The stream route ships the presentation with the refusal.
+    const stream = read("app/api/agent/chat/stream/route.ts");
+    assert.match(stream, /presentRefusal/);
+    assert.match(stream, /action: chatGate\.action/);
+
+    // Telegram: one short line and one button, from the same presentation.
+    const bot = read("lib/telegram/webhookAgent.ts");
+    assert.match(bot, /presentRefusal\(locale, gate\)/);
+    assert.match(bot, /view\.ctaLabel/);
+
+    // MCP-facing routes: the code AND the action reach the model.
+    for (const rel of [
+      "app/api/agent/market/analyze/route.ts",
+      "app/api/integrations/broker/route.ts",
+    ]) {
+      const src = read(rel);
+      assert.match(src, /action:/, `${rel} must relay the next step`);
+    }
+  });
+});
+
+describe("the reset puts every account back to a clean Free start", () => {
+  it("clears subscriptions, balances and history — then re-issues the grant", async () => {
+    await planConfig.updateBillingPlanSettings({ signup_grant_credits: 40 }, 1);
+    planConfig.bustBillingConfigCache();
+
+    const pro = await makeUser({ plan: "pro", balance: 900 });
+    const expired = await makeUser({ plan: "expired", balance: 120 });
+    seq += 1;
+    const adminId = await db.insertReturningId(
+      "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+      [`reset-admin-${seq}@example.com`, "x", "admin", "active"],
+    );
+    await credits.grantCredits({ userId: adminId, amount: 7, kind: "admin_adjust" });
+
+    const { resetAllAccountsToFree } = await import("@/lib/billing/accountReset");
+    const result = await resetAllAccountsToFree();
+    assert.ok(result.accounts >= 2);
+
+    for (const userId of [pro, expired]) {
+      const row = await db.queryOne<{ plan_status: string; subscription_expires_at: string | null }>(
+        "SELECT plan_status, subscription_expires_at FROM user_entitlements WHERE user_id = ?",
+        [userId],
+      );
+      assert.equal(row?.plan_status, "trial", "back to Free");
+      assert.equal(row?.subscription_expires_at, null);
+      assert.equal(
+        await credits.getCreditBalance(userId),
+        40,
+        "old balance cleared, current welcome grant issued",
+      );
+    }
+
+    // The operator's own account is not swept up in a user reset.
+    assert.equal(await credits.getCreditBalance(adminId), 7);
+  });
+});
+
 describe("there is no trial machinery left to disagree with the gate", () => {
   it("nothing imports a trial quota module or counts trial usage", async () => {
     const { readFileSync } = await import("node:fs");

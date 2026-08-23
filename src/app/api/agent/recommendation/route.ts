@@ -242,6 +242,10 @@ const schema = z
       invalidationRule: body.invalidation_rule,
       alternativeScenario: body.alternative_scenario,
       validityCandles: body.validity_candles,
+      // The reward:risk floor is NOT checked here: this preflight runs
+      // inside a synchronous schema refine, and the floor is an admin row.
+      // The canonical creator enforces it at the one write choke point every
+      // surface funnels through — a second validator would only drift.
     }).filter((entry) => !skip.has(entry.path));
     if (contractIssues.length > 0) {
       // The Platform-only counter was why this gap was invisible in telemetry.
