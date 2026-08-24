@@ -362,6 +362,16 @@ export const en = {
     "Price has moved past the entry by {distance} (limit {maxDistance}) — the plan is no longer executable at its written price.",
   "gate.revalidation.rr_degraded":
     "Reward-to-risk from the live price {liveRr} is below the minimum {minRr} — the plan is no longer worth entering.",
+  // A re-pricing, not a refusal: price outran the written entry, so the entry
+  // becomes the live price.
+  "gate.revalidation.reanchored":
+    "Price outran the written entry {written} by {distance}, so the plan is re-priced at the current {current}. Stop and targets unchanged — reward-to-risk is now {liveRr}, was {plannedRr}.",
+  "gate.revalidation.reanchored_no_rr":
+    "Price outran the written entry {written} by {distance}, so the plan is re-priced at the current {current}. Stop and targets unchanged.",
+  "gate.revalidation.invalidated":
+    "Price has reached or passed the stop {stopLoss} — the idea itself is gone, and no entry is built on a plan whose stop is already hit.",
+  "gate.revalidation.targets_passed":
+    "Price has passed every target — the move the plan was waiting for has happened, and there is nothing left in it.",
 
   // --- Evidence card summary (evidenceCard.ts) ---
   "evidence.trades_count": "{count} historical trades",

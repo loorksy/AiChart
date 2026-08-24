@@ -227,11 +227,30 @@ describe("G7 — live revalidation", () => {
     assert.ok((v.liveRr ?? 0) > 1.5);
   });
 
-  it("refuses a plan whose entry price has run away", () => {
-    // A sell entry becomes unreachable when price drops well past it.
+  it("RE-PRICES a plan whose entry price has run away, rather than refusing it", () => {
+    // This asserted `unreachable` — a veto — until 2026-08-24. Refusing here
+    // was the platform's most common reason for answering "no recommendation":
+    // the analysis takes tens of seconds, gold moves, and the written level is
+    // frequently gone by the time G7 runs. What was actually true in those runs
+    // is not "there is no trade" but "there is no trade AT THAT PRICE", so the
+    // entry is re-anchored to the live quote and the plan stands. The stop and
+    // targets do not move, so the reward:risk falls — which is the real cost of
+    // chasing, reported rather than hidden.
     const v = revalidatePlan({ ...plan, currentPrice: 4335.0 });
-    assert.equal(v.status, "unreachable");
-    assert.match(v.reasonAr ?? "", /تجاوز/);
+    assert.equal(v.status, "reanchored");
+    assert.equal(v.reanchoredEntry, 4335.0);
+    assert.match(v.reasonAr ?? "", /4345\.60/, "the written entry is still named");
+    assert.match(v.reasonAr ?? "", /4335\.00/, "and so is the price replacing it");
+  });
+
+  it("refuses only when the plan's own stop is already behind price", () => {
+    // The case re-pricing must never swallow, and one nothing caught before:
+    // `movedPast` fires only when price travels AWAY from the entry, and the
+    // platform sets no minRr, so a sell that ran up through its stop reached
+    // G7 and passed.
+    const v = revalidatePlan({ ...plan, currentPrice: 4365.0 });
+    assert.equal(v.status, "invalidated");
+    assert.equal(v.reanchoredEntry, undefined);
   });
 
   it("refuses a plan whose RR has degraded below the minimum", () => {

@@ -359,6 +359,15 @@ export const ar: Record<TranslationKey, string> = {
     "السعر تجاوز الدخول بمسافة {distance} (الحد {maxDistance}) — الخطة لم تعد قابلة للتنفيذ بسعرها المكتوب.",
   "gate.revalidation.rr_degraded":
     "نسبة العائد/المخاطرة من السعر الحي {liveRr} أقل من الحد الأدنى {minRr} — الخطة لم تعد تستحق الدخول.",
+  // إعادة تسعير، لا رفض: السعر سبق الدخول المكتوب فصار الدخول هو السعر الحالي.
+  "gate.revalidation.reanchored":
+    "السعر سبق الدخول المكتوب {written} بمسافة {distance}، فأُعيد تسعير الخطة على السعر الحالي {current}. الوقف والأهداف كما هي — والعائد/المخاطرة الآن {liveRr} بدل {plannedRr}.",
+  "gate.revalidation.reanchored_no_rr":
+    "السعر سبق الدخول المكتوب {written} بمسافة {distance}، فأُعيد تسعير الخطة على السعر الحالي {current}. الوقف والأهداف كما هي.",
+  "gate.revalidation.invalidated":
+    "السعر بلغ وقف الخسارة {stopLoss} أو تجاوزه — الفكرة نفسها سقطت، ولا يُبنى دخول على خطة وقفها مضروب سلفاً.",
+  "gate.revalidation.targets_passed":
+    "السعر تجاوز كل الأهداف — الحركة التي كانت الخطة تنتظرها وقعت، ولم يبقَ فيها ما يُكتسب.",
 
   // --- ملخّص بطاقة الأدلة (evidenceCard.ts) ---
   "evidence.trades_count": "{count} صفقة تاريخية",

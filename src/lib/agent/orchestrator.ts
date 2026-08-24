@@ -1601,6 +1601,40 @@ async function runUnifiedChartAgentInner(
     });
     gateChain = await runGateChain(gates);
 
+    // G7 re-prices instead of refusing when price outran the written entry,
+    // and the re-price has to be APPLIED here or it is worse than the veto it
+    // replaced: the gate approved the plan AT THE LIVE PRICE, so persisting
+    // the written number would grade the operator against a fill nobody could
+    // have got, silently, with every gate reporting pass.
+    //
+    // Re-priced means entering now, so the fill semantics change with the
+    // number. A plan that was waiting for a touch or a confirming close is no
+    // longer waiting for anything — price already went there — and leaving a
+    // stale activation rule attached would arm the tracker for a condition
+    // that has already happened.
+    const reanchor = gateChain.verdicts.find(
+      (verdict) =>
+        verdict.id === "G7" && typeof verdict.evidence?.reanchoredEntry === "number",
+    );
+    if (reanchor && gateRec != null) {
+      const entry = reanchor.evidence!.reanchoredEntry as number;
+      log.info("agent.gate.reanchored", {
+        requestId: ctx.requestId,
+        writtenEntry: gateRec.entry,
+        reanchoredEntry: entry,
+        liveRr: reanchor.evidence!.liveRr,
+      });
+      gateRec.entry = entry;
+      gateRec.entryType = "market";
+      gateRec.activationRule = undefined;
+      gateEntryType = "market";
+      // The operator is told in the plan's own voice, not only in the gate
+      // list: the entry they read is not the entry the model wrote.
+      if (reanchor.reasonAr) {
+        finalDecision.riskWarnings = [reanchor.reasonAr, ...finalDecision.riskWarnings];
+      }
+    }
+
     // Phase-4: every gate run writes a timestamped record. The canonical
     // creator refuses a write with no fresh, complete, non-vetoed set — so
     // this record, not the in-memory verdict array, is what authorizes

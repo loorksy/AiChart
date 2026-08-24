@@ -95,7 +95,15 @@ export interface RevalidationInput {
   maxAtrDistance?: number;
 }
 
-export type RevalidationStatus = "ok" | "unreachable" | "rr_degraded";
+export type RevalidationStatus =
+  | "ok"
+  /** Price outran the written entry; the plan is re-priced, not refused. */
+  | "reanchored"
+  /** The stop is already hit — the idea is gone, not merely mispriced. */
+  | "invalidated"
+  /** Every target is behind price — the move happened without us. */
+  | "targets_passed"
+  | "rr_degraded";
 
 export interface RevalidationVerdict {
   status: RevalidationStatus;
@@ -103,7 +111,32 @@ export interface RevalidationVerdict {
   liveRr: number | null;
   distance: number;
   maxDistance: number;
+  /**
+   * The entry the plan MUST be stored with when price outran the written one.
+   *
+   * Set only on `reanchored`. The caller has to apply it: passing the gate
+   * while persisting the old number would grade the operator against a fill
+   * nobody could have got, which is a worse failure than the refusal this
+   * replaced.
+   */
+  reanchoredEntry?: number;
   reasonAr?: string;
+}
+
+/**
+ * Is the plan's own invalidation level already behind price?
+ *
+ * Deliberately checked in BOTH directions, unlike reachability. A buy whose
+ * price fell through its stop never tripped the old `movedPast` test — that
+ * test only fires when price travels AWAY from the entry — and `minRr` is
+ * never set on the platform path (the orchestrator states the doctrine: RR is
+ * descriptive evidence, not an acceptance threshold). So nothing at all caught
+ * it, and G7 would pass a plan that had already lost.
+ */
+function stopIsBreached(input: RevalidationInput): boolean {
+  return input.direction === "buy"
+    ? input.currentPrice <= input.stopLoss
+    : input.currentPrice >= input.stopLoss;
 }
 
 export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
@@ -121,33 +154,82 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
           target,
         })
       : null;
+  const base = { liveRr, distance, maxDistance };
 
-  // Reachability is directional: price moving AWAY from a buy entry (upward)
-  // is what removes it. Price moving toward it is the plan working.
+  // 1. The idea is already dead. Not a tolerance — a fact about this plan's
+  //    own invalidation level, and the one case where there is nothing to
+  //    re-price toward.
+  if (stopIsBreached(input)) {
+    return {
+      ...base,
+      status: "invalidated",
+      reasonAr: t("ar", "gate.revalidation.invalidated", {
+        stopLoss: input.stopLoss.toFixed(2),
+      }),
+    };
+  }
+
+  // 2. Nothing left to make. Every target sits behind price, so an entry here
+  //    would be opened with its whole reward already spent.
+  const reachableTargets = input.targets.filter((tp) =>
+    input.direction === "buy" ? tp > input.currentPrice : tp < input.currentPrice,
+  );
+  if (input.targets.length > 0 && reachableTargets.length === 0) {
+    return {
+      ...base,
+      status: "targets_passed",
+      reasonAr: t("ar", "gate.revalidation.targets_passed"),
+    };
+  }
+
+  // 3. Price outran the written entry — RE-PRICE rather than refuse.
+  //
+  //    This used to be a veto, and it was the single most common reason the
+  //    platform answered "no recommendation": the analysis takes tens of
+  //    seconds, gold moves, and the level the model wrote is frequently gone
+  //    by the time the gate runs. Refusing there threw away a correct read
+  //    because of a stale number — the operator was told there was no trade
+  //    when what was really true is that there was no trade AT THAT PRICE.
+  //
+  //    The stop is structural and the entry is opportunistic: the stop marks
+  //    where the idea is wrong and does not move because price moved, while
+  //    the entry is only ever the best available price for that idea. So the
+  //    honest repair is to keep the structure and re-anchor the entry, then
+  //    report the reward:risk that actually results — which is worse, because
+  //    chasing costs something, and saying so is the point. Steps 1 and 2
+  //    above are what keep this from re-pricing into a trade that cannot win.
   const movedPast =
     input.direction === "buy"
       ? input.currentPrice > input.effectiveEntry
       : input.currentPrice < input.effectiveEntry;
 
   if (movedPast && distance > maxDistance) {
+    const params = {
+      written: input.effectiveEntry.toFixed(2),
+      current: input.currentPrice.toFixed(2),
+      distance: distance.toFixed(2),
+    };
     return {
-      status: "unreachable",
-      liveRr,
-      distance,
-      maxDistance,
-      reasonAr: t("ar", "gate.revalidation.unreachable", {
-        distance: distance.toFixed(2),
-        maxDistance: maxDistance.toFixed(2),
-      }),
+      ...base,
+      status: "reanchored",
+      reanchoredEntry: input.currentPrice,
+      reasonAr:
+        liveRr != null && input.plannedRr != null
+          ? t("ar", "gate.revalidation.reanchored", {
+              ...params,
+              liveRr: liveRr.toFixed(2),
+              plannedRr: input.plannedRr.toFixed(2),
+            })
+          : t("ar", "gate.revalidation.reanchored_no_rr", params),
     };
   }
 
+  // 4. An RR floor, only where a caller opted into one. The platform path sets
+  //    no minRr by doctrine, so this never fires there.
   if (input.minRr != null && liveRr != null && liveRr < input.minRr) {
     return {
+      ...base,
       status: "rr_degraded",
-      liveRr,
-      distance,
-      maxDistance,
       reasonAr: t("ar", "gate.revalidation.rr_degraded", {
         liveRr: liveRr.toFixed(2),
         minRr: String(input.minRr),
@@ -155,5 +237,5 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
     };
   }
 
-  return { status: "ok", liveRr, distance, maxDistance };
+  return { ...base, status: "ok" };
 }

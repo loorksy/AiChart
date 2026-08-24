@@ -312,6 +312,29 @@ export function buildGates(input: GateInputs): GateBuildResult {
           entryType: input.plan.entryType,
           minRr: input.plan.minRr,
         });
+        // A re-priced plan PASSES. Price outrunning the written entry is not a
+        // reason to have no trade — it is a reason to have the trade at a
+        // different price, and refusing there was what produced "no
+        // recommendation" on analyses that had just passed six other gates.
+        //
+        // It costs confidence rather than the plan: chasing a level is
+        // objectively worse than being filled at it, and the reward:risk in
+        // the reason line says by how much. That is information the operator
+        // acts on, not a barrier that acts for them.
+        if (verdict.status === "reanchored") {
+          return {
+            status: "pass",
+            confidenceDelta: -5,
+            reasonAr: verdict.reasonAr,
+            evidence: {
+              currentPrice: price,
+              liveRr: verdict.liveRr,
+              reanchoredEntry: verdict.reanchoredEntry,
+              writtenEntry: input.plan.entry,
+              distance: verdict.distance,
+            },
+          };
+        }
         if (verdict.status !== "ok") {
           return {
             status: "veto",
