@@ -22,7 +22,10 @@
  * as a fact rather than as an absence it would have to infer — an inference it
  * cannot make, since nothing else tells it which frames were ever asked for.
  */
-import { captureMultiTimeframeSnapshot } from "@/lib/chart/multiTimeframeCapture";
+import {
+  captureMultiTimeframeSnapshot,
+  VISUAL_EVIDENCE_GUARDRAILS,
+} from "@/lib/chart/multiTimeframeCapture";
 import { hasFreshPlatformTab } from "@/lib/chart/liveCapture";
 import { bridgeUserSig } from "@/lib/agentAuth";
 import { getPublicUser } from "@/lib/store";
@@ -58,7 +61,15 @@ type CaptureResult = Awaited<ReturnType<typeof captureMultiTimeframeSnapshot>>;
  * serves the app, which is where the tab is. No recursion is possible — the
  * route calls `captureMultiTimeframeSnapshot` directly, never this function.
  */
-async function captureWhereTheTabLives(
+export interface CaptureRouteDeps {
+  hasLocalTab?: typeof hasFreshPlatformTab;
+  fetchImpl?: typeof fetch;
+  lookupUser?: typeof getPublicUser;
+  captureLocally?: typeof captureMultiTimeframeSnapshot;
+  now?: () => number;
+}
+
+export async function captureWhereTheTabLives(
   userId: number,
   body: {
     symbol: string;
@@ -68,9 +79,14 @@ async function captureWhereTheTabLives(
     layoutId?: string;
     liveSession: boolean;
   },
+  deps: CaptureRouteDeps = {},
 ): Promise<CaptureResult> {
+  const hasLocalTab = deps.hasLocalTab ?? hasFreshPlatformTab;
+  const doFetch = deps.fetchImpl ?? fetch;
+  const lookupUser = deps.lookupUser ?? getPublicUser;
+  const now = deps.now ?? Date.now;
   const local = () =>
-    captureMultiTimeframeSnapshot(userId, {
+    (deps.captureLocally ?? captureMultiTimeframeSnapshot)(userId, {
       symbol: body.symbol,
       timeframes: body.timeframes,
       maxImages: body.maxImages,
@@ -81,18 +97,21 @@ async function captureWhereTheTabLives(
     });
 
   // This process owns a polling tab — the fast path, unchanged.
-  if (hasFreshPlatformTab()) return local();
+  if (hasLocalTab()) return local();
 
+  // Preconditions are checked BEFORE any clock starts, because failing them
+  // costs nothing and the local path still deserves its full budget.
   const baseUrl = process.env.AICHART_API_URL?.trim().replace(/\/$/, "");
-  if (!baseUrl) return local();
-
-  const user = await getPublicUser(userId).catch(() => null);
-  const sig = user?.email ? bridgeUserSig(user.email) : null;
   const token = process.env.AICHART_SERVICE_TOKEN?.trim();
-  if (!user?.email || !sig || !token) return local();
+  if (!baseUrl || !token) return local();
 
+  const user = await lookupUser(userId).catch(() => null);
+  const sig = user?.email ? bridgeUserSig(user.email) : null;
+  if (!user?.email || !sig) return local();
+
+  const startedAt = now();
   try {
-    const res = await fetch(`${baseUrl}/api/agent/chart/multi-snapshot`, {
+    const res = await doFetch(`${baseUrl}/api/agent/chart/multi-snapshot`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -109,21 +128,48 @@ async function captureWhereTheTabLives(
         layout_id: body.layoutId,
         live_session: body.liveSession,
       }),
+      // One network hop over loopback on top of the capture's own budget.
       signal: AbortSignal.timeout(body.imageTimeoutMs + 2_000),
     });
-    if (!res.ok) {
-      log.warn("visual.delegate.rejected", { status: res.status });
-      return local();
+
+    // 200 and 503 are the SAME payload: the route answers `{ok, ...result}`
+    // either way and reserves 503 for "not one frame came back", where the
+    // body still carries `missing_timeframes` with a reason per frame. Reading
+    // only the 200 would throw away a complete, truthful answer and — worse —
+    // send us to repeat locally the very capture we just learned cannot be
+    // made, spending the budget twice to reach the same empty result.
+    if (res.ok || res.status === 503) {
+      const json = (await res.json()) as CaptureResult;
+      if (json && Array.isArray(json.snapshots)) return json;
     }
-    const json = (await res.json()) as CaptureResult & { data?: CaptureResult };
-    // Newer routes wrap payloads as {ok, data, meta}; older ones return bare.
-    return json && typeof json === "object" && json.data ? json.data : json;
+    log.warn("visual.delegate.rejected", { status: res.status });
   } catch (error) {
     log.warn("visual.delegate.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
-    return local();
   }
+
+  // Retry here only if the attempt failed FAST — a refused route or a dead
+  // socket, which is a wiring fault the local path may well survive. Once the
+  // remote attempt has spent the frame budget there is nothing left to buy a
+  // second one with, and running it anyway is how a 9s visual stage becomes a
+  // 20s one and overruns the deadline that governs the whole run.
+  if (now() - startedAt < body.imageTimeoutMs / 2) return local();
+  log.warn("visual.delegate.exhausted", { elapsedMs: now() - startedAt });
+  return {
+    symbol: body.symbol.toUpperCase(),
+    market: "forex",
+    requested_timeframes: body.timeframes,
+    captured_timeframes: [],
+    missing_timeframes: body.timeframes.map((timeframe) => ({
+      timeframe,
+      reason: "capture_timeout",
+    })),
+    partial_success: false,
+    snapshots: [],
+    elapsed_ms: now() - startedAt,
+    guardrails: VISUAL_EVIDENCE_GUARDRAILS,
+  };
 }
 
 /**
