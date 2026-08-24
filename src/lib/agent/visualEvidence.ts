@@ -23,10 +23,108 @@
  * cannot make, since nothing else tells it which frames were ever asked for.
  */
 import { captureMultiTimeframeSnapshot } from "@/lib/chart/multiTimeframeCapture";
+import { hasFreshPlatformTab } from "@/lib/chart/liveCapture";
+import { bridgeUserSig } from "@/lib/agentAuth";
+import { getPublicUser } from "@/lib/store";
 import { createLogger } from "@/lib/logger";
 import type { VisualSnapshot } from "./agents/finalDecisionSynthesizer";
 
 const log = createLogger("visual-evidence");
+
+type CaptureResult = Awaited<ReturnType<typeof captureMultiTimeframeSnapshot>>;
+
+/**
+ * Capture the frames in the process that can actually answer.
+ *
+ * The chart-host rendezvous is module state: `platformPending` (where a
+ * capture request waits to be collected) and `platformTabAt` (what
+ * `hasFreshPlatformTab` reads) both live in memory in `chart/liveCapture.ts`,
+ * and only the HTTP route `/api/chart/host-capture` writes to them. That route
+ * is served by the WEB process — but an analysis runs in the WORKER, reached
+ * through the Redis turn queue. Two Node processes, two private copies of that
+ * map and that timestamp.
+ *
+ * So a capture requested by an analysis was filed in the worker's map, the
+ * container polled the web process whose map was empty, the request was never
+ * collected, and the worker's tab timestamp was never touched — leaving
+ * `hasFreshPlatformTab()` permanently false, `ensureChartHostTab` burning its
+ * full 25s warmup, and every frame returning `capture_timeout`. Every
+ * analysis said "لم تتوفر أي لقطة شارت" while the very same capture through
+ * MCP — which reaches the app over the bridge, i.e. the web process — took
+ * 6.2s and returned three real TradingView frames.
+ *
+ * The rule is therefore capability, not identity: if THIS process holds a
+ * live tab, capture here. If it does not, hand the work to the process that
+ * serves the app, which is where the tab is. No recursion is possible — the
+ * route calls `captureMultiTimeframeSnapshot` directly, never this function.
+ */
+async function captureWhereTheTabLives(
+  userId: number,
+  body: {
+    symbol: string;
+    timeframes: string[];
+    maxImages: number;
+    imageTimeoutMs: number;
+    layoutId?: string;
+    liveSession: boolean;
+  },
+): Promise<CaptureResult> {
+  const local = () =>
+    captureMultiTimeframeSnapshot(userId, {
+      symbol: body.symbol,
+      timeframes: body.timeframes,
+      maxImages: body.maxImages,
+      imageTimeoutMs: body.imageTimeoutMs,
+      includeNumericContext: true,
+      layoutId: body.layoutId,
+      liveSession: body.liveSession,
+    });
+
+  // This process owns a polling tab — the fast path, unchanged.
+  if (hasFreshPlatformTab()) return local();
+
+  const baseUrl = process.env.AICHART_API_URL?.trim().replace(/\/$/, "");
+  if (!baseUrl) return local();
+
+  const user = await getPublicUser(userId).catch(() => null);
+  const sig = user?.email ? bridgeUserSig(user.email) : null;
+  const token = process.env.AICHART_SERVICE_TOKEN?.trim();
+  if (!user?.email || !sig || !token) return local();
+
+  try {
+    const res = await fetch(`${baseUrl}/api/agent/chart/multi-snapshot`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-agent-token": token,
+        "x-aichart-user-email": user.email,
+        "x-aichart-user-sig": sig,
+      },
+      body: JSON.stringify({
+        symbol: body.symbol,
+        timeframes: body.timeframes,
+        max_images: body.maxImages,
+        image_timeout_ms: body.imageTimeoutMs,
+        include_numeric_context: true,
+        layout_id: body.layoutId,
+        live_session: body.liveSession,
+      }),
+      signal: AbortSignal.timeout(body.imageTimeoutMs + 2_000),
+    });
+    if (!res.ok) {
+      log.warn("visual.delegate.rejected", { status: res.status });
+      return local();
+    }
+    const json = (await res.json()) as CaptureResult & { data?: CaptureResult };
+    // Newer routes wrap payloads as {ok, data, meta}; older ones return bare.
+    return json && typeof json === "object" && json.data ? json.data : json;
+  } catch (error) {
+    log.warn("visual.delegate.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return local();
+  }
+}
 
 /**
  * Which timeframes to show, given the one being analysed.
@@ -124,12 +222,11 @@ export async function collectVisualEvidence(input: {
   }
 
   try {
-    const result = await captureMultiTimeframeSnapshot(input.userId, {
+    const result = await captureWhereTheTabLives(input.userId, {
       symbol: input.symbol,
       timeframes: requested,
       maxImages: input.maxImages ?? 3,
-      imageTimeoutMs: input.timeoutMs,
-      includeNumericContext: true,
+      imageTimeoutMs: input.timeoutMs ?? 9_000,
       layoutId: input.layoutId,
       liveSession: input.liveSession === true,
     });
