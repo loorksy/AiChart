@@ -243,7 +243,7 @@ const DecisionTraceSchema = z.object({
   planTypeBecause: z.string().max(400),
 });
 
-const FinalDecisionModelSchema = z.object({
+const FinalDecisionModelSchemaStrict = z.object({
   /** Layer 1 — always a side on a successful analysis. */
   direction: z.enum(["buy", "sell"]),
   /** Layer 2 — how the plan is entered. */
@@ -343,6 +343,63 @@ const FinalDecisionModelSchema = z.object({
     }
   }
 });
+
+/**
+ * Drop fields the pipeline provably never reads, before they can fail the run.
+ *
+ * This is NOT leniency about numbers. Both cases below are dead data — values
+ * the resolver discards even when they are perfect — and a half-written dead
+ * field was killing complete, correct trade plans:
+ *
+ *  1. `proposedLevels` beside a chosen candidate. `resolvePlanLevels`
+ *     (trading/tradePlan.ts) returns the candidate's geometry and never looks
+ *     at `proposed` when `selectedCandidate` is set, and the prompt tells the
+ *     model exactly that: "set selectedTradeCandidateId and leave
+ *     proposedLevels null". A model that picks a candidate AND starts sketching
+ *     its own levels has written something nothing will read — but an
+ *     incomplete sketch failed the whole decision. Live on 2026-08-24, with
+ *     three validated candidates on the table: "proposedLevels.preferredEntry
+ *     expected number, received undefined".
+ *
+ *  2. `activationRule` on an `immediate` plan. The contract says null for
+ *     immediate, the cross-field check requires one only for conditional and
+ *     anticipatory plans, and the composer drops the trigger condition for
+ *     immediate plans anyway.
+ *
+ * The strictness that matters is untouched: with NO candidate selected,
+ * `proposedLevels` stays fully required — entry, stop and targets all present
+ * and geometrically sound — because then it IS the plan. And a conditional or
+ * anticipatory plan still cannot exist without a machine-checkable
+ * activationRule. Nothing here invents or edits a price.
+ */
+function dropUnreadPlanFields(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+
+  const pickedCandidate =
+    typeof o.selectedTradeCandidateId === "string" &&
+    o.selectedTradeCandidateId.trim().length > 0;
+  if (pickedCandidate && o.proposedLevels && typeof o.proposedLevels === "object") {
+    const p = o.proposedLevels as Record<string, unknown>;
+    const complete =
+      typeof p.preferredEntry === "number" &&
+      typeof p.stopLoss === "number" &&
+      Array.isArray(p.targets) &&
+      p.targets.length > 0;
+    if (!complete) o.proposedLevels = null;
+  }
+
+  if (o.planType === "immediate" && o.activationRule != null) {
+    o.activationRule = null;
+  }
+
+  return o;
+}
+
+const FinalDecisionModelSchema = z.preprocess(
+  dropUnreadPlanFields,
+  FinalDecisionModelSchemaStrict,
+);
 
 export type FinalDecisionModelOutput = z.infer<typeof FinalDecisionModelSchema>;
 
