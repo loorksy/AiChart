@@ -876,6 +876,14 @@ export async function runFinalDecisionSynthesizer(
   for (let attempt = 1; attempt <= 2; attempt++) {
     progress.attempt = attempt;
     report();
+    // Did THIS attempt's call already come back? The success path counts the
+    // reply the moment it lands, and the catch below counts a reply that
+    // arrived as an error (a truncation IS a reply). Without this flag a
+    // reply that landed and then failed to parse was counted twice, and
+    // `providerReplies` — the one number that separates "the provider never
+    // answered" from "it answered badly" — overstated by one on exactly the
+    // failure this whole trail was built to diagnose.
+    let replyCounted = false;
     try {
       const userMsg = correction
         ? `${user}
@@ -888,6 +896,7 @@ ${correction}`
       // next question — but "a call completed" is exactly the fact that
       // separates a slow payload from a socket that never replied.
       progress.completedCalls += 1;
+      replyCounted = true;
       report();
       const candidate = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
       // Issue-time price coherence (the XAUUSD conditional-sell incident):
@@ -924,7 +933,10 @@ ${correction}`
       failure = { ...classified, attempts: attempt };
       progress.lastFailureKind = classified.kind;
       progress.lastFailureDetail = classified.detail.slice(0, 200);
-      if (providerAnswered(classified.kind)) progress.completedCalls += 1;
+      if (!replyCounted && providerAnswered(classified.kind)) {
+        progress.completedCalls += 1;
+        replyCounted = true;
+      }
       report();
       if (classified.kind === "schema_mismatch" || classified.kind === "invalid_json") {
         correction = classified.detail;

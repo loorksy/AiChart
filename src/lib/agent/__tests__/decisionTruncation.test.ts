@@ -250,7 +250,31 @@ describe("the acceptance case: a real recommendation, not a timeout", () => {
     assert.ok(seen.length >= 2, "progress is reported as the work advances");
     const last = seen[seen.length - 1]!;
     assert.equal(last.kind, "truncated", "the last failure is named while in flight");
-    assert.ok(last.completedCalls >= 1, "a provider that ANSWERED is recorded as such");
+    // EXACTLY two, not "at least one". Two attempts, two replies that arrived
+    // and were cut off. A `>= 1` assertion here passed happily while the
+    // counter double-counted, and an inflated `providerReplies` points the
+    // operator at the wrong half of the problem — it says the provider is
+    // answering more than it is.
+    assert.equal(last.completedCalls, 2, "one reply counted per attempt, never twice");
+  });
+
+  it("a reply that lands and then fails to parse is counted once, not twice", async () => {
+    // The double-count that hid here: the success path counts the reply the
+    // moment it arrives, and the catch counted it again for every kind that
+    // `providerAnswered` calls a reply — invalid_json and schema_mismatch
+    // being exactly the kinds that get that far.
+    const seen: number[] = [];
+    await runFinalDecisionSynthesizer(ctx, input(), {
+      configured: true,
+      onProgress: (p) => seen.push(p.completedCalls),
+      // Arrives intact, parses as JSON, fails the schema.
+      callModel: async () => JSON.stringify({ direction: "sideways" }),
+    });
+    assert.equal(
+      Math.max(...seen),
+      2,
+      "two attempts, two replies — a reply is not two replies because it was rejected",
+    );
   });
 
   it("a provider that never answers is distinguishable from one that answers badly", async () => {
