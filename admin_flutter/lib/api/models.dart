@@ -375,18 +375,40 @@ class MessageRow {
   final String body;
   final int createdAt;
 
+  /// A file sent with this message, served through the support attachment
+  /// route (which checks that the reader is in this conversation).
+  final String? attachmentPath;
+  final String? attachmentName;
+  final int? attachmentBytes;
+
   MessageRow({
     required this.id,
     required this.author,
     required this.body,
     required this.createdAt,
+    this.attachmentPath,
+    this.attachmentName,
+    this.attachmentBytes,
   });
+
+  bool get hasAttachment =>
+      attachmentPath != null && attachmentPath!.isNotEmpty;
+
+  /// True for an image, which the thread renders inline rather than as a link.
+  bool get attachmentIsImage =>
+      hasAttachment &&
+      RegExp(r'\.(png|jpe?g|gif|webp)$', caseSensitive: false)
+          .hasMatch(attachmentPath!);
 
   factory MessageRow.fromJson(Map<String, dynamic> j) => MessageRow(
         id: asInt(j['id']),
         author: j['author']?.toString() ?? 'user',
         body: j['body']?.toString() ?? '',
         createdAt: asInt(j['created_at']),
+        attachmentPath: asStringOrNull(j['attachment_path']),
+        attachmentName: asStringOrNull(j['attachment_name']),
+        attachmentBytes:
+            j['attachment_bytes'] == null ? null : asInt(j['attachment_bytes']),
       );
 }
 
@@ -966,5 +988,34 @@ class AdUploadLimits {
         accepted: ((j['accepted'] as List?) ?? const ['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
             .map((e) => e.toString())
             .toList(),
+      );
+}
+
+/// The support inbox: conversations plus what is unread in each.
+///
+/// A list that shows only "open" tells the admin which threads exist, not
+/// which are WAITING on them — those are different questions, and only the
+/// second one is a to-do list.
+class SupportInbox {
+  final List<TicketRow> tickets;
+  final Map<int, int> unread;
+  final int unreadTotal;
+
+  SupportInbox({
+    required this.tickets,
+    required this.unread,
+    required this.unreadTotal,
+  });
+
+  factory SupportInbox.fromJson(Map<String, dynamic> j) => SupportInbox(
+        tickets: ((j['tickets'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(TicketRow.fromJson)
+            .toList(),
+        unread: {
+          for (final e in ((j['unread'] as Map<String, dynamic>?) ?? const {}).entries)
+            asInt(e.key): asInt(e.value),
+        },
+        unreadTotal: asInt(j['unread_total']),
       );
 }

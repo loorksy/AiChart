@@ -79,3 +79,55 @@ export const SUPPORT_CONTENT_TYPES: Record<string, string> = {
   webp: "image/webp",
   pdf: "application/pdf",
 };
+
+/**
+ * Decode, validate and store one attachment coming off the wire.
+ *
+ * Both sides of the conversation send files, and both must be judged by the
+ * same rule. Keeping the decode here — rather than once per route — is what
+ * makes "the server decides, from the bytes" true of the admin console as
+ * well as the user's chat.
+ */
+export type SupportAttachmentIntake =
+  | { ok: true; attachment: { path: string; name: string; bytes: number } }
+  | { ok: false; reason: "too_large" | "unsupported_type"; status: 413 | 415 };
+
+export function intakeSupportAttachment(input: {
+  name: string;
+  data_base64: string;
+}): SupportAttachmentIntake {
+  const bytes = Buffer.from(input.data_base64, "base64");
+  const verdict = validateSupportAttachment(bytes);
+  if (!verdict.ok) {
+    return {
+      ok: false,
+      reason: verdict.reason,
+      status: verdict.reason === "too_large" ? 413 : 415,
+    };
+  }
+  return {
+    ok: true,
+    attachment: {
+      path: storeSupportAttachment(bytes, verdict.ext),
+      // Kept only as a label. It never reaches the filesystem, and it never
+      // addresses the file — `path` does, and the server generated that.
+      name: input.name,
+      bytes: bytes.length,
+    },
+  };
+}
+
+/**
+ * Reduce a requested attachment name to something that can only address a file
+ * inside the upload directory — or refuse it.
+ *
+ * `path.basename` alone is not the check: it would happily turn
+ * `../../.env` into `.env` and serve it. The name must ALREADY be its own
+ * basename, and it must carry an extension the server itself writes.
+ */
+export function safeAttachmentName(name: string): string | null {
+  if (!name || name !== path.basename(name)) return null;
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (!SUPPORT_CONTENT_TYPES[ext]) return null;
+  return name;
+}

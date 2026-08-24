@@ -50,6 +50,39 @@ void main() {
     expect(report.parityTotals.containsKey('byClassification'), false);
   });
 
+  test('the support inbox carries per-conversation unread counts', () {
+    final inbox = SupportInbox.fromJson(f('admin/support'));
+    expect(inbox.tickets.single.id, 4);
+    // The trap: JSON object keys are strings even when the server built the
+    // map from numeric ticket ids. A badge keyed by `int` finds nothing if the
+    // client keeps the key as it arrived.
+    expect(inbox.unread[4], 2);
+    expect(inbox.unreadTotal, 2);
+  });
+
+  test('a support thread parses messages with and without attachments', () {
+    final thread = TicketThread.fromJson(f('admin/support?ticket'));
+    expect(thread.messages.length, 3);
+
+    final plain = thread.messages[0];
+    expect(plain.hasAttachment, false);
+    expect(plain.attachmentIsImage, false);
+
+    final image = thread.messages[1];
+    // A message may be a file and nothing else — the bubble must not require
+    // text to render.
+    expect(image.body, '');
+    expect(image.hasAttachment, true);
+    expect(image.attachmentIsImage, true);
+    expect(image.attachmentName, 'screenshot.png');
+    expect(image.attachmentBytes, 21044);
+
+    final pdf = thread.messages[2];
+    expect(pdf.hasAttachment, true);
+    // A PDF is shown as a labelled file, never fed to Image.memory.
+    expect(pdf.attachmentIsImage, false);
+  });
+
   test('diagnostics: a zero count parses too', () {
     // `0 as List?` threw exactly like `7 as List?` did — this screen was broken
     // for every possible value, not only a populated one.
@@ -175,6 +208,7 @@ void main() {
       'admin/users',
       'admin/roles',
       'admin/support',
+      'admin/support?ticket',
       'admin/billing/profit',
       'admin/billing/reset-accounts',
       'admin/config',

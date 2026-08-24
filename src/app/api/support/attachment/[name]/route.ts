@@ -4,7 +4,11 @@ import { NextResponse } from "next/server";
 import { handleError, requireUser } from "@/lib/api";
 import { getAdminRole, roleAllows } from "@/lib/adminRoles";
 import { initDb, queryOne } from "@/lib/db";
-import { SUPPORT_CONTENT_TYPES, supportUploadDir } from "@/lib/support/attachments";
+import {
+  SUPPORT_CONTENT_TYPES,
+  safeAttachmentName,
+  supportUploadDir,
+} from "@/lib/support/attachments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,13 +31,9 @@ export async function GET(
     const user = await requireUser();
     await initDb();
     const { name } = await params;
-    const base = path.basename(name);
-    if (base !== name) {
-      return NextResponse.json({ ok: false }, { status: 400 });
-    }
-    const ext = base.split(".").pop()?.toLowerCase() ?? "";
-    const contentType = SUPPORT_CONTENT_TYPES[ext];
-    if (!contentType) return NextResponse.json({ ok: false }, { status: 415 });
+    const base = safeAttachmentName(name);
+    if (!base) return NextResponse.json({ ok: false }, { status: 400 });
+    const contentType = SUPPORT_CONTENT_TYPES[base.split(".").pop()!.toLowerCase()]!;
 
     // Who owns the conversation this file was sent in?
     const owner = await queryOne<{ user_id: number }>(

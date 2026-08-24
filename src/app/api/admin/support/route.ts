@@ -3,6 +3,8 @@ import { z } from "zod";
 import { handleError } from "@/lib/api";
 import { initDb, queryOne } from "@/lib/db";
 import { notifySupportReply } from "@/lib/support/notify";
+import { intakeSupportAttachment } from "@/lib/support/attachments";
+import { checkSupportMessage, supportMessageSchema } from "@/lib/support/messageInput";
 import { requireAdminWith } from "@/lib/adminRoles";
 import {
   addMessage,
@@ -59,7 +61,9 @@ const actionSchema = z.discriminatedUnion("action", [
     // Coerced: the id round-trips through the panel's own list response, and a
     // driver or cache that stringifies it must not turn a reply into a 400.
     ticket_id: z.coerce.number().int().positive(),
-    body: z.string().min(1).max(4000),
+    // The SAME rule the user's side uses — the console is the other end of one
+    // conversation, not a stricter surface of its own.
+    ...supportMessageSchema.shape,
   }),
 ]);
 
@@ -75,7 +79,19 @@ export async function POST(req: NextRequest) {
     if (input.action === "assign") await assignTicket(input.ticket_id, admin.id);
     if (input.action === "close") await closeTicket(input.ticket_id);
     if (input.action === "reply") {
-      await addMessage(input.ticket_id, "admin", input.body, admin.id);
+      const checked = checkSupportMessage(input);
+      if (!checked.ok) {
+        return NextResponse.json({ ok: false, error: checked.error }, { status: 400 });
+      }
+      let attachment: { path: string; name: string; bytes: number } | null = null;
+      if (checked.attachment) {
+        const intake = intakeSupportAttachment(checked.attachment);
+        if (!intake.ok) {
+          return NextResponse.json({ ok: false, error: intake.reason }, { status: intake.status });
+        }
+        attachment = intake.attachment;
+      }
+      await addMessage(input.ticket_id, "admin", checked.text, admin.id, attachment);
       await assignTicket(input.ticket_id, admin.id);
       // Tell the person waiting. Best-effort and deliberately un-awaited in
       // effect: the reply is already stored, and a notification that fails

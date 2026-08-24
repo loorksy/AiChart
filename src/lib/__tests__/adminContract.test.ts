@@ -32,6 +32,7 @@ import type { ParityReport } from "@/lib/agent/parityLog";
 import type { BillingPlanRow, PlanPriceRow, TopupPackRow, OfferRow } from "@/lib/billing/planConfig";
 import type { ClaudeUsageRow } from "@/lib/store";
 import type { AdRow } from "@/lib/ads/adsStore";
+import type { MessageRow } from "@/lib/support/supportStore";
 
 const REPO = path.join(import.meta.dirname, "..", "..", "..");
 const FIXTURES = path.join(REPO, "admin_flutter", "test", "fixtures", "admin_contracts.json");
@@ -127,6 +128,40 @@ describe("the admin API contract — the server's half", () => {
       client,
       /j\['rows'\] as List\?/,
       "the client must read the key the server sends",
+    );
+  });
+
+  it("the support inbox and thread match what the routes send", () => {
+    // Item 12 turned support into a conversation, and a conversation has two
+    // things a ticket list never had: how many messages WAIT in each thread,
+    // and files travelling in both directions.
+    const inbox = endpoint("admin/support");
+    assert.ok(Array.isArray(inbox.tickets));
+    assert.equal(typeof inbox.unread_total, "number");
+    // `unread` is a map keyed by ticket id. It crosses the wire as a JSON
+    // object, so its keys are STRINGS — the Dart client parses them back to
+    // ints, and a badge keyed the other way silently finds nothing.
+    const unread = inbox.unread as Record<string, unknown>;
+    for (const [key, value] of Object.entries(unread)) {
+      assert.match(key, /^\d+$/, "unread is keyed by ticket id");
+      assert.equal(typeof value, "number");
+    }
+
+    const messages = endpoint("admin/support?ticket").messages as Array<Record<string, unknown>>;
+    // Declared server-side, so a column rename stops compiling here.
+    expectType<MessageRow["attachment_path"]>(null);
+    expectType<MessageRow["attachment_name"]>(null);
+    expectType<MessageRow["attachment_bytes"]>(null);
+    expectType<MessageRow["body"]>("");
+    const withFile = messages.find((m) => m.attachment_path !== null);
+    assert.ok(withFile, "a thread fixture must exercise the attachment columns");
+    assert.equal(typeof withFile.attachment_path, "string");
+    assert.equal(typeof withFile.attachment_bytes, "number");
+    // A file with no words is a legitimate message on BOTH sides. The admin
+    // reply schema stopped requiring a body for exactly this reason.
+    assert.ok(
+      messages.some((m) => m.body === "" && m.attachment_path !== null),
+      "a message may be a file alone",
     );
   });
 

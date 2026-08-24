@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'client.dart';
+import 'file_picker.dart';
 import 'models.dart';
 
 /// One place that knows the admin endpoints — and the ONLY admin client the
@@ -172,21 +174,37 @@ class AdminRepository {
       api.sendJson('POST', '/api/admin/roles', {'user_id': userId, 'role': role});
 
   // ── Support ─────────────────────────────────────────────────────
-  Future<List<TicketRow>> tickets({String? status}) async {
-    final j = await api.getJson('/api/admin/support',
-        query: status == null ? null : {'status': status});
-    return ((j['tickets'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(TicketRow.fromJson)
-        .toList();
-  }
+  /// The inbox: conversations plus how many messages wait in each.
+  Future<SupportInbox> supportInbox({String? status}) async =>
+      SupportInbox.fromJson(await api.getJson('/api/admin/support',
+          query: status == null ? null : {'status': status}));
+
+  Future<List<TicketRow>> tickets({String? status}) async =>
+      (await supportInbox(status: status)).tickets;
 
   Future<TicketThread> ticket(int id) async => TicketThread.fromJson(
       await api.getJson('/api/admin/support', query: {'ticket': '$id'}));
 
-  Future<void> replyTicket(int id, String body) => api.sendJson(
-      'POST', '/api/admin/support',
-      {'action': 'reply', 'ticket_id': id, 'body': body});
+  /// Reply in a conversation, optionally with a file.
+  ///
+  /// The bytes go up as base64 in the same JSON action the panel already
+  /// speaks. The SERVER validates them from their magic bytes and size — the
+  /// filename travels only as a label.
+  Future<void> replyTicket(int id, String body, {PickedFile? attachment}) =>
+      api.sendJson('POST', '/api/admin/support', {
+        'action': 'reply',
+        'ticket_id': id,
+        'body': body,
+        if (attachment != null)
+          'attachment': {
+            'name': attachment.name,
+            'data_base64': base64Encode(attachment.bytes),
+          },
+      });
+
+  /// The bytes of one support attachment, fetched with the session attached.
+  Future<Uint8List> supportAttachment(String storedName) =>
+      api.getBytes('/api/support/attachment/$storedName');
 
   Future<void> closeTicket(int id) => api
       .sendJson('POST', '/api/admin/support', {'action': 'close', 'ticket_id': id});

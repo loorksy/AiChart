@@ -744,8 +744,8 @@ const SCHEMA = `
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS parity_key TEXT;
   -- Support became a CONVERSATION, not a ticket queue: each side records what
   -- it has read, and a message may carry a file.
-  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS user_last_read_at BIGINT;
-  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS admin_last_read_at BIGINT;
+  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS user_last_read_id BIGINT;
+  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS admin_last_read_id BIGINT;
   ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_path TEXT;
   ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT;
   ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_bytes BIGINT;

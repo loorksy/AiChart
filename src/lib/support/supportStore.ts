@@ -22,9 +22,16 @@ export interface TicketRow {
   needs_human: number;
   created_at: number;
   updated_at: number;
-  /** When each side last opened the thread — the basis of "unread". */
-  user_last_read_at: number | null;
-  admin_last_read_at: number | null;
+  /**
+   * The last MESSAGE each side has seen — the basis of "unread".
+   *
+   * An id, deliberately, not a clock reading: a watermark of `Date.now()`
+   * loses any message written in the same millisecond the other side opened
+   * the thread, because `created_at > last_read_at` is false for it forever.
+   * Ids are monotonic, so the comparison is exact.
+   */
+  user_last_read_id: number | null;
+  admin_last_read_id: number | null;
 }
 
 export interface MessageRow {
@@ -87,7 +94,7 @@ export async function addMessage(
   attachment?: { path: string; name: string; bytes: number } | null,
 ): Promise<void> {
   const now = Date.now();
-  await execute(
+  const messageId = await insertReturningId(
     `INSERT INTO support_messages
        (ticket_id, author, author_id, body, created_at,
         attachment_path, attachment_name, attachment_bytes)
@@ -103,12 +110,13 @@ export async function addMessage(
       attachment?.bytes ?? null,
     ],
   );
-  // The sender has, by definition, read their own message: marking their side
-  // read here is what keeps a reply from showing as unread to its own author.
-  const senderColumn = author === "admin" ? "admin_last_read_at" : "user_last_read_at";
+  // The sender has, by definition, read their own message: advancing their
+  // side to THIS message is what keeps a reply from showing as unread to its
+  // own author.
+  const senderColumn = author === "admin" ? "admin_last_read_id" : "user_last_read_id";
   await execute(
     `UPDATE support_tickets SET updated_at = ?, ${senderColumn} = ? WHERE id = ?`,
-    [now, now, ticketId],
+    [now, messageId, ticketId],
   );
 }
 
@@ -127,22 +135,25 @@ export async function getOrCreateConversation(userId: number): Promise<number> {
   if (open) return open.id;
   const now = Date.now();
   return insertReturningId(
-    `INSERT INTO support_tickets (user_id, subject, created_at, updated_at, user_last_read_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    [userId, "support", now, now, now],
+    `INSERT INTO support_tickets (user_id, subject, created_at, updated_at)
+     VALUES (?, ?, ?, ?)`,
+    [userId, "support", now, now],
   );
 }
 
-/** Mark the thread read for one side, up to now. */
+/** Mark the thread read for one side, up to the last message now stored. */
 export async function markConversationRead(
   ticketId: number,
   side: ConversationSide,
 ): Promise<void> {
-  const column = side === "admin" ? "admin_last_read_at" : "user_last_read_at";
-  await execute(`UPDATE support_tickets SET ${column} = ? WHERE id = ?`, [
-    Date.now(),
-    ticketId,
-  ]);
+  const column = side === "admin" ? "admin_last_read_id" : "user_last_read_id";
+  await execute(
+    `UPDATE support_tickets
+        SET ${column} = COALESCE(
+              (SELECT MAX(id) FROM support_messages WHERE ticket_id = ?), 0)
+      WHERE id = ?`,
+    [ticketId, ticketId],
+  );
 }
 
 /**
@@ -159,12 +170,13 @@ export async function unreadCount(
     ticketId,
   ]);
   if (!ticket) return 0;
-  const since = (side === "admin" ? ticket.admin_last_read_at : ticket.user_last_read_at) ?? 0;
+  const since =
+    Number((side === "admin" ? ticket.admin_last_read_id : ticket.user_last_read_id) ?? 0);
   const authors = side === "admin" ? ["user"] : ["admin", "bot"];
   const placeholders = authors.map(() => "?").join(", ");
   const row = await queryOne<{ count: number }>(
     `SELECT COUNT(*) AS count FROM support_messages
-      WHERE ticket_id = ? AND created_at > ? AND author IN (${placeholders})`,
+      WHERE ticket_id = ? AND id > ? AND author IN (${placeholders})`,
     [ticketId, since, ...authors],
   );
   return Number(row?.count ?? 0);
@@ -178,7 +190,7 @@ export async function userUnreadTotal(userId: number): Promise<number> {
        JOIN support_tickets t ON t.id = m.ticket_id
       WHERE t.user_id = ?
         AND m.author IN ('admin', 'bot')
-        AND m.created_at > COALESCE(t.user_last_read_at, 0)`,
+        AND m.id > COALESCE(t.user_last_read_id, 0)`,
     [userId],
   );
   return Number(row?.count ?? 0);
@@ -191,7 +203,7 @@ export async function adminUnreadTotal(): Promise<number> {
        FROM support_messages m
        JOIN support_tickets t ON t.id = m.ticket_id
       WHERE m.author = 'user'
-        AND m.created_at > COALESCE(t.admin_last_read_at, 0)`,
+        AND m.id > COALESCE(t.admin_last_read_id, 0)`,
   );
   return Number(row?.count ?? 0);
 }

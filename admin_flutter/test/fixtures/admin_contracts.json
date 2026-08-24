@@ -19,7 +19,6 @@
     "",
     "Values are representative, not real. Shapes are the point."
   ],
-
   "admin/diagnostics": {
     "critical": {
       "hiddenWaitWrites": 0,
@@ -34,18 +33,26 @@
         "agreeing": 10,
         "differing": 2,
         "unexplained": 2,
-        "byClassification": { "direction": 1, "levels": 1 }
+        "byClassification": {
+          "direction": 1,
+          "levels": 1
+        }
       },
       "unpaired": 7
     },
-    "reevaluation": { "confirmed": 4, "revised": 1 },
-    "caseMemory": { "open": 3, "closed": 9 },
+    "reevaluation": {
+      "confirmed": 4,
+      "revised": 1
+    },
+    "caseMemory": {
+      "open": 3,
+      "closed": 9
+    },
     "counters": {
       "completeContracts": 41,
       "invalidLevelRecommendations": 0
     }
   },
-
   "admin/health": {
     "status": "ok",
     "timestamp": "2026-08-23T20:00:00.000Z",
@@ -53,7 +60,10 @@
     "ai_provider": "anthropic",
     "telegram": true,
     "cron_secret_set": true,
-    "users": { "total": 12, "active": 9 },
+    "users": {
+      "total": 12,
+      "active": 9
+    },
     "recent_audit": [
       {
         "id": 5,
@@ -64,13 +74,17 @@
       }
     ]
   },
-
   "admin/usage": {
     "usage": [
-      { "user_id": 3, "email": "a@b.c", "status": "active", "used_today": 4, "quota": 1000 }
+      {
+        "user_id": 3,
+        "email": "a@b.c",
+        "status": "active",
+        "used_today": 4,
+        "quota": 1000
+      }
     ]
   },
-
   "admin/overview/users": {
     "rows": [
       {
@@ -84,7 +98,6 @@
       }
     ]
   },
-
   "admin/subscriptions": {
     "users": [
       {
@@ -99,7 +112,6 @@
       }
     ]
   },
-
   "admin/billing/config": {
     "ok": true,
     "plan": {
@@ -121,7 +133,11 @@
       "created_at": 1787000000000,
       "archived_at": null
     },
-    "credit_prices": { "recommendation": 10, "chat_turn": 0, "mt5_link": 0 },
+    "credit_prices": {
+      "recommendation": 10,
+      "chat_turn": 0,
+      "mt5_link": 0
+    },
     "packs": [
       {
         "id": 1,
@@ -148,7 +164,6 @@
     ],
     "payments_configured": false
   },
-
   "admin/config/providers": {
     "ok": true,
     "active": "anthropic",
@@ -166,14 +181,14 @@
       }
     ]
   },
-
   "admin/agent-model-status": {
     "channel": "mcp",
     "platformModel": "claude-sonnet-4-6",
     "platformRef": "anthropic/claude-sonnet-4-6",
-    "fallbacks": ["anthropic/claude-opus-4-6"]
+    "fallbacks": [
+      "anthropic/claude-opus-4-6"
+    ]
   },
-
   "admin/model-prices": {
     "ok": true,
     "prices": [
@@ -186,7 +201,6 @@
       }
     ]
   },
-
   "admin/ads": {
     "ok": true,
     "ads": [
@@ -203,7 +217,6 @@
       }
     ]
   },
-
   "admin/users": {
     "users": [
       {
@@ -221,13 +234,16 @@
       }
     ]
   },
-
   "admin/roles": {
     "admins": [
-      { "user_id": 1, "email": "boss@lonora.test", "admin_role": null, "granted_at": null }
+      {
+        "user_id": 1,
+        "email": "boss@lonora.test",
+        "admin_role": null,
+        "granted_at": null
+      }
     ]
   },
-
   "admin/support": {
     "tickets": [
       {
@@ -239,9 +255,12 @@
         "needs_human": 1,
         "updated_at": 1787000000000
       }
-    ]
+    ],
+    "unread": {
+      "4": 2
+    },
+    "unread_total": 2
   },
-
   "admin/billing/profit": {
     "per_user": [
       {
@@ -254,16 +273,18 @@
         "events": 22
       }
     ],
-    "totals": { "revenue_usd": 18.0, "provider_cost_usd": 2.5, "profit_usd": 15.5 }
+    "totals": {
+      "revenue_usd": 18.0,
+      "provider_cost_usd": 2.5,
+      "profit_usd": 15.5
+    }
   },
-
   "admin/billing/reset-accounts": {
     "ok": true,
     "accounts": 12,
     "granted": 12,
     "grantEach": 50
   },
-
   "admin/config": {
     "fields": [
       {
@@ -278,20 +299,85 @@
       }
     ]
   },
-
   "admin/overview": {
     "ok": true,
     "days": 30,
-    "permissions": ["users_read", "profit_read"],
+    "permissions": [
+      "users_read",
+      "profit_read"
+    ],
     "kpis": {
-      "profit_usd": { "value": 15.5, "prev": 10.0, "pct": 55.0 },
-      "revenue_usd": { "value": 18.0, "prev": 12.0, "pct": 50.0 },
-      "provider_cost_usd": { "value": 2.5, "prev": 2.0, "pct": 25.0 },
-      "paying_subscribers": { "value": 3, "prev": 2, "pct": 50.0 },
+      "profit_usd": {
+        "value": 15.5,
+        "prev": 10.0,
+        "pct": 55.0
+      },
+      "revenue_usd": {
+        "value": 18.0,
+        "prev": 12.0,
+        "pct": 50.0
+      },
+      "provider_cost_usd": {
+        "value": 2.5,
+        "prev": 2.0,
+        "pct": 25.0
+      },
+      "paying_subscribers": {
+        "value": 3,
+        "prev": 2,
+        "pct": 50.0
+      },
       "gift_users": 1,
       "trial_users": 8,
       "system_cost_usd": 4.0
     },
-    "series": [{ "day": "2026-08-22", "revenue": 6.0, "cost": 1.0, "profit": 5.0 }]
+    "series": [
+      {
+        "day": "2026-08-22",
+        "revenue": 6.0,
+        "cost": 1.0,
+        "profit": 5.0
+      }
+    ]
+  },
+  "admin/support?ticket": {
+    "ticket": {
+      "id": 4,
+      "user_id": 3,
+      "subject": "help",
+      "status": "open",
+      "assigned_to": null,
+      "needs_human": 1,
+      "updated_at": 1787000000000
+    },
+    "messages": [
+      {
+        "id": 11,
+        "author": "user",
+        "body": "the chart will not load",
+        "created_at": 1787000000000,
+        "attachment_path": null,
+        "attachment_name": null,
+        "attachment_bytes": null
+      },
+      {
+        "id": 12,
+        "author": "user",
+        "body": "",
+        "created_at": 1787000001000,
+        "attachment_path": "m9x1-0a1b2c3d4e5f6071.png",
+        "attachment_name": "screenshot.png",
+        "attachment_bytes": 21044
+      },
+      {
+        "id": 13,
+        "author": "admin",
+        "body": "here is the setting",
+        "created_at": 1787000002000,
+        "attachment_path": "m9x2-1a2b3c4d5e6f7081.pdf",
+        "attachment_name": "guide.pdf",
+        "attachment_bytes": 90210
+      }
+    ]
   }
 }

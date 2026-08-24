@@ -90,6 +90,22 @@ class ApiClient {
     return _decode(res);
   }
 
+  /// Fetch raw bytes with the session attached.
+  ///
+  /// Support attachments are private files behind an authorization check, so
+  /// they cannot be handed to `Image.network`: that issues a bare browser
+  /// request with no Authorization header, and this console authenticates by
+  /// Bearer token precisely because the cookie is not always visible to it.
+  /// Fetching here and rendering from memory is what makes a private image
+  /// actually appear.
+  Future<Uint8List> getBytes(String path) async {
+    final res = await _http.get(_uri(path), headers: _headers());
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, 'HTTP ${res.statusCode}');
+    }
+    return res.bodyBytes;
+  }
+
   Map<String, dynamic> _decode(http.Response res) {
     Map<String, dynamic>? json;
     try {

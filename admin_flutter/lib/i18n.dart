@@ -112,6 +112,14 @@ class L {
               '3 multimodal OpenAI models and 3 multimodal Claude models.'
     },
     'language': {'ar': 'English', 'en': 'العربية'},
+    'unread': {'ar': 'غير مقروءة', 'en': 'Unread'},
+    'attachFile': {'ar': 'إرفاق ملف', 'en': 'Attach a file'},
+    'attachment': {'ar': 'مرفق', 'en': 'Attachment'},
+    'attachmentFailed': {
+      'ar': 'تعذّر عرض المرفق.',
+      'en': 'The attachment could not be shown.'
+    },
+    'writeMessage': {'ar': 'اكتب رسالة…', 'en': 'Write a message…'},
     'ticketOpen': {'ar': 'مفتوحة', 'en': 'Open'},
     'ticketClosed': {'ar': 'مغلقة', 'en': 'Closed'},
     'close': {'ar': 'إغلاق', 'en': 'Close'},

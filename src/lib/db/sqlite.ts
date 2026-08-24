@@ -2071,8 +2071,12 @@ function migrate(db: Database.Database) {
     .all()
     .map((c) => (c as { name: string }).name);
   for (const [column, ddl] of [
-    ["user_last_read_at", "INTEGER"],
-    ["admin_last_read_at", "INTEGER"],
+    // Read state is kept as a MESSAGE ID, not a clock reading. A wall-clock
+    // watermark loses any message stored in the same millisecond the other
+    // side opened the thread — `created_at > last_read_at` is false for it
+    // forever, so it is silently never unread. Ids are monotonic and exact.
+    ["user_last_read_id", "INTEGER"],
+    ["admin_last_read_id", "INTEGER"],
   ] as const) {
     if (ticketCols.includes(column)) continue;
     try {
