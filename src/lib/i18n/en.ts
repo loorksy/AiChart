@@ -353,6 +353,8 @@ export const en = {
   "gate.strategy.registry_unavailable": "Could not read the verified-strategies registry.",
   "gate.plan.incoherent":
     "The plan is geometrically inconsistent ({problems}) — no recommendation is issued for a plan that contradicts its own activation condition.",
+  "gate.plan.target_implausible":
+    "Target {target} sits {atrDistance} ATR from the entry (limit {maxAtrDistance}) — further than price travels inside the plan's validity on this timeframe.",
   "gate.live_price.unavailable":
     "Could not fetch a live price for the plan's final validation.",
   "gate.live_price.plan_invalid": "The plan is no longer valid at the live price.",

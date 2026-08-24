@@ -24,6 +24,13 @@ import type { NewsMacroResult } from "../agents/newsMacroAgent";
 import { validateEntryCoherence } from "@/lib/recommendations/entrySemantics";
 import type { EntryPlan } from "@/lib/recommendations/entrySemantics";
 
+/**
+ * How far a target may sit from the entry, in ATR multiples, and still be a
+ * target rather than a wish. See the G6 note below for the incident and the
+ * calibration behind the number.
+ */
+export const MAX_TARGET_ATR_DISTANCE = 25;
+
 export interface GateInputs {
   /** Wall clock for the news window; injectable so the chain is testable. */
   now: number;
@@ -227,6 +234,52 @@ export function buildGates(input: GateInputs): GateBuildResult {
             evidence: { problems },
           };
         }
+
+        // A target must be somewhere price can actually go.
+        //
+        // The plan prompt sets a FLOOR — "TP1 sits several ATR from the entry,
+        // never the first shelf a few points away" — and nothing ever set a
+        // ceiling, so an overshoot sailed through every gate and came out the
+        // other side advertised as quality. Live on 2026-08-24: a 15m XAUUSD
+        // plan valid for 18 candles, entry 4595.17, stop 4577.20, target
+        // 5602.23 — 1007 points, 113 ATR, 20% above spot, and the evidence
+        // card reported "net return ≈63R" as a STRENGTH. A number that large
+        // is not a strong plan, it is a broken one.
+        //
+        // Calibration from real plans on this symbol: targets run 3.8-5.0 ATR
+        // from entry. 25 ATR is five times a normal target and still refuses
+        // the 113-ATR case without argument. ATR is the same yardstick G7
+        // already uses for entry reachability, so the two gates measure
+        // distance the same way.
+        const atr = input.atr;
+        if (Number.isFinite(atr) && atr > 0) {
+          const implausible = input.plan.targets
+            .map((target) => ({
+              target,
+              atrDistance: Math.abs(target - input.plan.entry) / atr,
+            }))
+            .filter((t) => t.atrDistance > MAX_TARGET_ATR_DISTANCE);
+          if (implausible.length > 0) {
+            const worst = implausible[implausible.length - 1]!;
+            return {
+              status: "veto",
+              reasonAr: t("ar", "gate.plan.target_implausible", {
+                target: worst.target.toFixed(2),
+                atrDistance: worst.atrDistance.toFixed(1),
+                maxAtrDistance: String(MAX_TARGET_ATR_DISTANCE),
+              }),
+              evidence: {
+                atr,
+                maxAtrDistance: MAX_TARGET_ATR_DISTANCE,
+                implausibleTargets: implausible.map((t) => ({
+                  target: t.target,
+                  atrDistance: Number(t.atrDistance.toFixed(2)),
+                })),
+              },
+            };
+          }
+        }
+
         return {
           status: "pass",
           evidence: {

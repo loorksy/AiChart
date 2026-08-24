@@ -351,6 +351,8 @@ export const ar: Record<TranslationKey, string> = {
   "gate.strategy.registry_unavailable": "تعذّر قراءة سجل الاستراتيجيات المُحقّقة.",
   "gate.plan.incoherent":
     "الخطة غير متسقة هندسياً ({problems}) — لا تُصدر توصية بخطة تناقض شرط تفعيلها.",
+  "gate.plan.target_implausible":
+    "الهدف {target} يبعد {atrDistance} ATR عن الدخول (الحد {maxAtrDistance}) — مسافة لا يقطعها السعر ضمن صلاحية الخطة على هذا الفريم.",
   "gate.live_price.unavailable": "تعذّر جلب سعر حي للتحقق النهائي من الخطة.",
   "gate.live_price.plan_invalid": "الخطة لم تعد صالحة عند السعر الحي.",
   "gate.revalidation.unreachable":
