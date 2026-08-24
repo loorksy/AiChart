@@ -131,13 +131,28 @@ export const AGENT_TIMEOUTS = {
  *
  * Raised on 2026-08-24 with finalDecision (95→215s), because a complete Arabic
  * decision measures ~85s of generation and the old chain could not hold even one,
- * let alone the retry the loop promises. The worst serial chain now fits:
- * 28 (marketData) + 8 (fleet) + 5 (risk) + 215 (final) + 5 (drawing) = 261s < 270s.
+ * let alone the retry the loop promises.
+ *
+ * The worst serial chain, counted in full:
+ *   28 (marketData) + 8 (fleet) + 5 (risk) + 11 (visual) + 215 (final)
+ *   + 5 (drawing) = 272s
+ *
+ * The visual stage is the term this sum used to omit, and omitting it is what
+ * left the budget with no headroom at all while the comment claimed 9s of it.
+ * It is serial — awaited between the macro/COT block and the decision — and
+ * it costs the image budget PLUS a loopback hop, because an analysis running
+ * in the worker cannot capture in its own process and delegates the capture to
+ * the web process over HTTP (see `agent/visualEvidence.ts`). Measured live on
+ * 2026-08-24: three real TradingView frames in 8.86s, against a 9s image
+ * budget and an 11s wall. So 11s is the term, not 9.
+ *
+ * 275s keeps the invariant with the 3s of slack the old arithmetic only
+ * appeared to have.
  */
-export const TOTAL_RUN_BUDGET_MS = 270_000;
+export const TOTAL_RUN_BUDGET_MS = 275_000;
 
 /** MCP's client-side wait for run_market_analysis — the ceiling we stay under. */
-export const MCP_ANALYZE_TIMEOUT_MS = 280_000;
+export const MCP_ANALYZE_TIMEOUT_MS = 285_000;
 
 export interface RunBudget {
   /** Signal every I/O stage links to: aborts on client cancel OR budget end. */

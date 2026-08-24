@@ -15,7 +15,7 @@ import { mcpToolConfig } from "./schemas/index.js";
  * were raised on 2026-08-24: a complete Arabic decision measures ~85s of
  * generation, which the previous 145s/150s pair could not accommodate even one attempt.
  */
-const ANALYZE_TIMEOUT_MS = 280_000;
+const ANALYZE_TIMEOUT_MS = 285_000;
 /** Drawing needs one candles fetch for time anchoring. */
 const DRAW_TIMEOUT_MS = 30_000;
 

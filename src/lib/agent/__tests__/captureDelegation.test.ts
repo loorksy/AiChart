@@ -114,16 +114,19 @@ describe("a capture goes to the process that owns the tab", () => {
   });
 
   it("sends the bridge credentials and preserves live_session", async () => {
-    let sent: { url: string; init: RequestInit } | null = null;
+    // Collected into an array rather than a nullable local: TypeScript cannot
+    // see that the fetch callback ever ran, so `let sent = null` stays narrowed
+    // to `null` and every field read after the assert fails to compile.
+    const sent: { url: string; init: RequestInit }[] = [];
     const { deps: d } = deps({
       fetchImpl: (async (url: string, init: RequestInit) => {
-        sent = { url, init };
+        sent.push({ url, init });
         return jsonResponse(200, { ok: true, ...payload(3) });
       }) as never,
     });
     await captureWhereTheTabLives(1, BODY, d);
-    assert.ok(sent, "a request was made");
-    const { url, init } = sent!;
+    assert.equal(sent.length, 1, "exactly one request was made");
+    const { url, init } = sent[0]!;
     assert.match(url, /\/api\/agent\/chart\/multi-snapshot$/);
     const headers = init.headers as Record<string, string>;
     assert.equal(headers["x-agent-token"], "service-token-long-enough");
