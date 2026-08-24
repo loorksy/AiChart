@@ -199,6 +199,29 @@ async function callModelWithBlocks(
     .trim();
 }
 
+/**
+ * A PRESENTATIONAL cap that truncates instead of rejecting.
+ *
+ * These limits exist to bound what the card shows, not to police the model's
+ * thinking — and `toDecisionTrace` below already slices the same lists to the
+ * same sizes before rendering. Expressing them as `.max(n)` made zod reject
+ * the ENTIRE decision when the model returned a seventh reason, so a complete,
+ * correct trade plan was thrown away over a list length nobody would have
+ * noticed. Live on 2026-08-24: attempt 1 died on `keyReasons`/`riskWarnings`
+ * (>6) plus `opposing` (>4), attempt 2 on `publicReasoningSummary` (>5), and
+ * the operator was told the model "does not match the expected contract" —
+ * twice, after ~119s of perfectly good generation.
+ *
+ * Verbosity is not a contract violation. Take the first n and move on.
+ *
+ * Deliberately NOT used for `targets`: a take-profit is a TRADING LEVEL, and
+ * silently dropping one would change the plan the operator acts on. Levels
+ * stay strict and still reject.
+ */
+function capped<T extends z.ZodTypeAny>(item: T, n: number) {
+  return z.array(item).transform((xs) => xs.slice(0, n));
+}
+
 const PlanLevelsSchema = z.object({
   entryLow: z.number().positive().optional(),
   entryHigh: z.number().positive().optional(),
@@ -208,15 +231,14 @@ const PlanLevelsSchema = z.object({
 });
 
 const DecisionTraceSchema = z.object({
-  hypotheses: z
-    .array(
-      z.object({
-        scenario: z.string().max(240),
-        supporting: z.array(z.string().max(160)).max(4),
-        opposing: z.array(z.string().max(160)).max(4),
-      }),
-    )
-    .max(3),
+  hypotheses: capped(
+    z.object({
+      scenario: z.string().max(240),
+      supporting: capped(z.string().max(160), 4),
+      opposing: capped(z.string().max(160), 4),
+    }),
+    3,
+  ),
   chosenBecause: z.string().max(400),
   planTypeBecause: z.string().max(400),
 });
@@ -250,15 +272,15 @@ const FinalDecisionModelSchema = z.object({
   validityCandles: z.number().int().min(1).max(96),
   confidence: z.number().min(0).max(1),
   summary: z.string().min(10).max(900),
-  keyReasons: z.array(z.string()).max(6),
-  riskWarnings: z.array(z.string()).max(6),
-  publicReasoningSummary: z.array(z.string()).max(5),
+  keyReasons: capped(z.string(), 6),
+  riskWarnings: capped(z.string(), 6),
+  publicReasoningSummary: capped(z.string(), 5),
   decisionTrace: DecisionTraceSchema,
   drawingAdvice: z.object({
     shouldDraw: z.boolean(),
     reason: z.string(),
   }),
-  selectedCandidateIds: z.array(z.string()).max(8).optional(),
+  selectedCandidateIds: capped(z.string(), 8).optional(),
   /**
    * One question the model wants answered from the chart before finalising.
    *
