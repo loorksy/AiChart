@@ -17,13 +17,6 @@ function nowSec(): number {
   return Math.round(Date.now() / 1000);
 }
 
-/** Same tick heuristic as the datafeed's pricescale. */
-function minTickFor(symbol: string): number {
-  const s = symbol.toUpperCase();
-  if (s.includes("JPY")) return 0.001;
-  if (s.includes("XAU") || s.includes("XAG")) return 0.01;
-  return 0.00001;
-}
 
 type PricedPointLike = { time: number; price: number };
 
@@ -98,6 +91,15 @@ const PATTERN_TOOL: Record<string, { tool: string; pts: number }> = {
 // Real, user-editable chart drawings: selectable, draggable, adjustable
 // (e.g. widen a channel or move the SL of a position) and listed in the
 // objects tree — exactly like manually-drawn TradingView tools.
+/**
+ * How far the risk/reward boxes extend to the right of the entry, in bars.
+ *
+ * A fixed span, deliberately: extending to "now" would make the box grow on
+ * every redraw, which is the drift this drawing exists to avoid. 24 bars is
+ * wide enough to read at a glance and short enough not to swallow the chart.
+ */
+const LATERAL_BARS = 24;
+
 const EDITABLE = {
   lock: false,
   disableSelection: false,
@@ -241,36 +243,58 @@ export class TvDrawingManager {
 
   /** TV long/short position tool: entry point + profit/stop levels in ticks. */
   private position(
-    kind: "long_position" | "short_position",
     entry: PricedPointLike,
     takeProfit: number,
     stopLoss: number,
-    minTick: number,
     barSec: number,
   ): void {
-    const profitLevel = Math.max(1, Math.round(Math.abs(takeProfit - entry.price) / minTick));
-    const stopLevel = Math.max(1, Math.round(Math.abs(entry.price - stopLoss) / minTick));
-    // The risk/reward tools carry TWO anchors: the entry and a lateral-extent
-    // point. Created with a single point, the second anchor is left for
-    // TradingView to complete on the first pointer interaction — which is
-    // exactly the reported "the tool moves the moment the entry is touched".
-    // Give it both anchors up front so it stays where it was drawn; fall back
-    // to the single-point form if this library build rejects the pair.
-    const extent: PricedPointLike = {
-      time: entry.time + Math.max(60, barSec) * 24,
-      price: entry.price,
+    // Two rectangles, not TradingView's position tool.
+    //
+    // `long_position`/`short_position` are declared under `CreateShapeOptions`
+    // — the SINGLE-point API. The previous attempt passed two anchors to
+    // `createMultipointShape` to pin the lateral extent, so the library
+    // rejected the call on every draw and the `.catch` fell back to the
+    // single-point form, silently. That form leaves the second anchor for
+    // TradingView to complete on the first pointer interaction or as price
+    // advances, which is precisely the reported "the box keeps moving until
+    // price reaches the entry" — the box was never anchored at both ends, and
+    // the silent fallback is why the code looked fixed while the chart was not.
+    // `profitLevel`/`stopLevel` compounded it: neither appears in this build's
+    // typings, so those overrides were not necessarily applied either.
+    //
+    // A rectangle IS a multipoint line tool. Drawing the risk and reward boxes
+    // ourselves puts both anchors under our control, so the box occupies the
+    // span it was drawn for and stays there — which is what the performance
+    // report needs, since a box that drifts to "now" no longer marks where the
+    // plan was actually issued.
+    const left = entry.time;
+    const right = left + Math.max(60, barSec) * LATERAL_BARS;
+    const box = (
+      from: number,
+      to: number,
+      color: string,
+      label: string,
+    ): void => {
+      this.multi(
+        [
+          { time: left, price: from },
+          { time: right, price: to },
+        ],
+        "rectangle",
+        {
+          linecolor: color,
+          linewidth: 1,
+          backgroundColor: color,
+          fillBackground: true,
+          transparency: 82,
+        },
+        label,
+      );
     };
-    const options = {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      shape: kind as any,
-      ...EDITABLE,
-      overrides: { profitLevel, stopLevel },
-    };
-    this.track(
-      this.chart
-        .createMultipointShape([entry, extent] as ShapePoint[], options)
-        .catch(() => this.chart.createShape(entry as ShapePoint, options)),
-    );
+    // Reward above entry for a long, below for a short — the geometry follows
+    // the prices themselves, so no direction flag is needed beyond the label.
+    box(entry.price, takeProfit, "#22c55e", "منطقة الربح");
+    box(entry.price, stopLoss, "#ef4444", "منطقة الخسارة");
   }
 
   private drawOne(d: ChartDrawing, symbol: string, barSec: number): void {
@@ -287,7 +311,7 @@ export class TvDrawingManager {
       const tp = (d.meta?.takeProfit as number) ?? pts[1]?.price;
       const sl = (d.meta?.stopLoss as number) ?? pts[2]?.price;
       if (entry && tp && sl) {
-        this.position(t, entry, tp, sl, minTickFor(symbol), barSec);
+        this.position(entry, tp, sl, barSec);
       }
       return;
     }
@@ -450,11 +474,9 @@ export class TvDrawingManager {
         // so re-applies reproduce the exact same shape instead of drifting to
         // wall-clock "now" on every redraw.
         this.position(
-          rec.action === "buy" ? "long_position" : "short_position",
           { time: stableAnchorSec(rec, barSec), price: entry },
           tp1,
           sl,
-          minTickFor(symbol),
           barSec,
         );
         // Extra targets beyond TP1 as labeled blue lines.

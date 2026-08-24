@@ -569,7 +569,7 @@ describe("normalizeActivationRule — instrument tolerance", () => {
   it("reaches every leaf of a composite", () => {
     const composite: ActivationRule = {
       kind: "composite",
-      op: "all",
+      operator: "all" as const,
       rules: [
         { kind: "price_touch", level: 4000 },
         { kind: "candle_close_below", level: 3990, tolerance: 2 },
