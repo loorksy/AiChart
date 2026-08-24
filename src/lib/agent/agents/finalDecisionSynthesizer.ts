@@ -36,6 +36,7 @@ import {
   explainActivationRuleIncoherence,
   normalizeActivationRule,
 } from "@/lib/recommendations/activationRule";
+import { entryTolerance } from "@/lib/agent/trading/buildTradeCandidates";
 import {
   buildEvidenceLevels,
   deriveExecutionState,
@@ -1631,8 +1632,22 @@ function applyModelDecision(
   const activationClass: "immediate" | "conditional" =
     planType === "immediate" ? "immediate" : "conditional";
   const netRr = selected?.netRr;
+  // The tolerance the tracker will grade this rule with. Without it an omitted
+  // tolerance became `?? 0` and the plan waited for an exact-cent touch that
+  // real price action rarely delivers — the setup happened, the rule disagreed,
+  // and the performance report recorded a trade that was never taken.
   const normalizedActivationRule = activationRule
-    ? normalizeActivationRule(activationRule, input.market.interval)
+    ? normalizeActivationRule(
+        activationRule,
+        input.market.interval,
+        input.market.currentPrice != null
+          ? entryTolerance({
+              symbolPrice: input.market.currentPrice,
+              spread: input.market.spread,
+              atr: input.market.atr,
+            })
+          : null,
+      )
     : undefined;
   // Single source of truth (the XAUUSD incident): the sentence the user reads
   // is DERIVED from the structured rule the tracker grades, so they can never

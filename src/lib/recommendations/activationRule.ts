@@ -251,26 +251,52 @@ export function serializeActivationRule(rule: ActivationRule): string {
 /**
  * Fill mechanical defaults so the STORED rule is always complete.
  *
- * Exactly one default exists: a leaf that names no timeframe gets the plan's
- * own. That is the boundary between ergonomics and inference — the plan's
- * timeframe is a fact the producer already stated elsewhere in the same
- * payload, not a guess about what its prose meant. Nothing else is defaulted:
- * no invented direction, no invented level, no rule synthesized from text.
+ * Two defaults exist, and both are facts about the plan rather than guesses
+ * about its prose. A leaf that names no timeframe gets the plan's own. A leaf
+ * that names no tolerance gets the instrument's — see below. Nothing else is
+ * defaulted: no invented direction, no invented level, no rule synthesized
+ * from text.
+ *
+ * **Why tolerance is a default and not a producer's duty.** An omitted
+ * tolerance was read as `?? 0` at grading time, which is not "no tolerance
+ * chosen" — it is the far stronger claim that price must hit the level to the
+ * cent, and no producer ever made that claim. Live on 2026-08-24 a XAUUSD
+ * plan carried
+ *   {"kind":"rejection_confirmed","level":4658.96,"direction":"below",…}
+ * with no tolerance at all; price came within a fraction of the entry, the
+ * setup happened on the chart, and the plan sat unactivated — which then also
+ * corrupts the performance report, since a trade that was really there is
+ * recorded as never taken. Neither the decision model nor the MCP agents have
+ * ever emitted this field, so demanding it is a producer trap of exactly the
+ * kind the `timeframe` note above describes.
+ *
+ * `tolerance` is absolute price units, so it cannot be a constant here — the
+ * caller passes the instrument's own scale (`entryTolerance`). When the caller
+ * knows no scale, nothing is filled and the old exact-match behaviour stands.
  */
 export function normalizeActivationRule(
   rule: ActivationRule,
   planTimeframe: string,
+  instrumentTolerance?: number | null,
 ): ActivationRule {
   const tf = planTimeframe.trim();
+  const tol =
+    typeof instrumentTolerance === "number" &&
+    Number.isFinite(instrumentTolerance) &&
+    instrumentTolerance > 0
+      ? instrumentTolerance
+      : null;
+  // A producer that stated a tolerance owns it, including a deliberate 0.
+  const fill = <T extends LeafActivationRule>(leaf: T): T => {
+    const withTf = leaf.timeframe ? leaf : { ...leaf, timeframe: tf };
+    return tol != null && withTf.tolerance == null
+      ? { ...withTf, tolerance: tol }
+      : withTf;
+  };
   if (rule.kind === "composite") {
-    return {
-      ...rule,
-      rules: rule.rules.map((leaf) =>
-        leaf.timeframe ? leaf : { ...leaf, timeframe: tf },
-      ),
-    };
+    return { ...rule, rules: rule.rules.map(fill) };
   }
-  return rule.timeframe ? rule : { ...rule, timeframe: tf };
+  return fill(rule);
 }
 
 /**

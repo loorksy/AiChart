@@ -692,7 +692,19 @@ function classifyEntryType(input: {
   return input.entry > input.currentPrice ? "sell_limit" : "sell_stop";
 }
 
-function entryTolerance(input: {
+/**
+ * How near counts as AT a level, in price units.
+ *
+ * Exported because "close enough" must be one number across the platform: the
+ * candidate builder used it to classify an entry while the stored activation
+ * rule carried no tolerance at all, so the tracker graded the same level to
+ * the cent. Live on 2026-08-24 a XAUUSD plan sat unactivated after price came
+ * within a fraction of the entry — the setup happened, the rule said it had
+ * not. A level is a zone; the only question is how wide, and it is the
+ * instrument that answers: the spread you actually pay, a fraction of the
+ * candle's own range, and never finer than the tick the venue quotes.
+ */
+export function entryTolerance(input: {
   symbolPrice: number;
   spread?: number | null;
   atr?: number | null;

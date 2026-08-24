@@ -523,3 +523,84 @@ describe("producer ergonomics — the traps that burned real runs", () => {
     assert.ok(parseActivationRule(emitted));
   });
 });
+
+describe("normalizeActivationRule — instrument tolerance", () => {
+  // The live incident (2026-08-24, XAUUSD): the STORED rule was exactly
+  //   {"kind":"rejection_confirmed","level":4658.96,"direction":"below","timeframe":"15m"}
+  // with no tolerance, so grading read `?? 0` and demanded an exact-cent
+  // touch. Price came within a fraction of the entry, the rejection happened
+  // on the chart, and the plan stayed unactivated — which also tells the
+  // performance report a trade was never taken when it really was.
+  const liveRule: ActivationRule = {
+    kind: "rejection_confirmed",
+    level: 4658.96,
+    direction: "below",
+    timeframe: "15m",
+  };
+
+  it("fills the tolerance a producer omitted", () => {
+    const out = normalizeActivationRule(liveRule, "15m", 0.9);
+    assert.equal("tolerance" in out ? out.tolerance : undefined, 0.9);
+  });
+
+  it("never overrides a tolerance the producer stated — including 0", () => {
+    const explicit = normalizeActivationRule(
+      { ...liveRule, tolerance: 0 },
+      "15m",
+      0.9,
+    );
+    assert.equal("tolerance" in explicit ? explicit.tolerance : undefined, 0);
+  });
+
+  it("changes nothing when the caller knows no instrument scale", () => {
+    assert.deepEqual(normalizeActivationRule(liveRule, "15m"), liveRule);
+    assert.deepEqual(normalizeActivationRule(liveRule, "15m", null), liveRule);
+    assert.deepEqual(normalizeActivationRule(liveRule, "15m", 0), liveRule);
+    assert.deepEqual(normalizeActivationRule(liveRule, "15m", NaN), liveRule);
+  });
+
+  it("still fills the timeframe default, and both at once", () => {
+    const bare = { kind: "price_touch" as const, level: 4000 };
+    const out = normalizeActivationRule(bare, "1h", 0.5);
+    assert.equal(out.kind === "price_touch" ? out.timeframe : null, "1h");
+    assert.equal(out.kind === "price_touch" ? out.tolerance : null, 0.5);
+  });
+
+  it("reaches every leaf of a composite", () => {
+    const composite: ActivationRule = {
+      kind: "composite",
+      op: "all",
+      rules: [
+        { kind: "price_touch", level: 4000 },
+        { kind: "candle_close_below", level: 3990, tolerance: 2 },
+      ],
+    };
+    const out = normalizeActivationRule(composite, "15m", 0.5);
+    assert.equal(out.kind, "composite");
+    if (out.kind !== "composite") return;
+    assert.equal(out.rules[0]!.tolerance, 0.5, "omitted → filled");
+    assert.equal(out.rules[1]!.tolerance, 2, "stated → untouched");
+    assert.ok(out.rules.every((r) => r.timeframe === "15m"));
+  });
+
+  it("turns the near-miss into the activation it always was", () => {
+    // The candle that SHOULD have activated the live plan: it pierced to
+    // within 0.3 of the level and closed decisively back below.
+    const candle: TrackerCandle = {
+      time: 1_787_600_000_000,
+      open: 4652,
+      high: 4658.66,
+      low: 4650,
+      close: 4651,
+    };
+    const graded = (rule: ActivationRule) =>
+      evaluateActivationRule(rule, [candle]).activated;
+
+    assert.equal(graded(liveRule), false, "exact-cent grading: the bug");
+    assert.equal(
+      graded(normalizeActivationRule(liveRule, "15m", 0.9)),
+      true,
+      "with the instrument's own tolerance the setup counts",
+    );
+  });
+});

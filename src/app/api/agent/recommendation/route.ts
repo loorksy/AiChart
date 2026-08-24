@@ -37,6 +37,7 @@ import { resolveCostEvidence } from "@/lib/agent/marketContext/costEvidence";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { isCandleComplete } from "@/lib/ohlc/candleTime";
 import { atr as computeAtr } from "@/lib/indicators";
+import { entryTolerance } from "@/lib/agent/trading/buildTradeCandidates";
 import {
   assessTradability,
   type TradabilityAssessment,
@@ -325,13 +326,18 @@ export async function POST(req: NextRequest) {
     const entryHigh = body.entry_high ?? body.entry ?? null;
     let executionState: string | null = null;
     let tradability: TradabilityAssessment | null = null;
+    // Hoisted for the same reason the two above are: the WRITE below needs
+    // them, and they are learned inside the plan branch. The activation rule
+    // is normalized against this price and ATR, so a rule stored without them
+    // would be graded to the cent.
+    let currentPrice: number | null = null;
+    let planAtr: number | null = null;
     if (body.action !== "wait" && body.plan_type != null) {
       // getUnifiedPrice reads the operator's BROKER mid, which is 0 whenever
       // no broker connection is live — so every immediate plan created through
       // this surface read `awaiting_activation` even with price sitting inside
       // the entry zone. The warehouse close is a real observed price and is the
       // honest second source; only when neither exists do we fail safe.
-      let currentPrice: number | null = null;
       try {
         const { price } = await getUnifiedPrice(body.symbol, DEFAULT_MARKET, userId);
         currentPrice = price > 0 ? price : null;
@@ -374,7 +380,6 @@ export async function POST(req: NextRequest) {
       // cannot be read the assessment fails safe to watch_only rather than
       // guessing. This is the check whose absence let "sell from a level
       // 5 ATR above the market" store as a normal conditional trade.
-      let planAtr: number | null = null;
       try {
         const recent = await fetchOhlc({
           userId,
@@ -505,10 +510,19 @@ export async function POST(req: NextRequest) {
       entry_low: entryLow,
       entry_high: entryHigh,
       activation_condition: body.activation_condition ?? null,
-      // The one mechanical default: a rule that names no timeframe gets the
-      // plan's own, so the STORED rule is always complete and gradable.
+      // Two mechanical defaults: a rule that names no timeframe gets the
+      // plan's own, and one that names no tolerance gets the instrument's, so
+      // the STORED rule is always complete and gradable. Without the second an
+      // omitted tolerance graded as an exact-cent touch, and plans whose setup
+      // genuinely occurred were recorded as never taken.
       activation_rule: body.activation_rule
-        ? normalizeActivationRule(body.activation_rule, storedTimeframe)
+        ? normalizeActivationRule(
+            body.activation_rule,
+            storedTimeframe,
+            currentPrice != null
+              ? entryTolerance({ symbolPrice: currentPrice, atr: planAtr })
+              : null,
+          )
         : null,
       invalidation_rule: body.invalidation_rule ?? null,
       alternative_scenario: body.alternative_scenario ?? null,
