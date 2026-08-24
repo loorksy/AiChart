@@ -489,7 +489,39 @@ function providerAnswered(kind: SynthesizerFailureKind): boolean {
 }
 
 /** Classify a raw provider/parse error into an actionable failure kind. */
-export function classifySynthesizerError(error: unknown): {
+/**
+ * What the model actually put at a path the contract rejected.
+ *
+ * A Zod issue names the key that is MISSING; it can never name the key the
+ * model used instead. So "proposedLevels.preferredEntry expected number,
+ * received undefined" was true, unactionable, and indistinguishable between
+ * the two very different faults behind it: a model that omitted the price, and
+ * a model that supplied it under another name. Live on 2026-08-24 that message
+ * appeared three times with no way to tell which — the reply itself is never
+ * stored, so the evidence was gone the moment the run ended.
+ *
+ * This prints the SHAPE beside the complaint — sibling keys and their types,
+ * never their values, so no price and nothing user-written enters a log.
+ */
+function shapeAt(raw: unknown, path: PropertyKey[]): string | null {
+  if (path.length === 0) return null;
+  let node: unknown = raw;
+  for (const step of path.slice(0, -1)) {
+    if (!node || typeof node !== "object") return null;
+    node = (node as Record<PropertyKey, unknown>)[step];
+  }
+  if (!node || typeof node !== "object" || Array.isArray(node)) return null;
+  const keys = Object.entries(node as Record<string, unknown>)
+    .slice(0, 12)
+    .map(([k, v]) => `${k}:${v === null ? "null" : Array.isArray(v) ? "array" : typeof v}`);
+  return keys.length ? keys.join(",") : null;
+}
+
+export function classifySynthesizerError(
+  error: unknown,
+  /** The parsed reply, when the caller still holds it — shape only, no values. */
+  raw?: unknown,
+): {
   kind: SynthesizerFailureKind;
   retryable: boolean;
   detail: string;
@@ -515,7 +547,17 @@ export function classifySynthesizerError(error: unknown): {
       retryable: true,
       detail: `القرار المُعاد لا يطابق العقد: ${error.issues
         .slice(0, 3)
-        .map((issue) => `${issue.path.join(".") || "root"} ${issue.message}`)
+        .map((issue) => {
+          const where = issue.path.join(".") || "root";
+          const shape = raw === undefined ? null : shapeAt(raw, issue.path);
+          // The shape goes to the model too, on the corrective retry: telling
+          // it "you sent entry, stop" alongside "preferredEntry is required"
+          // is a correction it can act on, where the bare complaint reads as a
+          // demand for a field it believes it already provided.
+          return shape
+            ? `${where} ${issue.message} (المُرسَل: ${shape})`
+            : `${where} ${issue.message}`;
+        })
         .join("; ")}`,
     };
   }
@@ -966,7 +1008,10 @@ export async function runFinalDecisionSynthesizer(
     progress.elapsedMs = Date.now() - startedAt;
     deps.onProgress?.({ ...progress });
   };
+  /** This attempt's parsed reply, so a schema failure can describe its shape. */
+  let replyObject: unknown;
   for (let attempt = 1; attempt <= 2; attempt++) {
+    replyObject = undefined;
     progress.attempt = attempt;
     report();
     // Did THIS attempt's call already come back? The success path counts the
@@ -991,7 +1036,10 @@ ${correction}`
       progress.completedCalls += 1;
       replyCounted = true;
       report();
-      const candidate = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
+      // Held in scope so a schema failure can report what the model actually
+      // sent, not merely which key the contract missed.
+      replyObject = JSON.parse(extractJson(raw));
+      const candidate = FinalDecisionModelSchema.parse(replyObject);
       // Issue-time price coherence (the XAUUSD conditional-sell incident):
       // schema validation cannot see the live price, so a rule that is
       // already satisfied — or that grades a different event than the
@@ -1022,7 +1070,7 @@ ${correction}`
       failure = null;
       break;
     } catch (error) {
-      const classified = classifySynthesizerError(error);
+      const classified = classifySynthesizerError(error, replyObject);
       failure = { ...classified, attempts: attempt };
       progress.lastFailureKind = classified.kind;
       progress.lastFailureDetail = classified.detail.slice(0, 200);
