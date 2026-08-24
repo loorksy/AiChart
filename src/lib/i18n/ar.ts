@@ -548,6 +548,31 @@ export const ar: Record<TranslationKey, string> = {
   "agent.card.tracked": "قيد المتابعة",
   "agent.card.skills": "المهارات المُحمّلة",
 
+  // --- بطاقة الإشارة: الرأس الذي يُقرأ بلمحة، والتفاصيل خلف زرّ واحد ---
+  "agent.signal.buy": "شراء",
+  "agent.signal.sell": "بيع",
+  "agent.signal.none": "لا توصية الآن",
+  "agent.signal.strength": "قوة الإشارة",
+  "agent.signal.why": "لماذا هذا القرار؟",
+  "agent.signal.what_plan": "ماذا كانت الخطة؟",
+  "agent.signal.hide": "إخفاء التفاصيل",
+  "agent.signal.live": "السعر الآن",
+  "agent.signal.target_n": "هدف {n}",
+  "agent.signal.watch": "ما ينبغي الانتباه له",
+  "agent.signal.evidence": "قوة الأدلة",
+  "agent.signal.blocked_by": "الفحص الذي رفض الخطة",
+  "agent.signal.other_gates_passed": "الفحوص الأخرى مرّت: {names}.",
+  "agent.signal.source": "المصدر",
+  "agent.signal.charts": "الشارت",
+  "agent.signal.no_charts": "بلا لقطات",
+
+  // درجة كل بُعد. كانت تُطبع نيئةً بالإنجليزية ملتصقةً بنصّ عربي بلا فاصل
+  // ("قوة الإشارة الحالية 52%.moderate") — والاسم الداخلي ليس جملة، وليس بأي لغة.
+  "dimension.strong": "قوي",
+  "dimension.moderate": "متوسط",
+  "dimension.weak": "ضعيف",
+  "dimension.unavailable": "غير متاح",
+
   "outcome.execution_validated": "تحليل مع صلاحية تنفيذ",
   "outcome.descriptive_only": "تحليل للاطّلاع — بلا صلاحية تنفيذ",
   "outcome.operational_blocker": "تعذّر الإكمال لسبب تشغيلي",

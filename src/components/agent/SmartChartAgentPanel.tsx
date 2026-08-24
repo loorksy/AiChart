@@ -443,6 +443,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   result={m.result}
                   onOption={(prompt) => void sendAndFollow(prompt)}
                   disabled={running}
+                  symbol={symbol}
+                  interval={interval}
                 />
               ) : null}
                 </>
