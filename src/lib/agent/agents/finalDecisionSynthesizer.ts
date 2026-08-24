@@ -105,20 +105,34 @@ export const DECISION_OUTPUT_TOKENS = 12000;
 /**
  * Per-ATTEMPT HTTP budget for the decision call.
  *
- * The stage that wraps this whole function allows 95s and the loop below
- * promises ONE retry, so a single attempt cannot be allowed to spend the lot.
- * It previously could: the global LLM timeout is 120s — longer than the stage
- * itself — so attempt 1 either answered or held the line until the stage died,
- * the retry never ran, and the operator got "the final decision did not finish
- * within the allowed time" with nothing naming the provider or the wait.
+ * A single attempt must not be able to spend the whole stage — the global LLM
+ * timeout is 120s, longer than the stage itself, so without a per-attempt cap
+ * attempt 1 either answered or held the line until the stage died, the retry
+ * never ran, and the operator got "the final decision did not finish within
+ * the allowed time" with nothing naming the provider or the wait.
  *
- * 42s x 2 attempts + the 700ms pause fits inside 95s with room for the browse
- * round. It is deliberately NOT a raise of the stage deadline: a call that
- * exceeds this was going to be killed by the stage anyway — the difference is
- * that now it is killed by name ("Claude claude-sonnet-4-6 timed out after
- * 42000ms") and the second attempt still gets to run.
+ * The value is measured, and the measurement had to be redone: 42s came from a
+ * 2026-07-30 probe that timed calls of 29-38s. Those calls were being CUT OFF
+ * at the old ~4096-token ceiling — the probe measured a truncated answer, not
+ * a complete one. Raising DECISION_OUTPUT_TOKENS to 12000 let the model finish,
+ * and finishing is what costs the time: a live probe on 2026-08-24 against
+ * claude-sonnet-4-6 produced a full Arabic decision object of 4739 output
+ * tokens in 84.5s — ~56 tok/s, stop_reason=end_turn, nowhere near the ceiling.
+ * Arabic costs multiples of English per character, and the decision is one
+ * large structured object, so this is the honest cost of a complete answer.
+ *
+ * 42s therefore guaranteed failure: both attempts were killed mid-generation
+ * (2 x 42s + the 700ms pause = the 84.7s stage failure seen in production).
+ * 105s fits the measured 84.5s plus headroom for the real prompt's much larger
+ * input and a slower moment on the provider.
+ *
+ * Only ONE such attempt fits the stage now, and that is the right trade: the
+ * retry exists for truncated / malformed / schema-mismatched replies, and
+ * those fail FAST (the response arrives, then parsing rejects it), leaving
+ * plenty of stage budget. A timeout has no useful retry — asking again buys
+ * nothing but another timeout.
  */
-export const DECISION_ATTEMPT_TIMEOUT_MS = 42_000;
+export const DECISION_ATTEMPT_TIMEOUT_MS = 105_000;
 
 /**
  * Raised budget for a retry AFTER a truncated reply. Asking again with the

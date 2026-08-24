@@ -35,7 +35,7 @@ import { inboundTraceId } from "@/lib/traceCorrelation";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import type { Recommendation } from "@/lib/types";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 const ANALYSIS_COST = 4;
 
 const schema = z.object({

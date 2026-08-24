@@ -6,8 +6,16 @@ import { bridgeCall } from "./helpers.js";
 import { startJob } from "./jobStore.js";
 import { mcpToolConfig } from "./schemas/index.js";
 
-/** Full AI analysis can take ~2 minutes (model reasoning + chart vision). */
-const ANALYZE_TIMEOUT_MS = 150_000;
+/**
+ * Full AI analysis can take ~4 minutes worst case (model reasoning + chart vision).
+ *
+ * Must stay ABOVE the platform's TOTAL_RUN_BUDGET_MS (270s in
+ * src/lib/agent/timeout.ts) so the caller receives the run's own three-state
+ * envelope rather than a transport timeout that says nothing about why. Both
+ * were raised on 2026-08-24: a complete Arabic decision measures ~85s of
+ * generation, which the previous 145s/150s pair could not accommodate even one attempt.
+ */
+const ANALYZE_TIMEOUT_MS = 280_000;
 /** Drawing needs one candles fetch for time anchoring. */
 const DRAW_TIMEOUT_MS = 30_000;
 

@@ -106,31 +106,38 @@ export const AGENT_TIMEOUTS = {
   // tightly: a missing view costs the decision some context, a slow one would
   // cost it the whole run.
   visualEvidence: 9_000,
-  // Sized from measurement, not hope: single deep-tier calls on live XAUUSD
-  // run 29-38s (probe of 2026-07-30), and the loop above promises ONE retry.
-  // 60s structurally forbade that retry — attempt 2 was always killed mid-
-  // flight and the operator saw a generic timeout instead of the real fault.
-  // 95s fits two worst-case attempts plus the 700ms pause, and stays inside
-  // TOTAL_RUN_BUDGET_MS with the earlier stages' worst case.
-  finalDecision: 95_000,
+  // Sized from measurement, and the measurement was redone on 2026-08-24.
+  // The old 95s came from a 2026-07-30 probe of 29-38s calls — but those were
+  // being truncated at the then-current output ceiling, so the probe timed a
+  // cut-off answer. With DECISION_OUTPUT_TOKENS raised to 12000 the model
+  // actually finishes, and a complete Arabic decision measured 84.5s / 4739
+  // output tokens (~56 tok/s) against claude-sonnet-4-6. 95s could not hold
+  // even one such attempt, so every live analysis died on the stage deadline.
+  // 215s holds TWO full attempts (105s cap each) plus the 700ms pause, which is
+  // what the retry loop promises: a truncated or schema-mismatched reply gets a
+  // real second chance instead of being killed mid-generation.
+  finalDecision: 215_000,
   general: 20_000,
 } as const;
 
 /**
  * Total wall-clock budget for one direct agent run (RELIABILITY_PLAN.md item 2).
  *
- * It must stay BELOW the MCP tool's 150s wait so the caller receives a real
- * three-state envelope instead of a transport timeout with no result. The web
- * route's own `maxDuration` (180s) stays above this, leaving room to compose
- * and send the final event after the budget trips.
+ * It must stay BELOW the MCP tool's wait so the caller receives a real
+ * three-state envelope instead of a transport timeout with no result, and the
+ * web route's own `maxDuration` stays above BOTH, leaving room to compose and
+ * send the final event after the budget trips. The ordering is the invariant:
+ *   stage budgets  <  TOTAL_RUN_BUDGET_MS  <  MCP_ANALYZE_TIMEOUT_MS  <  maxDuration
  *
- * Raised with marketData (10→28s) so the worst serial chain still fits:
- * 28 + 8 (fleet) + 5 (risk) + 95 (final) + 5 (drawing) = 141s < 145s.
+ * Raised on 2026-08-24 with finalDecision (95→215s), because a complete Arabic
+ * decision measures ~85s of generation and the old chain could not hold even one,
+ * let alone the retry the loop promises. The worst serial chain now fits:
+ * 28 (marketData) + 8 (fleet) + 5 (risk) + 215 (final) + 5 (drawing) = 261s < 270s.
  */
-export const TOTAL_RUN_BUDGET_MS = 145_000;
+export const TOTAL_RUN_BUDGET_MS = 270_000;
 
 /** MCP's client-side wait for run_market_analysis — the ceiling we stay under. */
-export const MCP_ANALYZE_TIMEOUT_MS = 150_000;
+export const MCP_ANALYZE_TIMEOUT_MS = 280_000;
 
 export interface RunBudget {
   /** Signal every I/O stage links to: aborts on client cancel OR budget end. */
