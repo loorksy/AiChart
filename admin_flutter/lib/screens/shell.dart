@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
@@ -38,6 +40,44 @@ class AdminShell extends StatefulWidget {
 
 class _AdminShellState extends State<AdminShell> {
   int _index = 0;
+
+  /// Conversations with something the operator has not read.
+  ///
+  /// On the rail, because a badge that only appears once you are already on
+  /// the Support screen tells you nothing you did not know by being there.
+  int _supportUnread = 0;
+  Timer? _unreadTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshUnread();
+    _unreadTimer =
+        Timer.periodic(const Duration(seconds: 60), (_) => _refreshUnread());
+  }
+
+  @override
+  void dispose() {
+    _unreadTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshUnread() async {
+    try {
+      final count = await widget.repo.supportUnreadTotal();
+      if (mounted) setState(() => _supportUnread = count);
+    } catch (_) {
+      // A badge is not worth an error banner; the Support screen itself
+      // reports a failure the operator can act on.
+    }
+  }
+
+  /// The destination icon, wearing its count when it has one.
+  Widget _icon(IconData data, String label, String supportLabel) {
+    final icon = Icon(data);
+    if (label != supportLabel || _supportUnread <= 0) return icon;
+    return Badge.count(count: _supportUnread, child: icon);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -131,8 +171,8 @@ class _AdminShellState extends State<AdminShell> {
                         destinations: [
                           for (final d in destinations)
                             NavigationRailDestination(
-                              icon: Icon(d.$1),
-                              selectedIcon: Icon(d.$2),
+                              icon: _icon(d.$1, d.$3, l.t('support')),
+                              selectedIcon: _icon(d.$2, d.$3, l.t('support')),
                               label: Text(d.$3),
                             ),
                         ],
@@ -181,8 +221,11 @@ class _AdminShellState extends State<AdminShell> {
               ),
               for (var i = 0; i < destinations.length; i++)
                 ListTile(
-                  leading: Icon(
-                      i == _index ? destinations[i].$2 : destinations[i].$1),
+                  leading: _icon(
+                    i == _index ? destinations[i].$2 : destinations[i].$1,
+                    destinations[i].$3,
+                    l.t('support'),
+                  ),
                   title: Text(destinations[i].$3),
                   selected: i == _index,
                   onTap: () {

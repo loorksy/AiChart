@@ -26,6 +26,12 @@ export async function GET(req: NextRequest) {
     await requireAdminWith("tickets");
     await initDb();
     const status = req.nextUrl.searchParams.get("status") ?? undefined;
+    // The rail's badge, and nothing else. It is polled, so it must not drag
+    // two hundred conversation rows and a per-row count across the wire every
+    // minute just to draw one number.
+    if (req.nextUrl.searchParams.get("count") === "1") {
+      return NextResponse.json({ ok: true, unread_total: await adminUnreadTotal() });
+    }
     const ticketId = req.nextUrl.searchParams.get("ticket");
     if (ticketId) {
       const thread = await getTicket(Number(ticketId));

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -180,11 +181,24 @@ class _TicketDialogState extends State<_TicketDialog> {
   bool _busy = false;
   PickedFile? _pending;
   String? _error;
+  Timer? _poll;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // An open conversation that only updates when you press refresh is a
+    // ticket view wearing a chat interface.
+    _poll = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!_busy) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _reply.dispose();
+    super.dispose();
   }
 
   void _load() {

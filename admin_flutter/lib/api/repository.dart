@@ -182,6 +182,11 @@ class AdminRepository {
   Future<List<TicketRow>> tickets({String? status}) async =>
       (await supportInbox(status: status)).tickets;
 
+  /// Just the number for the rail's badge — no rows, no per-row counts.
+  Future<int> supportUnreadTotal() async => asInt(
+      (await api.getJson('/api/admin/support', query: {'count': '1'}))[
+          'unread_total']);
+
   Future<TicketThread> ticket(int id) async => TicketThread.fromJson(
       await api.getJson('/api/admin/support', query: {'ticket': '$id'}));
 
