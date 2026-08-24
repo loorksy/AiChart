@@ -254,6 +254,9 @@ export function buildGates(input: GateInputs): GateBuildResult {
           targets: input.plan.targets,
           currentPrice: price,
           atr: input.atr,
+          // Without this every waiting plan was judged by the market fill
+          // tolerance and refused for sitting where it was designed to sit.
+          entryType: input.plan.entryType,
           minRr: input.plan.minRr,
         });
         if (verdict.status !== "ok") {
