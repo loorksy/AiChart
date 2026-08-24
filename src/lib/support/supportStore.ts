@@ -47,6 +47,11 @@ export interface MessageRow {
   attachment_bytes: number | null;
 }
 
+/** A conversation as the admin inbox lists it — with who it is with. */
+export interface InboxTicketRow extends TicketRow {
+  user_email: string | null;
+}
+
 /** One side of the conversation, for read-state bookkeeping. */
 export type ConversationSide = "user" | "admin";
 
@@ -57,16 +62,25 @@ export async function listUserTickets(userId: number): Promise<TicketRow[]> {
   );
 }
 
-export async function listAllTickets(status?: string): Promise<TicketRow[]> {
+/**
+ * The console's inbox.
+ *
+ * Carries the person's email, because a conversation's `subject` is no longer
+ * a thing anybody wrote: since support became one thread per person it is the
+ * literal string "support" on every row, and an inbox listing "support" twenty
+ * times tells the operator nothing about who is waiting.
+ */
+export async function listAllTickets(status?: string): Promise<InboxTicketRow[]> {
+  const select = `SELECT t.*, u.email AS user_email
+                    FROM support_tickets t
+                    LEFT JOIN users u ON u.id = t.user_id`;
   if (status) {
-    return query<TicketRow>(
-      "SELECT * FROM support_tickets WHERE status = ? ORDER BY updated_at DESC LIMIT 200",
+    return query<InboxTicketRow>(
+      `${select} WHERE t.status = ? ORDER BY t.updated_at DESC LIMIT 200`,
       [status],
     );
   }
-  return query<TicketRow>(
-    "SELECT * FROM support_tickets ORDER BY updated_at DESC LIMIT 200",
-  );
+  return query<InboxTicketRow>(`${select} ORDER BY t.updated_at DESC LIMIT 200`);
 }
 
 export async function getTicket(
@@ -128,8 +142,13 @@ export async function addMessage(
  * thread; a new one is created only when there is none.
  */
 export async function getOrCreateConversation(userId: number): Promise<number> {
+  // Anything not CLOSED is the live conversation. It cannot be `status =
+  // 'open'`: replying assigns the conversation, which moves it to
+  // 'in_progress' — so the first time an admin answered, the user's thread
+  // vanished and they were handed a fresh empty one. The reply was in the
+  // conversation they could no longer see.
   const open = await queryOne<{ id: number }>(
-    "SELECT id FROM support_tickets WHERE user_id = ? AND status = 'open' ORDER BY updated_at DESC LIMIT 1",
+    "SELECT id FROM support_tickets WHERE user_id = ? AND status <> 'closed' ORDER BY updated_at DESC LIMIT 1",
     [userId],
   );
   if (open) return open.id;

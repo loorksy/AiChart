@@ -300,3 +300,34 @@ describe("what counts as a message — one rule, both ends", () => {
     }
   });
 });
+
+describe("an admin reply must not lose the user's thread", () => {
+  before(async () => {
+    await db.execute(
+      "INSERT INTO users (id, email, password_hash, role, status) VALUES (52, 'reply@t.local', 'x', 'user', 'active')",
+    );
+  });
+
+  it("keeps the same conversation after it is assigned", async () => {
+    // Found by driving the real routes, not by reading them: replying calls
+    // assignTicket, which moves the row to 'in_progress'. The lookup asked for
+    // status = 'open', so the moment support answered, the user's next visit
+    // opened a NEW empty conversation and the reply was in one they could no
+    // longer reach. Anything not CLOSED is the live conversation.
+    const id = await store.getOrCreateConversation(52);
+    await store.addMessage(id, "user", "my balance is wrong", 52);
+
+    await store.addMessage(id, "admin", "checking now", 20);
+    await store.assignTicket(id, 20);
+
+    assert.equal(
+      await store.getOrCreateConversation(52),
+      id,
+      "the person comes back to the conversation the answer is in",
+    );
+    const thread = await store.getTicket(id, 52);
+    assert.equal(thread.ticket.status, "in_progress");
+    assert.equal(thread.messages.length, 2);
+    assert.equal(await store.unreadCount(id, "user"), 1, "and the reply is waiting for them");
+  });
+});

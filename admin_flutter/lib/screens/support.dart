@@ -104,7 +104,7 @@ class _SupportScreenState extends State<SupportScreen> {
                             ? Theme.of(context).colorScheme.secondary
                             : null,
                       ),
-                      title: Text(t.subject,
+                      title: Text(t.title,
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(
                         '#${t.id} · ${t.status == 'open' ? l.t('ticketOpen') : l.t('ticketClosed')} · '
@@ -254,7 +254,7 @@ class _TicketDialogState extends State<_TicketDialog> {
                     children: [
                       Expanded(
                         child: Text(
-                          thread.ticket.subject,
+                          thread.ticket.title,
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.w700),
                         ),

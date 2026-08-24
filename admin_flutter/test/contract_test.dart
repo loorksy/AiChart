@@ -52,7 +52,14 @@ void main() {
 
   test('the support inbox carries per-conversation unread counts', () {
     final inbox = SupportInbox.fromJson(f('admin/support'));
-    expect(inbox.tickets.single.id, 4);
+    expect(inbox.tickets.first.id, 4);
+    // The inbox names the person, never the `subject` column — that column is
+    // the literal word "support" on every conversation now.
+    expect(inbox.tickets.first.subject, 'support');
+    expect(inbox.tickets.first.title, 'trader@example.com');
+    // A deleted account leaves the join empty; the row still has a name.
+    expect(inbox.tickets.last.userEmail, isNull);
+    expect(inbox.tickets.last.title, '#9');
     // The trap: JSON object keys are strings even when the server built the
     // map from numeric ticket ids. A badge keyed by `int` finds nothing if the
     // client keeps the key as it arrived.
@@ -173,7 +180,7 @@ void main() {
       listOf(f('admin/roles'), 'admins').map(AdminRoleRow.fromJson).single.email,
       'boss@lonora.test',
     );
-    final ticket = listOf(f('admin/support'), 'tickets').map(TicketRow.fromJson).single;
+    final ticket = listOf(f('admin/support'), 'tickets').map(TicketRow.fromJson).first;
     expect(ticket.needsHuman, true);
 
     final profit = ProfitReport.fromJson(f('admin/billing/profit'));

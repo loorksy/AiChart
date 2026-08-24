@@ -249,15 +249,27 @@
       {
         "id": 4,
         "user_id": 3,
-        "subject": "help",
+        "subject": "support",
         "status": "open",
         "assigned_to": null,
         "needs_human": 1,
-        "updated_at": 1787000000000
+        "updated_at": 1787000000000,
+        "user_email": "trader@example.com"
+      },
+      {
+        "id": 5,
+        "user_id": 9,
+        "subject": "support",
+        "status": "open",
+        "assigned_to": null,
+        "needs_human": 0,
+        "updated_at": 1787000500000,
+        "user_email": null
       }
     ],
     "unread": {
-      "4": 2
+      "4": 2,
+      "5": 0
     },
     "unread_total": 2
   },
@@ -344,11 +356,12 @@
     "ticket": {
       "id": 4,
       "user_id": 3,
-      "subject": "help",
+      "subject": "support",
       "status": "open",
       "assigned_to": null,
       "needs_human": 1,
-      "updated_at": 1787000000000
+      "updated_at": 1787000000000,
+      "user_email": "trader@example.com"
     },
     "messages": [
       {

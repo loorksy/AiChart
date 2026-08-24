@@ -348,6 +348,9 @@ class TicketRow {
   final bool needsHuman;
   final int updatedAt;
 
+  /// Who the conversation is with. Null only for a deleted account.
+  final String? userEmail;
+
   TicketRow({
     required this.id,
     required this.userId,
@@ -356,7 +359,19 @@ class TicketRow {
     this.assignedTo,
     required this.needsHuman,
     required this.updatedAt,
+    this.userEmail,
   });
+
+  /// What the inbox should call this conversation.
+  ///
+  /// Never `subject`: since support became one thread per person that column
+  /// is the literal word "support" on every row, and a list of twenty
+  /// identical titles tells the operator nothing about who is waiting.
+  String get title {
+    final email = userEmail?.trim();
+    if (email != null && email.isNotEmpty) return email;
+    return '#$userId';
+  }
 
   factory TicketRow.fromJson(Map<String, dynamic> j) => TicketRow(
         id: asInt(j['id']),
@@ -366,6 +381,7 @@ class TicketRow {
         assignedTo: j['assigned_to'] == null ? null : asInt(j['assigned_to']),
         needsHuman: asBool(j['needs_human']),
         updatedAt: asInt(j['updated_at']),
+        userEmail: asStringOrNull(j['user_email']),
       );
 }
 

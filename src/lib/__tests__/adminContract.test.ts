@@ -32,7 +32,7 @@ import type { ParityReport } from "@/lib/agent/parityLog";
 import type { BillingPlanRow, PlanPriceRow, TopupPackRow, OfferRow } from "@/lib/billing/planConfig";
 import type { ClaudeUsageRow } from "@/lib/store";
 import type { AdRow } from "@/lib/ads/adsStore";
-import type { MessageRow } from "@/lib/support/supportStore";
+import type { InboxTicketRow, MessageRow } from "@/lib/support/supportStore";
 
 const REPO = path.join(import.meta.dirname, "..", "..", "..");
 const FIXTURES = path.join(REPO, "admin_flutter", "test", "fixtures", "admin_contracts.json");
@@ -136,7 +136,19 @@ describe("the admin API contract — the server's half", () => {
     // things a ticket list never had: how many messages WAIT in each thread,
     // and files travelling in both directions.
     const inbox = endpoint("admin/support");
-    assert.ok(Array.isArray(inbox.tickets));
+    const tickets = inbox.tickets as Array<Record<string, unknown>>;
+    assert.ok(Array.isArray(tickets));
+    // The inbox joins the person's email in, because `subject` stopped being
+    // information the moment support became one thread per person.
+    expectType<InboxTicketRow["user_email"]>(null);
+    assert.ok(
+      tickets.some((row) => typeof row.user_email === "string"),
+      "the inbox must carry who each conversation is with",
+    );
+    assert.ok(
+      tickets.some((row) => row.user_email === null),
+      "and it must survive a deleted account",
+    );
     assert.equal(typeof inbox.unread_total, "number");
     // `unread` is a map keyed by ticket id. It crosses the wire as a JSON
     // object, so its keys are STRINGS — the Dart client parses them back to

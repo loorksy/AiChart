@@ -9,6 +9,7 @@ import {
   Globe,
   LogOut,
   Moon,
+  LifeBuoy,
   Settings,
   Sun,
   User as UserIcon,
@@ -21,6 +22,7 @@ import { useConsoleOverlays } from "@/components/shell/ConsoleOverlays";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
 import { AccountStatusBadge } from "@/components/billing/AccountStatusBadge";
 import { useBillingSummary } from "@/hooks/useBillingSummary";
+import { useSupportUnread } from "@/hooks/useSupportUnread";
 import Link from "next/link";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 import { APP_LOCALES, type AppLocale } from "@/lib/i18n";
@@ -62,6 +64,9 @@ function ProfileMenuItems({
   // permission with `requireAdminWith`, so hiding this row is a courtesy to
   // people who are not admins, never the thing that keeps them out.
   const isAdmin = me?.user?.role === "admin";
+  // The account menu is where a person looks for "talk to someone", and it is
+  // the only entry that is reachable on a phone without opening the nav drawer.
+  const supportUnread = useSupportUnread();
   const isDark = resolved === "dark";
   const themeLabel = isDark ? t("shell.theme_to_light") : t("shell.theme_to_dark");
   const rowClass = cn(ITEM_CLASS, touchSize && "min-h-12");
@@ -95,6 +100,28 @@ function ProfileMenuItems({
           <span className="truncate">{t("shell.adminConsole")}</span>
         </a>
       )}
+      <Link
+        href="/console/support"
+        role="menuitem"
+        data-testid="account-support"
+        className={rowClass}
+        onClick={onDone}
+      >
+        <LifeBuoy className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="truncate">{t("support.title")}</span>
+        {supportUnread > 0 && (
+          <span
+            className="ms-auto inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold tabular-nums text-destructive-foreground"
+            aria-label={
+              supportUnread === 1
+                ? t("support.unread_one")
+                : t("support.unread_many", { count: String(supportUnread) })
+            }
+          >
+            {supportUnread}
+          </span>
+        )}
+      </Link>
       <button
         type="button"
         role="menuitem"
