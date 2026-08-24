@@ -94,7 +94,11 @@ import {
   type AccountRiskSnapshot,
   type RiskAgentResult,
 } from "./agents/riskAgent";
-import { chartHostUnavailableReason } from "@/lib/chart/platformCapture";
+import {
+  chartHostConfigured,
+  chartHostUnavailableReason,
+  ensureChartHostTab,
+} from "@/lib/chart/platformCapture";
 import type { SynthesizerProgress } from "./agents/finalDecisionSynthesizer";
 import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
 import {
@@ -759,6 +763,32 @@ async function runUnifiedChartAgentInner(
         return null;
       });
   };
+
+  // Start warming the shared chart tab NOW, and do not wait for it.
+  //
+  // The visual stage gets 9s, and a capture that finds the container cold
+  // spends the first 25s of that inside ensureChartHostTab's warmup alone
+  // (CHART_HOST_WARMUP_MS) — the warmup is nearly three times the whole
+  // budget, so a cold tab could never be warmed in time and every frame came
+  // back `capture_timeout`. The container closes its tab after five idle
+  // minutes, so any analysis that was not closely preceded by another one
+  // found it cold: in practice the decision read numbers alone, every time,
+  // and said so.
+  //
+  // Warming in parallel costs the run nothing. By the time the visual stage
+  // is reached the market-data, fleet and risk stages have already spent
+  // ~41s of wall clock, comfortably more than the warmup needs, and the
+  // captures themselves fan out with Promise.all — three warm frames cost
+  // about what one costs, which is what the 9s was always sized for.
+  //
+  // Fire-and-forget on purpose: a chart that will not warm must never delay
+  // or fail an analysis. The visual stage still reports its own named
+  // failure if the tab is not ready when it looks.
+  if (chartHostConfigured()) {
+    void ensureChartHostTab().catch(() => {
+      // Logged inside ensureChartHostTab; a failed pre-warm is not a run fault.
+    });
+  }
 
   // Market Data Agent is CRITICAL: failure → stop, return action_required.
   // It performs network I/O (warehouse + the platform OANDA feed), so it uses withDeadline: a
