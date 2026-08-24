@@ -31,8 +31,30 @@ import {
   type CaptureShot,
 } from "@/lib/chart/captureWindow";
 
-export const LIVE_CAPTURE_CONCURRENCY = 2;
-/** Background chart tabs are timer-throttled (~1s); 8s still gets several polls. */
+/**
+ * How many captures may be in flight app-side.
+ *
+ * This was 2 while a multi-timeframe request asks for 3 or 4 frames at once
+ * (`captureMultiTimeframeSnapshot` fires them through `Promise.all`), so the
+ * last frames of every batch sat waiting for a SLOT before they were even
+ * offered to the tab — burning their ack budget in a queue rather than in a
+ * render. The tab itself is the real limiter and it is strictly serial
+ * (`ChartHostAgent` runs `for (…) await processOne(…)`), so an app-side cap
+ * below the batch size adds waiting without removing any work. Sized above
+ * the largest batch the visual stage asks for.
+ */
+export const LIVE_CAPTURE_CONCURRENCY = 4;
+/**
+ * How long a capture may go unacknowledged before it is declared dead.
+ *
+ * Background chart tabs are timer-throttled (~1s), so this covers several
+ * polls. It is a per-capture floor, NOT a batch budget: one tab renders a
+ * batch one frame at a time, so frame N is not even SEEN until the N-1 frames
+ * ahead of it have rendered. A batch caller must therefore raise this in
+ * proportion to the queue behind it (see `captureTimeframeImage`), or every
+ * frame past the second dies waiting its turn while the tab is working
+ * perfectly.
+ */
 export const LIVE_CAPTURE_ACK_MS = 8_000;
 export const LIVE_CAPTURE_UPLOAD_MS = 12_000;
 /** How long a successful live capture authorises visual_confirmation. */

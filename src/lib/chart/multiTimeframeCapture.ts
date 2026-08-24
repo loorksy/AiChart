@@ -43,7 +43,41 @@ export const MAX_IMAGES_LIMIT = 6;
 /** Per-image wall clock. One slow timeframe must not sink the request. */
 export const DEFAULT_IMAGE_TIMEOUT_MS = 16_000;
 const MIN_IMAGE_TIMEOUT_MS = 2_000;
+/** Ceiling for ONE render's budget, before any queue is accounted for. */
 const MAX_IMAGE_TIMEOUT_MS = 20_000;
+/**
+ * Ceiling for a frame that also has to wait out its batch.
+ *
+ * One tab renders a batch serially, so a 4-frame request legitimately spans
+ * four renders. This bounds that wait so a wedged tab still fails in finite
+ * time instead of holding the visual stage open to its own deadline.
+ */
+const MAX_BATCH_TIMEOUT_MS = 45_000;
+
+/**
+ * The two deadlines one frame is judged against, given the queue behind it.
+ *
+ * Pure and exported because this arithmetic is the whole bug: a batch is
+ * DISPATCHED concurrently but RENDERED serially by one chart tab, so sizing
+ * either budget as though the frame were alone kills the tail of every batch.
+ * Both scale with `queueDepth` — `ack` because the tab cannot even acknowledge
+ * a frame until it reaches it, `timeout` because the frame is not finished
+ * until the tab has worked through everything ahead of it.
+ */
+export function captureBudgets(
+  perRenderMs: number | undefined,
+  queueDepth: number | undefined,
+): { timeoutMs: number; ackTimeoutMs: number } {
+  const depth = Math.max(1, Math.floor(queueDepth ?? 1));
+  const render = Math.max(
+    MIN_IMAGE_TIMEOUT_MS,
+    Math.min(MAX_IMAGE_TIMEOUT_MS, perRenderMs ?? DEFAULT_IMAGE_TIMEOUT_MS),
+  );
+  return {
+    timeoutMs: Math.min(MAX_BATCH_TIMEOUT_MS, render * depth),
+    ackTimeoutMs: Math.min(MAX_BATCH_TIMEOUT_MS, LIVE_CAPTURE_ACK_MS * depth),
+  };
+}
 /** Enough candles for the regime detector's 60-bar minimum plus its baseline. */
 export const NUMERIC_CANDLE_LIMIT = 350;
 
@@ -144,6 +178,14 @@ export interface CaptureTimeframeInput {
   liveSession?: boolean;
   includeDrawings?: boolean;
   includeStudies?: boolean;
+  /**
+   * How many frames share the one chart tab with this one.
+   *
+   * The tab renders a batch strictly one at a time, so this frame may have to
+   * wait for `queueDepth - 1` renders before the tab even acknowledges it.
+   * Defaults to 1 — a lone capture, which is what a single-frame caller is.
+   */
+  queueDepth?: number;
 }
 
 export type CaptureTimeframeResult =
@@ -177,11 +219,28 @@ export async function captureTimeframeImage(
   userId: number,
   input: CaptureTimeframeInput,
 ): Promise<CaptureTimeframeResult> {
-  const timeoutMs = Math.max(
-    MIN_IMAGE_TIMEOUT_MS,
-    Math.min(MAX_IMAGE_TIMEOUT_MS, input.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS),
+  // `timeoutMs` from the caller is the budget for ONE render. The frame may
+  // additionally have to wait out the rest of its batch on the shared tab, so
+  // the deadline it is actually judged against is that budget times the queue.
+  const { timeoutMs, ackTimeoutMs } = captureBudgets(
+    input.timeoutMs,
+    input.queueDepth,
   );
 
+  // A frame may be QUEUED behind its own batch, and waiting is not failing.
+  //
+  // One chart tab renders one frame at a time (`ChartHostAgent` runs
+  // `for (…) await processOne(…)`), but a batch is dispatched all at once.
+  // So frame N is not merely slow to render — it is not SEEN by the tab until
+  // the N-1 frames ahead of it have finished. Measured live: one frame takes
+  // ~4.2s, so the third frame of a batch is first acknowledged around 8.4s.
+  // Against the flat 8s ack ceiling that arrived a few hundred milliseconds
+  // late, and the frame was killed for being in a queue — which is why every
+  // analysis lost its last frames while a single capture of the SAME frame
+  // succeeded in 4.2s.
+  //
+  // Both budgets come from `captureBudgets` above, which scales them with the
+  // queue rather than pretending each frame is alone on the tab.
   const captured = await withDeadline(
     captureChartWithPlatformFallback({
       userId,
@@ -194,7 +253,7 @@ export async function captureTimeframeImage(
       includeStudies: input.includeStudies,
       // `fresh=true` from the caller skips the platform moment-cache read.
       bypassCache: input.skipCache === true,
-      ackTimeoutMs: Math.min(timeoutMs, LIVE_CAPTURE_ACK_MS),
+      ackTimeoutMs,
     }),
     timeoutMs,
   );
@@ -550,6 +609,10 @@ export async function captureMultiTimeframeSnapshot(
           liveSession: input.liveSession,
           includeDrawings: input.includeDrawings,
           includeStudies: input.includeStudies,
+          // These frames share ONE tab that renders them one at a time, so
+          // each must be allowed to wait for the others. Without this the
+          // batch dispatches concurrently and then times out serially.
+          queueDepth: timeframes.length,
         }).catch((error): CaptureTimeframeResult => ({
           ok: false,
           reason: errorText(error),

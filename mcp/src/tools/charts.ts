@@ -9,13 +9,18 @@ import { mcpToolConfig } from "./schemas/index.js";
 /**
  * Full AI analysis can take ~4 minutes worst case (model reasoning + chart vision).
  *
- * Must stay ABOVE the platform's TOTAL_RUN_BUDGET_MS (270s in
+ * Must stay ABOVE the platform's TOTAL_RUN_BUDGET_MS (285s in
  * src/lib/agent/timeout.ts) so the caller receives the run's own three-state
  * envelope rather than a transport timeout that says nothing about why. Both
  * were raised on 2026-08-24: a complete Arabic decision measures ~85s of
  * generation, which the previous 145s/150s pair could not accommodate even one attempt.
+ *
+ * Raised again with the visual stage (9s→20s): a batch of three frames renders
+ * SERIALLY on one chart tab, so the run's own budget grew and this had to stay
+ * strictly above it — equal is not above, and a tie hands the caller a
+ * transport timeout at exactly the moment the run was about to answer.
  */
-const ANALYZE_TIMEOUT_MS = 285_000;
+const ANALYZE_TIMEOUT_MS = 292_000;
 /** Drawing needs one candles fetch for time anchoring. */
 const DRAW_TIMEOUT_MS = 30_000;
 

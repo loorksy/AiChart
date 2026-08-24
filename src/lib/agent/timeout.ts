@@ -102,10 +102,18 @@ export const AGENT_TIMEOUTS = {
   drawing: 5_000,
   // gpt-5 family spends budget on reasoning before emitting JSON; 15s was
   // aborting live XAUUSD decisions before any recommendation could land.
-  // Chart capture waits on the operator's MT5 or a render service. Bounded
-  // tightly: a missing view costs the decision some context, a slow one would
-  // cost it the whole run.
-  visualEvidence: 9_000,
+  // Chart capture waits on the operator's tab or the platform chart session.
+  // 9s was a budget for ONE render handed to a batch of three.
+  //
+  // The frames are dispatched together but the single chart tab renders them
+  // one at a time, so the batch spans three renders (~4.2s each, measured) —
+  // and the last frames were killed at 9s for standing in a queue. Every
+  // analysis reported "تعذّر التقاط 15m، 4h" while a lone capture of the very
+  // same frame returned in 4.2s. Sized for the real serial cost of the whole
+  // batch plus the loopback hop, not for one frame pretending it is alone.
+  // Measured cold: three fresh frames in 13.6s. 20s carries that with room for
+  // a slow render without handing a wedged tab the whole run.
+  visualEvidence: 20_000,
   // Sized from measurement, and the measurement was redone on 2026-08-24.
   // The old 95s came from a 2026-07-30 probe of 29-38s calls — but those were
   // being truncated at the then-current output ceiling, so the probe timed a
@@ -134,8 +142,8 @@ export const AGENT_TIMEOUTS = {
  * let alone the retry the loop promises.
  *
  * The worst serial chain, counted in full:
- *   28 (marketData) + 8 (fleet) + 5 (risk) + 11 (visual) + 215 (final)
- *   + 5 (drawing) = 272s
+ *   28 (marketData) + 8 (fleet) + 5 (risk) + 22 (visual) + 215 (final)
+ *   + 5 (drawing) = 283s
  *
  * The visual stage is the term this sum used to omit, and omitting it is what
  * left the budget with no headroom at all while the comment claimed 9s of it.
@@ -144,15 +152,18 @@ export const AGENT_TIMEOUTS = {
  * in the worker cannot capture in its own process and delegates the capture to
  * the web process over HTTP (see `agent/visualEvidence.ts`). Measured live on
  * 2026-08-24: three real TradingView frames in 8.86s, against a 9s image
- * budget and an 11s wall. So 11s is the term, not 9.
+ * budget and an 11s wall.
  *
- * 275s keeps the invariant with the 3s of slack the old arithmetic only
- * appeared to have.
+ * That 8.86s was a WARM tab serving part of the batch from its ~12s cache. A
+ * cold batch renders all three for real — ~4.2s each, strictly serially,
+ * because one tab draws one chart at a time — so the honest term is 20s of
+ * stage plus the hop, not 11s. Sizing the stage for the warm case is what made
+ * "تعذّر التقاط 15m، 4h" the normal outcome rather than the exception.
  */
-export const TOTAL_RUN_BUDGET_MS = 275_000;
+export const TOTAL_RUN_BUDGET_MS = 285_000;
 
 /** MCP's client-side wait for run_market_analysis — the ceiling we stay under. */
-export const MCP_ANALYZE_TIMEOUT_MS = 285_000;
+export const MCP_ANALYZE_TIMEOUT_MS = 292_000;
 
 export interface RunBudget {
   /** Signal every I/O stage links to: aborts on client cancel OR budget end. */

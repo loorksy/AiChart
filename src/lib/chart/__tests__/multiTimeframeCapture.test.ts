@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { QUICKCHART_CANDLE_LIMIT } from "@/lib/chartSnapshot";
 import { canonicalizeInterval } from "@/lib/intervals";
+import { LIVE_CAPTURE_ACK_MS } from "@/lib/chart/liveCapture";
 import {
   DEFAULT_MAX_IMAGES,
   MAX_IMAGES_LIMIT,
   NUMERIC_CANDLE_LIMIT,
+  captureBudgets,
   resolveVisualTimeframes,
   VISUAL_EVIDENCE_GUARDRAILS,
 } from "@/lib/chart/multiTimeframeCapture";
@@ -175,5 +177,59 @@ describe("agent chart evidence depth", () => {
   it("uses 350 QuickChart bars and 350 numeric bars", () => {
     assert.equal(QUICKCHART_CANDLE_LIMIT, 350);
     assert.equal(NUMERIC_CANDLE_LIMIT, 350);
+  });
+});
+
+describe("captureBudgets", () => {
+  // The bug this pins: a batch is dispatched concurrently but rendered
+  // SERIALLY by one chart tab, so frame N waits out the N-1 frames ahead of
+  // it. Sized as though it were alone, the tail of every batch died in the
+  // queue — live, that read as "تعذّر التقاط 15m، 4h" on analysis after
+  // analysis while a lone capture of the SAME frame returned in 4.2s.
+
+  it("gives a lone capture exactly its own render budget", () => {
+    const { timeoutMs, ackTimeoutMs } = captureBudgets(9_000, 1);
+    assert.equal(timeoutMs, 9_000);
+    assert.equal(ackTimeoutMs, LIVE_CAPTURE_ACK_MS);
+  });
+
+  it("scales BOTH deadlines with the queue behind the frame", () => {
+    const one = captureBudgets(9_000, 1);
+    const three = captureBudgets(9_000, 3);
+    assert.equal(three.timeoutMs, 27_000);
+    assert.equal(three.ackTimeoutMs, LIVE_CAPTURE_ACK_MS * 3);
+    // The regression itself: the third frame of a batch must not be judged by
+    // the budget of a frame that had the tab to itself.
+    assert.ok(three.timeoutMs > one.timeoutMs);
+    assert.ok(three.ackTimeoutMs > one.ackTimeoutMs);
+  });
+
+  it("covers the measured serial cost of a real 3-frame batch", () => {
+    // Measured live 2026-08-24: one render ~4.2s, so three run ~12.6s and the
+    // third is first acknowledged around 8.4s. Both must fit.
+    const { timeoutMs, ackTimeoutMs } = captureBudgets(9_000, 3);
+    assert.ok(timeoutMs >= 12_600, "batch deadline must outlast three renders");
+    assert.ok(ackTimeoutMs >= 8_400, "third frame is acked only after two renders");
+  });
+
+  it("still fails in finite time when the tab is wedged", () => {
+    // A ceiling, not an open door: a stuck tab must not hold the visual stage
+    // for as long as an arbitrarily large batch would imply.
+    const huge = captureBudgets(20_000, 12);
+    assert.equal(huge.timeoutMs, 45_000);
+    assert.equal(huge.ackTimeoutMs, 45_000);
+  });
+
+  it("treats a missing or nonsensical queue depth as a lone capture", () => {
+    assert.equal(captureBudgets(9_000, undefined).timeoutMs, 9_000);
+    assert.equal(captureBudgets(9_000, 0).timeoutMs, 9_000);
+    assert.equal(captureBudgets(9_000, -4).timeoutMs, 9_000);
+  });
+
+  it("keeps the per-render floor and ceiling before multiplying", () => {
+    // A caller asking for 1ms still gets the floor; one asking for a minute
+    // still gets the single-render ceiling, and only THEN the queue applies.
+    assert.equal(captureBudgets(1, 1).timeoutMs, 2_000);
+    assert.equal(captureBudgets(60_000, 1).timeoutMs, 20_000);
   });
 });
