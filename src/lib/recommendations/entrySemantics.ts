@@ -292,6 +292,36 @@ export interface FillResult {
 }
 
 /**
+ * How close price must come to a touch-filled entry for the touch to count.
+ *
+ * Exists because of a real complaint: a XAUUSD plan whose entry sat at
+ * 4646.19 watched price turn 30 cents above it and run to every target — and
+ * the record graded the plan as never filled. Requiring the exact cent is
+ * grading a fill the market never owed us; a real limit order at that level
+ * with normal spread WOULD have filled.
+ *
+ * The band is proportional to price so one rule serves every instrument:
+ *  - floor  ~0.011% of price (≈ 0.50 USD on gold at 4600 — "5 points")
+ *  - cap    ~0.033% of price (≈ 1.50 USD on gold at 4600 — "15 points")
+ *  - inside the band, volatility decides: 15% of ATR, matching the tolerance
+ *    the plan builder already applies to activation rules at creation.
+ */
+export function entryFillTolerance(input: {
+  price: number;
+  atr?: number | null;
+}): number {
+  const price = input.price;
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  const floor = price * 1.1e-4;
+  const cap = price * 3.3e-4;
+  const fromAtr =
+    input.atr != null && Number.isFinite(input.atr) && input.atr > 0
+      ? input.atr * 0.15
+      : 0;
+  return Math.min(cap, Math.max(floor, fromAtr));
+}
+
+/**
  * Does this candle fill the entry, and at what price?
  *
  * `conditionMet` is the activation rule's verdict for THIS candle — the caller
@@ -305,6 +335,13 @@ export function resolveFill(input: {
   conditionMet: boolean;
   /** True when the rule became satisfied on an EARLIER candle. */
   armedBefore: boolean;
+  /**
+   * Price-unit band for touch fills: a candle that comes within this margin of
+   * a `limit_touch` entry counts as filled, AT THE NEAREST PRICE ACTUALLY
+   * TRADED — never at the nominal level the market did not reach. Omitted or
+   * zero preserves the exact-touch behaviour.
+   */
+  tolerance?: number;
 }): FillResult {
   const { plan, candle, conditionMet, armedBefore } = input;
   if (!conditionMet && !armedBefore) return { filled: false };
@@ -334,9 +371,22 @@ export function resolveFill(input: {
 
     case "limit_touch":
     default: {
+      const tol =
+        input.tolerance != null && Number.isFinite(input.tolerance) && input.tolerance > 0
+          ? input.tolerance
+          : 0;
       const touched =
-        plan.direction === "buy" ? candle.low <= plan.entry : candle.high >= plan.entry;
-      return touched ? { filled: true, effectiveEntry: plan.entry } : { filled: false };
+        plan.direction === "buy"
+          ? candle.low <= plan.entry + tol
+          : candle.high >= plan.entry - tol;
+      if (!touched) return { filled: false };
+      // Grading honesty: when only the tolerance band was reached, the fill is
+      // the nearest traded price (the candle's extreme), not the level itself.
+      const effectiveEntry =
+        plan.direction === "buy"
+          ? Math.max(plan.entry, candle.low)
+          : Math.min(plan.entry, candle.high);
+      return { filled: true, effectiveEntry };
     }
   }
 }

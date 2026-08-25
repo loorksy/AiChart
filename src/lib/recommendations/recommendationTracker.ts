@@ -40,6 +40,7 @@ import {
   evaluateRecommendation,
   type TrackerCandle,
 } from "./recommendationStatus";
+import { entryFillTolerance } from "./entrySemantics";
 import { activationRuleTimeframe } from "./activationRule";
 import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
 import {
@@ -161,6 +162,13 @@ export async function trackOneRecommendation(
     }
   }
 
+  // The flexible-entry band (complaint: "price came 30 cents from the entry,
+  // ran to every target, and the record said the plan never filled"). Derived
+  // from the same candles the evaluator walks, so replaying a sweep is still
+  // deterministic. See entrySemantics.entryFillTolerance for the clamps.
+  const atr = approximateAtr(candles);
+  const entryTolerance = entryFillTolerance({ price: rec.entry, atr });
+
   const result = evaluateRecommendation({
     recommendation: {
       direction: rec.direction,
@@ -187,6 +195,7 @@ export async function trackOneRecommendation(
     candles,
     activationCandles,
     activationBarMs,
+    entryTolerance,
   });
 
   // The execution state is a function of the market from here on. The card
@@ -220,7 +229,6 @@ export async function trackOneRecommendation(
   // status change — and because a sweep over unchanged candles must produce an
   // empty list, which is what keeps the notifications honest.
   const lastCandle = candles.at(-1);
-  const atr = approximateAtr(candles);
   // Retest tracking inputs (plan §7 B.6). A breakout-retest plan's entry IS
   // the broken level, and the excursion is how far price ran beyond it since
   // creation — from the same candles the evaluator just walked. Without these

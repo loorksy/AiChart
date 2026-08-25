@@ -74,6 +74,13 @@ export interface EvaluateInput {
   activationCandles?: TrackerCandle[];
   /** Bar duration of `activationCandles` in ms — converts open time → close time. */
   activationBarMs?: number;
+  /**
+   * Price-unit band for touch fills (see entrySemantics.entryFillTolerance).
+   * A candle that comes within this margin of a `limit_touch` entry fills the
+   * plan at the nearest traded price. Omitted = exact-touch grading, which is
+   * the pre-tolerance behaviour and what replay tests pin.
+   */
+  entryTolerance?: number;
   now?: number;
 }
 
@@ -243,6 +250,7 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
         candle,
         conditionMet,
         armedBefore,
+        tolerance: input.entryTolerance,
       });
       if (conditionMet) armedBefore = true;
       if (fill.filled) {

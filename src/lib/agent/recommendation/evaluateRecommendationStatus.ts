@@ -5,6 +5,7 @@ import {
 } from "../sessionRecommendation";
 import type { AgentMarketContext } from "../marketContext/buildAgentMarketContext";
 import { createActivationEvaluator } from "@/lib/recommendations/activationRule";
+import { entryFillTolerance } from "@/lib/recommendations/entrySemantics";
 
 export interface RecommendationStatusEvaluation {
   status: RecommendationStatus;
@@ -62,6 +63,15 @@ export function evaluateRecommendationStatus(input: {
   const direction = recommendation.direction;
   let triggered = recommendation.status !== "pending_entry";
 
+  // Same flexible-entry band as the canonical tracker: a candle that comes
+  // within the tolerance of the entry counts as a touch. Without this, the
+  // chat path told the operator "price never touched the entry" while the
+  // sweep — grading with the band — had already filled the plan.
+  const touchTolerance = entryFillTolerance({
+    price: recommendation.entry,
+    atr: market.atr,
+  });
+
   // Same contract as the canonical tracker (recommendationStatus.ts): a plan
   // carrying a structured activation rule must have the rule satisfied before
   // its entry can fill. Without this gate the chat path graded on a bare entry
@@ -76,8 +86,8 @@ export function evaluateRecommendationStatus(input: {
     const conditionMet = activation ? activation.observe(candle).activated : true;
     const touchedEntry =
       direction === "buy"
-        ? candle.low <= recommendation.entry
-        : candle.high >= recommendation.entry;
+        ? candle.low <= recommendation.entry + touchTolerance
+        : candle.high >= recommendation.entry - touchTolerance;
     if (!triggered && conditionMet && touchedEntry) triggered = true;
 
     const invalidated =
