@@ -19,7 +19,7 @@ const PERIODS: { id: StatsPeriod; labelKey: string }[] = [
   { id: "all", labelKey: "stats.filter.all" },
 ];
 
-/** Statistics block of the unified performance page (was /statistics). */
+/** The /performance screen body: the statistical record of the plans. */
 export function StatisticsSection() {
   const { t } = useLocale();
   const [period, setPeriod] = useState<StatsPeriod>("all");

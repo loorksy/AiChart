@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { tickReconnectDelayMs } from "@/lib/appWake";
+import { barEmittable, BACKFILL_AFTER_MS, TICK_STALE_MS } from "@/lib/chart/tv/tvDatafeed";
 
 const root = join(import.meta.dirname, "..", "..");
 
@@ -73,5 +74,41 @@ describe("app wake + live reconnect", () => {
     assert.match(src, /APP_WAKE_EVENT/);
     assert.match(src, /webglcontextlost/);
     assert.match(src, /shaderEpoch/);
+  });
+
+  it("a bar can never step TradingView's series backwards", () => {
+    // TV treats a backwards bar time as a violation and stops accepting
+    // updates — the chart freezes until a full reload. The losing order is
+    // the wake race: the fresh-candle poll resolves with the PREVIOUS bar
+    // after a reconnected tick already opened the next one.
+    assert.equal(barEmittable(undefined, 1_000), true, "first bar always lands");
+    assert.equal(barEmittable(1_000, 2_000), true, "newer bar appends");
+    assert.equal(barEmittable(1_000, 1_000), true, "same bar updates in place");
+    assert.equal(barEmittable(2_000, 1_000), false, "older bar is dropped");
+    assert.equal(barEmittable(1_000, Number.NaN), false, "junk time is dropped");
+  });
+
+  it("both realtime paths are guarded by the monotonic rule", () => {
+    const src = read("lib/chart/tv/tvDatafeed.ts");
+    // The poll fallback and the live tick stream each go through the guard —
+    // one unguarded emitter is all a time violation needs.
+    const guarded = src.match(/barEmittable\(forming\?\.time/g) ?? [];
+    assert.equal(guarded.length, 2, "poll AND applyTickPrice check the rule");
+  });
+
+  it("a long-hidden tab backfills missed candles instead of repainting one bar", () => {
+    const feed = read("lib/chart/tv/tvDatafeed.ts");
+    // Wake after real absence → drop TV's bar cache and ask the widget owner
+    // to re-request history, so the hole fills without a manual reload.
+    assert.match(feed, /onResetCacheNeeded\?: \(\) => void/);
+    assert.match(feed, /BACKFILL_AFTER_MS/);
+    assert.match(feed, /onBarsStale\?\.\(\)/);
+    assert.ok(
+      BACKFILL_AFTER_MS > TICK_STALE_MS,
+      "backfill threshold must outlast an ordinary tick gap, or every quiet market re-requests history",
+    );
+    const chart = read("components/chart/TvChart.tsx");
+    assert.match(chart, /onBarsStale/);
+    assert.match(chart, /resetData\(\)/);
   });
 });

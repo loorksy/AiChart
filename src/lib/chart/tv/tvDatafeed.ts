@@ -23,6 +23,33 @@ import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 /** No PRICE/tick for this long → treat the SSE as a zombie and poll again. */
 export const TICK_STALE_MS = 12_000;
 
+/**
+ * No bar emitted for this long when the tab comes back → the widget's own bar
+ * cache is missing candles (background tabs freeze the timers AND the SSE), so
+ * history must be re-requested, not just the forming bar re-polled. Re-polling
+ * alone painted the newest candle next to a hole the chart never repaired.
+ */
+export const BACKFILL_AFTER_MS = 30_000;
+
+/**
+ * May this bar be handed to TradingView's realtime callback?
+ *
+ * TV refuses a bar older than the last one it was given — a "time violation"
+ * that poisons the subscription: every later update is ignored and the chart
+ * sits frozen until a full page reload. The losing order happens exactly at
+ * wake/rollover, when the fresh-candle poll races the reconnected tick stream
+ * and resolves with the PREVIOUS bar after a tick already opened the next one.
+ * Equal time is an update of the current bar and is always allowed.
+ */
+export function barEmittable(
+  lastBarTimeMs: number | undefined,
+  nextBarTimeMs: number,
+): boolean {
+  if (!Number.isFinite(nextBarTimeMs)) return false;
+  if (lastBarTimeMs == null || !Number.isFinite(lastBarTimeMs)) return true;
+  return nextBarTimeMs >= lastBarTimeMs;
+}
+
 import { CHART_CAPTURE_CANDLES } from "@/lib/chart/captureWindow";
 
 /** Upstream history pulls reject ranges over ~5000 candles — stay safely under. */
@@ -144,7 +171,16 @@ type BarSubscription = {
 /** Datafeed backed by AiChart's own /api/market/klines + /api/instruments. */
 export function createAiChartDatafeed(
   market: MarketType = "forex",
-  opts: { onLatestCandle?: (candle: TvLatestCandle) => void } = {},
+  opts: {
+    onLatestCandle?: (candle: TvLatestCandle) => void;
+    /**
+     * The tab was away long enough that candles are MISSING, not merely the
+     * forming bar stale. The datafeed has already told TV to drop its bar
+     * cache; the widget owner must now call `resetData()` so history is
+     * re-requested and the hole backfills without a manual reload.
+     */
+    onBarsStale?: () => void;
+  } = {},
 ): IBasicDataFeed {
   // Every bar is served by the platform OANDA feed.
   const exchange = CLOUD_EXCHANGE;
@@ -390,6 +426,7 @@ export function createAiChartDatafeed(
       resolution,
       onTick: SubscribeBarsCallback,
       listenerGuid,
+      onResetCacheNeeded?: () => void,
     ) => {
       const interval = resolutionToInterval(resolution);
       const ticker = symbolInfo.ticker ?? symbolInfo.name;
@@ -397,9 +434,11 @@ export function createAiChartDatafeed(
       let forming: Bar | null = null;
       let streamAlive = false;
       let lastTickAt = 0;
+      let lastEmitAt = 0;
 
       const emit = (bar: Bar) => {
         forming = bar;
+        lastEmitAt = Date.now();
         opts.onLatestCandle?.({
           symbol: ticker,
           interval,
@@ -423,7 +462,15 @@ export function createAiChartDatafeed(
           fresh: true,
         });
         const last = rows[rows.length - 1];
-        if (last && Number.isFinite(last.time)) {
+        if (
+          last &&
+          Number.isFinite(last.time) &&
+          // A poll resolving AFTER a live tick opened the next bar must be
+          // dropped, not emitted: TV treats a backwards bar time as a
+          // violation and stops accepting updates — the frozen chart that
+          // only a reload used to fix.
+          barEmittable(forming?.time, last.time * 1000)
+        ) {
           emit({
             time: last.time * 1000,
             open: last.open,
@@ -437,6 +484,9 @@ export function createAiChartDatafeed(
 
       const applyTickPrice = (price: number, timeMs: number) => {
         const openTime = Math.floor(timeMs / barMs) * barMs;
+        // Same monotonic rule as poll: a tick carrying a lagging server clock
+        // must not step the series backwards.
+        if (!barEmittable(forming?.time, openTime)) return;
         if (!forming || forming.time !== openTime) {
           emit({
             time: openTime,
@@ -548,10 +598,28 @@ export function createAiChartDatafeed(
             sub.source = undefined;
             return;
           }
+          // Away long enough that whole candles are missing (frozen timers,
+          // dead SSE, bfcache restore, server-link recovery)? Re-polling only
+          // repaints the NEWEST bar next to a hole. Tell TV to drop its bar
+          // cache and ask the widget owner to resetData() so history is
+          // re-requested and the gap backfills without a manual reload.
+          const missedBars =
+            lastEmitAt > 0 && Date.now() - lastEmitAt > BACKFILL_AFTER_MS;
           reconnectAttempt = 0;
           clearReconnect();
           streamAlive = false;
           openStream(true);
+          if (missedBars) {
+            // The forming-bar anchor belongs to the stale pre-sleep period;
+            // fresh emits must not be judged against it.
+            forming = null;
+            try {
+              onResetCacheNeeded?.();
+            } catch {
+              /* TV may be mid-teardown */
+            }
+            opts.onBarsStale?.();
+          }
           void poll();
         };
 

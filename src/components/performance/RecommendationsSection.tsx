@@ -9,7 +9,7 @@ import { EmptyState, SectionHeader, Surface } from "@/components/foundation";
 import { SkeletonBlock } from "@/components/ui/skeleton";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 
-/** Recommendations block of the unified performance page (was /recommendations). */
+/** The /recommendations screen body: active plans and their history. */
 export function RecommendationsSection() {
   const { t } = useLocale();
   const [recs, setRecs] = useState<TrackedRecommendation[] | null>(null);

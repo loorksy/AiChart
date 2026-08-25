@@ -1,19 +1,15 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { StatisticsSection } from "@/components/performance/StatisticsSection";
-import { RecommendationsSection } from "@/components/performance/RecommendationsSection";
-import { PerformanceSectionNav } from "@/components/performance/PerformanceSectionNav";
-import { PerformanceHashScroll } from "@/components/performance/PerformanceHashScroll";
 
 /**
- * The performance story of a recommendations platform: the plans and how they
- * turned out. Confidence on each plan is the model's own judgement.
+ * The performance story of a recommendations platform: how the plans turned
+ * out, in numbers — win rate, outcome breakdown, per-symbol/per-timeframe
+ * records.
  *
- * The "executions" half is gone with the execution layer. It rendered open
- * broker trades and pending approval intents from tables nothing writes any
- * more, and its controls — close a trade, approve an intent — posted to four
- * API routes that no longer exist. Every one of those buttons answered 404 in
- * the operator's hands.
+ * The plans themselves live on /recommendations. Both sections used to render
+ * here on one screen while the side menu offered them as two entries — the
+ * duplicate-destination complaint. Each menu entry now has its own route.
  */
 export default async function PerformancePage() {
   const user = await getCurrentUser();
@@ -21,9 +17,6 @@ export default async function PerformancePage() {
 
   return (
     <main className="page-shell max-w-6xl space-y-8">
-      <PerformanceHashScroll />
-      <PerformanceSectionNav />
-      <RecommendationsSection />
       <StatisticsSection />
     </main>
   );
