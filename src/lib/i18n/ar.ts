@@ -377,6 +377,8 @@ export const ar: Record<TranslationKey, string> = {
 
   // --- المنسّق: إيصالات وعوائق وسرد النشاط ---
   "orch.rec_cancelled": "ألغيت التوصية النشطة في هذه الجلسة.",
+  "orch.rec_superseded":
+    "أُغلقت التوصية السابقة ({direction} عند {entry}) واستُبدلت بالتحليل الجديد أدناه.",
   "orch.scenario_building": "{reason} أبني سيناريو الافتتاح القادم من آخر إغلاق.",
   "orch.news_unknown":
     "خطر الأخبار غير معروف لأن مزوّد الأخبار غير مفعّل، لا يمكن تأكيد خطر الأخبار حالياً.",
@@ -507,6 +509,15 @@ export const ar: Record<TranslationKey, string> = {
   "session.closed_friday": "أغلق السوق ليوم الجمعة.",
   "session.closed_sunday": "لم يفتح السوق بعد (الأحد).",
   "session.maintenance_break": "استراحة الصيانة اليومية — يعود التداول خلال ساعة.",
+
+  // --- جلسات التداول العالمية (agent/core/tradingSessions) ---
+  "session.name.sydney": "سيدني",
+  "session.name.tokyo": "طوكيو",
+  "session.name.london": "لندن",
+  "session.name.newyork": "نيويورك",
+  "session.now": "جلسة التداول الحالية: {session}.",
+  "session.now_overlap": "جلسة التداول الحالية: تداخل {a}/{b} — أعلى سيولة في اليوم.",
+  "session.none_next": "لا توجد جلسة نشطة الآن — أقرب جلسة: {session} خلال {in}.",
 
   // --- المرحلة 0: شارة وضع التنفيذ الدائمة + بطاقة العائق التشغيلي ---
   "agent.mode.descriptive": "تحليل وصفي — غير مخوّل للتنفيذ",

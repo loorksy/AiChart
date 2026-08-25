@@ -146,6 +146,11 @@ import {
   composeRecommendationExplanation,
   composeRecommendationStatusAnswer,
 } from "./recommendation/followupAnswer";
+import { planTurn } from "./core/turnPlanner";
+import {
+  getTradingSessionInfo,
+  tradingSessionPromptBlock,
+} from "./core/tradingSessions";
 import { hashMarketSnapshot } from "./chartSnapshot";
 import {
   loadStageCheckpoint,
@@ -617,6 +622,43 @@ async function runUnifiedChartAgentInner(
       ctx.requestId,
     );
   }
+
+  // --- The turn planner: the no-contradiction rule (core/turnPlanner.ts) ---
+  //
+  // While a recommendation is LIVE, an ambiguous market message ("how is
+  // gold doing?", "the price is moving") is a follow-up about that plan — answered
+  // with fresh candles through the same rule-aware evaluator the card uses —
+  // never a second, possibly opposite, plan. Only an explicit request for a
+  // new analysis re-opens the pipeline, and then the OLD plan is superseded
+  // out loud: the synthesizer prompt receives it to discuss, and it is closed
+  // when the replacement is stored. Reevaluation cycles are the brain's own
+  // scheduled work and are exempt — they revise the plan they were opened for.
+  const turnPlan =
+    input.purpose === "reevaluation"
+      ? null
+      : planTurn({
+          intents,
+          message: userMessage,
+          activeRecommendationLive: isActiveRecommendationLive(activeRecommendation),
+        });
+  if (turnPlan?.mode === "recommendation_followup" && activeRecommendation) {
+    ctx.emitDebug?.({
+      type: "turn_plan",
+      mode: turnPlan.mode,
+      reason: turnPlan.reason,
+    });
+    return trackStoredRecommendation({
+      activeRecommendation,
+      chartContext,
+      ctx: trackedCtx,
+      collected,
+      userMessage,
+      locale,
+    });
+  }
+  // The plan a fresh EXPLICIT analysis must speak to and then replace.
+  const supersededRecommendation =
+    turnPlan?.mode === "supersede_analysis" ? activeRecommendation : null;
 
   const wantMarket = needsMarketContext(intents);
   const educationalOnly = Boolean(ctx.session?.preferences.educationalOnly);
@@ -1333,13 +1375,35 @@ async function runUnifiedChartAgentInner(
           historicalCases,
           // The designed extension point: fresh keys reach the model prompt
           // (and the frozen evidence snapshot) without contract changes.
-          additionalEvidence:
-            macroRegime || cotPositioning
+          additionalEvidence: {
+            ...(macroRegime ? { macroRegime } : {}),
+            ...(cotPositioning ? { cotPositioning } : {}),
+            // Which session the market is trading in RIGHT NOW (core/
+            // tradingSessions.ts) — so the analysis can say "during the New
+            // York session" as a fact instead of guessing or staying silent.
+            tradingSession: tradingSessionPromptBlock(getTradingSessionInfo()),
+            // The live plan an EXPLICIT re-analysis is replacing. The model
+            // must speak to the change — what shifted since that plan, why it
+            // no longer stands — because a silent flip is indistinguishable
+            // from a contradiction. The deterministic half (the old plan is
+            // closed when the new one is stored) never depends on this.
+            ...(supersededRecommendation
               ? {
-                  ...(macroRegime ? { macroRegime } : {}),
-                  ...(cotPositioning ? { cotPositioning } : {}),
+                  previousRecommendation: {
+                    instruction:
+                      "A previous recommendation from THIS conversation is still open and the operator explicitly asked for a fresh analysis. Address it: state what changed since it was issued, whether the market invalidated or merely stalled it, and only then present the new plan. Never present a contradictory plan as though the previous one did not exist.",
+                    direction: supersededRecommendation.direction,
+                    entry: supersededRecommendation.entry,
+                    stopLoss: supersededRecommendation.stopLoss,
+                    targets: supersededRecommendation.targets,
+                    status: supersededRecommendation.status,
+                    createdAt: new Date(
+                      supersededRecommendation.createdAt,
+                    ).toISOString(),
+                  },
                 }
-              : null,
+              : {}),
+          },
           macroRegime,
           cotPositioning,
         },
@@ -1889,6 +1953,40 @@ async function runUnifiedChartAgentInner(
     (finalDecision.decision === "buy" ||
       finalDecision.decision === "sell")
   ) {
+    // Supersede the plan this explicit re-analysis replaces — BEFORE the new
+    // one is stored, so at no instant do two live plans coexist for one
+    // session. This is the deterministic half of the no-contradiction rule;
+    // the prompt's previousRecommendation block is only the narrative half.
+    if (
+      supersededRecommendation &&
+      isActiveRecommendationLive(supersededRecommendation)
+    ) {
+      await clearActiveRecommendation(
+        sessionId,
+        supersededRecommendation.symbol,
+        ctx.userId,
+      ).catch(() => {
+        // Closing the old plan is best-effort: the new plan overwrites the
+        // session slot either way, and the tracker sweep grades what remains.
+      });
+      trackedCtx.emitActivity({
+        type: "analysis",
+        status: "completed",
+        message: t(locale, "orch.rec_superseded", {
+          direction: t(
+            locale,
+            supersededRecommendation.direction === "buy"
+              ? "decision.buy"
+              : "decision.sell",
+          ),
+          entry: String(supersededRecommendation.entry),
+        }),
+        metadata: {
+          supersededId: supersededRecommendation.id,
+          code: "recommendation_superseded",
+        },
+      });
+    }
     storedRecommendation = await storeFinalRecommendation({
       sessionId,
       userId: ctx.userId,
@@ -2458,6 +2556,9 @@ async function trackStoredRecommendation(input: {
     recommendation: rec,
     evaluation: evaluated,
     userMessage: input.userMessage,
+    // The session is a fact of the moment (New York hours, the London/NY
+    // overlap…) — the reply may cite it when it explains behaviour at levels.
+    tradingSession: tradingSessionPromptBlock(getTradingSessionInfo()),
   });
   ctx.emitActivity({
     type: "analysis",

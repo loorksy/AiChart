@@ -381,6 +381,8 @@ export const en = {
 
   // --- Orchestrator: receipts, blockers, activity narration ---
   "orch.rec_cancelled": "The active recommendation in this session has been cancelled.",
+  "orch.rec_superseded":
+    "The previous recommendation ({direction} at {entry}) was closed and replaced by the new analysis below.",
   "orch.scenario_building": "{reason} Building the next-open scenario from the last close.",
   "orch.news_unknown":
     "News risk is unknown because no news provider is configured — I cannot confirm news risk right now.",
@@ -525,6 +527,15 @@ export const en = {
   "session.closed_sunday": "Market has not opened yet (Sunday).",
   "session.maintenance_break":
     "Daily maintenance break — trading resumes within the hour.",
+
+  // --- Global trading sessions (agent/core/tradingSessions) ---
+  "session.name.sydney": "Sydney",
+  "session.name.tokyo": "Tokyo",
+  "session.name.london": "London",
+  "session.name.newyork": "New York",
+  "session.now": "Current trading session: {session}.",
+  "session.now_overlap": "Current trading session: {a}/{b} overlap — the day's deepest liquidity.",
+  "session.none_next": "No session is active right now — next: {session} in {in}.",
 
   // --- Phase 0: persistent execution-mode badge + operational-blocker card ---
   "agent.mode.descriptive": "Descriptive — not authorized to execute",
