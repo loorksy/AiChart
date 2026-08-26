@@ -432,6 +432,8 @@ export const en = {
   "orch.visual_none": "Could not capture any chart — the analysis reads the numbers alone.",
   "orch.visual_host_unconfigured": "Could not capture any chart: the shared chart session is not configured on the server — set CHART_HOST_URL in the settings panel. The analysis reads the numbers alone.",
   "orch.no_rec_now": "No executable recommendation right now.",
+  "orch.repricing_stale_plan":
+    "The market moved past the plan's levels while the analysis ran — repricing the plan against the live market now.",
   "orch.no_saved_rec": "There is no saved recommendation in this session right now.",
   "orch.restored_trigger": "Recommendation restored from the current chart.",
   "orch.invalidation_below": "A candle close below {level} invalidates the scenario.",

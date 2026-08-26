@@ -426,6 +426,8 @@ export const ar: Record<TranslationKey, string> = {
   "orch.visual_none": "تعذّر التقاط أي شارت — التحليل يقرأ الأرقام وحدها.",
   "orch.visual_host_unconfigured": "تعذّر التقاط أي شارت: جلسة الشارت المشتركة غير مُعدّة على الخادم — أضِف CHART_HOST_URL من لوحة الإعدادات. التحليل يقرأ الأرقام وحدها.",
   "orch.no_rec_now": "لا توجد توصية قابلة للتنفيذ الآن.",
+  "orch.repricing_stale_plan":
+    "السوق تجاوز مستويات الخطة أثناء التحليل — تُعاد صياغة الخطة على السعر الحي الآن.",
   "orch.no_saved_rec": "لا توجد توصية محفوظة في هذه الجلسة حاليًا.",
   "orch.restored_trigger": "توصية مستعادة من الشارت الحالي.",
   "orch.invalidation_below": "إغلاق شمعة تحت {level} يبطل السيناريو.",

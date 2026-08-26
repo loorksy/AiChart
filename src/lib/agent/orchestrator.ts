@@ -64,6 +64,7 @@ import {
 import { evaluateDependencies } from "./dependencyMatrix";
 import { buildGates } from "./gates/buildGates";
 import { gateLineAr, refusalSummaryAr, runGateChain } from "./gates/chain";
+import { repriceStaleScenario } from "./gates/repriceLoop";
 import type { GateChainResult, GateVerdict } from "./gates/types";
 import { newsProviderConfigured } from "./news/newsProvider";
 import { resolveEntryType, resolveInvalidationMode } from "@/lib/recommendations/entrySemantics";
@@ -104,6 +105,7 @@ import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
 import {
   runFinalDecisionSynthesizer,
   type SynthesizerDeps,
+  type SynthesizerOutcome,
 } from "./agents/finalDecisionSynthesizer";
 import { runDrawingAgent } from "./agents/drawingAgent";
 import {
@@ -1419,12 +1421,30 @@ async function runUnifiedChartAgentInner(
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
   // rather than leave it running behind an answer the user already received.
-  const synth = await withDeadline(
+  //
+  // A closure because the call now runs up to TWICE: the authoring pass, and —
+  // when G7 finds the authored levels already overtaken by the live price —
+  // one corrective reprice pass whose `extraSystemBlock` carries the
+  // stale-scenario feedback (gates/repriceLoop.ts).
+  //
+  // `liveCurrentPrice` refreshes the quote the retry decides against. Without
+  // it the retry read the run's ORIGINAL snapshot price, so the issue-time
+  // activation-rule coherence check graded the repriced plan against the very
+  // number the market had just left behind — every retry anchored to the same
+  // stale quote failed the same check, which is a loop that can only refuse.
+  const invokeSynthesizer = (
+    extraSystemBlock: string | null,
+    liveCurrentPrice: number | null = null,
+  ) =>
+    withDeadline(
     (signal) =>
       runFinalDecisionSynthesizer(
         { ...trackedCtx, signal },
         {
           ...decisionInput,
+          ...(liveCurrentPrice != null
+            ? { market: { ...decisionInput.market, currentPrice: liveCurrentPrice } }
+            : {}),
           candidates,
           narrative,
           geometry,
@@ -1437,6 +1457,7 @@ async function runUnifiedChartAgentInner(
             [
               skillContextFinal.block || null,
               marketClosedScenario ? scenarioPromptBlock(marketClosedScenario) : null,
+              extraSystemBlock,
             ]
               .filter(Boolean)
               .join("\n\n") || null,
@@ -1537,7 +1558,8 @@ async function runUnifiedChartAgentInner(
     AGENT_TIMEOUTS.finalDecision,
     null,
     ctx.signal,
-  );
+    );
+  let synth = await invokeSynthesizer(null);
   if (!synth) {
     // withTimeout resolves to null on deadline; a thrown error is a real fault.
     const thrownFailure = synthError
@@ -1635,41 +1657,42 @@ async function runUnifiedChartAgentInner(
     status: "done",
     durationMs: Math.round(performance.now() - decisionStartedAt),
   });
-  const finalDecision = synth.result;
-  // Attach the significant-gap warning once — every downstream return path
-  // (guard blocks, confirmation, final result) reuses finalDecision.riskWarnings.
-  if (significantGapWarning) {
-    finalDecision.riskWarnings = [
-      significantGapWarning,
-      ...finalDecision.riskWarnings,
-    ];
-  }
-  // chartSnapshotHash was computed before the fleet (it also keys the stage
-  // checkpoint) — the market window cannot change mid-run, so it is reused.
-
-  // ── Scenario mode: the plan is conditional, deterministically ───────────
-  //
-  // The synthesizer was TOLD it is writing a next-open scenario, but the
-  // guarantee cannot live in a prompt. Before the gates read the plan, force
-  // what a closed market makes true: nothing is executable now, so the plan
-  // type is conditional and the state awaits activation; and every deadline
-  // the model wrote relative to ITS now (a Saturday) shifts to the open —
-  // otherwise the trigger expires ~40 hours before the first candle that
-  // could satisfy it prints, and the plan dies unmet on Monday.
-  if (marketClosedScenario && finalDecision.recommendation) {
-    const rec = finalDecision.recommendation;
-    if (rec.action === "buy" || rec.action === "sell") {
-      const shiftMs = marketClosedScenario.nextOpenAt - Date.now();
-      finalDecision.planType = "conditional";
-      finalDecision.executionState = "awaiting_activation";
-      rec.planType = "conditional";
-      rec.executionState = "awaiting_activation";
-      if (rec.activationClass === "immediate") rec.activationClass = "conditional";
-      if (rec.activationRule) {
-        rec.activationRule = shiftActivationRuleExpiries(rec.activationRule, shiftMs);
+  // Contract facts every decision must carry regardless of WHICH synthesizer
+  // pass authored it — the first, or the stale-scenario reprice retry.
+  const prepareDecision = (decision: FinalDecisionResult): FinalDecisionResult => {
+    // Attach the significant-gap warning once — every downstream return path
+    // (guard blocks, confirmation, final result) reuses decision.riskWarnings.
+    if (significantGapWarning) {
+      decision.riskWarnings = [significantGapWarning, ...decision.riskWarnings];
+    }
+    // ── Scenario mode: the plan is conditional, deterministically ─────────
+    //
+    // The synthesizer was TOLD it is writing a next-open scenario, but the
+    // guarantee cannot live in a prompt. Before the gates read the plan, force
+    // what a closed market makes true: nothing is executable now, so the plan
+    // type is conditional and the state awaits activation; and every deadline
+    // the model wrote relative to ITS now (a Saturday) shifts to the open —
+    // otherwise the trigger expires ~40 hours before the first candle that
+    // could satisfy it prints, and the plan dies unmet on Monday.
+    if (marketClosedScenario && decision.recommendation) {
+      const rec = decision.recommendation;
+      if (rec.action === "buy" || rec.action === "sell") {
+        const shiftMs = marketClosedScenario.nextOpenAt - Date.now();
+        decision.planType = "conditional";
+        decision.executionState = "awaiting_activation";
+        rec.planType = "conditional";
+        rec.executionState = "awaiting_activation";
+        if (rec.activationClass === "immediate") rec.activationClass = "conditional";
+        if (rec.activationRule) {
+          rec.activationRule = shiftActivationRuleExpiries(rec.activationRule, shiftMs);
+        }
       }
     }
-  }
+    return decision;
+  };
+  let finalDecision = prepareDecision(synth.result);
+  // chartSnapshotHash was computed before the fleet (it also keys the stage
+  // checkpoint) — the market window cannot change mid-run, so it is reused.
 
   // ── The mandatory gate chain (G1–G7) ────────────────────────────────────
   //
@@ -1684,20 +1707,34 @@ async function runUnifiedChartAgentInner(
   // the platform's own checks say a plan should not exist.
   let gateChain: GateChainResult | null = null;
   let gateEntryType: EntryType | undefined;
-  const gateRec = finalDecision.recommendation;
-  const gatePlanReady =
-    (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
-    gateRec != null &&
-    gateRec.entry != null &&
-    gateRec.stop_loss != null &&
-    (gateRec.targets?.length ?? 0) > 0;
-  if (gatePlanReady) {
+
+  const gatePlanReadyFor = (decision: FinalDecisionResult): boolean => {
+    const rec = decision.recommendation;
+    return (
+      (decision.decision === "buy" || decision.decision === "sell") &&
+      rec != null &&
+      rec.entry != null &&
+      rec.stop_loss != null &&
+      (rec.targets?.length ?? 0) > 0
+    );
+  };
+
+  // The whole G1–G7 evaluation over ONE decision: resolve fill semantics,
+  // build and run the chain, apply a G7 re-anchor to the plan, record the
+  // verdicts, narrate. A closure because it now runs up to twice — once over
+  // the authored decision and once over a stale-scenario reprice retry.
+  // Returns null when the decision carries no gateable plan.
+  const evaluatePlanGates = async (
+    decision: FinalDecisionResult,
+  ): Promise<GateChainResult | null> => {
+    if (!gatePlanReadyFor(decision)) return null;
+    const gateRec = decision.recommendation!;
     // Structure decides the fill semantics, not the model's declared order
     // type — the incident's plan declared a pending limit while carrying a
     // close-based rule, and believing the declaration is how that got stored.
     gateEntryType = resolveEntryType({
       declared: gateRec.entryType,
-      planType: gateRec.planType ?? finalDecision.planType,
+      planType: gateRec.planType ?? decision.planType,
       activationRule: gateRec.activationRule,
     });
     const { gates } = buildGates({
@@ -1712,7 +1749,7 @@ async function runUnifiedChartAgentInner(
       atr: market.atr ?? 0,
       visualTimeframes: visual.snapshots.map((snapshot) => snapshot.timeframe),
       plan: {
-        direction: finalDecision.decision === "buy" ? "buy" : "sell",
+        direction: decision.decision === "buy" ? "buy" : "sell",
         entryType: gateEntryType,
         entry: gateRec.entry!,
         stopLoss: gateRec.stop_loss!,
@@ -1726,12 +1763,12 @@ async function runUnifiedChartAgentInner(
       // does not stand still; a plan revalidated against the price the run
       // STARTED with has been validated against the past.
       //
-      // In scenario mode there IS no live quote — OANDA marks the instrument
-      // untradeable and `usableQuote` now refuses its stale Friday number, so
-      // the live fetch would return null and a required G7 would block every
-      // weekend answer. The last CLOSE is the honest price of a paused tape:
-      // the geometry gate grades the plan against the exact number every
-      // other part of the scenario was built from.
+      // In scenario mode there IS no live quote — the feed marks the
+      // instrument untradeable and `usableQuote` now refuses its stale Friday
+      // number, so the live fetch would return null and a required G7 would
+      // block every weekend answer. The last CLOSE is the honest price of a
+      // paused tape: the geometry gate grades the plan against the exact
+      // number every other part of the scenario was built from.
       fetchLivePrice: marketClosedScenario
         ? () => Promise.resolve(market.currentTfCandles.at(-1)?.close ?? null)
         : () =>
@@ -1739,7 +1776,7 @@ async function runUnifiedChartAgentInner(
               .then((quote) => (quote ? (quote.bid + quote.ask) / 2 : null))
               .catch(() => null),
     });
-    gateChain = await runGateChain(gates);
+    const chain = await runGateChain(gates);
 
     // G7 re-prices instead of refusing when price outran the written entry,
     // and the re-price has to be APPLIED here or it is worse than the veto it
@@ -1752,11 +1789,11 @@ async function runUnifiedChartAgentInner(
     // longer waiting for anything — price already went there — and leaving a
     // stale activation rule attached would arm the tracker for a condition
     // that has already happened.
-    const reanchor = gateChain.verdicts.find(
+    const reanchor = chain.verdicts.find(
       (verdict) =>
         verdict.id === "G7" && typeof verdict.evidence?.reanchoredEntry === "number",
     );
-    if (reanchor && gateRec != null) {
+    if (reanchor) {
       const entry = reanchor.evidence!.reanchoredEntry as number;
       log.info("agent.gate.reanchored", {
         requestId: ctx.requestId,
@@ -1771,22 +1808,24 @@ async function runUnifiedChartAgentInner(
       // The operator is told in the plan's own voice, not only in the gate
       // list: the entry they read is not the entry the model wrote.
       if (reanchor.reasonAr) {
-        finalDecision.riskWarnings = [reanchor.reasonAr, ...finalDecision.riskWarnings];
+        decision.riskWarnings = [reanchor.reasonAr, ...decision.riskWarnings];
       }
     }
 
     // Phase-4: every gate run writes a timestamped record. The canonical
     // creator refuses a write with no fresh, complete, non-vetoed set — so
     // this record, not the in-memory verdict array, is what authorizes
-    // persistence. Recorded for refusals too: a veto is evidence.
+    // persistence. Recorded for refusals too: a veto is evidence. Idempotent
+    // per (user, analysis, gate): a reprice retry's chain overwrites the
+    // vetoed rows, so the record always describes the plan actually emitted.
     if (ctx.userId != null) {
       const { recordGateChain } = await import("@/lib/recommendations/gateRecords");
       await recordGateChain({
         userId: ctx.userId,
         analysisId,
         symbol: market.symbol,
-        verdicts: gateChain.verdicts,
-        chainAllowed: gateChain.allowed,
+        verdicts: chain.verdicts,
+        chainAllowed: chain.allowed,
       }).catch((error) => {
         log.warn("gate record persist failed", {
           requestId: ctx.requestId,
@@ -1795,7 +1834,7 @@ async function runUnifiedChartAgentInner(
       });
     }
 
-    for (const verdict of gateChain.verdicts) {
+    for (const verdict of chain.verdicts) {
       trackedCtx.emitActivity({
         type: "analysis",
         status:
@@ -1813,33 +1852,97 @@ async function runUnifiedChartAgentInner(
     think(
       narrateGateOutcome({
         locale,
-        verdicts: gateChain.verdicts,
-        allowed: gateChain.allowed,
-        vetoedBy: gateChain.vetoedBy,
+        verdicts: chain.verdicts,
+        allowed: chain.allowed,
+        vetoedBy: chain.vetoedBy,
       }),
     );
 
-    if (!gateChain.allowed) {
-      const refusal = refusalSummaryAr(gateChain) ?? t("ar", "orch.no_rec_now");
-      log.info("agent.gate_chain.refused", {
-        requestId: ctx.requestId,
-        gate: gateChain.vetoedBy?.id,
-        status: gateChain.vetoedBy?.status,
-      });
-      // The plan is retracted, not softened. Leaving the model's own prose in
-      // place would keep telling the operator to sell at a level the platform
-      // has just refused to stand behind.
-      finalDecision.decision = "wait";
-      finalDecision.planType = undefined;
-      finalDecision.executionState = "blocked";
-      finalDecision.confidence = 0;
-      finalDecision.recommendation = { action: "wait" };
-      finalDecision.summary = refusal;
-      finalDecision.riskWarnings = [refusal, ...finalDecision.riskWarnings];
-      // The checklist as far as it got — the operator learns what to wait for
-      // rather than being told "no setup right now".
-      finalDecision.publicReasoningSummary = gateChain.verdicts.map(gateLineAr);
+    return chain;
+  };
+
+  gateChain = await evaluatePlanGates(finalDecision);
+
+  // ── The stale-scenario reprice loop ──────────────────────────────────────
+  //
+  // A G7 veto saying "the stop/targets are already behind the live price" is
+  // not a fact about the market being untradeable — it is the news that the
+  // move the plan anticipated ALREADY HAPPENED while the analysis ran. The
+  // production incident: a conditional XAUUSD sell was authored, G7 found its
+  // stop (4608.13) already passed, and the operator got an empty "no
+  // recommendation" card for a market with a perfectly readable follow-through.
+  // That veto is fed back to the synthesizer ONCE, as explicit scenario
+  // evidence ("the move to X already occurred — choose immediate follow-through
+  // or a fresh conditional at current structure"), and the retry runs the same
+  // G1–G7 chain. Genuine refusals — news blackout, no calendar, incoherent
+  // geometry, a retry that still fails — keep refusing by name.
+  if (gateChain && !gateChain.allowed && gatePlanReadyFor(finalDecision)) {
+    const staleRec = finalDecision.recommendation!;
+    let retryOutcome: SynthesizerOutcome | null = null;
+    const repriced = await repriceStaleScenario({
+      decision: finalDecision,
+      chain: gateChain,
+      plan: {
+        direction: finalDecision.decision === "buy" ? "buy" : "sell",
+        entry: staleRec.entry!,
+        stopLoss: staleRec.stop_loss!,
+        targets: staleRec.targets ?? [],
+      },
+      resynthesize: async (feedback) => {
+        log.info("agent.gate.reprice_retry", {
+          requestId: ctx.requestId,
+          gate: gateChain?.vetoedBy?.id,
+          status: gateChain?.vetoedBy?.evidence?.status,
+        });
+        trackedCtx.emitActivity({
+          type: "analysis",
+          status: "warning",
+          message: t(locale, "orch.repricing_stale_plan"),
+          metadata: {
+            gate: gateChain?.vetoedBy?.id,
+            status: gateChain?.vetoedBy?.evidence?.status,
+          },
+        });
+        metrics.synthCorrectiveRetries.inc();
+        // The quote G7 actually measured — the price the retry must decide
+        // against, not the one the run started with.
+        const rawLive = gateChain?.vetoedBy?.evidence?.currentPrice;
+        const livePrice =
+          typeof rawLive === "number" && Number.isFinite(rawLive) ? rawLive : null;
+        const retry = await invokeSynthesizer(feedback, livePrice);
+        if (!retry?.result) return null;
+        retryOutcome = retry;
+        return prepareDecision(retry.result);
+      },
+      evaluate: evaluatePlanGates,
+    });
+    if (repriced.repriced && retryOutcome) {
+      synth = retryOutcome;
+      finalDecision = repriced.decision;
+      gateChain = repriced.chain;
     }
+  }
+
+  if (gateChain && !gateChain.allowed) {
+    const refusal = refusalSummaryAr(gateChain) ?? t("ar", "orch.no_rec_now");
+    log.info("agent.gate_chain.refused", {
+      requestId: ctx.requestId,
+      gate: gateChain.vetoedBy?.id,
+      status: gateChain.vetoedBy?.status,
+    });
+    // The plan is retracted, not softened. Leaving the model's own prose in
+    // place would keep telling the operator to sell at a level the platform
+    // has just refused to stand behind.
+    finalDecision.decision = "wait";
+    finalDecision.planType = undefined;
+    finalDecision.executionState = "blocked";
+    finalDecision.confidence = 0;
+    finalDecision.recommendation = { action: "wait" };
+    finalDecision.summary = refusal;
+    finalDecision.riskWarnings = [refusal, ...finalDecision.riskWarnings];
+    // The checklist as far as it got — the operator learns what to wait for
+    // rather than being told "no setup right now".
+    finalDecision.publicReasoningSummary = gateChain.verdicts.map(gateLineAr);
   }
 
   // Build the drawing plan: the single source of truth for what may be drawn.

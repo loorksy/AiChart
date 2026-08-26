@@ -64,10 +64,13 @@ const WAITING_ENTRY_TYPES = new Set([
   "retest_zone",
 ]);
 
+/** Unknown/absent is treated as market — no leniency by omission. */
+function isWaitingEntry(entryType: string | undefined): boolean {
+  return Boolean(entryType && WAITING_ENTRY_TYPES.has(entryType));
+}
+
 function maxAtrDistanceFor(entryType: string | undefined): number {
-  // Unknown/absent is treated as market: the stricter of the two, so a plan
-  // that never declared its fill rule cannot buy leniency by omission.
-  return entryType && WAITING_ENTRY_TYPES.has(entryType)
+  return isWaitingEntry(entryType)
     ? WAITING_MAX_ATR_DISTANCE
     : DEFAULT_MAX_ATR_DISTANCE;
 }
@@ -124,7 +127,7 @@ export interface RevalidationVerdict {
 }
 
 /**
- * Is the plan's own invalidation level already behind price?
+ * Is the plan's own invalidation level already behind the price it FILLS at?
  *
  * Deliberately checked in BOTH directions, unlike reachability. A buy whose
  * price fell through its stop never tripped the old `movedPast` test — that
@@ -133,13 +136,21 @@ export interface RevalidationVerdict {
  * descriptive evidence, not an acceptance threshold). So nothing at all caught
  * it, and G7 would pass a plan that had already lost.
  */
-function stopIsBreached(input: RevalidationInput): boolean {
+function stopIsBreached(input: RevalidationInput, fillPrice: number): boolean {
   return input.direction === "buy"
-    ? input.currentPrice <= input.stopLoss
-    : input.currentPrice >= input.stopLoss;
+    ? fillPrice <= input.stopLoss
+    : fillPrice >= input.stopLoss;
+}
+
+/** Targets still in front of the given fill price — the reward not yet spent. */
+function reachableTargetsFrom(input: RevalidationInput, fillPrice: number): number[] {
+  return input.targets.filter((tp) =>
+    input.direction === "buy" ? tp > fillPrice : tp < fillPrice,
+  );
 }
 
 export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
+  const waiting = isWaitingEntry(input.entryType);
   const maxAtr = input.maxAtrDistance ?? maxAtrDistanceFor(input.entryType);
   const maxDistance = Math.max(0, input.atr * maxAtr);
   const distance = Math.abs(input.currentPrice - input.effectiveEntry);
@@ -156,10 +167,28 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
       : null;
   const base = { liveRr, distance, maxDistance };
 
-  // 1. The idea is already dead. Not a tolerance — a fact about this plan's
-  //    own invalidation level, and the one case where there is nothing to
-  //    re-price toward.
-  if (stopIsBreached(input)) {
+  // The price this plan would actually be GRADED from. A market plan fills at
+  // the live quote, so its stop and targets are measured against the market
+  // as it is now. A WAITING plan fills later, at its own entry — its stop and
+  // targets are that entry's geometry, and where price happens to sit while
+  // the plan waits is the approach, not the trade.
+  //
+  // Judging a waiting plan by the live price is the incident this fixes
+  // (2026-08-26): a conditional XAUUSD breakdown sell — entry 4605.29 below
+  // the market, stop 4608.13 just above the entry — was refused as "the stop
+  // is already hit" because the live price, 4613, sat above 4608.13. It sat
+  // there BY CONSTRUCTION: a breakdown sell is written with the market above
+  // its stop, and the stop only starts existing when the fill does (the
+  // tracker evaluates SL strictly after activation, recommendationStatus.ts).
+  // The side-aware fact for a pending plan is its own geometry — stop behind
+  // the entry, targets in front of it — which is exactly what G6 validates.
+  const fillPrice = waiting ? input.effectiveEntry : input.currentPrice;
+
+  // 1. The idea is already dead at the price it would fill. For a market plan
+  //    that is the live quote — a position opened here has already lost. For a
+  //    waiting plan this only fires on broken geometry (stop on the wrong side
+  //    of its own entry), which G6 refuses earlier.
+  if (stopIsBreached(input, fillPrice)) {
     return {
       ...base,
       status: "invalidated",
@@ -169,12 +198,12 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
     };
   }
 
-  // 2. Nothing left to make. Every target sits behind price, so an entry here
-  //    would be opened with its whole reward already spent.
-  const reachableTargets = input.targets.filter((tp) =>
-    input.direction === "buy" ? tp > input.currentPrice : tp < input.currentPrice,
-  );
-  if (input.targets.length > 0 && reachableTargets.length === 0) {
+  // 2. Nothing left to make at the fill price. Every target sits behind it,
+  //    so the trade would open with its whole reward already spent. A waiting
+  //    plan measures this from its own entry: a pullback buy's target may
+  //    legitimately sit behind the LIVE price — the plan fills below, at the
+  //    dip it was written to catch.
+  if (input.targets.length > 0 && reachableTargetsFrom(input, fillPrice).length === 0) {
     return {
       ...base,
       status: "targets_passed",
@@ -204,6 +233,31 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
       : input.currentPrice < input.effectiveEntry;
 
   if (movedPast && distance > maxDistance) {
+    // A re-anchored plan FILLS AT THE LIVE PRICE (the caller converts it to a
+    // market entry), so it must be viable there. For market plans steps 1–2
+    // already guaranteed this; for waiting plans they were measured from the
+    // plan's own entry, so the live-fill facts are checked here — a re-price
+    // into a position that has already lost, or whose reward is already
+    // spent, is worse than the refusal it replaces. When the re-price cannot
+    // win, the move the plan wanted has ALREADY COMPLETED: that is reported
+    // as the stale fact it is, and the caller's reprice loop feeds it back
+    // for a freshly-priced plan instead of publishing a refusal.
+    if (stopIsBreached(input, input.currentPrice)) {
+      return {
+        ...base,
+        status: "invalidated",
+        reasonAr: t("ar", "gate.revalidation.invalidated", {
+          stopLoss: input.stopLoss.toFixed(2),
+        }),
+      };
+    }
+    if (input.targets.length > 0 && reachableTargetsFrom(input, input.currentPrice).length === 0) {
+      return {
+        ...base,
+        status: "targets_passed",
+        reasonAr: t("ar", "gate.revalidation.targets_passed"),
+      };
+    }
     const params = {
       written: input.effectiveEntry.toFixed(2),
       current: input.currentPrice.toFixed(2),

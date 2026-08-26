@@ -17,7 +17,7 @@
     "test:tools": "tsx --test --test-force-exit src/lib/agent/tools/__tests__/*.test.ts",
     "test:trace": "tsx --test --test-force-exit src/lib/agent/__tests__/runTraceSchema.test.ts && tsx --test --test-force-exit src/lib/agent/__tests__/runTraceDb.test.ts",
     "test:research": "tsx --test --test-force-exit src/lib/research/__tests__/*.test.ts",
-    "test:gates": "tsx --test --test-force-exit src/lib/agent/__tests__/gates.test.ts src/lib/agent/gates/__tests__/clientPlanChain.test.ts src/lib/agent/gates/__tests__/mcpZeroLlm.test.ts src/lib/agent/gates/__tests__/revalidation.test.ts src/lib/gold/__tests__/candleStore.test.ts",
+    "test:gates": "tsx --test --test-force-exit src/lib/agent/__tests__/gates.test.ts src/lib/agent/gates/__tests__/clientPlanChain.test.ts src/lib/agent/gates/__tests__/mcpZeroLlm.test.ts src/lib/agent/gates/__tests__/revalidation.test.ts src/lib/agent/gates/__tests__/repriceLoop.test.ts src/lib/gold/__tests__/candleStore.test.ts",
     "test:execution": "tsx --test --test-force-exit src/lib/execution/__tests__/executionCore.test.ts",
     "test:guards": "tsx --test --test-force-exit src/lib/__tests__/clientServerBoundary.test.ts src/lib/__tests__/manualExecutionGuard.test.ts src/lib/__tests__/goldOnlyGuard.test.ts src/lib/__tests__/uiTargetsExist.test.ts src/lib/__tests__/arabicInSystemFiles.test.ts src/lib/__tests__/testsAreWired.test.ts",
     "test:vision": "tsx --test --test-force-exit src/lib/agent/__tests__/visualCoverage.test.ts src/lib/agent/__tests__/browseLoop.test.ts src/lib/agent/__tests__/selfVision.test.ts src/lib/agent/__tests__/captureDelegation.test.ts src/lib/chart/__tests__/liveCapture.test.ts src/lib/chart/__tests__/platformCapture.test.ts",

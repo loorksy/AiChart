@@ -184,7 +184,11 @@ describe("doctrine guard", () => {
     );
 
     const orchestrator = readFileSync(join(WEB_SRC, "lib/agent/orchestrator.ts"), "utf8");
-    const guard = orchestrator.indexOf("if (!gateChain.allowed)");
+    // The refusal branch checks `gateChain &&` since the stale-scenario
+    // reprice loop landed: the chain variable is reassigned by the retry, so
+    // the guard reads the FINAL chain — original or repriced — and the WAIT
+    // is still born nowhere else.
+    const guard = orchestrator.indexOf("if (gateChain && !gateChain.allowed)");
     const assignment = orchestrator.indexOf('finalDecision.decision = "wait"');
     assert.ok(guard > 0, "the gate refusal branch must exist");
     assert.ok(
