@@ -39,7 +39,7 @@ const BLOCKED_PHRASES = [
  * activity messages and any public model text before display.
  */
 export function sanitizeActivityMessage(message: string): string {
-  let clean = String(message ?? "").trim();
+  let clean = neutralizeDataVendor(String(message ?? "").trim());
   for (const phrase of BLOCKED_PHRASES) {
     clean = clean.replace(new RegExp(escapeRegExp(phrase), "gi"), "");
   }
@@ -48,6 +48,19 @@ export function sanitizeActivityMessage(message: string): string {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The market-data vendor is internal provenance — operator instruction: the
+ * data source must never appear in user-facing output on any surface. The
+ * prompt layer already forbids naming it; this is the outbound guarantee for
+ * text a model composed anyway. Exchange-prefixed symbols ("OANDA:XAUUSD")
+ * drop the prefix; prose mentions become the neutral "platform feed" phrase
+ * in the text's own language.
+ */
+function neutralizeDataVendor(text: string): string {
+  const out = text.replace(/\bOANDA:\s*/g, "");
+  return out.replace(/\bOANDA\b|أواندا|آواندا|اواندا/g, () => (/[\u0600-\u06FF]/.test(out) ? "تغذية المنصة" : "the platform feed"));
 }
 
 /** Build a complete, sanitized, timestamped activity event. */
@@ -79,7 +92,7 @@ export function shouldShowActivity(event: AgentActivityEvent): boolean {
  * answers/summaries where truncation would drop legitimate content.
  */
 export function sanitizePublicText(text: string): string {
-  let clean = String(text ?? "").trim();
+  let clean = neutralizeDataVendor(String(text ?? "").trim());
   for (const phrase of BLOCKED_PHRASES) {
     clean = clean.replace(new RegExp(escapeRegExp(phrase), "gi"), "");
   }

@@ -7,7 +7,6 @@ import { SubscribeClient } from "@/components/subscription/SubscribeClient";
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
 import { getBillingPlan, getCurrentPlanPrice } from "@/lib/billing/planConfig";
 import { initDb } from "@/lib/db";
-import { FEATURES } from "@/lib/agent/featureFlags";
 import { BRAND_NAME } from "@/lib/brand";
 import { privateSurfaceMetadata } from "@/lib/seo";
 
@@ -15,8 +14,11 @@ export const metadata: Metadata = privateSurfaceMetadata(
   `الاشتراك — ${BRAND_NAME}`,
 );
 
+// Not gated on FEATURE_BILLING: the Free-account subscribe CTA points here
+// from the account menu and from spend refusals, and the gate bounced every
+// click back to the landing page. The page already degrades to the contact
+// CTA when payments are not configured.
 export default async function SubscribePage() {
-  if (!FEATURES.billing()) redirect("/");
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/subscribe");
   await initDb();

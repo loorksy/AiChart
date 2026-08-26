@@ -64,9 +64,10 @@ import {
 import { evaluateDependencies } from "./dependencyMatrix";
 import { buildGates } from "./gates/buildGates";
 import { gateLineAr, refusalSummaryAr, runGateChain } from "./gates/chain";
+import { repriceStaleScenario } from "./gates/repriceLoop";
 import type { GateChainResult, GateVerdict } from "./gates/types";
 import { newsProviderConfigured } from "./news/newsProvider";
-import { resolveEntryType } from "@/lib/recommendations/entrySemantics";
+import { resolveEntryType, resolveInvalidationMode } from "@/lib/recommendations/entrySemantics";
 import type { EntryType } from "@/lib/recommendations/entrySemantics";
 import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { answerGeneralQuestion } from "./generalAnswer";
@@ -104,6 +105,7 @@ import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
 import {
   runFinalDecisionSynthesizer,
   type SynthesizerDeps,
+  type SynthesizerOutcome,
 } from "./agents/finalDecisionSynthesizer";
 import { runDrawingAgent } from "./agents/drawingAgent";
 import {
@@ -146,6 +148,20 @@ import {
   composeRecommendationExplanation,
   composeRecommendationStatusAnswer,
 } from "./recommendation/followupAnswer";
+import { planTurn } from "./core/turnPlanner";
+import {
+  narrateFollowupCheck,
+  narrateGateOutcome,
+  narrateHigherTimeframe,
+  narrateMarketRead,
+  narrateNews,
+  narrateStructure,
+  narrateWeighing,
+} from "./thinkingNarration";
+import {
+  getTradingSessionInfo,
+  tradingSessionPromptBlock,
+} from "./core/tradingSessions";
 import { hashMarketSnapshot } from "./chartSnapshot";
 import {
   loadStageCheckpoint,
@@ -215,14 +231,22 @@ async function settleGeneralAnswer(
   try {
     const summary = await withTimeout(work, generalStageTimeoutMs(), null);
     if (summary == null) {
-      return buildAgentFallbackResult(
-        "General answer exceeded its deadline.",
-        collected,
-        locale,
-        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: requestId },
-      );
+      return {
+        ...buildAgentFallbackResult(
+          "General answer exceeded its deadline.",
+          collected,
+          locale,
+          { failureStage: "general", failureCode: "timeout", retryable: true, traceId: requestId },
+        ),
+        turnMode: "conversation",
+      };
     }
-    return buildInformationalResult(summary, collected, { traceId: requestId });
+    return {
+      ...buildInformationalResult(summary, collected, { traceId: requestId }),
+      // Presentation contract: a plain conversational answer renders as text
+      // only — no signal card, no chip stack (see turnPresentation.ts).
+      turnMode: "conversation",
+    };
   } catch (error) {
     const classified = classifyAgentError(error);
     log.warn("agent.general.failed", {
@@ -230,7 +254,10 @@ async function settleGeneralAnswer(
       code: classified.code,
       detail: classified.detail.slice(0, 300),
     });
-    return resultForGeneralQuestionFailure(error, collected, locale, { traceId: requestId });
+    return {
+      ...resultForGeneralQuestionFailure(error, collected, locale, { traceId: requestId }),
+      turnMode: "conversation",
+    };
   }
 }
 
@@ -496,6 +523,7 @@ async function runUnifiedChartAgentInner(
       });
       return {
         decision: "informational",
+        turnMode: "specialist",
         confidence: 0.9,
         summary,
         keyReasons: [],
@@ -534,12 +562,15 @@ async function runUnifiedChartAgentInner(
   // before explain_chart_drawings because "what do you think of my drawing" references the user's
   // OWN manual drawing, not the agent's AiChart drawings.
   if (isUserDrawingEdit(intents)) {
-    return handleUserDrawingCommand({
-      intents,
-      userMessage,
-      chartContext,
-      locale,
-    });
+    return {
+      ...(await handleUserDrawingCommand({
+        intents,
+        userMessage,
+        chartContext,
+        locale,
+      })),
+      turnMode: "specialist",
+    };
   }
 
   if (intents.includes("explain_chart_drawings")) {
@@ -563,6 +594,7 @@ async function runUnifiedChartAgentInner(
     }
     return {
       decision: "informational",
+      turnMode: "specialist",
       confidence: 0.8,
       summary,
       keyReasons: [],
@@ -589,7 +621,7 @@ async function runUnifiedChartAgentInner(
   // market agents. The result carries `studies`; the client mirrors them onto
   // the TradingView chart and the layout autosave makes them survive refresh.
   if (intents.includes("enable_indicators")) {
-    return handleIndicatorCommand({ userMessage, locale });
+    return { ...(await handleIndicatorCommand({ userMessage, locale })), turnMode: "specialist" };
   }
 
   if (isDrawingOnly(intents)) {
@@ -602,6 +634,7 @@ async function runUnifiedChartAgentInner(
     });
     return {
       ...drawingResult,
+      turnMode: "specialist",
       options: contextualOptionsFor({ decision: drawingResult.decision, drawingOnly: true, locale }),
     };
   }
@@ -617,6 +650,43 @@ async function runUnifiedChartAgentInner(
       ctx.requestId,
     );
   }
+
+  // --- The turn planner: the no-contradiction rule (core/turnPlanner.ts) ---
+  //
+  // While a recommendation is LIVE, an ambiguous market message ("how is
+  // gold doing?", "the price is moving") is a follow-up about that plan — answered
+  // with fresh candles through the same rule-aware evaluator the card uses —
+  // never a second, possibly opposite, plan. Only an explicit request for a
+  // new analysis re-opens the pipeline, and then the OLD plan is superseded
+  // out loud: the synthesizer prompt receives it to discuss, and it is closed
+  // when the replacement is stored. Reevaluation cycles are the brain's own
+  // scheduled work and are exempt — they revise the plan they were opened for.
+  const turnPlan =
+    input.purpose === "reevaluation"
+      ? null
+      : planTurn({
+          intents,
+          message: userMessage,
+          activeRecommendationLive: isActiveRecommendationLive(activeRecommendation),
+        });
+  if (turnPlan?.mode === "recommendation_followup" && activeRecommendation) {
+    ctx.emitDebug?.({
+      type: "turn_plan",
+      mode: turnPlan.mode,
+      reason: turnPlan.reason,
+    });
+    return trackStoredRecommendation({
+      activeRecommendation,
+      chartContext,
+      ctx: trackedCtx,
+      collected,
+      userMessage,
+      locale,
+    });
+  }
+  // The plan a fresh EXPLICIT analysis must speak to and then replace.
+  const supersededRecommendation =
+    turnPlan?.mode === "supersede_analysis" ? activeRecommendation : null;
 
   const wantMarket = needsMarketContext(intents);
   const educationalOnly = Boolean(ctx.session?.preferences.educationalOnly);
@@ -697,6 +767,7 @@ async function runUnifiedChartAgentInner(
     });
     return {
       decision: "informational",
+      turnMode: "specialist",
       confidence: 0,
       confidenceSemantics: newsSemantics,
       summary: unknownNews
@@ -966,6 +1037,20 @@ async function runUnifiedChartAgentInner(
   // Cancelled right after market data: never start the fleet for nobody.
   if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
 
+  // Live thinking trace: one sentence per REAL step, composed from the values
+  // that step just produced (thinkingNarration.ts). No value → no line.
+  const think = (line: string | null) => {
+    if (line) ctx.emitThinking?.(line);
+  };
+  think(
+    narrateMarketRead({
+      locale,
+      interval: market.interval,
+      candleCount: market.currentTfCandles.length,
+      currentPrice: market.currentPrice,
+    }),
+  );
+
   // Stage checkpoint (item 2): an identical market snapshot means the fleet —
   // pure functions of the candle window — would produce identical output, so a
   // retry after a failed decision resumes instead of re-earning the evidence.
@@ -1057,6 +1142,39 @@ async function runUnifiedChartAgentInner(
     // stage's checklist row here or it would spin forever in the UI.
     ctx.emitStage?.({ stage: failure.stage, status: "failed" });
   }
+
+  // Narrate what the fleet actually found — the detected trend, the nearest
+  // real levels around the live price, the higher-frame lean, the news
+  // window. Skipped entirely for a specialist that degraded to null.
+  if (structure) {
+    const supportsBelow = structure.support
+      .map((level) => level.price)
+      .filter((p) => Number.isFinite(p) && p < market.currentPrice!);
+    const resistancesAbove = structure.resistance
+      .map((level) => level.price)
+      .filter((p) => Number.isFinite(p) && p > market.currentPrice!);
+    think(
+      narrateStructure({
+        locale,
+        interval: market.interval,
+        trend: structure.trend,
+        nearestSupport: supportsBelow.length ? Math.max(...supportsBelow) : null,
+        nearestResistance: resistancesAbove.length
+          ? Math.min(...resistancesAbove)
+          : null,
+      }),
+    );
+  }
+  if (mtf) {
+    think(
+      narrateHigherTimeframe({
+        locale,
+        higherInterval: market.higherInterval,
+        higherBias: mtf.higherBias,
+      }),
+    );
+  }
+  think(narrateNews({ locale, level: news?.newsRisk ?? "unknown" }));
 
   // Deterministic chart geometry — computed ONCE, BEFORE the candidate engine,
   // so forming-pattern boundaries become real entry zones rather than prompt
@@ -1287,6 +1405,8 @@ async function runUnifiedChartAgentInner(
     });
   }
 
+  think(narrateWeighing({ locale, candidateCount: candidates.length }));
+
   const decisionStartedAt = performance.now();
   ctx.emitStage?.({ stage: "final_decision", status: "running" });
   let synthError: unknown = null;
@@ -1301,12 +1421,30 @@ async function runUnifiedChartAgentInner(
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
   // rather than leave it running behind an answer the user already received.
-  const synth = await withDeadline(
+  //
+  // A closure because the call now runs up to TWICE: the authoring pass, and —
+  // when G7 finds the authored levels already overtaken by the live price —
+  // one corrective reprice pass whose `extraSystemBlock` carries the
+  // stale-scenario feedback (gates/repriceLoop.ts).
+  //
+  // `liveCurrentPrice` refreshes the quote the retry decides against. Without
+  // it the retry read the run's ORIGINAL snapshot price, so the issue-time
+  // activation-rule coherence check graded the repriced plan against the very
+  // number the market had just left behind — every retry anchored to the same
+  // stale quote failed the same check, which is a loop that can only refuse.
+  const invokeSynthesizer = (
+    extraSystemBlock: string | null,
+    liveCurrentPrice: number | null = null,
+  ) =>
+    withDeadline(
     (signal) =>
       runFinalDecisionSynthesizer(
         { ...trackedCtx, signal },
         {
           ...decisionInput,
+          ...(liveCurrentPrice != null
+            ? { market: { ...decisionInput.market, currentPrice: liveCurrentPrice } }
+            : {}),
           candidates,
           narrative,
           geometry,
@@ -1319,6 +1457,7 @@ async function runUnifiedChartAgentInner(
             [
               skillContextFinal.block || null,
               marketClosedScenario ? scenarioPromptBlock(marketClosedScenario) : null,
+              extraSystemBlock,
             ]
               .filter(Boolean)
               .join("\n\n") || null,
@@ -1333,13 +1472,35 @@ async function runUnifiedChartAgentInner(
           historicalCases,
           // The designed extension point: fresh keys reach the model prompt
           // (and the frozen evidence snapshot) without contract changes.
-          additionalEvidence:
-            macroRegime || cotPositioning
+          additionalEvidence: {
+            ...(macroRegime ? { macroRegime } : {}),
+            ...(cotPositioning ? { cotPositioning } : {}),
+            // Which session the market is trading in RIGHT NOW (core/
+            // tradingSessions.ts) — so the analysis can say "during the New
+            // York session" as a fact instead of guessing or staying silent.
+            tradingSession: tradingSessionPromptBlock(getTradingSessionInfo()),
+            // The live plan an EXPLICIT re-analysis is replacing. The model
+            // must speak to the change — what shifted since that plan, why it
+            // no longer stands — because a silent flip is indistinguishable
+            // from a contradiction. The deterministic half (the old plan is
+            // closed when the new one is stored) never depends on this.
+            ...(supersededRecommendation
               ? {
-                  ...(macroRegime ? { macroRegime } : {}),
-                  ...(cotPositioning ? { cotPositioning } : {}),
+                  previousRecommendation: {
+                    instruction:
+                      "A previous recommendation from THIS conversation is still open and the operator explicitly asked for a fresh analysis. Address it: state what changed since it was issued, whether the market invalidated or merely stalled it, and only then present the new plan. Never present a contradictory plan as though the previous one did not exist.",
+                    direction: supersededRecommendation.direction,
+                    entry: supersededRecommendation.entry,
+                    stopLoss: supersededRecommendation.stopLoss,
+                    targets: supersededRecommendation.targets,
+                    status: supersededRecommendation.status,
+                    createdAt: new Date(
+                      supersededRecommendation.createdAt,
+                    ).toISOString(),
+                  },
                 }
-              : null,
+              : {}),
+          },
           macroRegime,
           cotPositioning,
         },
@@ -1397,7 +1558,8 @@ async function runUnifiedChartAgentInner(
     AGENT_TIMEOUTS.finalDecision,
     null,
     ctx.signal,
-  );
+    );
+  let synth = await invokeSynthesizer(null);
   if (!synth) {
     // withTimeout resolves to null on deadline; a thrown error is a real fault.
     const thrownFailure = synthError
@@ -1495,41 +1657,42 @@ async function runUnifiedChartAgentInner(
     status: "done",
     durationMs: Math.round(performance.now() - decisionStartedAt),
   });
-  const finalDecision = synth.result;
-  // Attach the significant-gap warning once — every downstream return path
-  // (guard blocks, confirmation, final result) reuses finalDecision.riskWarnings.
-  if (significantGapWarning) {
-    finalDecision.riskWarnings = [
-      significantGapWarning,
-      ...finalDecision.riskWarnings,
-    ];
-  }
-  // chartSnapshotHash was computed before the fleet (it also keys the stage
-  // checkpoint) — the market window cannot change mid-run, so it is reused.
-
-  // ── Scenario mode: the plan is conditional, deterministically ───────────
-  //
-  // The synthesizer was TOLD it is writing a next-open scenario, but the
-  // guarantee cannot live in a prompt. Before the gates read the plan, force
-  // what a closed market makes true: nothing is executable now, so the plan
-  // type is conditional and the state awaits activation; and every deadline
-  // the model wrote relative to ITS now (a Saturday) shifts to the open —
-  // otherwise the trigger expires ~40 hours before the first candle that
-  // could satisfy it prints, and the plan dies unmet on Monday.
-  if (marketClosedScenario && finalDecision.recommendation) {
-    const rec = finalDecision.recommendation;
-    if (rec.action === "buy" || rec.action === "sell") {
-      const shiftMs = marketClosedScenario.nextOpenAt - Date.now();
-      finalDecision.planType = "conditional";
-      finalDecision.executionState = "awaiting_activation";
-      rec.planType = "conditional";
-      rec.executionState = "awaiting_activation";
-      if (rec.activationClass === "immediate") rec.activationClass = "conditional";
-      if (rec.activationRule) {
-        rec.activationRule = shiftActivationRuleExpiries(rec.activationRule, shiftMs);
+  // Contract facts every decision must carry regardless of WHICH synthesizer
+  // pass authored it — the first, or the stale-scenario reprice retry.
+  const prepareDecision = (decision: FinalDecisionResult): FinalDecisionResult => {
+    // Attach the significant-gap warning once — every downstream return path
+    // (guard blocks, confirmation, final result) reuses decision.riskWarnings.
+    if (significantGapWarning) {
+      decision.riskWarnings = [significantGapWarning, ...decision.riskWarnings];
+    }
+    // ── Scenario mode: the plan is conditional, deterministically ─────────
+    //
+    // The synthesizer was TOLD it is writing a next-open scenario, but the
+    // guarantee cannot live in a prompt. Before the gates read the plan, force
+    // what a closed market makes true: nothing is executable now, so the plan
+    // type is conditional and the state awaits activation; and every deadline
+    // the model wrote relative to ITS now (a Saturday) shifts to the open —
+    // otherwise the trigger expires ~40 hours before the first candle that
+    // could satisfy it prints, and the plan dies unmet on Monday.
+    if (marketClosedScenario && decision.recommendation) {
+      const rec = decision.recommendation;
+      if (rec.action === "buy" || rec.action === "sell") {
+        const shiftMs = marketClosedScenario.nextOpenAt - Date.now();
+        decision.planType = "conditional";
+        decision.executionState = "awaiting_activation";
+        rec.planType = "conditional";
+        rec.executionState = "awaiting_activation";
+        if (rec.activationClass === "immediate") rec.activationClass = "conditional";
+        if (rec.activationRule) {
+          rec.activationRule = shiftActivationRuleExpiries(rec.activationRule, shiftMs);
+        }
       }
     }
-  }
+    return decision;
+  };
+  let finalDecision = prepareDecision(synth.result);
+  // chartSnapshotHash was computed before the fleet (it also keys the stage
+  // checkpoint) — the market window cannot change mid-run, so it is reused.
 
   // ── The mandatory gate chain (G1–G7) ────────────────────────────────────
   //
@@ -1544,20 +1707,34 @@ async function runUnifiedChartAgentInner(
   // the platform's own checks say a plan should not exist.
   let gateChain: GateChainResult | null = null;
   let gateEntryType: EntryType | undefined;
-  const gateRec = finalDecision.recommendation;
-  const gatePlanReady =
-    (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
-    gateRec != null &&
-    gateRec.entry != null &&
-    gateRec.stop_loss != null &&
-    (gateRec.targets?.length ?? 0) > 0;
-  if (gatePlanReady) {
+
+  const gatePlanReadyFor = (decision: FinalDecisionResult): boolean => {
+    const rec = decision.recommendation;
+    return (
+      (decision.decision === "buy" || decision.decision === "sell") &&
+      rec != null &&
+      rec.entry != null &&
+      rec.stop_loss != null &&
+      (rec.targets?.length ?? 0) > 0
+    );
+  };
+
+  // The whole G1–G7 evaluation over ONE decision: resolve fill semantics,
+  // build and run the chain, apply a G7 re-anchor to the plan, record the
+  // verdicts, narrate. A closure because it now runs up to twice — once over
+  // the authored decision and once over a stale-scenario reprice retry.
+  // Returns null when the decision carries no gateable plan.
+  const evaluatePlanGates = async (
+    decision: FinalDecisionResult,
+  ): Promise<GateChainResult | null> => {
+    if (!gatePlanReadyFor(decision)) return null;
+    const gateRec = decision.recommendation!;
     // Structure decides the fill semantics, not the model's declared order
     // type — the incident's plan declared a pending limit while carrying a
     // close-based rule, and believing the declaration is how that got stored.
     gateEntryType = resolveEntryType({
       declared: gateRec.entryType,
-      planType: gateRec.planType ?? finalDecision.planType,
+      planType: gateRec.planType ?? decision.planType,
       activationRule: gateRec.activationRule,
     });
     const { gates } = buildGates({
@@ -1572,7 +1749,7 @@ async function runUnifiedChartAgentInner(
       atr: market.atr ?? 0,
       visualTimeframes: visual.snapshots.map((snapshot) => snapshot.timeframe),
       plan: {
-        direction: finalDecision.decision === "buy" ? "buy" : "sell",
+        direction: decision.decision === "buy" ? "buy" : "sell",
         entryType: gateEntryType,
         entry: gateRec.entry!,
         stopLoss: gateRec.stop_loss!,
@@ -1586,12 +1763,12 @@ async function runUnifiedChartAgentInner(
       // does not stand still; a plan revalidated against the price the run
       // STARTED with has been validated against the past.
       //
-      // In scenario mode there IS no live quote — OANDA marks the instrument
-      // untradeable and `usableQuote` now refuses its stale Friday number, so
-      // the live fetch would return null and a required G7 would block every
-      // weekend answer. The last CLOSE is the honest price of a paused tape:
-      // the geometry gate grades the plan against the exact number every
-      // other part of the scenario was built from.
+      // In scenario mode there IS no live quote — the feed marks the
+      // instrument untradeable and `usableQuote` now refuses its stale Friday
+      // number, so the live fetch would return null and a required G7 would
+      // block every weekend answer. The last CLOSE is the honest price of a
+      // paused tape: the geometry gate grades the plan against the exact
+      // number every other part of the scenario was built from.
       fetchLivePrice: marketClosedScenario
         ? () => Promise.resolve(market.currentTfCandles.at(-1)?.close ?? null)
         : () =>
@@ -1599,7 +1776,7 @@ async function runUnifiedChartAgentInner(
               .then((quote) => (quote ? (quote.bid + quote.ask) / 2 : null))
               .catch(() => null),
     });
-    gateChain = await runGateChain(gates);
+    const chain = await runGateChain(gates);
 
     // G7 re-prices instead of refusing when price outran the written entry,
     // and the re-price has to be APPLIED here or it is worse than the veto it
@@ -1612,11 +1789,11 @@ async function runUnifiedChartAgentInner(
     // longer waiting for anything — price already went there — and leaving a
     // stale activation rule attached would arm the tracker for a condition
     // that has already happened.
-    const reanchor = gateChain.verdicts.find(
+    const reanchor = chain.verdicts.find(
       (verdict) =>
         verdict.id === "G7" && typeof verdict.evidence?.reanchoredEntry === "number",
     );
-    if (reanchor && gateRec != null) {
+    if (reanchor) {
       const entry = reanchor.evidence!.reanchoredEntry as number;
       log.info("agent.gate.reanchored", {
         requestId: ctx.requestId,
@@ -1631,22 +1808,24 @@ async function runUnifiedChartAgentInner(
       // The operator is told in the plan's own voice, not only in the gate
       // list: the entry they read is not the entry the model wrote.
       if (reanchor.reasonAr) {
-        finalDecision.riskWarnings = [reanchor.reasonAr, ...finalDecision.riskWarnings];
+        decision.riskWarnings = [reanchor.reasonAr, ...decision.riskWarnings];
       }
     }
 
     // Phase-4: every gate run writes a timestamped record. The canonical
     // creator refuses a write with no fresh, complete, non-vetoed set — so
     // this record, not the in-memory verdict array, is what authorizes
-    // persistence. Recorded for refusals too: a veto is evidence.
+    // persistence. Recorded for refusals too: a veto is evidence. Idempotent
+    // per (user, analysis, gate): a reprice retry's chain overwrites the
+    // vetoed rows, so the record always describes the plan actually emitted.
     if (ctx.userId != null) {
       const { recordGateChain } = await import("@/lib/recommendations/gateRecords");
       await recordGateChain({
         userId: ctx.userId,
         analysisId,
         symbol: market.symbol,
-        verdicts: gateChain.verdicts,
-        chainAllowed: gateChain.allowed,
+        verdicts: chain.verdicts,
+        chainAllowed: chain.allowed,
       }).catch((error) => {
         log.warn("gate record persist failed", {
           requestId: ctx.requestId,
@@ -1655,7 +1834,7 @@ async function runUnifiedChartAgentInner(
       });
     }
 
-    for (const verdict of gateChain.verdicts) {
+    for (const verdict of chain.verdicts) {
       trackedCtx.emitActivity({
         type: "analysis",
         status:
@@ -1670,27 +1849,100 @@ async function runUnifiedChartAgentInner(
       });
     }
 
-    if (!gateChain.allowed) {
-      const refusal = refusalSummaryAr(gateChain) ?? t("ar", "orch.no_rec_now");
-      log.info("agent.gate_chain.refused", {
-        requestId: ctx.requestId,
-        gate: gateChain.vetoedBy?.id,
-        status: gateChain.vetoedBy?.status,
-      });
-      // The plan is retracted, not softened. Leaving the model's own prose in
-      // place would keep telling the operator to sell at a level the platform
-      // has just refused to stand behind.
-      finalDecision.decision = "wait";
-      finalDecision.planType = undefined;
-      finalDecision.executionState = "blocked";
-      finalDecision.confidence = 0;
-      finalDecision.recommendation = { action: "wait" };
-      finalDecision.summary = refusal;
-      finalDecision.riskWarnings = [refusal, ...finalDecision.riskWarnings];
-      // The checklist as far as it got — the operator learns what to wait for
-      // rather than being told "no setup right now".
-      finalDecision.publicReasoningSummary = gateChain.verdicts.map(gateLineAr);
+    think(
+      narrateGateOutcome({
+        locale,
+        verdicts: chain.verdicts,
+        allowed: chain.allowed,
+        vetoedBy: chain.vetoedBy,
+      }),
+    );
+
+    return chain;
+  };
+
+  gateChain = await evaluatePlanGates(finalDecision);
+
+  // ── The stale-scenario reprice loop ──────────────────────────────────────
+  //
+  // A G7 veto saying "the stop/targets are already behind the live price" is
+  // not a fact about the market being untradeable — it is the news that the
+  // move the plan anticipated ALREADY HAPPENED while the analysis ran. The
+  // production incident: a conditional XAUUSD sell was authored, G7 found its
+  // stop (4608.13) already passed, and the operator got an empty "no
+  // recommendation" card for a market with a perfectly readable follow-through.
+  // That veto is fed back to the synthesizer ONCE, as explicit scenario
+  // evidence ("the move to X already occurred — choose immediate follow-through
+  // or a fresh conditional at current structure"), and the retry runs the same
+  // G1–G7 chain. Genuine refusals — news blackout, no calendar, incoherent
+  // geometry, a retry that still fails — keep refusing by name.
+  if (gateChain && !gateChain.allowed && gatePlanReadyFor(finalDecision)) {
+    const staleRec = finalDecision.recommendation!;
+    let retryOutcome: SynthesizerOutcome | null = null;
+    const repriced = await repriceStaleScenario({
+      decision: finalDecision,
+      chain: gateChain,
+      plan: {
+        direction: finalDecision.decision === "buy" ? "buy" : "sell",
+        entry: staleRec.entry!,
+        stopLoss: staleRec.stop_loss!,
+        targets: staleRec.targets ?? [],
+      },
+      resynthesize: async (feedback) => {
+        log.info("agent.gate.reprice_retry", {
+          requestId: ctx.requestId,
+          gate: gateChain?.vetoedBy?.id,
+          status: gateChain?.vetoedBy?.evidence?.status,
+        });
+        trackedCtx.emitActivity({
+          type: "analysis",
+          status: "warning",
+          message: t(locale, "orch.repricing_stale_plan"),
+          metadata: {
+            gate: gateChain?.vetoedBy?.id,
+            status: gateChain?.vetoedBy?.evidence?.status,
+          },
+        });
+        metrics.synthCorrectiveRetries.inc();
+        // The quote G7 actually measured — the price the retry must decide
+        // against, not the one the run started with.
+        const rawLive = gateChain?.vetoedBy?.evidence?.currentPrice;
+        const livePrice =
+          typeof rawLive === "number" && Number.isFinite(rawLive) ? rawLive : null;
+        const retry = await invokeSynthesizer(feedback, livePrice);
+        if (!retry?.result) return null;
+        retryOutcome = retry;
+        return prepareDecision(retry.result);
+      },
+      evaluate: evaluatePlanGates,
+    });
+    if (repriced.repriced && retryOutcome) {
+      synth = retryOutcome;
+      finalDecision = repriced.decision;
+      gateChain = repriced.chain;
     }
+  }
+
+  if (gateChain && !gateChain.allowed) {
+    const refusal = refusalSummaryAr(gateChain) ?? t("ar", "orch.no_rec_now");
+    log.info("agent.gate_chain.refused", {
+      requestId: ctx.requestId,
+      gate: gateChain.vetoedBy?.id,
+      status: gateChain.vetoedBy?.status,
+    });
+    // The plan is retracted, not softened. Leaving the model's own prose in
+    // place would keep telling the operator to sell at a level the platform
+    // has just refused to stand behind.
+    finalDecision.decision = "wait";
+    finalDecision.planType = undefined;
+    finalDecision.executionState = "blocked";
+    finalDecision.confidence = 0;
+    finalDecision.recommendation = { action: "wait" };
+    finalDecision.summary = refusal;
+    finalDecision.riskWarnings = [refusal, ...finalDecision.riskWarnings];
+    // The checklist as far as it got — the operator learns what to wait for
+    // rather than being told "no setup right now".
+    finalDecision.publicReasoningSummary = gateChain.verdicts.map(gateLineAr);
   }
 
   // Build the drawing plan: the single source of truth for what may be drawn.
@@ -1889,6 +2141,41 @@ async function runUnifiedChartAgentInner(
     (finalDecision.decision === "buy" ||
       finalDecision.decision === "sell")
   ) {
+    // Supersede the plan this explicit re-analysis replaces — BEFORE the new
+    // one is stored, so at no instant do two live plans coexist for one
+    // session. This is the deterministic half of the no-contradiction rule;
+    // the prompt's previousRecommendation block is only the narrative half.
+    if (
+      supersededRecommendation &&
+      isActiveRecommendationLive(supersededRecommendation)
+    ) {
+      await clearActiveRecommendation(
+        sessionId,
+        supersededRecommendation.symbol,
+        ctx.userId,
+        { superseded: true },
+      ).catch(() => {
+        // Closing the old plan is best-effort: the new plan overwrites the
+        // session slot either way, and the tracker sweep grades what remains.
+      });
+      trackedCtx.emitActivity({
+        type: "analysis",
+        status: "completed",
+        message: t(locale, "orch.rec_superseded", {
+          direction: t(
+            locale,
+            supersededRecommendation.direction === "buy"
+              ? "decision.buy"
+              : "decision.sell",
+          ),
+          entry: String(supersededRecommendation.entry),
+        }),
+        metadata: {
+          supersededId: supersededRecommendation.id,
+          code: "recommendation_superseded",
+        },
+      });
+    }
     storedRecommendation = await storeFinalRecommendation({
       sessionId,
       userId: ctx.userId,
@@ -1996,13 +2283,16 @@ async function runUnifiedChartAgentInner(
   const presented = attachMandatoryPresentation({
     summary: summaryWithScenario,
     envelope,
-    source: chartContext?.dataSource ?? "oanda",
     levels,
     locale,
   });
 
   return {
     decision: finalDecision.decision,
+    // The planner's routing, carried out to both surfaces: an explicit fresh
+    // analysis that replaced a live plan says so; everything else here is the
+    // full pipeline. Presentation (cards vs plain text) keys off this.
+    turnMode: supersededRecommendation ? "supersede_analysis" : "full_analysis",
     visualReview,
     envelope: presented.envelope,
     confidence: finalDecision.confidence,
@@ -2124,6 +2414,7 @@ async function noStoredRecommendation(
   });
   return {
     decision: "informational",
+    turnMode: "specialist",
     confidence: 0.75,
     summary,
     keyReasons: [],
@@ -2235,6 +2526,7 @@ async function drawStoredRecommendation(
     });
     return {
       decision: "informational",
+      turnMode: "specialist",
       confidence: 0.7,
       summary,
       keyReasons: [],
@@ -2272,6 +2564,8 @@ async function drawStoredRecommendation(
   });
   return {
     decision: "informational",
+    // Re-presents the LIVE plan — keeps the recommendation card treatment.
+    turnMode: "recommendation_followup",
     confidence: 0.85,
     summary,
     keyReasons: [
@@ -2328,6 +2622,7 @@ async function explainStoredRecommendation(
   });
   return {
     decision: "informational",
+    turnMode: "recommendation_followup",
     confidence: 0.85,
     summary,
     keyReasons: rec.keyReasons,
@@ -2361,6 +2656,10 @@ async function trackStoredRecommendation(input: {
     status: "started",
     message: t("ar", "orch.reviewing_rec"),
   });
+  // The follow-up's real work, narrated from the plan under review.
+  ctx.emitThinking?.(
+    narrateFollowupCheck({ locale, direction: rec.direction, entry: rec.entry }),
+  );
   const market = await runMarketDataAgent({ ...ctx, emitActivity: () => {} }, {
     symbol: rec.symbol,
     interval: rec.interval,
@@ -2458,6 +2757,9 @@ async function trackStoredRecommendation(input: {
     recommendation: rec,
     evaluation: evaluated,
     userMessage: input.userMessage,
+    // The session is a fact of the moment (New York hours, the London/NY
+    // overlap…) — the reply may cite it when it explains behaviour at levels.
+    tradingSession: tradingSessionPromptBlock(getTradingSessionInfo()),
   });
   ctx.emitActivity({
     type: "analysis",
@@ -2468,6 +2770,7 @@ async function trackStoredRecommendation(input: {
 
   return {
     decision: "informational",
+    turnMode: "recommendation_followup",
     confidence: 0.85,
     summary,
     keyReasons: [evaluated.reason],
@@ -2525,6 +2828,13 @@ async function storeFinalRecommendation(input: {
   const candidate = input.risk.selectedCandidate;
   const id = newId();
   const createdCandleTime = input.market.currentTfCandles.at(-1)?.time;
+  const entryTypeResolved =
+    input.entryType ??
+    resolveEntryType({
+      declared: rec.entryType,
+      planType: rec.planType ?? input.finalDecision.planType,
+      activationRule: rec.activationRule,
+    });
   const active: ActiveRecommendation = {
     id,
     userId: input.userId,
@@ -2560,14 +2870,17 @@ async function storeFinalRecommendation(input: {
     // Canonical semantics from the gate chain, falling back to a structural
     // derivation so a path that skipped the chain still stores a real fill rule
     // rather than the model's declared order type.
-    entryType:
-      input.entryType ??
-      resolveEntryType({
-        declared: rec.entryType,
-        planType: rec.planType ?? input.finalDecision.planType,
-        activationRule: rec.activationRule,
-      }),
+    entryType: entryTypeResolved,
     stopLoss: rec.stop_loss,
+    // What the stop MEANS, decided at construction from the plan's own shape:
+    // a conditional plan whose invalidation sentence is written on the close
+    // stores close-confirmed invalidation, so no evaluator can later grade a
+    // rejection wick as a stop-out.
+    invalidationMode: resolveInvalidationMode({
+      entryType: entryTypeResolved,
+      planType: rec.planType ?? input.finalDecision.planType ?? null,
+      activationRule: rec.activationRule ?? null,
+    }),
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],
     rr: rec.rr,
@@ -2789,6 +3102,9 @@ async function persistTrackedRecommendation(
     entry: active.entry,
     retestZone: active.retestZone ?? null,
     stopLoss: active.stopLoss,
+    // The stop's own termination semantics, persisted with the plan so the
+    // sweep, the chat status path and the cards all grade the same promise.
+    invalidationMode: active.invalidationMode,
     targets: active.targets,
     invalidationLevel: active.invalidationLevel,
     // Mirrors the ActiveRecommendation derivation above: only a plan that is

@@ -10,8 +10,11 @@
  * without its numeric counterpart being present in the same payload.
  */
 
-import { LIVE_CAPTURE_ACK_MS } from "@/lib/chart/liveCapture";
-import { captureChartWithPlatformFallback } from "@/lib/chart/platformCapture";
+import { LIVE_CAPTURE_ACK_MS, type PlatformCaptureDrawing } from "@/lib/chart/liveCapture";
+import {
+  captureChartWithPlatformFallback,
+  loadLayoutOverlays,
+} from "@/lib/chart/platformCapture";
 import { canonicalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { getUnifiedSnapshot } from "@/lib/markets";
@@ -179,6 +182,15 @@ export interface CaptureTimeframeInput {
   includeDrawings?: boolean;
   includeStudies?: boolean;
   /**
+   * The requesting layout's stored overlays, rendered by the platform tab
+   * when the operator's own tab is absent. `drawings_included` is measured
+   * off the widget, so a frame that never carries the drawings can only ever
+   * measure false — and the analysis is then reported as visually unreviewed
+   * no matter how many charts it actually captured.
+   */
+  platformDrawings?: PlatformCaptureDrawing[];
+  platformStudies?: PlatformCaptureDrawing[];
+  /**
    * How many frames share the one chart tab with this one.
    *
    * The tab renders a batch strictly one at a time, so this frame may have to
@@ -251,6 +263,8 @@ export async function captureTimeframeImage(
       liveSession: input.liveSession,
       includeDrawings: input.includeDrawings,
       includeStudies: input.includeStudies,
+      platformDrawings: input.platformDrawings,
+      platformStudies: input.platformStudies,
       // `fresh=true` from the caller skips the platform moment-cache read.
       bypassCache: input.skipCache === true,
       ackTimeoutMs,
@@ -571,6 +585,12 @@ export const VISUAL_EVIDENCE_GUARDRAILS = [
   "drawings_included=false forces visual_confirmation to not_checked. Do not report confirmed against a picture that omitted the drawings.",
 ];
 
+/** Test seam for the batch: the per-frame capture and the overlay loader. */
+export interface MultiTimeframeCaptureDeps {
+  capture?: typeof captureTimeframeImage;
+  loadOverlays?: typeof loadLayoutOverlays;
+}
+
 /**
  * Captures every requested timeframe concurrently. A failure in one timeframe
  * is reported in `missing_timeframes` and never fails the whole request.
@@ -578,11 +598,13 @@ export const VISUAL_EVIDENCE_GUARDRAILS = [
 export async function captureMultiTimeframeSnapshot(
   userId: number,
   input: MultiTimeframeCaptureInput,
+  deps: MultiTimeframeCaptureDeps = {},
 ): Promise<MultiTimeframeCaptureResult> {
   const startedAt = Date.now();
   const market: MarketType = input.market ?? "forex";
   const symbol = input.symbol.trim().replace(/[\s/_-]+/g, "");
   const includeNumeric = input.includeNumericContext !== false;
+  const capture = deps.capture ?? captureTimeframeImage;
 
   const { timeframes, skipped } = resolveVisualTimeframes(
     input.timeframes,
@@ -594,12 +616,28 @@ export async function captureMultiTimeframeSnapshot(
     reason: entry.reason,
   }));
 
+  // The requesting layout's own drawings travel with every frame, exactly as
+  // they always have on the single-snapshot route. `drawings_included` is
+  // measured off the widget at capture time, and a frame that never carried
+  // the drawings can only measure false — which graded every unattended
+  // analysis "visually unreviewed" no matter how many charts it captured.
+  // Loaded ONCE for the batch; a layout with nothing drawn ships nothing and
+  // the moment-cache behaviour is unchanged.
+  const overlays = await (deps.loadOverlays ?? loadLayoutOverlays)(
+    userId,
+    input.layoutId,
+  ).catch(() => ({ drawings: [], studies: [] }));
+  const platformDrawings =
+    input.includeDrawings === false ? [] : overlays.drawings;
+  const platformStudies =
+    input.includeStudies === false ? [] : overlays.studies;
+
   const results = await Promise.all(
     timeframes.map(async (timeframe) => {
       // Image and numbers for one timeframe are independent — run them
       // together so the numeric work costs no extra wall clock.
       const [image, numeric] = await Promise.all([
-        captureTimeframeImage(userId, {
+        capture(userId, {
           symbol,
           interval: timeframe,
           market,
@@ -609,6 +647,8 @@ export async function captureMultiTimeframeSnapshot(
           liveSession: input.liveSession,
           includeDrawings: input.includeDrawings,
           includeStudies: input.includeStudies,
+          platformDrawings,
+          platformStudies,
           // These frames share ONE tab that renders them one at a time, so
           // each must be allowed to wait for the others. Without this the
           // batch dispatches concurrently and then times out serially.

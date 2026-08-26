@@ -80,6 +80,65 @@ export function scanForInternalLeakage(text: string): string[] {
   return hits;
 }
 
+/**
+ * System-identifier scrub for CONVERSATIONAL surfaces (general answers and
+ * the live thinking trace) — the leakage policy's outbound layer.
+ *
+ * The prompt layer (systemPrompt.ts "Privacy and internals") tells the model
+ * to decline internals questions; this is the defense-in-depth behind it:
+ * anything that still looks like an env var, an API key, a provider host, a
+ * model slug, or a stack frame is removed before the text leaves the process.
+ * Patterns are deliberately shaped so market vocabulary survives — XAUUSD,
+ * TP1/SL, and price numbers carry no underscores, no scheme, and no key
+ * prefix, so none of them match. The market-data VENDOR name is scrubbed to
+ * the neutral "platform feed" phrase (operator instruction: the data source
+ * never appears in user-facing output; provenance lives in logs only).
+ *
+ * NOT applied to analysis summaries: those already pass the semantic
+ * scanForInternalLeakage → compositionFallback path, and an aggressive regex
+ * scrub could silently mangle a plan's wording.
+ */
+const SYSTEM_IDENTIFIER_PATTERNS: RegExp[] = [
+  // Secret-shaped tokens (sk-…, key=…): remove before anything else so a key
+  // never survives inside a larger match.
+  /\b(?:sk|rk|pk|xoxb|ghp)[-_][A-Za-z0-9_-]{10,}\b/g,
+  // SCREAMING_SNAKE env-var names (OPENAI_API_KEY, REDIS_URL, MT5_BRIDGE_URL).
+  /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g,
+  // Provider/API hostnames and URLs.
+  /\bhttps?:\/\/[^\s)]+/gi,
+  /\b(?:[a-z0-9-]+\.)*(?:openai|anthropic|openrouter|googleapis|google|anthropic|deepseek|mistral|together|groq|oanda|telegram|redis|upstash)\.(?:com|ai|org|io|dev|cloud)\b/gi,
+  // Model slugs — the provider identity the agent must not name.
+  /\bgpt[-_][a-z0-9._-]+\b/gi,
+  /\bclaude[-_][a-z0-9._-]+\b/gi,
+  /\bgemini[-_][a-z0-9._-]+\b/gi,
+  /\bdeepseek[-_][a-z0-9._-]+\b/gi,
+  /\bllama[-_][a-z0-9._-]+\b/gi,
+  /\bgrok[-_][a-z0-9._-]+\b/gi,
+  /\bo[134](?:-mini|-preview|-pro)\b/gi,
+  // Stack frames and repo file paths.
+  /^\s*at .+?(?::\d+:\d+|\))\s*$/gm,
+  /(?:\/[\w.-]+)*\/node_modules\/[^\s]+/g,
+  /\b(?:src|dist|\.next)\/[\w./-]+\.(?:tsx?|m?js|json)\b/g,
+];
+
+export function scrubInternalIdentifiers(text: string): string {
+  let out = String(text ?? "");
+  // The data vendor first, as a REPLACEMENT rather than a removal: deleting
+  // it mid-sentence leaves broken prose, while the neutral phrase keeps the
+  // sentence readable in either language. Exchange prefixes just drop.
+  out = out.replace(/\bOANDA:\s*/g, "");
+  out = out.replace(/\bOANDA\b|أواندا|آواندا|اواندا/g, () => (/[\u0600-\u06FF]/.test(out) ? "تغذية المنصة" : "the platform feed"));
+  for (const re of SYSTEM_IDENTIFIER_PATTERNS) {
+    out = out.replace(re, "");
+  }
+  // Collapse the holes the removals leave behind, without eating newlines.
+  // \u060C / \u061B are the Arabic comma and semicolon.
+  return out
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ +([.,\u060C:\u061B)])/g, "$1")
+    .trim();
+}
+
 function sampleBand(n: number): SampleSizeBand {
   if (n <= 0) return "none";
   if (n < 20) return "small";

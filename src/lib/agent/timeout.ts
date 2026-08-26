@@ -108,8 +108,8 @@ export const AGENT_TIMEOUTS = {
   // The frames are dispatched together but the single chart tab renders them
   // one at a time, so the batch spans three renders (~4.2s each, measured) —
   // and the last frames were killed at 9s for standing in a queue. Every
-  // analysis reported "تعذّر التقاط 15m، 4h" while a lone capture of the very
-  // same frame returned in 4.2s. Sized for the real serial cost of the whole
+  // analysis reported "failed to capture 15m, 4h" while a lone capture of the
+  // very same frame returned in 4.2s. Sized for the real serial cost of the whole
   // batch plus the loopback hop, not for one frame pretending it is alone.
   // Measured cold: three fresh frames in 13.6s. 20s carries that with room for
   // a slow render without handing a wedged tab the whole run.
@@ -158,7 +158,7 @@ export const AGENT_TIMEOUTS = {
  * cold batch renders all three for real — ~4.2s each, strictly serially,
  * because one tab draws one chart at a time — so the honest term is 20s of
  * stage plus the hop, not 11s. Sizing the stage for the warm case is what made
- * "تعذّر التقاط 15m، 4h" the normal outcome rather than the exception.
+ * "failed to capture 15m, 4h" the normal outcome rather than the exception.
  */
 export const TOTAL_RUN_BUDGET_MS = 285_000;
 

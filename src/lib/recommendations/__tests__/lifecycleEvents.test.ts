@@ -132,6 +132,36 @@ describe("lifecycle events", () => {
     }
   });
 
+  it("announces a survived stop breach without ending the plan", () => {
+    // A close-mode wick through the stop that closed back inside: the status
+    // stays triggered, the operator hears the plan held by its own rule.
+    const breachAt = 1_700_000_000_000;
+    const events = deriveLifecycleEvents({
+      recommendation: rec({ status: "triggered" }),
+      previousStatus: "triggered",
+      nextStatus: "triggered",
+      currentPrice: 4000,
+      atr: 2,
+      revisionNo: 1,
+      stopBreachSurvivedAt: breachAt,
+    });
+    const breach = events.find((e) => e.type === "stop_breach_survived");
+    assert.ok(breach, "the survival is announced");
+    assert.equal(breach!.terminal, false);
+    // Keyed by the breach candle so a later breach announces again while the
+    // same sweep re-run stays silent.
+    assert.ok(breach!.dedupeKey.endsWith(`:${breachAt}`));
+    const again = deriveLifecycleEvents({
+      recommendation: rec({ status: "triggered" }),
+      previousStatus: "triggered",
+      nextStatus: "triggered",
+      currentPrice: 4000,
+      atr: 2,
+      revisionNo: 1,
+    });
+    assert.ok(!again.some((e) => e.type === "stop_breach_survived"));
+  });
+
   it("scales the proximity band with the instrument", () => {
     assert.equal(proximityThreshold({ atr: 2, price: 4000 }), 1.5);
     // No ATR → a small fraction of price rather than a fixed pip count.

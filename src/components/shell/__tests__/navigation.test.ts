@@ -222,6 +222,26 @@ test("profile menu uses opaque portal surface", () => {
   assert.match(menu, /data-testid="theme-toggle"/);
 });
 
+test("account sheet frames plan, balance and actions in ONE card", () => {
+  const menu = read("components/agent/SidebarProfileMenu.tsx");
+  // The card is a contained surface, not loose lines under the identity row.
+  assert.match(menu, /data-testid="account-facts"/);
+  // Credit amounts render in WESTERN digits with "Credits" as the unit —
+  // owner's convention, matching the global AI platforms — even in the
+  // Arabic UI. The formatter is pinned to "en" on purpose.
+  assert.match(menu, /formatInteger\(summary\.balance, "en"\)/);
+  // The renewal date goes through the RTL-safe formatter — toLocaleDateString
+  // with numeric fields is the same class of bug the support thread had.
+  assert.match(menu, /formatFullDate/);
+  assert.doesNotMatch(menu, /toLocaleDateString/);
+  // Threshold alerts are styled banners INSIDE the card…
+  assert.match(menu, /data-testid="account-alert"/);
+  // …and the two actions are buttons, not floating underlined text.
+  assert.match(menu, /data-testid="account-cta"/);
+  assert.match(menu, /data-testid="account-ledger"/);
+  assert.doesNotMatch(menu, /hover:underline/);
+});
+
 test("brand mark viewBox remains unclipped", () => {
   const mark = readFileSync(resolve(process.cwd(), "public/brand/aichart-mark.svg"), "utf8");
   assert.match(mark, /viewBox="0 350 3000 2250"/);

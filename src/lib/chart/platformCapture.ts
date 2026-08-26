@@ -20,6 +20,7 @@
 import { createLogger } from "@/lib/logger";
 import { getPlatformValue } from "@/lib/platformConfig";
 import { getPublicAppUrl } from "@/lib/appUrl";
+import { getChartLayoutById } from "@/lib/store";
 import {
   captureChartImage,
   hasFreshPlatformTab,
@@ -131,6 +132,28 @@ export function layoutOverlaysFromState(raw: string | null | undefined): {
   } catch {
     return { drawings: [], studies: [] };
   }
+}
+
+/**
+ * The stored overlays of ONE layout, loaded for shipping to the platform tab.
+ *
+ * The multi-frame evidence path used to ship NO drawings at all: the platform
+ * tab rendered a clean chart, `drawings_included` was measured false off the
+ * widget, and every unattended analysis therefore graded its visual review
+ * `not_checked` — the card told the operator "no chart screenshot was
+ * captured" even when three real frames had been captured and read. The
+ * single-snapshot route has always loaded the requesting layout's overlays
+ * and sent them with the request; this gives the multi-frame path the same
+ * loader. A missing layout or unparseable state means clean-chart shots,
+ * never a failed capture.
+ */
+export async function loadLayoutOverlays(
+  userId: number,
+  layoutId: string | null | undefined,
+): Promise<{ drawings: PlatformCaptureDrawing[]; studies: PlatformCaptureDrawing[] }> {
+  if (!layoutId) return { drawings: [], studies: [] };
+  const layout = await getChartLayoutById(layoutId, userId).catch(() => null);
+  return layoutOverlaysFromState(layout?.state_json ?? null);
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +278,29 @@ export async function ensureChartHostTab(
   while (now() < deadline) {
     if (isTabFresh()) return { ok: true };
     await sleep(500);
+  }
+
+  // The container answered the ensure, yet its page never polled: a zombie
+  // tab — typically a page opened mid-deploy against chunks that no longer
+  // exist, whose JS never booted. Measured live: a healthy page polls within
+  // one second of launch, so a whole warmup of silence is not slowness. The
+  // container itself cannot tell (the browser is connected, the page is not
+  // "closed"), ensure() keeps reporting it alive, and every ensure renews its
+  // idle lease — left alone it stays blind for its whole max-age while every
+  // analysis loses its charts. Tear it down so the caller's retry, or the
+  // next analysis, launches a fresh browser instead of re-adopting the corpse.
+  log.warn("chart-host tab never polled after warmup; closing session for a fresh launch");
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3_000);
+    await fetchImpl(`${baseUrl}/session/close`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${controlToken}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+  } catch {
+    /* best effort — the container's own idle sweep remains the backstop */
   }
   return { ok: false, reason: "host_not_ready" };
 }

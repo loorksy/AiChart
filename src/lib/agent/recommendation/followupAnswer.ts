@@ -23,14 +23,17 @@ export async function composeRecommendationStatusAnswer(input: {
   userMessage?: string;
   recommendation: ActiveRecommendation;
   evaluation: RecommendationStatusEvaluation;
+  /** English session block from core/tradingSessions — a fact the reply may cite. */
+  tradingSession?: string;
 }): Promise<string> {
   return compose({
     task:
-      "Update the operator on the previous recommendation's current status: still pending, triggered, target hit, stop hit, or invalidated. Be direct; do not issue a new opposite recommendation.",
+      "Update the operator on the previous recommendation's current status: still pending, triggered, target hit, stop hit, or invalidated. Answer the operator's actual question against this recommendation and the live evaluation. Be direct; do not issue a new opposite recommendation — if the operator wants a fresh plan, tell them to ask for a new analysis explicitly.",
     payload: {
       question: input.userMessage,
       recommendation: publicRecommendation(input.recommendation),
       evaluation: input.evaluation,
+      ...(input.tradingSession ? { tradingSession: input.tradingSession } : {}),
     },
     fallback:
       `حالة التوصية ${input.recommendation.direction} على ${input.recommendation.symbol}: ${input.evaluation.status}.\n` +

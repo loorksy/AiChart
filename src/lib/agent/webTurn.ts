@@ -26,6 +26,7 @@ import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import {
   createActivityEvent,
+  sanitizeActivityMessage,
   shouldShowActivity,
 } from "@/lib/agent/activity";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
@@ -52,7 +53,10 @@ import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalI
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
 import { appendMessage } from "@/lib/agent/chatHistory/chatStore";
 import { refreshChatMetaAfterAssistantTurn } from "@/lib/agent/chatHistory/refreshChatMeta";
-import { stripInternalFieldsFromClientResult } from "@/lib/agent/userSafeOutbound";
+import {
+  scrubInternalIdentifiers,
+  stripInternalFieldsFromClientResult,
+} from "@/lib/agent/userSafeOutbound";
 import {
   type AgentConversationContext,
   type SafeRecommendationContext,
@@ -398,6 +402,19 @@ export async function runWebChatTurn(
     send("answer_text", { text: fullText });
   };
 
+  // Live thinking trace: the orchestrator's per-step narration, composed from
+  // real evidence values (thinkingNarration.ts). The transport owns the
+  // leakage guard: chain-of-thought phrasing is stripped by the same
+  // sanitizer every activity message passes, and system identifiers (env
+  // vars, provider hosts, model slugs, stack frames) are scrubbed so the
+  // trace can never become an internals side-channel. UI-only — never
+  // persisted with the message, and Telegram never receives it because that
+  // surface simply does not provide emitThinking.
+  const emitThinking = (text: string) => {
+    const clean = scrubInternalIdentifiers(sanitizeActivityMessage(text));
+    if (clean) send("thinking", { text: clean, at: Date.now() });
+  };
+
   // The pending bubble narrates itself from REAL work only: `stage` and
   // `activity` events emitted by the engine at the moment things happen.
   const previewIntents = routeIntent({
@@ -452,6 +469,7 @@ export async function runWebChatTurn(
               emitActivity,
               emitStage,
               emitAnswerText,
+              emitThinking,
               emitDebug: () => {},
               signal,
               session,
@@ -535,15 +553,20 @@ export async function runWebChatTurn(
 
     // Dynamic, model-generated follow-up suggestions for THIS turn/state.
     // No static fallback: a failure yields [] and the UI shows nothing.
-    const suggestions = await suggest({
-      locale: locale,
-      userMessage: resolvedMessage,
-      result,
-      symbol: body.chartContext?.symbol,
-      interval: body.chartContext?.interval,
-      activeRecommendation: result.activeRecommendation,
-      maxSuggestions: 4,
-    }).catch(() => []);
+    // A plain conversational turn gets NO chip stack at all — a greeting is
+    // a sentence, not a launchpad (turnPlanner mode, carried on the result).
+    const suggestions =
+      result.turnMode === "conversation"
+        ? []
+        : await suggest({
+            locale: locale,
+            userMessage: resolvedMessage,
+            result,
+            symbol: body.chartContext?.symbol,
+            interval: body.chartContext?.interval,
+            activeRecommendation: result.activeRecommendation,
+            maxSuggestions: 4,
+          }).catch(() => []);
 
     // Number-reply resolver targets the suggestions actually shown.
     if (suggestions.length) {

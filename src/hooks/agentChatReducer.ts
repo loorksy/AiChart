@@ -44,6 +44,30 @@ export function applyLiveNote(
   );
 }
 
+/** Cap on live thinking lines kept per pending bubble (UI memory bound). */
+export const MAX_THINKING_LINES = 40;
+
+/**
+ * Append one of the agent's own reasoning lines (server `thinking` SSE) to
+ * the pending bubble. Deduped against the previous line (SSE resume can
+ * replay a frame) and capped so a pathological run cannot grow the DOM
+ * unbounded. UI-only, never persisted.
+ */
+export function applyThinking(
+  messages: AgentChatMessage[],
+  pendingId: string,
+  line: string,
+): AgentChatMessage[] {
+  const text = line.trim();
+  if (!text) return messages;
+  return messages.map((m) => {
+    if (m.id !== pendingId || !m.pending) return m;
+    const prev = m.thinking ?? [];
+    if (prev[prev.length - 1] === text) return m;
+    return { ...m, thinking: [...prev, text].slice(-MAX_THINKING_LINES) };
+  });
+}
+
 /**
  * Update the pending bubble's live streamed answer text (replace semantics —
  * the server sends cumulative sanitized text). UI-only; the final event still

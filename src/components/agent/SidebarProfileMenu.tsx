@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
 import {
+  AlertTriangle,
+  CalendarClock,
   ChevronUp,
   Globe,
   LogOut,
@@ -26,6 +28,8 @@ import { useSupportUnread } from "@/hooks/useSupportUnread";
 import Link from "next/link";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 import { APP_LOCALES, type AppLocale } from "@/lib/i18n";
+import { formatInteger } from "@/lib/display/numericDisplay";
+import { formatFullDate } from "@/lib/display/timestamp";
 import { cn } from "@/lib/utils";
 
 const LOCALE_LABEL: Record<AppLocale, string> = {
@@ -36,7 +40,7 @@ const LOCALE_LABEL: Record<AppLocale, string> = {
 type MenuPos = { top: number; left: number; width: number; maxHeight: number };
 
 const ITEM_CLASS =
-  "flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:bg-muted";
+  "flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-start text-sm text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:bg-muted";
 
 /**
  * The account menu's contents, rendered identically by the desktop popover and
@@ -69,7 +73,7 @@ function ProfileMenuItems({
   const supportUnread = useSupportUnread();
   const isDark = resolved === "dark";
   const themeLabel = isDark ? t("shell.theme_to_light") : t("shell.theme_to_dark");
-  const rowClass = cn(ITEM_CLASS, touchSize && "min-h-12");
+  const rowClass = cn(ITEM_CLASS, touchSize && "min-h-11");
 
   async function logout() {
     onDone();
@@ -96,7 +100,7 @@ function ProfileMenuItems({
           className={rowClass}
           onClick={onDone}
         >
-          <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
+          <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <span className="truncate">{t("shell.adminConsole")}</span>
         </a>
       )}
@@ -107,7 +111,7 @@ function ProfileMenuItems({
         className={rowClass}
         onClick={onDone}
       >
-        <LifeBuoy className="h-4 w-4 shrink-0" aria-hidden />
+        <LifeBuoy className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="truncate">{t("support.title")}</span>
         {supportUnread > 0 && (
           <span
@@ -133,7 +137,7 @@ function ProfileMenuItems({
           openSettings("profile");
         }}
       >
-        <UserIcon className="h-4 w-4 shrink-0" aria-hidden />
+        <UserIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         {t("profile.profile")}
       </button>
 
@@ -149,7 +153,7 @@ function ProfileMenuItems({
           className={rowClass}
           onClick={() => setLangOpen(!langOpen)}
         >
-          <Globe className="h-4 w-4 shrink-0" aria-hidden />
+          <Globe className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <span>{t("profile.language")}</span>
           <span className="ms-auto text-[11px] tabular-nums text-muted-foreground">
             {LOCALE_LABEL[locale]}
@@ -196,9 +200,9 @@ function ProfileMenuItems({
         onClick={() => setTheme(isDark ? "light" : "dark")}
       >
         {isDark ? (
-          <Sun className="h-4 w-4 shrink-0" aria-hidden />
+          <Sun className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         ) : (
-          <Moon className="h-4 w-4 shrink-0" aria-hidden />
+          <Moon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         )}
         <span>{themeLabel}</span>
       </button>
@@ -213,18 +217,19 @@ function ProfileMenuItems({
           openSettings();
         }}
       >
-        <Settings className="h-4 w-4 shrink-0" aria-hidden />
+        <Settings className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         {t("nav.settings")}
       </button>
 
-      <div className="h-px bg-border" />
+      {/* The one destructive action stands apart from navigation. */}
+      <div className="mx-1 my-1.5 h-px bg-border/70" aria-hidden />
 
       <button
         type="button"
         role="menuitem"
         className={cn(
-          "flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-destructive transition-colors duration-150 hover:bg-destructive/10",
-          touchSize && "min-h-12",
+          "flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-start text-sm text-destructive transition-colors duration-150 hover:bg-destructive/10 focus-visible:outline-none focus-visible:bg-destructive/10",
+          touchSize && "min-h-11",
         )}
         onClick={() => void logout()}
       >
@@ -235,7 +240,7 @@ function ProfileMenuItems({
   );
 }
 
-/** Identity row shared by both surfaces. */
+/** Identity row shared by both surfaces: who is signed in, nothing else. */
 function ProfileIdentity({
   initial,
   displayName,
@@ -246,8 +251,8 @@ function ProfileIdentity({
   email: string;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-border px-3 py-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-sm font-semibold text-foreground">
+    <div className="flex items-center gap-3 px-4 pb-1.5 pt-1">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-gradient-to-b from-muted to-muted/40 text-sm font-semibold text-foreground">
         {initial}
       </span>
       <span className="flex min-w-0 flex-col">
@@ -393,11 +398,13 @@ export function SidebarProfileMenu({
               backgroundColor: "var(--background)",
             }}
           >
-            <ProfileMenuItems
-              onDone={() => setOpen(false)}
-              langOpen={langOpen}
-              setLangOpen={setLangOpen}
-            />
+            <div className="p-1.5">
+              <ProfileMenuItems
+                onDone={() => setOpen(false)}
+                langOpen={langOpen}
+                setLangOpen={setLangOpen}
+              />
+            </div>
           </div>,
           document.body,
         )
@@ -533,10 +540,10 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
             <span aria-hidden className="h-1 w-10 rounded-full bg-muted-foreground/40" />
           </div>
           <ProfileIdentity initial={initial} displayName={name} email={email} />
-          {/* The account panel: status, balance, trial/expiry, ONE action —
-              everything visible at once, no extra clicks. */}
+          {/* The account panel: status, balance, expiry, the alerts and both
+              actions — everything visible at once, contained in ONE card. */}
           <AccountFacts />
-          <div className="py-1">
+          <div className="px-2 pb-1 pt-1.5">
             <ProfileMenuItems
               onDone={() => setOpen(false)}
               langOpen={langOpen}
@@ -551,61 +558,93 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
 }
 
 /**
- * The account panel facts (billing v3): status badge, the credit balance as
- * a plain number, what remains of the trial (Free) or the expiry date
- * (Pro), ONE action for the state, a link to the ledger, and the quiet
- * threshold alerts — visible at once, never a popup.
+ * The plan-and-balance card (billing v3): one COMPACT contained frame, sized
+ * like the account popovers of the big AI platforms. The plan chip and the
+ * renewal date share the top axis; the balance is one strong "10 Credits"
+ * line (credit amounts always render in Western digits with "Credits" as the
+ * unit — owner's convention — even in the Arabic UI); the threshold alerts
+ * are slim notices INSIDE the card; the two actions are one row of buttons.
  */
 function AccountFacts() {
   const { t, locale } = useLocale();
   const { summary } = useBillingSummary();
   if (!summary) return null;
   const pro = summary.status === "pro";
+  // Exhausted and low are distinct, mutually exclusive states: an account at
+  // zero is told its balance HAS run out (and what stopped), never that it
+  // is "running low".
+  const balanceAlert = summary.alerts.exhausted || summary.alerts.low_balance;
   return (
-    <div className="mx-4 mb-2 rounded-[var(--radius)] border border-border/60 bg-muted/30 p-3 text-sm">
-      <div className="flex items-center justify-between gap-2">
+    <div
+      data-testid="account-facts"
+      className="mx-4 mt-1.5 rounded-[var(--radius-lg)] border border-border/70 bg-muted/20 p-3"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <AccountStatusBadge />
-        <span className="tabular-nums text-foreground" dir="ltr" data-testid="account-balance">
-          {summary.balance} {t("account.credits_unit")}
+        {pro ? (
+          <span className="text-[11px] text-muted-foreground">
+            {summary.expires_at
+              ? t("account.expires_on", {
+                  date: formatFullDate(Date.parse(summary.expires_at), locale),
+                })
+              : t("billing.status_active")}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{t("account.balance_label")}</span>
+        <span
+          data-testid="account-balance"
+          dir="ltr"
+          className="text-sm font-semibold tabular-nums text-foreground"
+        >
+          {formatInteger(summary.balance, "en")} {t("account.credits_unit")}
         </span>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        {pro
-          ? summary.expires_at
-            ? t("account.expires_on", {
-                date: new Date(summary.expires_at).toLocaleDateString(locale),
-              })
-            : t("billing.status_active")
-          : // A Free account has a balance, not a trial allowance. This read two
-            // fields the server stopped sending when the trial became a credit
-            // grant, and `String(undefined)` is the literal text "undefined" —
-            // which is exactly what the operator was shown:
-            // "Trial: undefined of undefined recommendations remaining".
-            t("account.free_balance", {
-              credits: String(summary.balance),
-            })}
-      </p>
-      {summary.alerts.low_balance && (
-        <p className="mt-1 text-xs text-warning" role="status">
-          {t("account.alert.low_balance")}
-        </p>
+
+      {balanceAlert && (
+        <div
+          role="status"
+          data-testid="account-alert"
+          className={cn(
+            "mt-2 flex items-start gap-1.5 rounded-[var(--radius)] border px-2.5 py-1.5 text-[11px] leading-4",
+            summary.alerts.exhausted
+              ? "border-destructive/25 bg-destructive/10 text-destructive"
+              : "border-warning/25 bg-warning/10 text-warning",
+          )}
+        >
+          <AlertTriangle className="mt-px size-3 shrink-0" aria-hidden />
+          <span>
+            {summary.alerts.exhausted
+              ? t("account.alert.exhausted")
+              : t("account.alert.low_balance")}
+          </span>
+        </div>
       )}
       {summary.alerts.expiring_soon && (
-        <p className="mt-1 text-xs text-warning" role="status">
-          {t("account.alert.expiring_soon")}
-        </p>
+        <div
+          role="status"
+          data-testid="account-alert"
+          className="mt-2 flex items-start gap-1.5 rounded-[var(--radius)] border border-warning/25 bg-warning/10 px-2.5 py-1.5 text-[11px] leading-4 text-warning"
+        >
+          <CalendarClock className="mt-px size-3 shrink-0" aria-hidden />
+          <span>{t("account.alert.expiring_soon")}</span>
+        </div>
       )}
-      <div className="mt-2 flex items-center justify-between gap-2">
+
+      <div className="mt-2.5 flex items-center gap-2">
         <Link
           href={pro ? "/console/billing" : "/subscribe"}
-          className="text-xs font-semibold text-foreground underline-offset-4 hover:underline"
           data-testid="account-cta"
+          className="inline-flex min-h-8 flex-1 items-center justify-center rounded-full bg-foreground px-3 text-center text-xs font-semibold text-background transition-opacity duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {pro ? t("billing.cta.topup") : t("billing.cta.subscribe")}
         </Link>
         <Link
           href="/console/billing"
-          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+          data-testid="account-ledger"
+          className="metal-chip !min-h-8 flex-1 justify-center text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {t("account.ledger_link")}
         </Link>

@@ -8,9 +8,6 @@ import { PricingCards } from "@/components/billing/PricingCards";
 import { Surface } from "@/components/foundation";
 import { LandingNav } from "@/components/landing/LandingNav";
 import { LandingFooter } from "@/components/landing/LandingFooter";
-import { BRAND_NAME } from "@/lib/brand";
-import { redirect } from "next/navigation";
-import { FEATURES } from "@/lib/agent/featureFlags";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata("pricing");
@@ -20,9 +17,11 @@ export const metadata = pageMetadata("pricing");
  * plan_prices rows the enforcement gate reads — the page can never drift
  * from what billing actually does, and an unset price degrades to the
  * contact CTA. Checkout works when Stripe keys exist.
+ *
+ * Not gated on FEATURE_BILLING: the billing page's "view plans" action links
+ * here, and the gate turned that into a bounce to the landing page.
  */
 export default async function PricingPage() {
-  if (!FEATURES.billing()) redirect("/");
   await initDb();
   const [user, stripeKeys, plan, price] = await Promise.all([
     getCurrentUser(),

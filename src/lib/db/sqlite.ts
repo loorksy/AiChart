@@ -151,6 +151,10 @@ const SCHEMA = `
     kind              TEXT NOT NULL DEFAULT 'other',
     input_tokens      INTEGER NOT NULL DEFAULT 0,
     output_tokens     INTEGER NOT NULL DEFAULT 0,
+    -- Prompt-cache accounting: reads are ~10x cheaper than input tokens,
+    -- writes ~1.25x. input_tokens holds only the UNCACHED input portion.
+    cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     provider_cost_usd REAL,
     retail_cost_usd   REAL,
     request_id        TEXT
@@ -1572,6 +1576,16 @@ function migrate(db: Database.Database) {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
+
+  // Prompt-cache accounting on existing installs (additive, default 0).
+  const usageCols = db
+    .prepare("PRAGMA table_info(usage_events)")
+    .all() as { name: string }[];
+  for (const name of ["cache_read_tokens", "cache_write_tokens"] as const) {
+    if (!usageCols.some((c) => c.name === name)) {
+      db.exec(`ALTER TABLE usage_events ADD COLUMN ${name} INTEGER NOT NULL DEFAULT 0`);
+    }
+  }
 
   const settingsCols = db
     .prepare("PRAGMA table_info(trading_settings)")

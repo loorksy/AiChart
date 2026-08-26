@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   describeEntry,
+  entryFillTolerance,
   resolveFill,
   rewardToRisk,
   validateEntryCoherence,
@@ -258,6 +259,150 @@ describe("prose is generated from structure", () => {
     });
     assert.match(text, /4344/);
     assert.match(text, /4349/);
+  });
+});
+
+describe("limit_touch fills within the tolerance band", () => {
+  // The flexible-entry complaint: a XAUUSD buy at 4646.19; price turned at
+  // 4646.49 (30 cents above), ran to every target, and the record said the
+  // plan never filled. With the band, that near-miss IS a fill.
+  const PLAN = {
+    direction: "buy" as const,
+    entryType: "limit_touch" as const,
+    entry: 4646.19,
+    retestZone: null,
+  };
+
+  it("a candle inside the band fills — at the nearest traded price, not the level", () => {
+    const fill = resolveFill({
+      plan: PLAN,
+      candle: candle(1, 4650, 4652, 4646.49, 4651),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 0.5,
+    });
+    assert.equal(fill.filled, true);
+    assert.equal(
+      fill.effectiveEntry,
+      4646.49,
+      "grading honesty: the market never traded 4646.19, so the fill is 4646.49",
+    );
+  });
+
+  it("a candle outside the band still does not fill", () => {
+    const fill = resolveFill({
+      plan: PLAN,
+      candle: candle(1, 4650, 4652, 4646.8, 4651),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 0.5,
+    });
+    assert.equal(fill.filled, false);
+  });
+
+  it("without a tolerance the exact-touch behaviour is preserved", () => {
+    const fill = resolveFill({
+      plan: PLAN,
+      candle: candle(1, 4650, 4652, 4646.49, 4651),
+      conditionMet: true,
+      armedBefore: false,
+    });
+    assert.equal(fill.filled, false);
+  });
+
+  it("a real touch still fills at the level itself", () => {
+    const fill = resolveFill({
+      plan: PLAN,
+      candle: candle(1, 4650, 4652, 4645.9, 4651),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 0.5,
+    });
+    assert.equal(fill.filled, true);
+    assert.equal(fill.effectiveEntry, 4646.19);
+  });
+
+  it("sell side mirrors: a high within the band below the entry fills", () => {
+    const fill = resolveFill({
+      plan: { ...PLAN, direction: "sell" },
+      candle: candle(1, 4640, 4645.9, 4638, 4639),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 0.5,
+    });
+    assert.equal(fill.filled, true);
+    assert.equal(fill.effectiveEntry, 4645.9);
+  });
+});
+
+describe("entryFillTolerance clamps to the instrument's scale", () => {
+  it("gold at ~4600 lands inside the operator's 5–15 point band (0.5–1.5 USD)", () => {
+    // No ATR → the floor: ~0.5 USD.
+    const floor = entryFillTolerance({ price: 4646 });
+    assert.ok(floor >= 0.45 && floor <= 0.6, `floor ${floor} should be ≈0.5`);
+    // Huge ATR → the cap: ~1.5 USD, never more.
+    const cap = entryFillTolerance({ price: 4646, atr: 50 });
+    assert.ok(cap >= 1.4 && cap <= 1.6, `cap ${cap} should be ≈1.5`);
+    // Normal 5m ATR (~4 USD) → volatility-scaled inside the band.
+    const mid = entryFillTolerance({ price: 4646, atr: 4 });
+    assert.ok(mid >= floor && mid <= cap, `mid ${mid} must sit inside [${floor}, ${cap}]`);
+  });
+
+  it("degenerate prices produce zero, never NaN", () => {
+    assert.equal(entryFillTolerance({ price: 0 }), 0);
+    assert.equal(entryFillTolerance({ price: Number.NaN }), 0);
+  });
+});
+
+describe("the tracker grades the near-miss as filled", () => {
+  it("buy entry at 4646.19, low 4646.49, tolerance 0.5 → triggered and TP1 credited", () => {
+    const result = evaluateRecommendation({
+      recommendation: {
+        direction: "buy",
+        entryType: "limit_touch",
+        entry: 4646.19,
+        stopLoss: 4642.93,
+        targets: [4660.02, 4670.46],
+        status: "pending_entry",
+        outcome: "pending",
+        createdAt: T0,
+        createdCandleTime: T0,
+        expiresAt: T0 + 40 * M15,
+      },
+      candles: [
+        candle(1, 4650, 4652, 4646.49, 4651), // near-miss: 30 cents above entry
+        candle(2, 4651, 4661, 4650, 4660.5), // runs to TP1
+      ],
+      entryTolerance: 0.5,
+      now: T0 + 3 * M15,
+    });
+    assert.equal(result.triggered, true, "the near-miss must fill the plan");
+    assert.ok(result.tp1HitAt, "TP1 must be credited after the tolerance fill");
+    assert.equal(result.status, "tp1_hit");
+  });
+
+  it("the same tape without a tolerance ends as a missed opportunity — the old grading", () => {
+    const result = evaluateRecommendation({
+      recommendation: {
+        direction: "buy",
+        entryType: "limit_touch",
+        entry: 4646.19,
+        stopLoss: 4642.93,
+        targets: [4660.02, 4670.46],
+        status: "pending_entry",
+        outcome: "pending",
+        createdAt: T0,
+        createdCandleTime: T0,
+        expiresAt: T0 + 40 * M15,
+      },
+      candles: [
+        candle(1, 4650, 4652, 4646.49, 4651),
+        candle(2, 4651, 4661, 4650, 4660.5),
+      ],
+      now: T0 + 3 * M15,
+    });
+    assert.equal(result.triggered, false);
+    assert.equal(result.missedWithoutFill, true);
   });
 });
 

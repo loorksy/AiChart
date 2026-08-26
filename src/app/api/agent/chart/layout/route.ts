@@ -15,6 +15,10 @@ import { normalizeInterval } from "@/lib/intervals";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartStudy } from "@/lib/chart/studies";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import {
+  withStableCreatedAt,
+  type TradePlanAnchorFields,
+} from "@/lib/recommendations/anchorTime";
 import { tryMintChartEmbedUrl } from "@/lib/embedChartToken";
 
 const pointSchema = z.object({
@@ -213,8 +217,16 @@ export async function POST(req: NextRequest) {
         }
       }
       if (body.recommendation !== undefined) {
+        // withStableCreatedAt: the chart anchors the profit/loss zones at the
+        // recommendation's created_at. An MCP re-write of the SAME plan keeps
+        // the stored anchor byte-for-byte; only a genuinely new plan is
+        // stamped now. Without this every MCP draw re-anchored the zones to
+        // the latest candle on the open chart's next poll.
         state.recommendation = body.recommendation
-          ? { ...body.recommendation, symbol }
+          ? withStableCreatedAt(
+              { ...body.recommendation, symbol },
+              (state.recommendation ?? null) as TradePlanAnchorFields | null,
+            )
           : null;
       }
       if (body.targets !== undefined) state.targets = body.targets;

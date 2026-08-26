@@ -53,6 +53,62 @@ export interface RetestZone {
   to: number;
 }
 
+/**
+ * How the STOP terminates a live plan.
+ *
+ *  - `touch` — any trade at the stop level ends the plan (a hard order at a
+ *              broker would have filled). The pre-existing behaviour.
+ *  - `close` — only a candle CLOSE beyond the stop ends it. A wick through the
+ *              level with a close back inside is a rejection, not a stop-out.
+ *
+ * This exists because of a real transcript: a conditional XAUUSD sell promised
+ * "a 15m candle CLOSE above 4667.29 kills the idea entirely", price wicked to
+ * ~4670 intrabar — no close above — got rejected exactly as the plan predicted
+ * and fell toward TP1, and the tracker graded the wick as a stop-out. The
+ * plan's own words and the grader disagreed about what the stop MEANS, which
+ * is the same class of contradiction the entry-type contract fixed for fills.
+ */
+export const INVALIDATION_MODES = ["close", "touch"] as const;
+
+export type InvalidationMode = (typeof INVALIDATION_MODES)[number];
+
+export function isInvalidationMode(value: unknown): value is InvalidationMode {
+  return (
+    typeof value === "string" &&
+    (INVALIDATION_MODES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The canonical invalidation mode for a plan, derived from its STRUCTURE —
+ * mirroring `resolveEntryType`: a stated mode wins; otherwise the plan's own
+ * shape decides.
+ *
+ * Default is CLOSE for every conditional/pending plan (an activation rule, a
+ * non-market fill, or a conditional/anticipatory plan type), because that is
+ * what the synthesizer's invalidation sentence has always promised — "a full
+ * candle close beyond the level kills the scenario" — and grading a promise
+ * written on the close against an intrabar wick is the contradiction this
+ * mode exists to end.
+ * Only a plain immediate market fill keeps touch semantics: a live position's
+ * protective stop is an order, and orders fill on a touch.
+ */
+export function resolveInvalidationMode(input: {
+  declared?: string | null;
+  entryType?: string | null;
+  planType?: "immediate" | "anticipatory" | "conditional" | null;
+  activationRule?: ActivationRule | null;
+}): InvalidationMode {
+  const declared = (input.declared ?? "").toLowerCase();
+  if (isInvalidationMode(declared)) return declared;
+  if (input.activationRule) return "close";
+  if (input.planType === "conditional" || input.planType === "anticipatory") {
+    return "close";
+  }
+  const entryType = normalizeStoredEntryType(input.entryType ?? null);
+  return entryType === "market" ? "touch" : "close";
+}
+
 export interface EntryPlan {
   direction: "buy" | "sell";
   entryType: EntryType;
@@ -292,6 +348,105 @@ export interface FillResult {
 }
 
 /**
+ * How close price must come to a touch-filled entry for the touch to count.
+ *
+ * Exists because of a real complaint: a XAUUSD plan whose entry sat at
+ * 4646.19 watched price turn 30 cents above it and run to every target — and
+ * the record graded the plan as never filled. Requiring the exact cent is
+ * grading a fill the market never owed us; a real limit order at that level
+ * with normal spread WOULD have filled.
+ *
+ * The band is proportional to price so one rule serves every instrument:
+ *  - floor  ~0.011% of price (≈ 0.50 USD on gold at 4600 — "5 points")
+ *  - cap    ~0.033% of price (≈ 1.50 USD on gold at 4600 — "15 points")
+ *  - inside the band, volatility decides: 15% of ATR, matching the tolerance
+ *    the plan builder already applies to activation rules at creation.
+ */
+export function entryFillTolerance(input: {
+  price: number;
+  atr?: number | null;
+}): number {
+  const price = input.price;
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  const floor = price * 1.1e-4;
+  const cap = price * 3.3e-4;
+  const fromAtr =
+    input.atr != null && Number.isFinite(input.atr) && input.atr > 0
+      ? input.atr * 0.15
+      : 0;
+  return Math.min(cap, Math.max(floor, fromAtr));
+}
+
+/**
+ * The safety margin a STOP must sit beyond the structural level it protects.
+ *
+ * Same proportional family as `entryFillTolerance`, deliberately wider: the
+ * entry band answers "how close counts as a touch" (spread-scale), while this
+ * answers "how far can an ordinary rejection wick overshoot the obvious swing
+ * before falling" — a stop placed exactly ON that swing is a stop-hunt
+ * donation. From the transcript this exists for: stop at 4667.29 on the swing,
+ * rejection wick to 4670 (≈3 points through), then the fall the plan
+ * predicted. The band:
+ *  - floor  ~0.022% of price (≈ 1.0 USD on gold at 4600)
+ *  - cap    ~0.11%  of price (≈ 5.0 USD on gold at 4600)
+ *  - inside the band, volatility decides: 40% of ATR — a rejection wick is a
+ *    fraction of one candle's range, so the margin scales with that range.
+ */
+export function stopSafetyBuffer(input: {
+  price: number;
+  atr?: number | null;
+}): number {
+  const price = input.price;
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  const floor = price * 2.2e-4;
+  const cap = price * 1.1e-3;
+  const fromAtr =
+    input.atr != null && Number.isFinite(input.atr) && input.atr > 0
+      ? input.atr * 0.4
+      : 0;
+  return Math.min(cap, Math.max(floor, fromAtr));
+}
+
+/**
+ * Push a stop the safety margin beyond its structural level, in the direction
+ * that protects the trade. Idempotent on already-buffered stops: the input
+ * stop is treated as the structural invalidation only when it sits closer to
+ * the entry than the buffered level — a stop the producer already placed
+ * beyond the margin is kept as stated.
+ */
+export function applyStopSafetyBuffer(input: {
+  direction: "buy" | "sell";
+  stopLoss: number;
+  /** The structural level the stop protects; defaults to the stop itself. */
+  structuralLevel?: number | null;
+  atr?: number | null;
+  /** Instrument scale for the proportional floor/cap; defaults to the stop. */
+  price?: number | null;
+}): { stopLoss: number; buffer: number; buffered: boolean } {
+  const structural =
+    input.structuralLevel != null && Number.isFinite(input.structuralLevel)
+      ? input.structuralLevel
+      : input.stopLoss;
+  if (!Number.isFinite(structural)) {
+    return { stopLoss: input.stopLoss, buffer: 0, buffered: false };
+  }
+  const buffer = stopSafetyBuffer({
+    price:
+      input.price != null && Number.isFinite(input.price) && input.price > 0
+        ? input.price
+        : Math.abs(structural),
+    atr: input.atr,
+  });
+  if (!(buffer > 0)) return { stopLoss: input.stopLoss, buffer: 0, buffered: false };
+  const safe =
+    input.direction === "sell" ? structural + buffer : structural - buffer;
+  const alreadySafe =
+    input.direction === "sell" ? input.stopLoss >= safe : input.stopLoss <= safe;
+  if (alreadySafe) return { stopLoss: input.stopLoss, buffer, buffered: false };
+  return { stopLoss: safe, buffer, buffered: true };
+}
+
+/**
  * Does this candle fill the entry, and at what price?
  *
  * `conditionMet` is the activation rule's verdict for THIS candle — the caller
@@ -305,6 +460,13 @@ export function resolveFill(input: {
   conditionMet: boolean;
   /** True when the rule became satisfied on an EARLIER candle. */
   armedBefore: boolean;
+  /**
+   * Price-unit band for touch fills: a candle that comes within this margin of
+   * a `limit_touch` entry counts as filled, AT THE NEAREST PRICE ACTUALLY
+   * TRADED — never at the nominal level the market did not reach. Omitted or
+   * zero preserves the exact-touch behaviour.
+   */
+  tolerance?: number;
 }): FillResult {
   const { plan, candle, conditionMet, armedBefore } = input;
   if (!conditionMet && !armedBefore) return { filled: false };
@@ -334,9 +496,22 @@ export function resolveFill(input: {
 
     case "limit_touch":
     default: {
+      const tol =
+        input.tolerance != null && Number.isFinite(input.tolerance) && input.tolerance > 0
+          ? input.tolerance
+          : 0;
       const touched =
-        plan.direction === "buy" ? candle.low <= plan.entry : candle.high >= plan.entry;
-      return touched ? { filled: true, effectiveEntry: plan.entry } : { filled: false };
+        plan.direction === "buy"
+          ? candle.low <= plan.entry + tol
+          : candle.high >= plan.entry - tol;
+      if (!touched) return { filled: false };
+      // Grading honesty: when only the tolerance band was reached, the fill is
+      // the nearest traded price (the candle's extreme), not the level itself.
+      const effectiveEntry =
+        plan.direction === "buy"
+          ? Math.max(plan.entry, candle.low)
+          : Math.min(plan.entry, candle.high);
+      return { filled: true, effectiveEntry };
     }
   }
 }

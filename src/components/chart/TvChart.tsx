@@ -265,6 +265,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const applyDrawingsRef = useRef<(opts?: { force?: boolean }) => void>(() => {});
   const pushSyncRef = useRef(false);
   const latestCandleRef = useRef<TvLatestCandle | null>(null);
+  // Last wake-triggered resetData, so simultaneous stale reports collapse.
+  const lastBarsResetRef = useRef(0);
   const clearLatestCandle = () => {
     latestCandleRef.current = null;
   };
@@ -614,6 +616,22 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           datafeed: createAiChartDatafeed(bootMarket, {
             onLatestCandle: (candle) => {
               latestCandleRef.current = candle;
+            },
+            // The tab was backgrounded long enough that candles are missing:
+            // the datafeed already told TV to drop its bar cache; resetData()
+            // re-requests history so the chart catches up without a manual
+            // reload. Debounced — every series subscription reports the same
+            // wake, and one reset serves them all.
+            onBarsStale: () => {
+              if (!readyRef.current) return;
+              const now = Date.now();
+              if (now - lastBarsResetRef.current < 2_000) return;
+              lastBarsResetRef.current = now;
+              try {
+                widgetRef.current?.activeChart().resetData();
+              } catch {
+                /* widget mid-teardown */
+              }
             },
           }),
           symbol: bootSymbol,

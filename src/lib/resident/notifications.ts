@@ -192,6 +192,18 @@ function extractLifecycle(event: MarketEvent): LifecycleEvent {
   return lifecycle as LifecycleEvent;
 }
 
+/**
+ * The recommendation id as a user may see it: a UUID keeps only its first
+ * block (`#c438afb4` — enough to identify, nothing internal), anything else
+ * is bounded. The full id stays in the ledger and the logs, where it belongs.
+ */
+export function shortRecommendationId(id: string): string {
+  const uuid =
+    /^([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(id);
+  if (uuid) return uuid[1]!;
+  return id.length > 12 ? id.slice(0, 12) : id;
+}
+
 /** The user-facing message: category headline, the event's own detail, and
  *  the trace line naming exactly which market event this was. */
 export function formatNotificationMessage(
@@ -199,13 +211,22 @@ export function formatNotificationMessage(
   category: NotificationCategory,
   locale: AppLocale = DEFAULT_LOCALE,
 ): string {
+  // The trace names the event in the reader's language — `tp1_hit` and
+  // `economic_event_near` are internal vocabulary, not an answer — and an
+  // event type outside the dictionary falls back to the category headline
+  // rather than printing the raw enum.
+  const eventKey = `notify.event.${lifecycle.type}`;
+  const eventLabel = t(locale, eventKey);
   return [
     `🔔 ${t(locale, `notify.category.${category}`)}`,
     lifecycle.detail,
     t(locale, "notify.trace", {
-      id: String(lifecycle.recommendationId),
+      id: shortRecommendationId(String(lifecycle.recommendationId)),
       symbol: lifecycle.symbol,
-      event: lifecycle.type,
+      event:
+        eventLabel === eventKey
+          ? t(locale, `notify.category.${category}`)
+          : eventLabel,
     }),
   ].join("\n");
 }

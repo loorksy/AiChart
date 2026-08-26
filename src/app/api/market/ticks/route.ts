@@ -16,6 +16,11 @@ export const dynamic = "force-dynamic";
 
 const TRADABLE_SET = new Set(TRADABLE_SYMBOLS.map((s) => forexCanonicalKey(s)));
 
+/** Server heartbeat cadence. The client's silence watchdog (SSE_SILENT_MS in
+ *  tvDatafeed) must tolerate at least two missed beats before declaring the
+ *  socket dead. Not exported — Next.js route modules allow only route fields. */
+const TICKS_HEARTBEAT_MS = 15_000;
+
 /**
  * Server-Sent Events of live bid/ask from the platform's shared OANDA
  * stream. No per-user account or link is required — guests (MCP embed, public
@@ -86,17 +91,27 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // A DATA heartbeat, not an SSE comment: comment lines never reach
+        // EventSource.onmessage, so the client could not tell a silently dead
+        // socket (mobile Chrome kills background connections without firing
+        // onerror) from a quiet market. A visible heartbeat lets the client
+        // run a staleness watchdog over ALL messages and rebuild when the
+        // stream truly went dark.
         const heartbeat = setInterval(() => {
           if (closed) {
             clearInterval(heartbeat);
             return;
           }
           try {
-            controller.enqueue(encoder.encode(`: ping\n\n`));
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "heartbeat", time: Date.now() })}\n\n`,
+              ),
+            );
           } catch {
             clearInterval(heartbeat);
           }
-        }, 15_000);
+        }, TICKS_HEARTBEAT_MS);
 
         const onAbort = () => {
           if (closed) return;

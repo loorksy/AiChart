@@ -6,6 +6,7 @@ import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartStudy } from "@/lib/chart/studies";
 import { computeRewardRisk } from "@/lib/rewardRisk";
+import { withStableCreatedAt } from "@/lib/recommendations/anchorTime";
 import type { Recommendation } from "@/lib/types";
 import type { LiveReasoningEntry } from "@/lib/analysis/types";
 import type { MarketType } from "@/lib/markets/types";
@@ -85,7 +86,14 @@ export function useChartAnalysis({
     setTargets((prev) => keepIfEqual(prev, (snapshot.targets ?? []).filter((target) => target > 0)));
     setLiveReasoningLog((prev) => keepIfEqual(prev, snapshot.liveReasoningLog ?? []));
     if (snapshot.recommendation !== undefined) {
-      setRecommendation((prev) => keepIfEqual(prev, snapshot.recommendation ?? null));
+      // withStableCreatedAt: the chart anchors the profit/loss zones at the
+      // recommendation's created_at. A hydrated payload keeps its persisted
+      // anchor byte-for-byte; a legacy payload without one inherits the anchor
+      // of the same in-memory plan (so the 4s poll never re-anchors it) or is
+      // stamped once — the stamp then persists through the layout autosave.
+      setRecommendation((prev) =>
+        keepIfEqual(prev, withStableCreatedAt(snapshot.recommendation ?? null, prev)),
+      );
     }
   }, []);
 

@@ -5,6 +5,7 @@ import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import {
   normalizeStoredEntryType,
   type EntryType,
+  type InvalidationMode,
 } from "@/lib/recommendations/entrySemantics";
 import {
   cancelTrackedRecommendation,
@@ -53,6 +54,19 @@ export type ActiveRecommendation = {
   /** Fill band for a `retest_zone` entry; absent for every other type. */
   retestZone?: { from: number; to: number } | null;
   stopLoss: number;
+  /**
+   * How the stop terminates the plan — a candle CLOSE beyond it ("close") or
+   * any touch ("touch"). See recommendations/entrySemantics.ts; absent means
+   * every evaluator derives the same structural default.
+   */
+  invalidationMode?: InvalidationMode;
+  /**
+   * The honest fill once triggered (confirming candle's close / nearest traded
+   * price) — the price status answers and R math must be measured from.
+   */
+  effectiveEntry?: number;
+  /** When the entry filled, from the canonical record. */
+  triggeredAt?: number;
   targets: number[];
   takeProfit?: number;
   rr?: number;
@@ -89,6 +103,11 @@ export type ActiveRecommendation = {
 };
 
 const store = new Map<string, ActiveRecommendation>();
+
+/** Test seam: simulate a process restart (the in-memory cache is per-process). */
+export function resetSessionRecommendationStoreForTests(): void {
+  store.clear();
+}
 
 function normalizeSymbol(symbol?: string | null): string {
   return (symbol ?? "").toUpperCase().trim();
@@ -129,11 +148,25 @@ export async function getActiveRecommendation(
     null;
   if (!rec && userId != null) {
     const tracked = await listActiveTrackedRecommendations({ userId, limit: 100 });
-    const match = tracked.find(
-      (item) =>
-        item.chatId === sessionId &&
-        (!symbol || normalizeSymbol(item.symbol) === normalizeSymbol(symbol)),
-    );
+    const sameSymbol = (item: { symbol: string }) =>
+      !symbol || normalizeSymbol(item.symbol) === normalizeSymbol(symbol);
+    // The session-keyed row first; failing that, the USER's newest live plan.
+    //
+    // The user-scoped fallback is the fix for a real transcript: the lifecycle
+    // notifier told a Telegram chat its plan was still standing (the notifier
+    // is user-scoped), the very next question — "what is the recommendation's
+    // status?" — answered "no recommendation is stored in this session",
+    // because this lookup demanded an exact chatId match and the in-memory
+    // copy had died with a worker restart, and the turn after that described
+    // the plan again from conversation context (also user-scoped). One user,
+    // one instrument, three answers. A user's live plan is a fact about the
+    // USER — every surface that asks on their behalf must see the same one.
+    const match =
+      tracked.find((item) => item.chatId === sessionId && sameSymbol(item)) ??
+      tracked
+        .filter(sameSymbol)
+        .sort((a, b) => b.createdAt - a.createdAt)[0] ??
+      null;
     if (match) {
       const drawings = parseChartDrawingsJson(match.chartDrawingsJson);
       rec = {
@@ -158,6 +191,13 @@ export async function getActiveRecommendation(
         // it as buy_limit/sell_limit threw away `confirmation_close` on every
         // replay, so a restored plan graded differently from the original.
         entryType: normalizeStoredEntryType(match.entryType),
+        // The full fill/stop semantics must survive the replay: the retest
+        // band (without it a retest plan can never fill), the stop's own
+        // termination mode, and the honest fill price already recorded.
+        retestZone: match.retestZone,
+        invalidationMode: match.invalidationMode,
+        effectiveEntry: match.effectiveEntry,
+        triggeredAt: match.triggeredAt,
         stopLoss: match.stopLoss,
         targets: match.targets,
         takeProfit: match.targets[0],
@@ -249,10 +289,22 @@ export async function clearActiveRecommendation(
   sessionId: string,
   symbol?: string,
   userId?: number,
+  opts: {
+    /**
+     * True when a NEWER analysis is replacing this plan (the orchestrator's
+     * supersede path). The tracked record then grades "superseded" instead of
+     * a plain withdrawal — different facts to the operator reading history.
+     */
+    superseded?: boolean;
+  } = {},
 ): Promise<void> {
   const rec = await getActiveRecommendation(sessionId, symbol, userId);
   if (!rec) return;
-  if (rec.userId != null) await cancelTrackedRecommendation(rec.userId, rec.id);
+  if (rec.userId != null) {
+    await cancelTrackedRecommendation(rec.userId, rec.id, {
+      superseded: opts.superseded,
+    });
+  }
   await rememberActiveRecommendation({ ...rec, status: "cancelled" });
 }
 

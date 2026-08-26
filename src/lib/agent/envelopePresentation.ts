@@ -3,15 +3,6 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ResultEnvelope } from "./resultEnvelope";
 import type { AgentRecommendation } from "./types";
 
-export function operatorMarketSourceLabel(
-  source: "oanda" | undefined,
-  locale: AppLocale,
-): string {
-  // OANDA is the platform's only market-data pipe.
-  void source;
-  return locale === "ar" ? "OANDA — تغذية المنصة" : "OANDA platform feed";
-}
-
 export function priceLevelsFromDrawings(drawings: ChartDrawing[]): number[] {
   const prices: number[] = [];
   for (const d of drawings) {
@@ -53,29 +44,23 @@ function formatLevelLine(levels: number[], locale: AppLocale): string {
 }
 
 /**
- * Ensures operator-visible answers always name the market book and cite numeric
- * levels when we have them — independent of LLM phrasing.
+ * Ensures operator-visible answers cite numeric levels when we have them —
+ * independent of LLM phrasing.
+ *
+ * This used to also prepend a "مصدر البيانات: …" line naming the market-data
+ * vendor. Removed on operator instruction: the data source is internal
+ * provenance and must never appear in user-facing output on any surface (web
+ * chat, Telegram, MCP card text). It lives in server logs only.
  */
 export function attachMandatoryPresentation(input: {
   summary: string;
   envelope: ResultEnvelope;
-  source?: "oanda";
   levels: number[];
   locale: AppLocale;
 }): { summary: string; envelope: ResultEnvelope } {
-  const sourceLabel = operatorMarketSourceLabel(input.source, input.locale);
   const levels = dedupeSorted(input.levels);
-  const sourceLine =
-    input.locale === "ar"
-      ? `مصدر البيانات: ${sourceLabel}.`
-      : `Data source: ${sourceLabel}.`;
 
   let summary = input.summary.trim();
-  const namesSource = /OANDA|oanda|تغذية المنصة/i.test(summary);
-  if (!namesSource) {
-    summary = `${sourceLine}\n\n${summary}`;
-  }
-
   const hasTwoNumbers = (summary.match(/\d{2,}\.\d{1,5}/g) ?? []).length >= 2;
   if (levels.length >= 2 && !hasTwoNumbers) {
     summary = `${summary}\n\n${formatLevelLine(levels, input.locale)}`;
@@ -85,7 +70,6 @@ export function attachMandatoryPresentation(input: {
     summary,
     envelope: {
       ...input.envelope,
-      market_data_source: sourceLabel,
       key_price_levels: levels.length ? levels : undefined,
     },
   };

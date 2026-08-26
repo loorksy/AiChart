@@ -20,7 +20,7 @@ export const en = {
 
   // Welcoming Phase
   "welcome.title": "Welcome, {name} 👋",
-  "welcome.subtitle": "Type your message to begin — gold analysis via OANDA.",
+  "welcome.subtitle": "Type your message to begin — professional gold analysis on live platform pricing.",
   "welcome.session_settings": "Session Settings",
   "welcome.response_mode": "Response Type",
   "welcome.market": "Market",
@@ -51,7 +51,7 @@ export const en = {
   // Profile menu items
   "profile.settings": "Global Settings",
   "profile.analytics": "Analytics",
-  "profile.account": "Account Parameters",
+  "profile.account": "Account details",
   "profile.theme": "Theme",
   "profile.theme.dark": "Dark",
   "profile.theme.light": "Light",
@@ -97,11 +97,11 @@ export const en = {
 
   // Market data source (the one pipe: the platform's OANDA feed)
   "data_source.title": "Market data",
-  "data_source.oanda": "OANDA feed",
-  "data_source.oanda_hint": "Live candles and prices via OANDA — no account link needed.",
+  "data_source.oanda": "Platform feed",
+  "data_source.oanda_hint": "Live candles and prices via the platform feed — no account link needed.",
   "data_source.needs_link": "Market data is temporarily unavailable.",
   "data_source.link_cta": "Unavailable",
-  "data_source.short.oanda": "OANDA",
+  "data_source.short.oanda": "Platform feed",
 
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",
@@ -112,7 +112,7 @@ export const en = {
   // Pair catalogue
   "symbol.picker.title": "Choose a pair",
   "symbol.picker.search": "Search a pair or a currency",
-  "symbol.picker.source_cloud": "Platform OANDA feed",
+  "symbol.picker.source_cloud": "Platform feed",
   "symbol.picker.none": "No pair matches this search.",
   "symbol.picker.favourites": "Favourites",
   "symbol.picker.all": "All pairs",
@@ -260,7 +260,7 @@ export const en = {
   "profile.select_language": "Language",
 
   "agent.title": "Smart Chart Agent",
-  "agent.empty": "Ask the agent or start a chart analysis",
+  "agent.empty": "Put your question to the agent, or start an analysis of the current chart.",
   "agent.analyze_chart": "Analyze chart",
   "agent.news_risk": "News risk",
   "agent.send": "Send",
@@ -313,6 +313,28 @@ export const en = {
   "agent.stage.research": "Research",
   "agent.stage.resumed": "(from a previous run)",
   "agent.run_details": "Run details",
+  // --- Live agent-thinking lines: templates filled ONLY from real run values ---
+  "agent.think.market_read": "Read {count} candles on the {interval} frame — current price {price}",
+  "agent.think.structure": "Checking {interval} structure… the trend is {trend}",
+  "agent.think.structure_levels": "Checking {interval} structure… trend {trend}, nearest support {support}, nearest resistance {resistance}",
+  "agent.think.trend.uptrend": "up",
+  "agent.think.trend.downtrend": "down",
+  "agent.think.trend.range": "sideways",
+  "agent.think.trend.unknown": "undecided",
+  "agent.think.htf": "The higher frame ({interval}) leans {bias}",
+  "agent.think.bias.bullish": "bullish",
+  "agent.think.bias.bearish": "bearish",
+  "agent.think.bias.neutral": "neutral",
+  "agent.think.bias.unknown": "without a clear read",
+  "agent.think.news_low": "The news window is quiet — no high-impact events nearby",
+  "agent.think.news_medium": "A medium-impact event is on the calendar — weighing it in the risks",
+  "agent.think.news_high": "A high-impact event is near — weighing its risk to the plan",
+  "agent.think.news_unknown": "Could not verify the calendar — treating news risk as unknown",
+  "agent.think.weighing": "Weighing {count} candidate entry scenarios against the evidence before deciding…",
+  "agent.think.weighing_none": "No ready entry candidate — building the plan directly from the evidence levels…",
+  "agent.think.gates_passed": "The plan passed the platform's mandatory checks ({count})",
+  "agent.think.gate_veto": "Check {gate} stopped the plan: {reason}",
+  "agent.think.followup": "Reviewing the {direction} plan from {entry} against the live price…",
   "agent.error": "Something went wrong",
   "agent.run_failed": "The request could not be completed because the agent run failed.",
   "agent.reconnecting": "Connection lost — reconnecting…",
@@ -381,6 +403,8 @@ export const en = {
 
   // --- Orchestrator: receipts, blockers, activity narration ---
   "orch.rec_cancelled": "The active recommendation in this session has been cancelled.",
+  "orch.rec_superseded":
+    "The previous recommendation ({direction} at {entry}) was closed and replaced by the new analysis below.",
   "orch.scenario_building": "{reason} Building the next-open scenario from the last close.",
   "orch.news_unknown":
     "News risk is unknown because no news provider is configured — I cannot confirm news risk right now.",
@@ -389,12 +413,12 @@ export const en = {
   "orch.market_data_failed_activity":
     "Could not prepare market data — the chart analysis cannot be completed right now.",
   "orch.market_data_failed_summary":
-    "Could not prepare market data from the OANDA feed. Try again shortly.",
+    "Could not prepare market data from the platform feed. Try again shortly.",
   "orch.no_rec_missing_data": "No recommendation was issued due to missing data.",
   "orch.tail_age_seconds": " Latest available candle is {age}s old.",
   "orch.tail_age_minutes": " Latest available candle is {age}m old.",
   "orch.sync_stale_summary":
-    "{reason}{age} An automatic refresh from the OANDA feed is already running — ask again in a moment and the analysis will complete.",
+    "{reason}{age} An automatic refresh from the platform feed is already running — ask again in a moment and the analysis will complete.",
   "orch.prices_unconfirmed":
     "Latest prices could not be confirmed — no recommendation was issued.",
   "orch.analysis_stopped_gaps":
@@ -407,7 +431,9 @@ export const en = {
   "orch.visual_partial": "Could not capture {missing} — the analysis reads only what remains.",
   "orch.visual_none": "Could not capture any chart — the analysis reads the numbers alone.",
   "orch.visual_host_unconfigured": "Could not capture any chart: the shared chart session is not configured on the server — set CHART_HOST_URL in the settings panel. The analysis reads the numbers alone.",
-  "orch.no_rec_now": "No recommendation right now.",
+  "orch.no_rec_now": "No executable recommendation right now.",
+  "orch.repricing_stale_plan":
+    "The market moved past the plan's levels while the analysis ran — repricing the plan against the live market now.",
   "orch.no_saved_rec": "There is no saved recommendation in this session right now.",
   "orch.restored_trigger": "Recommendation restored from the current chart.",
   "orch.invalidation_below": "A candle close below {level} invalidates the scenario.",
@@ -448,7 +474,7 @@ export const en = {
   "fault.named.auth":
     "The {provider} key was rejected or is invalid — review it in the keys panel.",
   "fault.named.rate_limit": "{provider} is busy right now — try again shortly.",
-  "api.guest_rate_limit": "Too many requests — sign in to continue.",
+  "api.guest_rate_limit": "You have exceeded the guest request limit — sign in to continue.",
   "fault.timeout": "The operation took longer than allowed — try again shortly.",
   "fault.network": "A network connection problem occurred — try again shortly.",
   "fault.provider_unavailable":
@@ -483,9 +509,9 @@ export const en = {
   "tg.chart_caption": "{name} · 15m",
   "tg.chart_caption_closed": "{name} · 15m — last snapshot before the close.",
   "tg.chart_failed":
-    "Couldn't prepare the chart photo right now. Open the platform from the button, or try again shortly.",
+    "The chart image could not be prepared right now. Open the platform from the button below, or try again shortly.",
   "tg.open_report": "📊 Open report",
-  "tg.tools_used": "Used {count} checks and tools",
+  "tg.tools_used": "{count} checks and tools were run",
   "tg.link_prompt":
     "This chat is not linked to an account. Open Settings on the Lonora platform and tap “Link Telegram” to get your link code, then come back here.",
   "tg.option_expired": "This option has expired",
@@ -511,6 +537,18 @@ export const en = {
   "tg.warnings": "Warnings",
   "tg.cost_line": "Expected cost: {pips} pips{suffix}",
   "tg.estimate": "estimate",
+  "tg.progress_header": "Analyzing",
+  "tg.refresh_status": "🔄 Refresh status",
+  "tg.refresh_status_prompt": "What is the status of the current recommendation?",
+  "tg.photo_failed": "📷 Could not capture the chart image for this recommendation — the details above are text-only.",
+  "news.level.high": "High",
+  "news.level.medium": "Medium",
+  "news.level.low": "Low",
+  "news.level.unknown": "Unknown",
+  "pattern.stage.forming": "forming",
+  "pattern.stage.completed": "completed",
+  "pattern.stage.confirmed": "confirmed",
+  "pattern.stage.invalidated": "invalidated",
 
   // --- Closed-market scenario mode (closedMarketScenario.ts) ---
   "scenario.notice":
@@ -525,6 +563,15 @@ export const en = {
   "session.closed_sunday": "Market has not opened yet (Sunday).",
   "session.maintenance_break":
     "Daily maintenance break — trading resumes within the hour.",
+
+  // --- Global trading sessions (agent/core/tradingSessions) ---
+  "session.name.sydney": "Sydney",
+  "session.name.tokyo": "Tokyo",
+  "session.name.london": "London",
+  "session.name.newyork": "New York",
+  "session.now": "Current trading session: {session}.",
+  "session.now_overlap": "Current trading session: {a}/{b} overlap — the day's deepest liquidity.",
+  "session.none_next": "No session is active right now — next: {session} in {in}.",
 
   // --- Phase 0: persistent execution-mode badge + operational-blocker card ---
   "agent.mode.descriptive": "Descriptive — not authorized to execute",
@@ -578,10 +625,10 @@ export const en = {
   // --- Signal card: the head read at a glance, detail behind one button ---
   "agent.signal.buy": "Buy",
   "agent.signal.sell": "Sell",
-  "agent.signal.none": "No trade right now",
+  "agent.signal.none": "No executable recommendation right now",
   "agent.signal.strength": "Signal strength",
   "agent.signal.why": "Why this call?",
-  "agent.signal.what_plan": "What was the plan?",
+  "agent.signal.what_plan": "View the plan considered",
   "agent.signal.hide": "Hide details",
   "agent.signal.live": "Price now",
   "agent.signal.target_n": "Target {n}",
@@ -604,12 +651,12 @@ export const en = {
   "config.model_wrong_provider": "The model \"{model}\" does not belong to {provider} — the field {field} takes {provider} models only.",
   "support.notify.reply": "You have a new reply from support.",
   "support.title": "Support",
-  "support.subtitle": "Tell us what is happening, and we will answer here.",
+  "support.subtitle": "Describe exactly what you are facing, and the support team will answer you right here.",
   "support.placeholder": "Write a message…",
   "support.send": "Send",
   "support.attach": "Attach a file",
   "support.attach_remove": "Remove the file",
-  "support.empty": "No messages yet — start by describing what is happening.",
+  "support.empty": "No messages yet — describe what you are facing and we will take it from there, step by step.",
   "support.you": "You",
   "support.team": "Support team",
   "support.bot": "Assistant",
@@ -703,8 +750,9 @@ export const en = {
   "settings.save_failed": "Could not save settings.",
   // Billing and usage
   "balance.add_credit": "Add credit to continue",
-  "balance.low": "Balance almost gone",
-  "balance.credit_short": "Credit",
+  "balance.low": "Balance running low",
+  "balance.empty": "Balance depleted — top up",
+  "balance.credit_short": "Credits",
   "balance.loading": "…",
   "balance.unavailable": "Unavailable",
   "balance.load_failed": "Could not load subscription credit",
@@ -793,6 +841,7 @@ export const en = {
 
   // --- Parts 16-18: recommendation tracker + statistics ---
   "rec.status.pending_entry": "Activates at the entry zone",
+  "rec.status.active": "Active",
   "rec.lifecycle.waiting_entry": "Activates at the entry zone",
   "rec.lifecycle.active_now": "Active trade now",
   "rec.row.current_price": "Current",
@@ -838,7 +887,7 @@ export const en = {
   "rec.page.title": "Recommendations",
   "rec.page.active": "Active",
   "rec.page.history": "History",
-  "rec.page.empty": "No tracked recommendations yet.",
+  "rec.page.empty": "No tracked recommendations yet — the agent's first recommendation will appear here and be followed to its outcome.",
   "rec.page.refresh": "Refresh status",
   "exec.button": "Execute",
   "exec.modal.title": "Execute recommendation",
@@ -852,13 +901,18 @@ export const en = {
   "exec.modal.close": "Close",
 
   // --- Billing: the three refusals and the status surface ---
-  "billing.refusal.subscription_expired": "Your subscription has expired.",
+  "billing.refusal.subscription_expired":
+    "Your subscription has expired; your balance is kept in full until renewal. Renew to resume the service.",
   // One empty balance, two different next steps: top-up packs are sold to
   // live subscribers only, so a Free account is sent to subscribe instead.
-  "billing.refusal.no_credits_free": "You are out of credits. Subscribe to continue.",
-  "billing.refusal.no_credits_pro": "You are out of credits.",
-  "billing.refusal.subscription_required": "Linking a trading account is available after subscribing.",
-  "billing.refusal.account_blocked": "This account is suspended.",
+  "billing.refusal.no_credits_free":
+    "Your balance has run out. Activate a subscription to keep receiving analyses and recommendations.",
+  "billing.refusal.no_credits_pro":
+    "Your balance has run out. Add credit to keep receiving analyses and recommendations without interruption.",
+  "billing.refusal.subscription_required":
+    "Linking a trading account is a subscriber feature — activate your subscription to use it.",
+  "billing.refusal.account_blocked":
+    "This account is currently suspended. Contact support to review its status.",
   "admin.billing.title": "Plan and pricing",
   "admin.billing.subtitle": "Every priced or bounded number is set here — nothing lives in code.",
   "admin.billing.request_failed": "Request failed ({status})",
@@ -937,15 +991,20 @@ export const en = {
   "admin.ads.note": "Bounds are server-enforced: 2MB max, image types checked by magic bytes, never by extension. Text is never interpreted as HTML.",
   "account.badge.free": "Free",
   "account.badge.pro": "Pro",
-  "account.credits_unit": "credits",
+  "account.credits_unit": "Credits",
   "account.expires_on": "Subscribed until {date}",
-  "account.free_balance": "Your balance: {credits} credits",
-  "account.alert.low_balance": "Your balance is running low.",
-  "account.alert.expiring_soon": "Your subscription is ending soon.",
+  "account.free_balance": "Your balance: {credits} Credits",
+  "account.alert.low_balance":
+    "Your balance is running low — top up before the service is interrupted.",
+  "account.alert.exhausted":
+    "Your balance has run out, and new analyses and recommendations are paused until you restore it.",
+  "account.alert.expiring_soon":
+    "Your subscription is ending soon — renew to keep the service uninterrupted.",
   "account.ledger_link": "Credit ledger",
-  "account.tg_line_pro": "Status: Pro · Balance: {balance} credits · Subscribed until {date}",
-  "account.tg_line_pro_no_date": "Status: Pro · Balance: {balance} credits",
-  "account.tg_line_free": "Status: Free · Balance: {balance} credits",
+  "account.balance_label": "Available balance",
+  "account.tg_line_pro": "Status: Pro · Balance: {balance} Credits · Subscribed until {date}",
+  "account.tg_line_pro_no_date": "Status: Pro · Balance: {balance} Credits",
+  "account.tg_line_free": "Status: Free · Balance: {balance} Credits",
   "ads.label": "Ad",
   "ads.dialog_label": "Platform announcement",
   "ads.play_animation": "Play animated image",
@@ -953,15 +1012,20 @@ export const en = {
   "ads.next": "Next slide",
   "ads.slide_position": "Slide {index} of {count}",
   "billing.mt5_disconnected_expired": "Your subscription expired, so the MT5 connection was stopped. Your positions and orders at the broker are untouched. Renew and relink to come back.",
-  "connect.broker.link_cost": "A one-time {credits}-credit charge applies when linking succeeds — the connection then stays on with no recurring charge.",
+  "connect.broker.link_cost": "A one-time {credits}-Credit charge applies when linking succeeds — the connection then stays on with no recurring charge.",
   "billing.credit_balance": "Credit balance",
   "billing.account_state": "Account state",
   "billing.pro_until": "Active subscription until {date}",
   "billing.status_free": "Free account — you pay per operation from your credits",
   "billing.topup_disclosure": "Credits are spendable while your subscription is active. When it expires your balance is kept in full and frozen until renewal.",
-  "billing.pack_button": "{credits} credits — ${price}",
+  "billing.pack_button": "{credits} Credits — ${price}",
   "billing.no_packs": "No credit packs are available right now.",
   "billing.topup_needs_active": "Buying credits requires an active subscription — activate yours first.",
+  "billing.exhausted_title": "Your balance has run out",
+  "billing.exhausted_body_pro":
+    "Your credits are fully spent, so new analyses and recommendations are paused. Add credit from the packs below to resume instantly.",
+  "billing.exhausted_body_free":
+    "Your credits are fully spent, so new analyses and recommendations are paused. Activate your subscription to resume instantly.",
   "billing.kind.cycle_grant": "Subscription cycle credits",
   "billing.kind.debit_recommendation": "Recommendation",
   "billing.kind.debit_chat": "Chat",
@@ -969,7 +1033,7 @@ export const en = {
   "billing.payments_unconfigured": "Online payment is not enabled yet. Contact the team to activate your subscription manually.",
   "billing.pack_unavailable": "This pack is not available.",
   "billing.pricing_pending": "Pricing is being finalized — contact us to subscribe.",
-  "billing.signup_grant_note": "New accounts start with {credits} credits — spend them on anything at the usual prices.",
+  "billing.signup_grant_note": "New accounts start with {credits} Credits — spend them on anything at the usual prices.",
   "billing.blocked_cta": "This account cannot run operations right now. Activate full access to continue.",
   "billing.cta.renew": "Renew subscription",
   "billing.cta.topup": "Buy extra credits",
@@ -1007,7 +1071,7 @@ export const en = {
   "exec.trades.open": "Open",
   "exec.trades.closed": "Closed (7 days)",
   "exec.trades.net": "Net",
-  "exec.trades.empty": "No trades.",
+  "exec.trades.empty": "No trades yet.",
   "exec.trades.not_linked": "Link an MT5 account to view trades.",
   "rec.page.open": "Open details",
   "rec.page.cancel": "Cancel",
@@ -1047,7 +1111,105 @@ export const en = {
   "stats.filter.today": "Today",
   "stats.filter.7d": "7 days",
   "stats.filter.30d": "30 days",
-  "stats.filter.all": "All time",
+  "stats.filter.all": "Full history",
+
+  // --- Professional tracking record: list filters and cards ---
+  "rec.filter.outcome": "Outcome",
+  "rec.filter.outcome.all": "All",
+  "rec.filter.outcome.wins": "Wins",
+  "rec.filter.outcome.losses": "Losses",
+  "rec.filter.outcome.expired": "Expired",
+  "rec.filter.outcome.other": "Cancelled & invalidated",
+  "rec.filter.period": "Period",
+  "rec.filter.session": "Session",
+  "rec.filter.session.all": "All sessions",
+  "session.sydney": "Sydney",
+  "session.tokyo": "Tokyo",
+  "session.london": "London",
+  "session.newyork": "New York",
+  "session.off_hours": "Off-hours",
+  "rec.filter.no_match": "No recommendations match these filters — widen the period or reset.",
+  "duration.unit.day": "d",
+  "duration.unit.hour": "h",
+  "duration.unit.minute": "m",
+  "time.today": "Today",
+  "time.yesterday": "Yesterday",
+  "rec.filter.reset": "Reset",
+  "rec.card.r_so_far": "R so far",
+  "rec.card.in_trade_for": "In trade for",
+  "rec.card.progress_to_target": "Progress to target {n}",
+  "rec.card.awaiting_fill": "Awaiting the entry zone",
+
+  // --- Recommendation event timeline ---
+  "rec.timeline.title": "Timeline",
+  "rec.timeline.issued": "Recommendation issued",
+  "rec.timeline.activated": "Plan activated",
+  "rec.timeline.tp1_hit": "Target 1 reached",
+  "rec.timeline.tp2_hit": "Target 2 reached",
+  "rec.timeline.tp3_hit": "Target 3 reached",
+  "rec.timeline.stop_breach_survived": "Survived a stop breach",
+  "rec.timeline.stopped": "Stop loss hit",
+  "rec.timeline.expired": "Validity expired",
+  "rec.timeline.missed_opportunity": "Missed opportunity — no fill",
+  "rec.timeline.invalidated": "Plan invalidated",
+  "rec.timeline.superseded": "Superseded by a newer plan",
+  "rec.timeline.cancelled": "Recommendation withdrawn",
+  "rec.lifecycle.stop_breach_survived":
+    "{symbol}: a candle wicked through the stop ({stop}) then closed back inside — the plan holds under its close-confirmed invalidation rule.",
+
+  // --- Terminal grade taxonomy (tradeMetrics.RecommendationGrade) ---
+  "rec.grade.win_tp3": "Full win — target 3",
+  "rec.grade.win_tp2": "Win — target 2",
+  "rec.grade.win_tp1": "Win — target 1",
+  "rec.grade.loss": "Loss",
+  "rec.grade.expired_in_profit": "Expired in profit",
+  "rec.grade.expired_in_loss": "Expired in loss",
+  "rec.grade.expired_in_trade": "Expired in trade",
+  "rec.grade.missed_opportunity": "Missed opportunity — moved without a fill",
+  "rec.grade.expired_untriggered": "Expired without activation",
+  "rec.grade.invalidated_before_entry": "Invalidated before entry",
+  "rec.grade.invalidated_in_trade": "Invalidated in trade",
+  "rec.grade.superseded": "Superseded by a newer plan",
+  "rec.grade.cancelled": "Cancelled",
+  "rec.grade.active": "Active",
+  "rec.grade.pending_entry": "Awaiting entry",
+
+  // --- Outcome summary on the detail page ---
+  "rec.summary.title": "Outcome summary",
+  "rec.summary.realized_r": "Realized R",
+  "rec.summary.mfe": "Max favorable excursion",
+  "rec.summary.mae": "Max adverse excursion",
+  "rec.summary.time_to_activation": "Issue to activation",
+  "rec.summary.time_in_trade": "Time in trade",
+  "rec.summary.exit_price": "Exit price",
+  "rec.summary.stop_breaches": "Stop breaches survived",
+  "rec.summary.not_measured": "Not measured",
+  "rec.detail.chart": "Plan chart",
+
+  // --- Performance dashboard ---
+  "stats.equity_curve": "Cumulative R curve",
+  "stats.equity_curve_empty": "No finished outcomes yet — the first closed trade draws the first point.",
+  "stats.expectancy": "Expectancy (R)",
+  "stats.profit_factor": "Profit factor",
+  "stats.avg_win_r": "Avg win (R)",
+  "stats.avg_loss_r": "Avg loss (R)",
+  "stats.activation_rate": "Activation rate",
+  "stats.total_r": "Net R",
+  "stats.avg_mfe": "Avg max favorable excursion (R)",
+  "stats.avg_mae": "Avg max adverse excursion (R)",
+  "stats.avg_time_to_activation": "Avg time to activation",
+  "stats.avg_time_in_trade": "Avg time in trade",
+  "stats.by_grade": "By terminal grade",
+  "stats.by_session": "By trading session",
+  "stats.streaks": "Streaks",
+  "stats.streak_current": "Current streak",
+  "stats.streak_wins": "Longest win streak",
+  "stats.streak_losses": "Longest loss streak",
+  "stats.streak_none": "No streak yet",
+  "stats.streak_win_label": "consecutive wins",
+  "stats.streak_loss_label": "consecutive losses",
+  "stats.recent_outcomes": "Recent outcomes",
+  "stats.sample_floor_note": "Rates appear once enough completed trades exist (at least {n}).",
 
   // User drawings — reading, discussing, modifying, deleting the drawings the
   // user made by hand on the chart (owner = user; never agent drawings).
@@ -1140,7 +1302,7 @@ export const en = {
   "trade_mode.error": "Could not update the trade mode.",
 
   // Active recommendations panel
-  "rec.active.empty": "No active recommendations.",
+  "rec.active.empty": "No active recommendations right now — request a fresh analysis and its recommendation will appear here the moment it is issued.",
   "rec.active.error": "Could not load active recommendations.",
   "rec.card.buy": "Buy recommendation",
   "rec.card.sell": "Sell recommendation",
@@ -1157,7 +1319,14 @@ export const en = {
   "notify.category.target": "Target reached",
   "notify.category.invalidation": "Plan invalidated or stopped",
   "notify.category.news_block": "High-impact news imminent — block window",
-  "notify.trace": "Source: recommendation #{id} · {symbol} · event {event}",
+  "notify.trace": "Source: recommendation #{id} · {symbol} · {event}",
+  "notify.event.activated": "entry activated",
+  "notify.event.tp1_hit": "first target reached",
+  "notify.event.tp2_hit": "second target reached",
+  "notify.event.tp3_hit": "third target reached",
+  "notify.event.sl_hit": "stop loss hit",
+  "notify.event.invalidated": "plan invalidated",
+  "notify.event.economic_event_near": "economic event approaching",
   "scenario.block.title": "{symbol} profile (from your completed recommendation outcomes):",
   "scenario.block.counts_only": "- {total} completed recommendations: {wins} wins and {losses} losses (sample too small to derive a win rate).",
   "scenario.block.with_rate": "- {total} completed recommendations: {wins} wins and {losses} losses (win rate {pct}%).",

@@ -6,6 +6,7 @@ import type {
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { Recommendation } from "@/lib/types";
 import { normalizeTimestamp } from "@/lib/chart/chartTimeAnchor";
+import { ticksPerPriceUnit } from "@/lib/chart/tv/tvSymbolTicks";
 import { barDurationMs } from "@/lib/intervals";
 
 /** Milliseconds → TradingView time (seconds). */
@@ -91,15 +92,6 @@ const PATTERN_TOOL: Record<string, { tool: string; pts: number }> = {
 // Real, user-editable chart drawings: selectable, draggable, adjustable
 // (e.g. widen a channel or move the SL of a position) and listed in the
 // objects tree — exactly like manually-drawn TradingView tools.
-/**
- * How far the risk/reward boxes extend to the right of the entry, in bars.
- *
- * A fixed span, deliberately: extending to "now" would make the box grow on
- * every redraw, which is the drift this drawing exists to avoid. 24 bars is
- * wide enough to read at a glance and short enough not to swallow the chart.
- */
-const LATERAL_BARS = 24;
-
 const EDITABLE = {
   lock: false,
   disableSelection: false,
@@ -133,27 +125,67 @@ function styleOverrides(d: ChartDrawing): Record<string, unknown> {
   };
 }
 
+/** Numbered target-line label (a single Arabic line, for the i18n ratchet). */
+const targetLabel = (n: number): string => `هدف ${n}`;
+
 /**
- * Stable time anchor for a recommendation's position tool: its creation time
- * when parseable, else the current bar's open — never raw wall-clock, which
- * drifts between redraws.
+ * The profit edge of the position tool: the FURTHEST target on the trade's
+ * own side — max for a long, min for a short (side-aware, so an unsorted
+ * target list still yields the most distant TP). The user's rule: the box
+ * must span the WHOLE plan; cutting it at TP1 hid where the trade ends.
  */
-function stableAnchorSec(rec: Recommendation, barSec: number): number {
+function furthestTarget(
+  direction: "long" | "short",
+  targets: number[],
+): number | undefined {
+  if (targets.length === 0) return undefined;
+  return direction === "long" ? Math.max(...targets) : Math.min(...targets);
+}
+
+/** Recommendation creation time in TV seconds, or null when the payload
+ *  carries no parseable `created_at`. */
+function createdAtSec(rec: Recommendation): number | null {
   const raw = rec.created_at;
   const parsed =
     typeof raw === "number" ? Number(raw) : raw ? Date.parse(String(raw)) : NaN;
-  if (Number.isFinite(parsed) && parsed > 0) return toSec(parsed);
-  const now = nowSec();
-  const step = Math.max(60, barSec);
-  return now - (now % step);
+  return Number.isFinite(parsed) && parsed > 0 ? toSec(parsed) : null;
 }
 
 /** Manages TradingView shapes for one chart — mirrors ChartDrawing[] onto it. */
 export class TvDrawingManager {
   private ids: EntityId[] = [];
   private lastFingerprint = "";
+  /**
+   * Fallback anchors for recommendations that arrived WITHOUT `created_at`,
+   * keyed by trade identity. Resolved once per trade and reused on every
+   * later apply — recomputing "now" on each redraw was exactly the reported
+   * slide: any payload change (poll hydration, MCP re-draw, forced re-apply)
+   * rebuilt the profit/loss boxes hugging the latest candle. Deliberately
+   * survives clear(): clear() runs before every redraw, and re-anchoring
+   * there would be the bug all over again. Dies only with the widget.
+   */
+  private readonly fallbackAnchorSec = new Map<string, number>();
 
   constructor(private readonly chart: IChartWidgetApi) {}
+
+  /**
+   * Time anchor for the recommendation's risk/reward boxes: the persisted
+   * creation time when present, else a bar-quantized "now" resolved ONCE for
+   * this trade and cached, so new candles/ticks never shift the zones.
+   */
+  private anchorSec(rec: Recommendation, barSec: number): number {
+    const fromCreatedAt = createdAtSec(rec);
+    if (fromCreatedAt != null) return fromCreatedAt;
+    const key = [rec.symbol ?? "", rec.action, rec.entry, rec.stop_loss, rec.take_profit].join("|");
+    const cached = this.fallbackAnchorSec.get(key);
+    if (cached != null) return cached;
+    const step = Math.max(60, barSec);
+    const now = nowSec();
+    const anchor = now - (now % step);
+    if (this.fallbackAnchorSec.size >= 16) this.fallbackAnchorSec.clear();
+    this.fallbackAnchorSec.set(key, anchor);
+    return anchor;
+  }
 
   /** Entity ids this manager owns (agent + recommendation shapes). Everything
    *  else on the chart is a user-drawn shape. */
@@ -241,60 +273,91 @@ export class TvDrawingManager {
     );
   }
 
-  /** TV long/short position tool: entry point + profit/stop levels in ticks. */
+  /**
+   * TradingView's NATIVE Risk/Reward position tool for one trade plan —
+   * green profit zone, red stop zone, entry line and R/R stats label exactly
+   * as the standard TradingView tool renders them.
+   *
+   * Single-point creation, deliberately:
+   * - `long_position`/`short_position` are single-point tools in this build
+   *   (`CreateShapeOptions.shape`). Given only the entry anchor, the tool
+   *   synthesizes its own body: entry bar + max(3, ~15% of the visible
+   *   width) bars, INDEX-based — a fixed bar span that new candles simply
+   *   fill under (`_getClosePointIndex` in line-tool-risk-reward).
+   * - Supplying a second time anchor ourselves is what degenerated the old
+   *   hand-drawn rectangles into the "thin expanding column": a time beyond
+   *   the last bar has no bar to resolve to, so this build clamps it to the
+   *   MOVING last bar (`indexOf(t, nearest)` returns the newest index for
+   *   future times; the API conversion falls back to `closestIndexLeft`).
+   *   The right edge therefore collapsed onto the live candle at draw time
+   *   and crawled right with every new bar. No anchor may live in the
+   *   future — the entry anchor is the recommendation's persisted
+   *   created_at, a bar that exists by construction.
+   * - `profitLevel`/`stopLevel` are TICKS from the entry. The library
+   *   special-cases exactly these two override keys for the RiskReward
+   *   tools and reconstructs prices as entry ± level × minmov/pricescale —
+   *   the same symbol info the datafeed reports, shared via tvSymbolTicks.
+   * - `text` must NOT be set: the tool generates its own stats label and
+   *   the library THROWS ("Value is undefined") on caller-supplied text —
+   *   a rejection `track()`'s catch would swallow silently, drawing nothing.
+   */
   private position(
+    direction: "long" | "short",
     entry: PricedPointLike,
     takeProfit: number,
     stopLoss: number,
-    barSec: number,
+    symbol: string,
   ): void {
-    // Two rectangles, not TradingView's position tool.
-    //
-    // `long_position`/`short_position` are declared under `CreateShapeOptions`
-    // — the SINGLE-point API. The previous attempt passed two anchors to
-    // `createMultipointShape` to pin the lateral extent, so the library
-    // rejected the call on every draw and the `.catch` fell back to the
-    // single-point form, silently. That form leaves the second anchor for
-    // TradingView to complete on the first pointer interaction or as price
-    // advances, which is precisely the reported "the box keeps moving until
-    // price reaches the entry" — the box was never anchored at both ends, and
-    // the silent fallback is why the code looked fixed while the chart was not.
-    // `profitLevel`/`stopLevel` compounded it: neither appears in this build's
-    // typings, so those overrides were not necessarily applied either.
-    //
-    // A rectangle IS a multipoint line tool. Drawing the risk and reward boxes
-    // ourselves puts both anchors under our control, so the box occupies the
-    // span it was drawn for and stays there — which is what the performance
-    // report needs, since a box that drifts to "now" no longer marks where the
-    // plan was actually issued.
-    const left = entry.time;
-    const right = left + Math.max(60, barSec) * LATERAL_BARS;
-    const box = (
-      from: number,
-      to: number,
-      color: string,
-      label: string,
-    ): void => {
-      this.multi(
-        [
-          { time: left, price: from },
-          { time: right, price: to },
-        ],
-        "rectangle",
+    const base = ticksPerPriceUnit(symbol);
+    const profitLevel = Math.round(Math.abs(takeProfit - entry.price) * base);
+    const stopLevel = Math.round(Math.abs(stopLoss - entry.price) * base);
+    // A zero-tick level renders a degenerate zone — skip the tool and let the
+    // agent's entry/stop/target lines carry the information instead.
+    if (profitLevel <= 0 || stopLevel <= 0) return;
+    this.track(
+      this.chart.createShape(
+        { time: entry.time, price: entry.price } as ShapePoint,
         {
-          linecolor: color,
-          linewidth: 1,
-          backgroundColor: color,
-          fillBackground: true,
-          transparency: 82,
+          shape: direction === "long" ? "long_position" : "short_position",
+          ...EDITABLE,
+          overrides: {
+            profitLevel,
+            stopLevel,
+            linewidth: 1,
+            fontsize: 11,
+            profitBackground: "#22c55e",
+            profitBackgroundTransparency: 82,
+            stopBackground: "#ef4444",
+            stopBackgroundTransparency: 82,
+            showPriceLabels: true,
+            compact: false,
+          },
         },
-        label,
-      );
-    };
-    // Reward above entry for a long, below for a short — the geometry follows
-    // the prices themselves, so no direction flag is needed beyond the label.
-    box(entry.price, takeProfit, "#22c55e", "منطقة الربح");
-    box(entry.price, stopLoss, "#ef4444", "منطقة الخسارة");
+      ),
+    );
+  }
+
+  /**
+   * The native tool spanning entry → the FURTHEST target, with every other
+   * target kept visible as a numbered line inside the extended profit zone
+   * (numbered by its original order in the plan, so TP1/TP2 read as issued).
+   */
+  private positionWithTargets(
+    direction: "long" | "short",
+    entry: PricedPointLike,
+    targets: number[],
+    stopLoss: number,
+    symbol: string,
+  ): void {
+    const edge = furthestTarget(direction, targets);
+    if (edge == null) return;
+    this.position(direction, entry, edge, stopLoss, symbol);
+    targets.forEach((price, i) => {
+      // The edge is the tool's own profit line — a duplicate labeled line
+      // would sit exactly on top of it.
+      if (price === edge) return;
+      this.hline(price, "#3b82f6", targetLabel(i + 1));
+    });
   }
 
   private drawOne(d: ChartDrawing, symbol: string, barSec: number): void {
@@ -307,11 +370,22 @@ export class TvDrawingManager {
 
     // AI-drawn buy/sell positions (entry/tp/sl via meta or 2–3 points).
     if (t === "long_position" || t === "short_position") {
+      const direction = t === "long_position" ? "long" : "short";
       const entry = pts[0];
-      const tp = (d.meta?.takeProfit as number) ?? pts[1]?.price;
       const sl = (d.meta?.stopLoss as number) ?? pts[2]?.price;
-      if (entry && tp && sl) {
-        this.position(entry, tp, sl, barSec);
+      if (!entry || !sl) return;
+      // A multi-target plan extends the tool to its furthest TP, same as the
+      // recommendation path; a single-tp drawing keeps the plain contract.
+      const metaTargets = Array.isArray(d.meta?.targets)
+        ? (d.meta.targets as unknown[]).filter(
+            (x): x is number => typeof x === "number" && x > 0,
+          )
+        : [];
+      if (metaTargets.length > 0) {
+        this.positionWithTargets(direction, entry, metaTargets, sl, symbol);
+      } else {
+        const tp = (d.meta?.takeProfit as number) ?? pts[1]?.price;
+        if (tp) this.position(direction, entry, tp, sl, symbol);
       }
       return;
     }
@@ -467,28 +541,26 @@ export class TvDrawingManager {
             : [];
       const entry = rec.entry;
       const sl = rec.stop_loss;
-      const tp1 = tps[0];
-      if (entry != null && entry > 0 && sl != null && sl > 0 && tp1 != null) {
+      if (entry != null && entry > 0 && sl != null && sl > 0 && tps.length > 0) {
         // Native TV position tool: entry/target/stop with automatic R/R stats.
-        // Anchored at the recommendation's creation time (bar-quantized fallback)
-        // so re-applies reproduce the exact same shape instead of drifting to
-        // wall-clock "now" on every redraw.
-        this.position(
-          { time: stableAnchorSec(rec, barSec), price: entry },
-          tp1,
+        // Anchored at the recommendation's PERSISTED creation time (sticky
+        // bar-quantized fallback for legacy payloads without one) so re-applies
+        // reproduce the exact same shape instead of drifting to wall-clock
+        // "now" on every redraw. The profit zone reaches the FURTHEST target;
+        // the nearer TPs render as numbered lines inside it.
+        this.positionWithTargets(
+          rec.action === "buy" ? "long" : "short",
+          { time: this.anchorSec(rec, barSec), price: entry },
+          tps,
           sl,
-          barSec,
+          rec.symbol || symbol,
         );
-        // Extra targets beyond TP1 as labeled blue lines.
-        tps.slice(1).forEach((price, i) => {
-          this.hline(price, "#3b82f6", `هدف ${i + 2}`);
-        });
       } else {
         // Partial setups fall back to labeled horizontal lines.
         if (entry != null && entry > 0) this.hline(entry, "#22c55e", "دخول");
         if (sl != null && sl > 0) this.hline(sl, "#ef4444", "وقف خسارة", true);
         tps.forEach((price, i) => {
-          this.hline(price, "#3b82f6", tps.length > 1 ? `هدف ${i + 1}` : "هدف ربح");
+          this.hline(price, "#3b82f6", tps.length > 1 ? targetLabel(i + 1) : "هدف ربح");
         });
       }
     }

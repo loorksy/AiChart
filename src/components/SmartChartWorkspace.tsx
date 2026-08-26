@@ -64,6 +64,7 @@ import {
   publicFinalResult,
 } from "@/lib/debug/agentDebugBridge";
 import type { AgentFinalResult } from "@/lib/agent/types";
+import { withStableCreatedAt } from "@/lib/recommendations/anchorTime";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 
@@ -562,16 +563,26 @@ function SmartChartWorkspaceInner({
       }
       const rec = result.recommendation;
       if (rec && (rec.action === "buy" || rec.action === "sell")) {
-        setRecommendation({
-          symbol,
-          action: rec.action,
-          entryType: rec.entryType,
-          entry: rec.entry ?? null,
-          stop_loss: rec.stop_loss ?? null,
-          take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
-          confidence: Math.round(result.confidence * 100),
-          timeframe: interval,
-        } as Recommendation);
+        // withStableCreatedAt: the chart anchors the profit/loss zones at this
+        // recommendation's created_at. Stamped ONCE here (or inherited when the
+        // same plan is re-delivered), then persisted via the layout autosave —
+        // without it the zones re-anchor to "now" on every redraw and reload,
+        // sliding along with the latest candle.
+        setRecommendation((prev) =>
+          withStableCreatedAt(
+            {
+              symbol,
+              action: rec.action,
+              entryType: rec.entryType,
+              entry: rec.entry ?? null,
+              stop_loss: rec.stop_loss ?? null,
+              take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
+              confidence: Math.round(result.confidence * 100),
+              timeframe: interval,
+            } as Recommendation,
+            prev,
+          ),
+        );
       } else if (result.decision === "wait") {
         setRecommendation(null);
       }

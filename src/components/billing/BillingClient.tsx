@@ -9,6 +9,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { Button, buttonVariants } from "@/components/squareui/button";
 import { CardSkeleton } from "@/components/ui/skeletons/page-skeletons";
 import type { TranslationKey } from "@/lib/i18n";
+import { formatInteger } from "@/lib/display/numericDisplay";
 import { cn } from "@/lib/utils";
 
 interface LedgerRow {
@@ -204,6 +205,38 @@ export function BillingClient() {
         </Surface>
       )}
 
+      {/* Exhausted, not merely low: at zero the page says WHAT stopped and
+          the exact way back (packs below for a subscriber, subscribing for a
+          Free account). Only meaningful while billing is enforced — in
+          preview mode nothing actually stops. */}
+      {data.billing_enforced && data.balance <= 0 && (
+        <Surface
+          role="status"
+          padding="sm"
+          data-testid="billing-exhausted-banner"
+          className="border-destructive/30 bg-destructive/10"
+        >
+          <p className="text-sm font-semibold text-destructive">
+            {t("billing.exhausted_title")}
+          </p>
+          <p className="type-caption mt-1">
+            {data.has_paid_access
+              ? t("billing.exhausted_body_pro")
+              : t("billing.exhausted_body_free")}
+          </p>
+          {!data.has_paid_access && (
+            <Link
+              href="/subscribe"
+              className={cn(buttonVariants({ size: "lg" }), "mt-3")}
+            >
+              {data.plan_status === "trial"
+                ? t("billing.cta.subscribe")
+                : t("billing.cta.renew")}
+            </Link>
+          )}
+        </Surface>
+      )}
+
       <section className="grid gap-4 sm:grid-cols-2" aria-label={t("billing.balances")}>
         <Surface padding="lg">
           <p className="type-caption">{t("billing.credit_balance")}</p>
@@ -212,7 +245,10 @@ export function BillingClient() {
             dir="ltr"
             data-testid="credit-balance"
           >
-            {data.balance}
+            {formatInteger(data.balance, "en")}{" "}
+            <span className="text-base font-semibold text-muted-foreground">
+              {t("account.credits_unit")}
+            </span>
           </p>
         </Surface>
         <Surface padding="lg">

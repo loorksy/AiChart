@@ -7,6 +7,12 @@ import { useLocale } from "@/hooks/useLocale";
 import { RecommendationStatsOverview } from "@/components/recommendations/RecommendationStatsOverview";
 import { RecommendationOutcomeBreakdown } from "@/components/recommendations/RecommendationOutcomeBreakdown";
 import { RecommendationPerformanceTable } from "@/components/recommendations/RecommendationPerformanceTable";
+import { EquityCurveChart } from "@/components/performance/EquityCurveChart";
+import { PerformanceKpis } from "@/components/performance/PerformanceKpis";
+import { GradeBreakdownTable } from "@/components/performance/GradeBreakdownTable";
+import { StreaksPanel } from "@/components/performance/StreaksPanel";
+import { RecentOutcomesStrip } from "@/components/performance/RecentOutcomesStrip";
+import { APP_WAKE_EVENT } from "@/lib/appWake";
 import type { RecommendationStats, StatsPeriod } from "@/lib/recommendations/recommendationStats";
 import { EmptyState, SectionHeader, Surface } from "@/components/foundation";
 import { SkeletonBlock } from "@/components/ui/skeleton";
@@ -19,7 +25,7 @@ const PERIODS: { id: StatsPeriod; labelKey: string }[] = [
   { id: "all", labelKey: "stats.filter.all" },
 ];
 
-/** Statistics block of the unified performance page (was /statistics). */
+/** The /performance screen body: the statistical record of the plans. */
 export function StatisticsSection() {
   const { t } = useLocale();
   const [period, setPeriod] = useState<StatsPeriod>("all");
@@ -66,6 +72,13 @@ export function StatisticsSection() {
       alive = false;
     };
   }, [period, reloadKey]);
+
+  useEffect(() => {
+    // The sweep may have graded a plan while the tab slept — wake refreshes.
+    const onWake = () => setReloadKey((k) => k + 1);
+    window.addEventListener(APP_WAKE_EVENT, onWake);
+    return () => window.removeEventListener(APP_WAKE_EVENT, onWake);
+  }, []);
 
   const empty = stats && stats.total === 0;
 
@@ -150,10 +163,28 @@ export function StatisticsSection() {
       {stats && !empty && (
         <>
           <RecommendationStatsOverview stats={stats} />
+          {/* The R record: the KPI row, then the equity curve beside streaks
+              and the latest results — the dashboard's professional core. */}
+          <PerformanceKpis stats={stats} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="min-w-0 lg:col-span-2">
+              <EquityCurveChart points={stats.equityCurve} />
+            </div>
+            <StreaksPanel streaks={stats.streaks} />
+            <RecentOutcomesStrip outcomes={stats.recentOutcomes} />
+            <div className="min-w-0 lg:col-span-2">
+              <GradeBreakdownTable stats={stats} />
+            </div>
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="min-w-0 lg:col-span-2">
               <RecommendationOutcomeBreakdown stats={stats} />
             </div>
+            <RecommendationPerformanceTable
+              titleKey="stats.by_session"
+              groups={stats.bySession}
+              renderKey={(k) => t(`session.${k}`)}
+            />
             {stats.scalp.total > 0 && (
               <div className="min-w-0 lg:col-span-2">
                 <RecommendationPerformanceTable

@@ -68,7 +68,13 @@ import {
   stageLabel,
   TelegramProgressReporter,
 } from "@/lib/telegram/liveProgress";
-import { escapeTelegramHtml, TELEGRAM_TEXT_LIMIT } from "@/lib/telegram/html";
+import {
+  escapeTelegramHtml,
+  splitTelegramMessage,
+  TELEGRAM_CAPTION_LIMIT,
+  TELEGRAM_TEXT_LIMIT,
+} from "@/lib/telegram/html";
+import { captureRecommendationPhoto } from "@/lib/telegram/recommendationPhoto";
 import { updateSessionFromMessage } from "@/lib/agent/sessionMemory";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { type AgentConversationContext } from "@/lib/agent/context";
@@ -80,7 +86,11 @@ import {
 import { appendMessage, ensureChat } from "@/lib/agent/chatHistory/chatStore";
 import type { AgentFinalResult } from "@/lib/agent/types";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
-import { renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
+import {
+  renderCardsForTelegram,
+  renderTelegramDetails,
+  renderTelegramLead,
+} from "@/lib/agent/cards/telegramCards";
 import {
   executionButtonRow,
   handleExecutionCallback,
@@ -962,8 +972,10 @@ export async function runTelegramAgentTurn(input: {
     // same cards the panel renders means the phone cannot fall behind: a card
     // type added without a Telegram rendering does not compile.
     //
-    // The collapsed tools block is Telegram-native (<blockquote expandable>):
-    // the checks that produced the answer, one tap away, never a wall.
+    // The message reads lead-first: decision + levels always visible, the
+    // long sections (reasons, evidence, warnings, checks, alternative) folded
+    // into Telegram-native <blockquote expandable> — one tap away, never a
+    // wall. The collapsed tools block rides the same way.
     const text = [
       renderCardsForTelegram(deriveCards(result), locale),
       renderToolsBlock(reporter.snapshot(), locale),
@@ -979,19 +991,99 @@ export async function runTelegramAgentTurn(input: {
       activeRecommendation: result.activeRecommendation,
       maxSuggestions: 4,
     }).catch(() => []);
-    const extraButtons =
-      result.decision === "buy" || result.decision === "sell"
-        ? [
-            // Present only when the server says this user can execute this
-            // plan right now — a human tap opens the volume menu.
-            ...(await executionButtonRow(userId, result.recommendationId, locale)),
-            ...reportLinkButtons(locale, result.recommendationId),
-          ]
-        : undefined;
+    const isPlan = result.decision === "buy" || result.decision === "sell";
+    const extraButtons = isPlan
+      ? [
+          // Present only when the server says this user can execute this
+          // plan right now — a human tap opens the volume menu.
+          ...(await executionButtonRow(userId, result.recommendationId, locale)),
+          [
+            // "Refresh status" re-asks the deterministic status question
+            // through the same one-shot option tokens every agent-authored
+            // chip uses — a tap, not a typed sentence.
+            ...rememberInlineOptions(message.chatId, [
+              {
+                id: "status_refresh",
+                label: t(locale, "tg.refresh_status"),
+                prompt: t(locale, "tg.refresh_status_prompt"),
+              },
+            ]).flat(),
+            ...reportLinkButtons(locale, result.recommendationId).flat(),
+          ],
+        ]
+      : undefined;
+
+    // ── The drawn chart (Phase: recommendation photo) ─────────────────────
+    //
+    // The platform draws every recommendation on the chart; the phone gets a
+    // photo of the SAME chart with the SAME drawings — the plan's own entry,
+    // stop and target overlays, captured from a real TradingView session by
+    // the one capture pipeline (worker turns delegate to the process the
+    // chart-host tab polls). Best-effort by contract: the text answer never
+    // waits on a photograph of itself, and a failed capture ships the text
+    // with one honest line instead of a substitute image.
+    if (isPlan && result.drawings?.length) {
+      await sendChatAction(message.chatId, "upload_photo").catch(() => {});
+      const photo = await captureRecommendationPhoto({
+        userId,
+        symbol: DATA_SYMBOL,
+        interval: "15m",
+        drawings: result.drawings as unknown as Record<string, unknown>[],
+      });
+      if (photo.ok) {
+        const cards = deriveCards(result);
+        // The lead card is the caption (Telegram caps captions at 1024);
+        // the folded details follow as their own message, buttons on the end.
+        const caption = splitTelegramMessage(
+          renderTelegramLead(cards, locale),
+          TELEGRAM_CAPTION_LIMIT,
+        )[0]!;
+        const details = [
+          renderTelegramDetails(cards, locale),
+          renderToolsBlock(reporter.snapshot(), locale),
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+        // The bubble's job is done — the photo replaces it (OpenClaw preview
+        // cleanup), so the answer reads photo-first.
+        await live.discard();
+        await dismissPersistentKeyboardOnce(message.chatId);
+        if (details) {
+          await sendPhotoBuffer(message.chatId, photo.image, caption, undefined, {
+            replyToMessageId: message.messageId,
+          });
+          await deliverReply({
+            chatId: message.chatId,
+            text: details,
+            options: generated.length ? generated : undefined,
+            extraButtons,
+          });
+        } else {
+          // Nothing folded to say — the buttons ride the photo itself.
+          const optionRows = generated.length
+            ? rememberInlineOptions(message.chatId, generated)
+            : [];
+          await sendPhotoBuffer(
+            message.chatId,
+            photo.image,
+            caption,
+            [...optionRows, ...(extraButtons ?? [])],
+            { replyToMessageId: message.messageId },
+          );
+        }
+        await persistTurns(result.summary, result);
+        await logAudit(userId, "telegram_analysis", `decision=${result.decision}`);
+        return "answered";
+      }
+    }
+    // Honest note, not a substitute image: the analysis stands; only the
+    // photograph failed (or was never possible — no drawings this turn).
+    const photoNote =
+      isPlan && result.drawings?.length ? `\n\n${t(locale, "tg.photo_failed")}` : "";
 
     await deliverReply({
       chatId: message.chatId,
-      text,
+      text: `${text}${photoNote}`,
       live,
       // Carried for the long-answer path: when the bubble is discarded in
       // favour of split sends, the first chunk still quotes the question.

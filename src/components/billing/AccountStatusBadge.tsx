@@ -15,7 +15,10 @@ export function AccountStatusBadge({ className }: { className?: string }) {
   const { summary } = useBillingSummary();
   if (!summary) return null;
   const pro = summary.status === "pro";
-  const alert = summary.alerts.low_balance || summary.alerts.expiring_soon;
+  const alert =
+    summary.alerts.exhausted ||
+    summary.alerts.low_balance ||
+    summary.alerts.expiring_soon;
 
   return (
     <span
@@ -31,15 +34,20 @@ export function AccountStatusBadge({ className }: { className?: string }) {
       {pro ? t("account.badge.pro") : t("account.badge.free")}
       {alert && (
         <span
-          className="absolute -end-0.5 -top-0.5 size-2 rounded-full bg-amber-500"
+          className={cn(
+            "absolute -end-0.5 -top-0.5 size-2 rounded-full",
+            summary.alerts.exhausted ? "bg-destructive" : "bg-amber-500",
+          )}
           aria-hidden="true"
         />
       )}
       {alert && (
         <span className="sr-only">
-          {summary.alerts.low_balance
-            ? t("account.alert.low_balance")
-            : t("account.alert.expiring_soon")}
+          {summary.alerts.exhausted
+            ? t("account.alert.exhausted")
+            : summary.alerts.low_balance
+              ? t("account.alert.low_balance")
+              : t("account.alert.expiring_soon")}
         </span>
       )}
     </span>

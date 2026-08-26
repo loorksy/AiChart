@@ -20,7 +20,7 @@ function highlightNumbers(escaped: string): string {
 }
 
 function envLine(profile: AccountProfile): string {
-  return `الأداة: ${profile.instrument} · المصدر: ${profile.dataSource}`;
+  return `الأداة: ${profile.instrument}`;
 }
 
 export function formatCard(title: string, fields: string[], footer?: AccountProfile): string {
@@ -45,6 +45,7 @@ const LIFECYCLE_EMOJI: Record<LifecycleEventType, string> = {
   tp1_hit: "✅",
   tp2_hit: "✅",
   tp3_hit: "🏆",
+  stop_breach_survived: "🛡️",
   sl_hit: "🛑",
   invalidated: "❌",
   expired: "⌛",
@@ -85,6 +86,8 @@ export function lifecycleEventLabel(type: LifecycleEventType): string {
       return "تحقق الهدف الثاني";
     case "tp3_hit":
       return "تحقق الهدف الثالث";
+    case "stop_breach_survived":
+      return t("ar", "rec.timeline.stop_breach_survived");
     case "sl_hit":
       return "ضُرب وقف الخسارة";
     case "invalidated":
@@ -145,7 +148,6 @@ export function sessionStartCard(
     [
       `🔹 ${t(locale, "tg.session_card_hint")}`,
       `🔹 ${t(locale, "tg.session_card_instrument", { name: instrument })}`,
-      `🔹 ${t(locale, "tg.session_card_instrument", { name: profile.instrument })} · ${t(locale, "tg.session_card_source", { source: profile.dataSource })}`,
     ],
     profile,
   );
@@ -198,7 +200,6 @@ export function recommendationCard(rec: {
   const profile: AccountProfile = rec.profile ?? {
     marketType: "forex",
     instrument: DISPLAY_NAME_AR,
-    dataSource: "OANDA",
   };
   return analysisCard({
     symbol: rec.symbol,

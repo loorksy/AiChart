@@ -23,6 +23,7 @@
  * cannot make, since nothing else tells it which frames were ever asked for.
  */
 import {
+  captureBudgets,
   captureMultiTimeframeSnapshot,
   VISUAL_EVIDENCE_GUARDRAILS,
 } from "@/lib/chart/multiTimeframeCapture";
@@ -52,7 +53,7 @@ type CaptureResult = Awaited<ReturnType<typeof captureMultiTimeframeSnapshot>>;
  * collected, and the worker's tab timestamp was never touched — leaving
  * `hasFreshPlatformTab()` permanently false, `ensureChartHostTab` burning its
  * full 25s warmup, and every frame returning `capture_timeout`. Every
- * analysis said "لم تتوفر أي لقطة شارت" while the very same capture through
+ * analysis said "no chart snapshot was available" while the very same capture through
  * MCP — which reaches the app over the bridge, i.e. the web process — took
  * 6.2s and returned three real TradingView frames.
  *
@@ -67,6 +68,25 @@ export interface CaptureRouteDeps {
   lookupUser?: typeof getPublicUser;
   captureLocally?: typeof captureMultiTimeframeSnapshot;
   now?: () => number;
+}
+
+/**
+ * How long the delegate fetch may run before it is aborted.
+ *
+ * Sized from the BATCH arithmetic, not from one frame's budget. The remote
+ * route renders the batch serially on one tab, so its legitimate worst case is
+ * `captureBudgets(imageTimeoutMs, frames).timeoutMs` — while this abort used to
+ * fire at `imageTimeoutMs + 2s`. With three frames and a cold tab the remote
+ * capture was routinely still WORKING (warmup ~25s, then renders) when the
+ * worker hung up on it, graded every frame `capture_timeout`, and the analysis
+ * opened with "failed to capture any chart" — the single most-reported
+ * failure. The
+ * slack on top covers the loopback hop, route overhead and the numeric-context
+ * build that runs alongside the render.
+ */
+export function delegateAbortMs(imageTimeoutMs: number, frameCount: number): number {
+  const { timeoutMs } = captureBudgets(imageTimeoutMs, Math.max(1, frameCount));
+  return timeoutMs + 5_000;
 }
 
 export async function captureWhereTheTabLives(
@@ -128,8 +148,10 @@ export async function captureWhereTheTabLives(
         layout_id: body.layoutId,
         live_session: body.liveSession,
       }),
-      // One network hop over loopback on top of the capture's own budget.
-      signal: AbortSignal.timeout(body.imageTimeoutMs + 2_000),
+      // The batch's own worst case plus the loopback hop — see delegateAbortMs.
+      signal: AbortSignal.timeout(
+        delegateAbortMs(body.imageTimeoutMs, body.timeframes.length),
+      ),
     });
 
     // 200 and 503 are the SAME payload: the route answers `{ok, ...result}`
@@ -238,10 +260,32 @@ export function visualCoverageNote(result: VisualEvidenceResult): string | null 
 }
 
 /**
+ * Failure reasons a SECOND attempt may genuinely cure.
+ *
+ * The dominant blackout is a cold chart-host tab: the first attempt's own
+ * ensureChartHostTab warmup often finishes DURING that attempt, so the retry
+ * lands on a warm tab and returns real frames in a few seconds. Config faults
+ * (host unconfigured, no layout, unsupported frame) are permanent for this
+ * run — retrying them buys nothing and costs the decision's budget.
+ */
+const RETRYABLE_CAPTURE_REASONS = new Set([
+  "capture_timeout",
+  "capture_failed",
+  "host_not_ready",
+  "host_unreachable",
+]);
+
+/** Per-render budget for the retry pass — sized for the warm tab it bets on. */
+const RETRY_IMAGE_TIMEOUT_MS = 10_000;
+
+/**
  * Capture the charts for one analysis.
  *
  * Never throws: an outright failure returns empty evidence and the decision
- * proceeds on numbers alone, exactly as it did before this existed.
+ * proceeds on numbers alone, exactly as it did before this existed. Between
+ * the first attempt and that surrender there is ONE graceful retry, taken only
+ * when not a single frame arrived and every failure is of a kind a second
+ * attempt can cure (see RETRYABLE_CAPTURE_REASONS).
  */
 export async function collectVisualEvidence(input: {
   userId?: number;
@@ -257,6 +301,8 @@ export async function collectVisualEvidence(input: {
    * this false so they never wait on a browser that is not there.
    */
   liveSession?: boolean;
+  /** Seam for tests; production callers omit it. */
+  captureDeps?: CaptureRouteDeps;
 }): Promise<VisualEvidenceResult> {
   const startedAt = Date.now();
   const requested = input.timeframes ?? visualTimeframesFor(input.interval);
@@ -266,16 +312,38 @@ export async function collectVisualEvidence(input: {
     // the model its eyes failed when they were never opened.
     return { snapshots: [], requested: [], missing: [], visuallyVerified: false, elapsedMs: 0 };
   }
+  const userId = input.userId;
+
+  const attempt = (imageTimeoutMs: number) =>
+    captureWhereTheTabLives(
+      userId,
+      {
+        symbol: input.symbol,
+        timeframes: requested,
+        maxImages: input.maxImages ?? 3,
+        imageTimeoutMs,
+        layoutId: input.layoutId,
+        liveSession: input.liveSession === true,
+      },
+      input.captureDeps ?? {},
+    );
 
   try {
-    const result = await captureWhereTheTabLives(input.userId, {
-      symbol: input.symbol,
-      timeframes: requested,
-      maxImages: input.maxImages ?? 3,
-      imageTimeoutMs: input.timeoutMs ?? 9_000,
-      layoutId: input.layoutId,
-      liveSession: input.liveSession === true,
-    });
+    let result = await attempt(input.timeoutMs ?? 9_000);
+
+    if (
+      result.snapshots.length === 0 &&
+      result.missing_timeframes.length > 0 &&
+      result.missing_timeframes.every((m) => RETRYABLE_CAPTURE_REASONS.has(m.reason))
+    ) {
+      log.warn("visual.capture.retrying", {
+        symbol: input.symbol,
+        reasons: result.missing_timeframes.map((m) => m.reason),
+        firstAttemptMs: Date.now() - startedAt,
+      });
+      const second = await attempt(RETRY_IMAGE_TIMEOUT_MS).catch(() => null);
+      if (second && second.snapshots.length > 0) result = second;
+    }
 
     const snapshots: VisualSnapshot[] = result.snapshots
       .filter((snapshot) => Boolean(snapshot.image_base64))
@@ -295,10 +363,13 @@ export async function collectVisualEvidence(input: {
         snapshot.drawings_included === true,
     );
 
-    log.debug("visual.captured", {
+    // Info, not debug: production logs hide debug, and an analysis whose eyes
+    // failed silently is exactly the incident this line exists to explain.
+    log.info("visual.captured", {
       symbol: input.symbol,
       captured: snapshots.length,
       missing: result.missing_timeframes.length,
+      reasons: result.missing_timeframes.map((m) => m.reason),
       visuallyVerified,
       elapsedMs: result.elapsed_ms,
     });

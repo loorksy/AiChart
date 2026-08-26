@@ -115,8 +115,37 @@ async function retailMultiplier(): Promise<number> {
 export interface LLMUsageEntry {
   provider: string;
   model: string;
+  /** Uncached input tokens (after the last cache breakpoint). */
   inputTokens: number;
   outputTokens: number;
+  /** Tokens served from the provider's prompt cache (heavily discounted). */
+  cacheReadTokens?: number;
+  /** Tokens written to the provider's prompt cache (surcharged ~1.25×). */
+  cacheWriteTokens?: number;
+}
+
+/**
+ * Provider cache pricing relative to the base input rate.
+ * Anthropic documents 0.1× reads / 1.25× writes (5-minute TTL). OpenAI's
+ * newest models (gpt-5.6+) document the same shape; gpt-4.1-era models bill
+ * cached reads at 0.25× and report no cache writes.
+ */
+export function cacheMultipliers(
+  provider: string,
+  model: string,
+): { read: number; write: number } {
+  if (provider === "anthropic") return { read: 0.1, write: 1.25 };
+  const id = model.toLowerCase();
+  if (/^gpt-5\.[6-9]|^gpt-[6-9]/.test(id)) return { read: 0.1, write: 1.25 };
+  if (/^gpt-4\.1/.test(id)) return { read: 0.25, write: 1 };
+  return { read: 0.5, write: 1 };
+}
+
+export interface CacheCostInput {
+  readTokens: number;
+  writeTokens: number;
+  readMultiplier: number;
+  writeMultiplier: number;
 }
 
 export function computeCosts(
@@ -124,10 +153,19 @@ export function computeCosts(
   inputTokens: number,
   outputTokens: number,
   multiplier: number,
+  cache?: CacheCostInput,
 ): { provider: number | null; retail: number | null } {
   if (!price) return { provider: null, retail: null };
+  const cacheUsd = cache
+    ? (cache.readTokens * cache.readMultiplier +
+        cache.writeTokens * cache.writeMultiplier) *
+      price.input_usd_per_m
+    : 0;
   const provider =
-    (inputTokens * price.input_usd_per_m + outputTokens * price.output_usd_per_m) / 1_000_000;
+    (inputTokens * price.input_usd_per_m +
+      cacheUsd +
+      outputTokens * price.output_usd_per_m) /
+    1_000_000;
   return { provider, retail: provider * multiplier };
 }
 
@@ -140,18 +178,34 @@ export function recordLLMUsage(entry: LLMUsageEntry): void {
   const ctx = usageContext.getStore();
   void (async () => {
     try {
-      if (entry.inputTokens <= 0 && entry.outputTokens <= 0) return;
+      const cacheRead = entry.cacheReadTokens ?? 0;
+      const cacheWrite = entry.cacheWriteTokens ?? 0;
+      if (
+        entry.inputTokens <= 0 &&
+        entry.outputTokens <= 0 &&
+        cacheRead <= 0 &&
+        cacheWrite <= 0
+      ) {
+        return;
+      }
       const price = await lookupPrice(entry.provider, entry.model);
+      const multipliers = cacheMultipliers(entry.provider, entry.model);
       const costs = computeCosts(
         price,
         entry.inputTokens,
         entry.outputTokens,
         await retailMultiplier(),
+        {
+          readTokens: cacheRead,
+          writeTokens: cacheWrite,
+          readMultiplier: multipliers.read,
+          writeMultiplier: multipliers.write,
+        },
       );
       await execute(
         `INSERT INTO usage_events
-           (user_id, ts, provider, model, kind, input_tokens, output_tokens, provider_cost_usd, retail_cost_usd, request_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (user_id, ts, provider, model, kind, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, provider_cost_usd, retail_cost_usd, request_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx?.userId ?? null,
           Date.now(),
@@ -160,6 +214,8 @@ export function recordLLMUsage(entry: LLMUsageEntry): void {
           ctx?.kind ?? "other",
           entry.inputTokens,
           entry.outputTokens,
+          cacheRead,
+          cacheWrite,
           costs.provider,
           costs.retail,
           ctx?.requestId ?? null,

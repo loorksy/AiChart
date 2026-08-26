@@ -1,6 +1,9 @@
-import { ConsolePageSkeleton } from "@/components/ui/skeletons/page-skeletons";
+import { ChatLayoutSkeleton } from "@/components/ui/skeletons/page-skeletons";
 
-/** The thread, then the composer. */
+/**
+ * Support IS the agent chat surface, so it loads as one: thread bubbles and
+ * the docked composer — not a page header + rows that no longer exist here.
+ */
 export default function ConsoleSupportLoading() {
-  return <ConsolePageSkeleton shape="rows" maxWidth="max-w-3xl" />;
+  return <ChatLayoutSkeleton />;
 }

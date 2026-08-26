@@ -20,6 +20,8 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   captureWhereTheTabLives,
+  collectVisualEvidence,
+  delegateAbortMs,
   type CaptureRouteDeps,
 } from "@/lib/agent/visualEvidence";
 
@@ -210,5 +212,100 @@ describe("a capture goes to the process that owns the tab", () => {
     await captureWhereTheTabLives(1, BODY, d);
     assert.equal(calls.remote, 0, "an unsignable request is not worth sending");
     assert.equal(calls.local, 1);
+  });
+});
+
+describe("the delegate wait is sized for the whole batch, not one frame", () => {
+  // The blackout this pins: the remote route renders a batch SERIALLY on one
+  // tab, so three 9s frames legitimately take up to 27s — while the worker
+  // used to hang up at 11s (imageTimeoutMs + 2s), grade every frame
+  // capture_timeout, and open the analysis with "تعذّر التقاط أي شارت".
+  it("scales with the frame count", () => {
+    const one = delegateAbortMs(9_000, 1);
+    const three = delegateAbortMs(9_000, 3);
+    assert.ok(three > one, "three serial renders need more wall than one");
+    assert.ok(
+      three >= 27_000,
+      `the wait (${three}ms) must cover the batch's real worst case (27s)`,
+    );
+  });
+
+  it("stays bounded — a wedged tab still fails in finite time", () => {
+    // captureBudgets caps the batch at 45s; the delegate adds hop slack only.
+    assert.ok(delegateAbortMs(20_000, 6) <= 55_000);
+  });
+});
+
+describe("one graceful retry before surrendering to numbers-only", () => {
+  const saved = {
+    url: process.env.AICHART_API_URL,
+    token: process.env.AICHART_SERVICE_TOKEN,
+  };
+  beforeEach(() => {
+    // No bridge configured → collectVisualEvidence stays on the local seam.
+    delete process.env.AICHART_API_URL;
+    delete process.env.AICHART_SERVICE_TOKEN;
+  });
+  afterEach(() => {
+    if (saved.url !== undefined) process.env.AICHART_API_URL = saved.url;
+    if (saved.token !== undefined) process.env.AICHART_SERVICE_TOKEN = saved.token;
+  });
+
+  const input = { userId: 7, symbol: "XAUUSD", interval: "15m" };
+
+  it("retries once when every frame failed transiently, and returns the retry's frames", async () => {
+    // First attempt: cold tab, all frames time out. The attempt itself warmed
+    // the tab, so the second lands on a warm one and answers.
+    let attempts = 0;
+    const result = await collectVisualEvidence({
+      ...input,
+      captureDeps: {
+        captureLocally: (async () => {
+          attempts += 1;
+          return attempts === 1 ? payload(0) : payload(3);
+        }) as never,
+      },
+    });
+    assert.equal(attempts, 2, "exactly one retry, never a loop");
+    assert.equal(result.snapshots.length, 3, "the retry's frames are the answer");
+    assert.equal(result.missing.length, 0);
+  });
+
+  it("does NOT retry a permanent failure — an unconfigured host will not configure itself", async () => {
+    let attempts = 0;
+    const permanent = {
+      ...payload(0),
+      missing_timeframes: BODY.timeframes.map((timeframe) => ({
+        timeframe,
+        reason: "host_unconfigured",
+      })),
+    };
+    const result = await collectVisualEvidence({
+      ...input,
+      captureDeps: {
+        captureLocally: (async () => {
+          attempts += 1;
+          return permanent;
+        }) as never,
+      },
+    });
+    assert.equal(attempts, 1, "a permanent fault must not cost a second budget");
+    assert.equal(result.snapshots.length, 0);
+  });
+
+  it("does NOT retry when at least one frame arrived — partial evidence is evidence", async () => {
+    let attempts = 0;
+    const result = await collectVisualEvidence({
+      ...input,
+      captureDeps: {
+        captureLocally: (async () => {
+          attempts += 1;
+          return payload(2);
+        }) as never,
+      },
+    });
+    assert.equal(attempts, 1);
+    assert.equal(result.snapshots.length, 2);
+    assert.equal(result.missing.length, 1, "the missing frame is still reported by name");
   });
 });

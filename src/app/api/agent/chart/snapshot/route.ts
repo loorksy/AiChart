@@ -19,6 +19,13 @@ const schema = z.object({
   include_drawings: z.boolean().optional(),
   include_studies: z.boolean().optional(),
   live_session: z.boolean().optional(),
+  /**
+   * Explicit overlays to render for THIS shot — a recommendation's own
+   * drawings shipped by a worker process (the Telegram photo path). When
+   * present they take precedence over the stored layout state, which a
+   * chat-only user may never have saved.
+   */
+  drawings: z.array(z.record(z.string(), z.unknown())).optional(),
 });
 
 /**
@@ -53,10 +60,13 @@ export async function POST(req: NextRequest) {
     // When the operator has no live tab and the shot falls to the platform
     // chart session, the requesting layout's own drawings/studies travel
     // with the request — rendered for that shot, counted off the widget.
+    // Explicit drawings in the body (a recommendation's plan shipped by a
+    // worker) outrank the stored layout, which may not carry them yet.
     const layoutForOverlays = layoutId
       ? await getChartLayoutById(layoutId, userId)
       : null;
     const overlays = layoutOverlaysFromState(layoutForOverlays?.state_json ?? null);
+    const drawings = body.drawings?.length ? body.drawings : overlays.drawings;
 
     const captured = await captureChartWithPlatformFallback({
       userId,
@@ -67,7 +77,7 @@ export async function POST(req: NextRequest) {
       includeDrawings: body.include_drawings,
       includeStudies: body.include_studies,
       liveSession: body.live_session !== false,
-      platformDrawings: body.include_drawings === false ? [] : overlays.drawings,
+      platformDrawings: body.include_drawings === false ? [] : drawings,
       platformStudies: body.include_studies === false ? [] : overlays.studies,
     });
 

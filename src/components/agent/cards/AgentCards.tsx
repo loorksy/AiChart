@@ -55,6 +55,7 @@ import { GATE_LABELS_AR } from "@/lib/agent/gates/chain";
 import type { GateVerdict } from "@/lib/agent/gates/types";
 import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency";
 import type { AgentDecision, AgentFinalResult } from "@/lib/agent/types";
+import { isPlainTalkResult } from "@/lib/agent/turnPresentation";
 import { AgentEvidenceCard, AgentFaultCard } from "../AgentEnvelopeStatus";
 import { AgentThinkingTraceDone } from "../AgentThinkingTrace";
 
@@ -832,6 +833,22 @@ export function AgentCards({
   const cards = useMemo(() => deriveCards(result), [result]);
   const [open, setOpen] = useState(false);
   const detailsId = useId();
+
+  // Presentation contract (turnPresentation.ts): a conversational or
+  // specialist turn is a SENTENCE. It renders none of the analysis chrome —
+  // no signal hero, no status note, no trace row — only the follow-up chips
+  // when the turn actually authored some. The derivation itself is untouched
+  // (Telegram still reads the full set); only this surface's rendering obeys
+  // the turn mode.
+  if (isPlainTalkResult(result)) {
+    const chips = cards.find((c) => c.kind === "follow_up_options");
+    if (!chips) return null;
+    return (
+      <div data-testid="agent-cards" data-plain-talk="true">
+        <CardView card={chips} onOption={onOption} disabled={disabled} />
+      </div>
+    );
+  }
 
   const lead = cards.filter((c) => SLOT[c.kind] === "lead");
   const details = cards.filter((c) => SLOT[c.kind] === "details");

@@ -8,8 +8,11 @@ import {
   MAX_IMAGES_LIMIT,
   NUMERIC_CANDLE_LIMIT,
   captureBudgets,
+  captureMultiTimeframeSnapshot,
   resolveVisualTimeframes,
   VISUAL_EVIDENCE_GUARDRAILS,
+  type CaptureTimeframeInput,
+  type CaptureTimeframeResult,
 } from "@/lib/chart/multiTimeframeCapture";
 import {
   chartSnapshotCacheKey,
@@ -177,6 +180,113 @@ describe("agent chart evidence depth", () => {
   it("uses 350 QuickChart bars and 350 numeric bars", () => {
     assert.equal(QUICKCHART_CANDLE_LIMIT, 350);
     assert.equal(NUMERIC_CANDLE_LIMIT, 350);
+  });
+});
+
+describe("captureMultiTimeframeSnapshot ships the layout's overlays", () => {
+  // The bug this pins: the multi-frame evidence path shipped NO drawings, so
+  // the platform tab rendered clean charts, `drawings_included` measured
+  // false, and every unattended analysis was reported as "no chart screenshot
+  // captured" even when its frames were real. The overlays must load ONCE per
+  // batch and reach EVERY frame — the same contract the single-snapshot route
+  // has always honoured.
+  const okCapture = (): Extract<CaptureTimeframeResult, { ok: true }> => ({
+    ok: true,
+    imageBase64: "AAAA",
+    images: [
+      { label: "context", image_base64: "AAAA" },
+      { label: "zoom", image_base64: "BBBB" },
+    ],
+    source: "tradingview_capture",
+    capturedAt: 1,
+    fromCache: false,
+    drawings_included: true,
+    studies_included: true,
+  });
+
+  it("loads the layout overlays once and hands them to every frame", async () => {
+    const seen: CaptureTimeframeInput[] = [];
+    let loads = 0;
+    const result = await captureMultiTimeframeSnapshot(
+      7,
+      {
+        symbol: "XAUUSD",
+        timeframes: ["1h", "4h"],
+        layoutId: "AbCdEfGh",
+        includeNumericContext: false,
+      },
+      {
+        loadOverlays: async () => {
+          loads += 1;
+          return {
+            drawings: [{ type: "price_line", price: 4000 }],
+            studies: [{ id: "rsi" }],
+          };
+        },
+        capture: async (_userId, input) => {
+          seen.push(input);
+          return okCapture();
+        },
+      },
+    );
+    assert.equal(result.snapshots.length, 2);
+    assert.equal(loads, 1, "one batch loads its layout state once");
+    assert.equal(seen.length, 2);
+    for (const frame of seen) {
+      assert.equal(frame.platformDrawings?.length, 1, `${frame.interval} carries the drawings`);
+      assert.equal(frame.platformStudies?.length, 1, `${frame.interval} carries the studies`);
+    }
+  });
+
+  it("includeDrawings=false strips the drawings but keeps the studies", async () => {
+    const seen: CaptureTimeframeInput[] = [];
+    await captureMultiTimeframeSnapshot(
+      7,
+      {
+        symbol: "XAUUSD",
+        timeframes: ["1h"],
+        layoutId: "AbCdEfGh",
+        includeDrawings: false,
+        includeNumericContext: false,
+      },
+      {
+        loadOverlays: async () => ({
+          drawings: [{ type: "price_line", price: 4000 }],
+          studies: [{ id: "rsi" }],
+        }),
+        capture: async (_userId, input) => {
+          seen.push(input);
+          return okCapture();
+        },
+      },
+    );
+    assert.deepEqual(seen[0]?.platformDrawings, []);
+    assert.equal(seen[0]?.platformStudies?.length, 1);
+  });
+
+  it("a failing overlay loader degrades to clean-chart shots, never a failed capture", async () => {
+    const seen: CaptureTimeframeInput[] = [];
+    const result = await captureMultiTimeframeSnapshot(
+      7,
+      {
+        symbol: "XAUUSD",
+        timeframes: ["1h"],
+        layoutId: "AbCdEfGh",
+        includeNumericContext: false,
+      },
+      {
+        loadOverlays: async () => {
+          throw new Error("db down");
+        },
+        capture: async (_userId, input) => {
+          seen.push(input);
+          return okCapture();
+        },
+      },
+    );
+    assert.equal(result.snapshots.length, 1, "the capture still happened");
+    assert.deepEqual(seen[0]?.platformDrawings, []);
+    assert.deepEqual(seen[0]?.platformStudies, []);
   });
 });
 

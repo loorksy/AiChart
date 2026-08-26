@@ -40,7 +40,9 @@ import {
   evaluateRecommendation,
   type TrackerCandle,
 } from "./recommendationStatus";
+import { entryFillTolerance } from "./entrySemantics";
 import { activationRuleTimeframe } from "./activationRule";
+import { computeTradeMetrics, mergeTradeMetrics } from "./tradeMetrics";
 import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
 import {
   admitTriggers,
@@ -161,12 +163,27 @@ export async function trackOneRecommendation(
     }
   }
 
+  // The flexible-entry band (complaint: "price came 30 cents from the entry,
+  // ran to every target, and the record said the plan never filled"). Derived
+  // from the same candles the evaluator walks, so replaying a sweep is still
+  // deterministic. See entrySemantics.entryFillTolerance for the clamps.
+  const atr = approximateAtr(candles);
+  const entryTolerance = entryFillTolerance({ price: rec.entry, atr });
+
   const result = evaluateRecommendation({
     recommendation: {
       direction: rec.direction,
       entryType: rec.entryType,
       entry: rec.entry,
+      // The honest fill from an earlier sweep and the retest band: dropping
+      // either here regrades the plan on prices it never filled at — and a
+      // retest_zone plan with no band can NEVER fill, which is one way a plan
+      // whose condition came true stays "pending activation" forever.
+      effectiveEntry: rec.effectiveEntry,
+      retestZone: rec.retestZone,
       stopLoss: rec.stopLoss,
+      invalidationMode: rec.invalidationMode,
+      planType: rec.planType,
       targets: rec.targets,
       invalidationLevel: rec.invalidationLevel,
       status: rec.status,
@@ -187,7 +204,48 @@ export async function trackOneRecommendation(
     candles,
     activationCandles,
     activationBarMs,
+    entryTolerance,
   });
+
+  // Post-fill measurement (tradeMetrics.ts): MFE/MAE, realized R, exit,
+  // durations, survived stop breaches — pure arithmetic over the SAME candles
+  // the evaluator just walked, merged monotonically with what earlier sweeps
+  // observed so a shorter candle window can only add information.
+  const metrics = mergeTradeMetrics(
+    rec,
+    computeTradeMetrics({
+      recommendation: {
+        direction: rec.direction,
+        entryType: rec.entryType,
+        entry: rec.entry,
+        effectiveEntry: result.effectiveEntry ?? rec.effectiveEntry,
+        stopLoss: rec.stopLoss,
+        invalidationMode: rec.invalidationMode,
+        planType: rec.planType,
+        activationRule: rec.activationRule,
+        targets: rec.targets,
+        outcome: result.outcome,
+        createdAt: toMs(rec.createdAt),
+        expiresAt: rec.expiresAt,
+        triggeredAt: result.triggeredAt,
+        tp1HitAt: result.tp1HitAt,
+        tp2HitAt: result.tp2HitAt,
+        tp3HitAt: result.tp3HitAt,
+        slHitAt: result.slHitAt,
+        invalidatedAt: rec.invalidatedAt,
+        cancelledAt: rec.cancelledAt,
+        expiredAt: result.expiredAt ?? rec.expiredAt,
+      },
+      candles,
+    }),
+  );
+  // A survived stop breach that is NEW since the last persisted observation —
+  // announced once, keyed by its candle time.
+  const newStopBreachAt =
+    metrics.lastStopBreachSurvivedAt != null &&
+    metrics.lastStopBreachSurvivedAt !== (rec.lastStopBreachSurvivedAt ?? null)
+      ? metrics.lastStopBreachSurvivedAt
+      : null;
 
   // The execution state is a function of the market from here on. The card
   // badge reads this — leaving it at its creation value is how a plan whose
@@ -205,6 +263,9 @@ export async function trackOneRecommendation(
     status: result.status,
     outcome: result.outcome,
     triggeredAt: result.triggeredAt,
+    // Persist the honest fill so performance grades what actually filled and
+    // later sweeps do not re-derive it from ever-shortening candle history.
+    effectiveEntry: result.effectiveEntry,
     tp1HitAt: result.tp1HitAt,
     tp2HitAt: result.tp2HitAt,
     tp3HitAt: result.tp3HitAt,
@@ -212,6 +273,10 @@ export async function trackOneRecommendation(
     expiredAt: result.expiredAt,
     executionState: nextExecutionState,
     activationEvidence: result.activationEvidence,
+    metrics,
+    // Persisted so HISTORY keeps grading it a missed opportunity — the
+    // lifecycle event alone evaporates with the sweep that derived it.
+    missedWithoutFill: result.missedWithoutFill ? true : undefined,
     lastCheckedAt: Date.now(),
   });
 
@@ -220,7 +285,6 @@ export async function trackOneRecommendation(
   // status change — and because a sweep over unchanged candles must produce an
   // empty list, which is what keeps the notifications honest.
   const lastCandle = candles.at(-1);
-  const atr = approximateAtr(candles);
   // Retest tracking inputs (plan §7 B.6). A breakout-retest plan's entry IS
   // the broken level, and the excursion is how far price ran beyond it since
   // creation — from the same candles the evaluator just walked. Without these
@@ -258,6 +322,7 @@ export async function trackOneRecommendation(
     retestLevel,
     excursionAtr,
     missedWithoutFill: result.missedWithoutFill ?? null,
+    stopBreachSurvivedAt: newStopBreachAt,
     revisionNo: rec.revisionNo ?? null,
   });
   if (result.outcome !== "pending") {

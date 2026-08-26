@@ -58,6 +58,10 @@ function market(candles: AgentCandle[]): AgentMarketContext {
   return {
     currentPrice: candles.at(-1)?.close ?? null,
     currentTfCandles: candles,
+    interval: "1m",
+    higherInterval: "5m",
+    higherTfCandles: [],
+    atr: null,
   } as unknown as AgentMarketContext;
 }
 
@@ -89,48 +93,57 @@ describe("sessionRecommendation", () => {
 });
 
 describe("evaluateRecommendationStatus", () => {
+  // NOTE: the graded candles start at i=1. The candle whose open time equals
+  // the creation moment is the candle that was FORMING at creation, and the
+  // canonical evaluator (one source of truth with the sweep) never grades it.
   it("keeps a recommendation pending before entry touch", () => {
     const status = evaluateRecommendationStatus({
       recommendation: rec(),
-      market: market([candle(0, 101, 101.2, 100.5, 101)]),
+      market: market([candle(1, 101, 101.2, 100.5, 101)]),
     });
     assert.equal(status.status, "pending_entry");
     assert.equal(status.triggered, false);
   });
 
-  it("marks a recommendation triggered after entry touch", () => {
+  it("marks a recommendation triggered after entry touch, citing the honest fill", () => {
     const status = evaluateRecommendationStatus({
       recommendation: rec(),
-      market: market([candle(0, 101, 101.2, 99.8, 100.5)]),
+      market: market([candle(1, 101, 101.2, 99.8, 100.5)]),
     });
     assert.equal(status.status, "triggered");
     assert.equal(status.triggered, true);
+    assert.equal(status.effectiveEntry, 100);
   });
 
   it("marks target hits after entry trigger", () => {
     const status = evaluateRecommendationStatus({
       recommendation: rec(),
-      market: market([candle(0, 101, 102.1, 99.8, 101.5)]),
+      market: market([candle(1, 101, 102.1, 99.8, 101.5)]),
     });
     assert.equal(status.status, "tp1_hit");
     assert.equal(status.hitTarget, 1);
   });
 
-  it("marks stop hits after entry trigger", () => {
-    const status = evaluateRecommendationStatus({
-      recommendation: rec({ invalidationLevel: 98.5 }),
-      market: market([candle(0, 101, 101.2, 98.9, 99.2)]),
-    });
-    assert.equal(status.status, "sl_hit");
-  });
-
-  it("marks invalidation on a close beyond the invalidation level", () => {
+  it("a wick through the stop with a close back inside does NOT stop a pending-limit plan", () => {
+    // Close-confirmed invalidation (the XAUUSD conditional-sell fix): a
+    // pending/limit plan's invalidation is worded on the candle CLOSE, so the
+    // intrabar spike through the 99 stop with a close back at 100.4 is a
+    // rejection the plan survives — the old touch grading called this a loss.
     const status = evaluateRecommendationStatus({
       recommendation: rec(),
-      market: market([candle(0, 101, 101.2, 98.8, 98.9)]),
+      market: market([candle(1, 101, 101.2, 98.9, 100.4)]),
     });
-    assert.equal(status.status, "invalidated");
-    assert.equal(status.invalidated, true);
+    assert.equal(status.status, "triggered");
+    assert.equal(status.invalidationMode, "close");
+  });
+
+  it("marks the stop hit when a candle CLOSES beyond it", () => {
+    const status = evaluateRecommendationStatus({
+      recommendation: rec(),
+      market: market([candle(1, 101, 101.2, 98.7, 98.9)]),
+    });
+    assert.equal(status.status, "sl_hit");
+    assert.equal(status.triggered, true);
   });
 
   it("does not let the creation candle trigger or stop the recommendation", () => {

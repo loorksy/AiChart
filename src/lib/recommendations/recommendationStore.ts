@@ -20,7 +20,8 @@ import {
   type RecommendationStatus as CanonicalStatus,
 } from "./canonical";
 import type { ActivationEvidence } from "./activationRule";
-import { normalizeStoredEntryType } from "./entrySemantics";
+import type { TradeMetrics } from "./tradeMetrics";
+import { isInvalidationMode, normalizeStoredEntryType } from "./entrySemantics";
 import type {
   TrackedRecommendation,
   TrackedRecommendationOutcome,
@@ -231,6 +232,9 @@ function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unk
     // confirming candle's close rather than the nominal trigger level.
     retestZone: input.retestZone ?? null,
     effectiveEntry: input.effectiveEntry,
+    // What the stop MEANS — a close beyond it or any touch. Absent on old
+    // rows; every evaluator then derives the same structural default.
+    invalidationMode: input.invalidationMode ?? null,
   };
 }
 
@@ -247,6 +251,10 @@ function retestZoneValue(value: unknown): { from: number; to: number } | null {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -334,6 +342,9 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     effectiveEntry: numberValue(risk.effectiveEntry),
     retestZone: retestZoneValue(risk.retestZone),
     stopLoss: effective?.stopLoss ?? recommendation.stopLoss ?? 0,
+    invalidationMode: isInvalidationMode(risk.invalidationMode)
+      ? risk.invalidationMode
+      : undefined,
     targets: effective?.targets.length ? effective.targets : recommendation.targets,
     invalidationLevel: numberValue(risk.invalidationLevel),
     status: legacyStatus(recommendation, outcomes),
@@ -353,6 +364,22 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     expiredAt: latestTimestamp(outcomes, "Expired"),
     priceAtCreation: numberValue(risk.priceAtCreation),
     lastCheckedAt: numberValue(risk.lastCheckedAt),
+    // The sweep's post-fill measurements (tradeMetrics.ts), persisted in the
+    // same risk blob effectiveEntry already lives in. Absent on rows the
+    // sweep never measured — readers derive what legacy allows, nothing more.
+    mfePrice: numberOrNull(risk.mfePrice),
+    maePrice: numberOrNull(risk.maePrice),
+    mfeR: numberOrNull(risk.mfeR),
+    maeR: numberOrNull(risk.maeR),
+    realizedR: numberOrNull(risk.realizedR),
+    exitPrice: numberOrNull(risk.exitPrice),
+    exitAt: numberOrNull(risk.exitAt),
+    exitReason: typeof risk.exitReason === "string" ? risk.exitReason : null,
+    timeInTradeMs: numberOrNull(risk.timeInTradeMs),
+    stopBreachSurvivedCount: numberValue(risk.stopBreachSurvivedCount) ?? 0,
+    lastStopBreachSurvivedAt: numberOrNull(risk.lastStopBreachSurvivedAt),
+    missedWithoutFill: risk.missedWithoutFill === true,
+    supersededAt: numberOrNull(risk.supersededAt),
     validityCandles:
       effective?.validityCandles ?? numberValue(risk.validityCandles),
     revisionNo: effective?.revisionNo,
@@ -506,6 +533,12 @@ export interface TrackedStatusPatch {
   status: TrackedRecommendationStatus;
   outcome: TrackedRecommendationOutcome;
   triggeredAt?: number;
+  /**
+   * The honest fill price once triggered (confirming candle's close for a
+   * confirmation_close plan, nearest traded price for a tolerance touch).
+   * Persisted into risk_json so grading and status text read what filled.
+   */
+  effectiveEntry?: number;
   tp1HitAt?: number;
   tp2HitAt?: number;
   tp3HitAt?: number;
@@ -523,6 +556,16 @@ export interface TrackedStatusPatch {
   executionState?: TrackedRecommendation["executionState"];
   /** Which candle satisfied the activation rule — recorded as the trigger reason. */
   activationEvidence?: ActivationEvidence;
+  /**
+   * The sweep's post-fill measurement (tradeMetrics.ts), persisted into
+   * risk_json beside effectiveEntry. The tracker merges monotonically before
+   * passing, so a shorter candle window can never erase an observed excursion.
+   */
+  metrics?: TradeMetrics;
+  /** The evaluator flagged the expiry as "TP1 came without a fill". */
+  missedWithoutFill?: boolean;
+  /** Set when a NEWER analysis replaced this plan (see cancel below). */
+  supersededAt?: number;
 }
 
 async function move(
@@ -558,8 +601,15 @@ async function ensureTriggered(
 function plannedR(recommendation: CanonicalRecommendation, targetIndex: 1 | 2 | 3): number | undefined {
   const target = recommendation.targets[targetIndex - 1];
   if (target == null || recommendation.entry == null || recommendation.stopLoss == null) return undefined;
-  const risk = Math.abs(recommendation.entry - recommendation.stopLoss);
-  return risk > 0 ? Math.abs(target - recommendation.entry) / risk : undefined;
+  // Graded from the honest fill when one was persisted — the nominal level is
+  // exactly the number entrySemantics.ts exists to keep out of R math.
+  const entry =
+    typeof recommendation.risk.effectiveEntry === "number" &&
+    Number.isFinite(recommendation.risk.effectiveEntry)
+      ? recommendation.risk.effectiveEntry
+      : recommendation.entry;
+  const risk = Math.abs(entry - recommendation.stopLoss);
+  return risk > 0 ? Math.abs(target - entry) / risk : undefined;
 }
 
 async function appendTrackerOutcome(
@@ -567,7 +617,16 @@ async function appendTrackerOutcome(
   type: RecommendationOutcome["type"],
   occurredAt: number,
   targetIndex?: 1 | 2 | 3,
+  /** The sweep's measurement, when it accompanies a terminal write. */
+  metrics?: TradeMetrics,
 ): Promise<void> {
+  // The realized R and excursions land on the ROW THAT CLOSED the trade, so
+  // the append-only outcome ledger carries the measurement its own dedupe key
+  // makes immutable. Target rows keep their banked-target R.
+  const terminalR =
+    metrics?.realizedR != null && Number.isFinite(metrics.realizedR)
+      ? metrics.realizedR
+      : undefined;
   await recordRecommendationOutcome({
     userId: recommendation.userId,
     recommendationId: recommendation.recommendationId,
@@ -575,7 +634,14 @@ async function appendTrackerOutcome(
     occurredAt,
     targetIndex,
     price: targetIndex ? recommendation.targets[targetIndex - 1] : recommendation.stopLoss,
-    rMultiple: targetIndex ? plannedR(recommendation, targetIndex) : type === "SL" ? -1 : undefined,
+    rMultiple: targetIndex
+      ? plannedR(recommendation, targetIndex)
+      : type === "SL"
+        ? (terminalR ?? -1)
+        : terminalR,
+    mfe: metrics?.mfeR ?? undefined,
+    mae: metrics?.maeR ?? undefined,
+    holdingMs: metrics?.timeInTradeMs ?? undefined,
     source: "deterministic_tracker",
     evidence: {
       method: "complete_ohlc_candles",
@@ -635,7 +701,7 @@ export async function updateTrackedRecommendation(
   }
   if (patch.tp3HitAt || patch.status === "tp3_hit") {
     const at = patch.tp3HitAt ?? now;
-    await appendTrackerOutcome(recommendation, "TP3", at, 3);
+    await appendTrackerOutcome(recommendation, "TP3", at, 3, patch.metrics);
     if (recommendation.status === "triggered") {
       recommendation = await move(
         recommendation,
@@ -654,7 +720,7 @@ export async function updateTrackedRecommendation(
     }
   } else if (patch.status === "sl_hit") {
     const at = patch.slHitAt ?? now;
-    await appendTrackerOutcome(recommendation, "SL", at);
+    await appendTrackerOutcome(recommendation, "SL", at, undefined, patch.metrics);
     recommendation = await move(
       recommendation,
       "sl_hit",
@@ -663,7 +729,7 @@ export async function updateTrackedRecommendation(
     );
   } else if (patch.status === "expired") {
     const at = patch.expiredAt ?? now;
-    await appendTrackerOutcome(recommendation, "Expired", at);
+    await appendTrackerOutcome(recommendation, "Expired", at, undefined, patch.metrics);
     recommendation = await move(
       recommendation,
       "expired",
@@ -681,7 +747,7 @@ export async function updateTrackedRecommendation(
     );
   } else if (patch.status === "invalidated") {
     const at = patch.invalidatedAt ?? now;
-    await appendTrackerOutcome(recommendation, "Invalidated", at);
+    await appendTrackerOutcome(recommendation, "Invalidated", at, undefined, patch.metrics);
     recommendation = await move(
       recommendation,
       "invalidated",
@@ -698,6 +764,10 @@ export async function updateTrackedRecommendation(
         recommendationId: recommendation.recommendationId,
         type: "ManualClose",
         occurredAt: patch.slHitAt,
+        rMultiple: patch.metrics?.realizedR ?? undefined,
+        mfe: patch.metrics?.mfeR ?? undefined,
+        mae: patch.metrics?.maeR ?? undefined,
+        holdingMs: patch.metrics?.timeInTradeMs ?? undefined,
         source: "deterministic_tracker",
         evidence: { exitReason: "stop_after_partial_target" },
         dedupeKey: "tracker:partial-close",
@@ -710,10 +780,41 @@ export async function updateTrackedRecommendation(
       patch.reason ?? `legacy partial outcome ${patch.outcome}`,
     );
   }
-  if (patch.lastCheckedAt != null) {
+  if (
+    patch.lastCheckedAt != null ||
+    patch.effectiveEntry != null ||
+    patch.metrics != null ||
+    patch.missedWithoutFill != null ||
+    patch.supersededAt != null
+  ) {
     const nextRisk = {
       ...recommendation.risk,
-      lastCheckedAt: patch.lastCheckedAt,
+      ...(patch.lastCheckedAt != null ? { lastCheckedAt: patch.lastCheckedAt } : {}),
+      ...(patch.effectiveEntry != null && Number.isFinite(patch.effectiveEntry)
+        ? { effectiveEntry: patch.effectiveEntry }
+        : {}),
+      // The measurement rides the same blob effectiveEntry lives in. Written
+      // whole (already monotone-merged by the tracker); null members are kept
+      // so "measured, nothing yet" reads differently from "never measured".
+      ...(patch.metrics
+        ? {
+            mfePrice: patch.metrics.mfePrice,
+            maePrice: patch.metrics.maePrice,
+            mfeR: patch.metrics.mfeR,
+            maeR: patch.metrics.maeR,
+            realizedR: patch.metrics.realizedR,
+            exitPrice: patch.metrics.exitPrice,
+            exitAt: patch.metrics.exitAt,
+            exitReason: patch.metrics.exitReason,
+            timeInTradeMs: patch.metrics.timeInTradeMs,
+            stopBreachSurvivedCount: patch.metrics.stopBreachSurvivedCount,
+            lastStopBreachSurvivedAt: patch.metrics.lastStopBreachSurvivedAt,
+          }
+        : {}),
+      ...(patch.missedWithoutFill != null
+        ? { missedWithoutFill: patch.missedWithoutFill }
+        : {}),
+      ...(patch.supersededAt != null ? { supersededAt: patch.supersededAt } : {}),
     };
     await execute(
       `UPDATE recommendations
@@ -721,7 +822,7 @@ export async function updateTrackedRecommendation(
         WHERE id = ? AND user_id = ?`,
       [
         JSON.stringify(nextRisk),
-        patch.lastCheckedAt,
+        patch.lastCheckedAt ?? now,
         recommendation.recommendationId,
         userId,
       ],
@@ -734,13 +835,26 @@ export async function updateTrackedRecommendation(
 export async function cancelTrackedRecommendation(
   userId: number,
   id: string,
+  opts: {
+    /**
+     * True when a NEWER analysis replaced this plan (the orchestrator's
+     * supersede path). Recorded so the journal can grade "superseded" apart
+     * from a plain withdrawal — to the operator those are different facts:
+     * one says "the agent changed its mind", the other says "removed".
+     */
+    superseded?: boolean;
+  } = {},
 ): Promise<TrackedRecommendation | null> {
   const existing = await getTrackedRecommendation(userId, id);
   if (!existing) return null;
   if (existing.outcome !== "pending") return existing;
+  const now = Date.now();
   return updateTrackedRecommendation(userId, id, {
     status: "cancelled",
     outcome: "cancelled",
-    cancelledAt: Date.now(),
+    cancelledAt: now,
+    ...(opts.superseded
+      ? { supersededAt: now, reason: "superseded by a newer analysis" }
+      : {}),
   });
 }

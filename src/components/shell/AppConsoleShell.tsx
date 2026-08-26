@@ -120,6 +120,9 @@ function ConsoleShellBody({
     noPadding ||
     pathname === "/chat" ||
     pathname.startsWith("/chart") ||
+    // Support is the agent chat's surface: same chrome-free main, the chat
+    // component owns its own scroll region and docked composer.
+    pathname === "/console/support" ||
     pathname === "/subscribe";
 
   if (pathname !== navPath) {

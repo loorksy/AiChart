@@ -160,6 +160,11 @@ export async function POST(req: NextRequest) {
           take_profit: recommendation.take_profit ?? recommendation.targets?.[0] ?? null,
           confidence: Math.round(result.confidence * 100),
           timeframe: interval,
+          // The chart anchors the profit/loss zones at this instant. Persisted
+          // with the layout below so every re-render, poll, and reload reuses
+          // the SAME anchor instead of re-anchoring to "now" (the reported
+          // zones-slide-with-the-candle bug).
+          created_at: new Date().toISOString(),
         } as Recommendation)
       : null;
 

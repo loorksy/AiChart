@@ -55,9 +55,22 @@ export function stageLabel(stage: string, locale: AppLocale): string {
 }
 
 /**
- * The bubble body: the task checklist plus the engine's latest sentence.
- * Empty string when the engine has said nothing — the caller then shows no
- * bubble at all rather than inventing a line to fill one.
+ * The spinner frames the header cycles through, one step per edit.
+ *
+ * Telegram has no animation primitive a bot can use without premium custom
+ * emoji, but a message EDITED forward through the clock faces reads as one —
+ * the classic trick. The rotation only advances when a real event causes an
+ * edit, so a stalled run honestly shows a stalled clock.
+ */
+export const SPINNER_FRAMES = [
+  "🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛",
+] as const;
+
+/**
+ * The bubble body: a live header (spinner + how far along the checklist is),
+ * the task checklist, and the engine's latest sentence. Empty string when the
+ * engine has said nothing — the caller then shows no bubble at all rather
+ * than inventing a line to fill one.
  *
  * The narration is the specialist's own sentence and is passed through as
  * authored; only the chrome around it follows the reader's language.
@@ -66,6 +79,7 @@ export function renderProgress(
   rows: readonly StageRow[],
   locale: AppLocale,
   narration?: string | null,
+  tick = 0,
 ): string {
   const lines = rows.map((row) => {
     const mark = row.status === "done" ? "✓" : row.status === "failed" ? "✗" : "⏳";
@@ -73,12 +87,19 @@ export function renderProgress(
   });
   const note = narration?.trim() ? `«${narration.trim()}»` : null;
   if (!lines.length && !note) return "";
-  return [lines.join("\n"), note].filter(Boolean).join("\n");
+  const spinner = SPINNER_FRAMES[((tick % SPINNER_FRAMES.length) + SPINNER_FRAMES.length) % SPINNER_FRAMES.length];
+  const done = rows.filter((row) => row.status !== "running").length;
+  const header = `${spinner} <b>${t(locale, "tg.progress_header")}…</b>${
+    rows.length ? ` (${done}/${rows.length})` : ""
+  }`;
+  return [header, lines.join("\n"), note].filter(Boolean).join("\n");
 }
 
 export class TelegramProgressReporter {
   private rows: StageRow[] = [];
   private narration: string | null = null;
+  /** Advances once per rendered edit — what turns the header clock. */
+  private tick = 0;
   private lastEditAt = 0;
   private pendingFlush: ReturnType<typeof setTimeout> | null = null;
   private typingTimer: ReturnType<typeof setInterval> | null = null;
@@ -179,8 +200,9 @@ export class TelegramProgressReporter {
   }
 
   private flush(): void {
-    const text = renderProgress(this.rows, this.locale, this.narration);
+    const text = renderProgress(this.rows, this.locale, this.narration, this.tick);
     if (!text) return; // nothing real to say yet — no bubble
+    this.tick += 1;
     this.lastEditAt = this.now();
     void this.transport.show(text).catch(() => {});
   }

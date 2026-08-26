@@ -11,16 +11,15 @@ import {
   LS_ACTIVE_CHAT,
   parseChatIdFromSearchParams,
 } from "@/lib/chatUrl";
+import { formatMessageStamp } from "@/lib/display/timestamp";
 import { cn } from "@/lib/utils";
 
 function formatUpdated(ts: number, locale: string): string {
   try {
-    return new Intl.DateTimeFormat(locale === "en" ? "en" : "ar", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(ts));
+    // The shared RTL-safe stamp: "today + clock" for recent rows, a wordy
+    // month for older ones, every fragment bidi-isolated so the RTL rail can
+    // never scramble it.
+    return formatMessageStamp(ts, locale === "en" ? "en" : "ar");
   } catch {
     return "";
   }

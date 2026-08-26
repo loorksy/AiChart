@@ -144,7 +144,10 @@ test("scenario plans are forced conditional before the gates read them", () => {
     resolve(process.cwd(), "src/lib/agent/orchestrator.ts"),
     "utf8",
   );
-  const force = source.indexOf('finalDecision.planType = "conditional"');
+  // The force lives in `prepareDecision`, which every decision — the authored
+  // one AND a stale-scenario reprice retry — passes through before the gate
+  // evaluation reads it. Source order proves the gates see the forced plan.
+  const force = source.indexOf('decision.planType = "conditional"');
   const gates = source.indexOf("buildGates({");
   assert.ok(force > 0, "the deterministic force must exist");
   assert.ok(gates > 0, "the gate chain must exist");

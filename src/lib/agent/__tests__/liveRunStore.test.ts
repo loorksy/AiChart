@@ -49,6 +49,19 @@ describe("live run store", () => {
     endLiveRun("c2");
   });
 
+  it("accumulates thinking lines (deduped) so a remounted chat rebuilds the trace", () => {
+    beginLiveRun({ chatId: "c4", pendingId: "p", userMessage: "حلل" });
+    updateLiveRun("c4", "p", { addThought: "قرأت 240 شمعة" });
+    updateLiveRun("c4", "p", { addThought: "قرأت 240 شمعة" }); // replayed frame
+    updateLiveRun("c4", "p", { addThought: "الاتجاه صاعد" });
+    updateLiveRun("c4", "p", { addThought: "  " }); // blank — ignored
+    assert.deepEqual(getLiveRun("c4")!.thinking, ["قرأت 240 شمعة", "الاتجاه صاعد"]);
+    // A superseded run's late thought is dropped like every other patch.
+    updateLiveRun("c4", "stale-pending", { addThought: "متأخر" });
+    assert.equal(getLiveRun("c4")!.thinking.length, 2);
+    endLiveRun("c4");
+  });
+
   it("notifies subscribers on every change and supports unsubscribe", () => {
     let calls = 0;
     const unsubscribe = subscribeLiveRun("c3", () => {

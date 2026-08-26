@@ -19,7 +19,12 @@
  *   at the highest TP reached (win_tp{n}); SL/expiry before any TP is a loss/expiry.
  * - Terminal records (outcome !== "pending") are never re-evaluated.
  */
-import { normalizeStoredEntryType, resolveFill } from "./entrySemantics";
+import {
+  normalizeStoredEntryType,
+  resolveFill,
+  resolveInvalidationMode,
+  type InvalidationMode,
+} from "./entrySemantics";
 import type {
   TrackedDirection,
   TrackedRecommendation,
@@ -49,6 +54,8 @@ export interface EvaluateInput {
     | "effectiveEntry"
     | "retestZone"
     | "stopLoss"
+    | "invalidationMode"
+    | "planType"
     | "targets"
     | "invalidationLevel"
     | "status"
@@ -74,6 +81,13 @@ export interface EvaluateInput {
   activationCandles?: TrackerCandle[];
   /** Bar duration of `activationCandles` in ms — converts open time → close time. */
   activationBarMs?: number;
+  /**
+   * Price-unit band for touch fills (see entrySemantics.entryFillTolerance).
+   * A candle that comes within this margin of a `limit_touch` entry fills the
+   * plan at the nearest traded price. Omitted = exact-touch grading, which is
+   * the pre-tolerance behaviour and what replay tests pin.
+   */
+  entryTolerance?: number;
   now?: number;
 }
 
@@ -82,6 +96,12 @@ export interface EvaluateResult {
   outcome: TrackedRecommendationOutcome;
   triggered: boolean;
   ambiguous: boolean;
+  /**
+   * The honest fill price once triggered — the confirming candle's close for
+   * a `confirmation_close` plan, the nearest traded price for a tolerance-band
+   * touch. Callers persist this so the record grades what actually filled.
+   */
+  effectiveEntry?: number;
   triggeredAt?: number;
   tp1HitAt?: number;
   tp2HitAt?: number;
@@ -116,7 +136,22 @@ const STATUS_BY_TP: Record<1 | 2 | 3, TrackedRecommendationStatus> = {
 function tpReached(dir: TrackedDirection, candle: TrackerCandle, target: number): boolean {
   return dir === "buy" ? candle.high >= target : candle.low <= target;
 }
-function slReached(dir: TrackedDirection, candle: TrackerCandle, sl: number): boolean {
+/**
+ * Did this candle terminate the trade at the stop, under the plan's own
+ * invalidation mode? `touch` is any trade at the level (wick included);
+ * `close` demands the candle CLOSE beyond it — a wick through the stop with a
+ * close back inside is a rejection the plan survives, which is exactly what a
+ * close-worded invalidation promised.
+ */
+function slReached(
+  dir: TrackedDirection,
+  candle: TrackerCandle,
+  sl: number,
+  mode: InvalidationMode,
+): boolean {
+  if (mode === "close") {
+    return dir === "buy" ? candle.close <= sl : candle.close >= sl;
+  }
   return dir === "buy" ? candle.low <= sl : candle.high >= sl;
 }
 function entryTouched(dir: TrackedDirection, candle: TrackerCandle, entry: number): boolean {
@@ -132,6 +167,7 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     outcome: r.outcome,
     triggered: Boolean(r.triggeredAt) || r.entryType === "market",
     ambiguous: false,
+    effectiveEntry: r.effectiveEntry ?? undefined,
     triggeredAt: r.triggeredAt,
     tp1HitAt: r.tp1HitAt,
     tp2HitAt: r.tp2HitAt,
@@ -144,6 +180,20 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
 
   const dir = r.direction;
   const targets = r.targets.slice(0, 3);
+  // Legacy rows spell a pending limit "limit"/"pending"; both fill on a
+  // touch, which is what those plans were always graded as.
+  const entryTypeCanonical = normalizeStoredEntryType(r.entryType);
+  // The stop's own termination semantics. Stored rows carry it; rows written
+  // before the mode existed derive the same default every surface derives —
+  // close-confirmed for conditional/pending plans, touch for market fills —
+  // so one plan cannot be a rejection survivor here and a stop-out elsewhere.
+  const invalidationMode: InvalidationMode =
+    r.invalidationMode ??
+    resolveInvalidationMode({
+      entryType: r.entryType,
+      planType: r.planType ?? null,
+      activationRule: r.activationRule ?? null,
+    });
   const candles = input.candles
     .filter((c) => c.time > r.createdCandleTime)
     .sort((a, b) => a.time - b.time);
@@ -197,6 +247,7 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     outcome,
     triggered,
     ambiguous,
+    effectiveEntry: triggered ? effectiveEntry : undefined,
     triggeredAt,
     tp1HitAt: tpAt[1],
     tp2HitAt: tpAt[2],
@@ -234,15 +285,14 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
       const fill = resolveFill({
         plan: {
           direction: dir,
-          // Legacy rows spell a pending limit "limit"/"pending"; both fill on a
-          // touch, which is what those plans were always graded as.
-          entryType: normalizeStoredEntryType(r.entryType),
+          entryType: entryTypeCanonical,
           entry: r.entry,
           retestZone: r.retestZone ?? null,
         },
         candle,
         conditionMet,
         armedBefore,
+        tolerance: input.entryTolerance,
       });
       if (conditionMet) armedBefore = true;
       if (fill.filled) {
@@ -269,7 +319,22 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
       }
     }
 
-    const sl = slReached(dir, candle, r.stopLoss);
+    // Grading starts WHEN THE POSITION EXISTS, never before. Candles before a
+    // persisted fill were pre-trade. The fill candle itself grades for touch
+    // fills (the position existed intrabar) but NOT for close fills: a
+    // confirmation_close position is born at that candle's CLOSE, after its
+    // own high/low already happened. This is the transcript's wick-to-4670 —
+    // the candle that confirmed the rejection also wicked through the stop,
+    // and grading that wick against a position born at the close called the
+    // plan's own proof its death.
+    if (triggeredAt != null) {
+      if (candle.time < triggeredAt) continue;
+      if (candle.time === triggeredAt && entryTypeCanonical === "confirmation_close") {
+        continue;
+      }
+    }
+
+    const sl = slReached(dir, candle, r.stopLoss, invalidationMode);
     // Which NEW targets does this candle reach (beyond highestTp)?
     let newHigh: 0 | 1 | 2 | 3 = highestTp;
     for (let i = highestTp; i < targets.length; i++) {
@@ -279,8 +344,19 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     const reachedNewTp = newHigh > highestTp;
 
     if (sl && reachedNewTp) {
-      // Same-candle SL + TP → ambiguous. If a TP was already banked, close there;
-      // otherwise SL-first for risk honesty.
+      if (invalidationMode === "close") {
+        // NOT ambiguous: the close is definitionally the candle's LAST event,
+        // so every intrabar TP touch preceded the stop-confirming close. Bank
+        // the touches, then the close terminates the trade at the best TP.
+        for (let i = highestTp + 1; i <= newHigh; i++) {
+          if (!tpAt[i as 1 | 2 | 3]) tpAt[i as 1 | 2 | 3] = candle.time;
+        }
+        highestTp = newHigh;
+        slHitAt = candle.time;
+        return finalize(STATUS_BY_TP[highestTp as 1 | 2 | 3], WIN_BY_TP[highestTp as 1 | 2 | 3]);
+      }
+      // Touch mode: same-candle SL + TP is ambiguous from OHLC alone. If a TP
+      // was already banked, close there; otherwise SL-first for risk honesty.
       ambiguous = true;
       if (highestTp >= 1) {
         slHitAt = candle.time;
@@ -323,12 +399,17 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
   // Still active — reflect the current lifecycle state.
   const status: TrackedRecommendationStatus =
     highestTp >= 1 ? STATUS_BY_TP[highestTp as 1 | 2 | 3] : triggered ? "triggered" : "pending_entry";
-  const changed = status !== r.status || triggeredAt !== r.triggeredAt || highestTp > 0;
+  const changed =
+    status !== r.status ||
+    triggeredAt !== r.triggeredAt ||
+    highestTp > 0 ||
+    (triggered && effectiveEntry !== (r.effectiveEntry ?? r.entry));
   return {
     status,
     outcome: "pending",
     triggered,
     ambiguous,
+    effectiveEntry: triggered ? effectiveEntry : undefined,
     triggeredAt,
     tp1HitAt: tpAt[1],
     tp2HitAt: tpAt[2],

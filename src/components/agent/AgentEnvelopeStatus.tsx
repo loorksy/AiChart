@@ -2,57 +2,23 @@
 
 /**
  * Phase-0 result transparency (RELIABILITY_PLAN.md items 11 + 7):
- * - AgentModeBadge: a persistent pill above every assistant analysis result
- *   stating the basis of the answer — descriptive (not executable), shadow,
- *   demo, live, or an operational blocker.
  * - AgentFaultCard: shown for an operational_blocker — the safe, simplified
  *   reason (never a raw provider payload) plus the retry stance and the
  *   trace_id the operator quotes to support.
+ *
+ * The old AgentModeBadge — the "descriptive — not authorized to execute"
+ * pill stamped above EVERY assistant reply, greetings included — is gone.
+ * Assistant turns are signed by the agent avatar instead, and the compliance
+ * line lives ONCE as small print under the composer (SmartChartAgentPanel).
  */
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import type { ResultEnvelope } from "@/lib/agent/resultEnvelope";
 import { useLocale } from "@/hooks/useLocale";
-import { envelopeBadge, type BadgeTone } from "@/lib/agent/envelopeBadge";
 import { userMessageForFailure } from "@/lib/agent/errorTaxonomy";
 import {
   summarizeEvidenceCard,
   type EvidenceCard,
 } from "@/lib/agent/evidenceCard";
-
-const TONE_CLASSES: Record<BadgeTone, string> = {
-  descriptive:
-    "border-warning/40 bg-warning/10 text-warning",
-  blocker:
-    "border-destructive/45 bg-destructive/10 text-destructive",
-};
-
-export function AgentModeBadge({
-  envelope,
-}: {
-  envelope?: ResultEnvelope | null;
-}) {
-  const { t } = useLocale();
-  const badge = envelopeBadge(envelope);
-  if (!badge) return null;
-  const label = t(badge.labelKey);
-  return (
-    <span
-      title={label}
-      data-tone={badge.tone}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${TONE_CLASSES[badge.tone]}`}
-    >
-      {badge.tone === "blocker" ? (
-        <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden />
-      ) : (
-        <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70"
-          aria-hidden
-        />
-      )}
-      <span>{label}</span>
-    </span>
-  );
-}
 
 /**
  * Evidence card (RELIABILITY_PLAN.md item 13). A recommendation used to show a
@@ -120,7 +86,10 @@ export function AgentPresentationFacts({
   envelope?: ResultEnvelope | null;
 }) {
   const { t } = useLocale();
-  if (!envelope?.market_data_source && !envelope?.key_price_levels?.length) {
+  // The data source row is gone on operator instruction: provenance is
+  // internal and never user-facing. Old envelopes may still carry
+  // market_data_source; it is deliberately not rendered.
+  if (!envelope?.key_price_levels?.length) {
     return null;
   }
   return (
@@ -128,18 +97,10 @@ export function AgentPresentationFacts({
       data-testid="agent-presentation-facts"
       className="mb-2 rounded-md border border-border/60 bg-muted/25 px-2.5 py-2 text-[11px] text-muted-foreground"
     >
-      {envelope.market_data_source ? (
-        <p>
-          <span className="font-semibold text-foreground/90">{t("agent.source_label")}: </span>
-          <span dir="ltr">{envelope.market_data_source}</span>
-        </p>
-      ) : null}
-      {envelope.key_price_levels?.length ? (
-        <p className="mt-1 tabular-nums" dir="ltr">
-          <span className="font-semibold text-foreground/90">{t("agent.levels_label")}: </span>
-          {envelope.key_price_levels.slice(0, 6).map((l) => l.toFixed(2)).join(", ")}
-        </p>
-      ) : null}
+      <p className="mt-1 tabular-nums" dir="ltr">
+        <span className="font-semibold text-foreground/90">{t("agent.levels_label")}: </span>
+        {envelope.key_price_levels.slice(0, 6).map((l) => l.toFixed(2)).join(", ")}
+      </p>
     </div>
   );
 }

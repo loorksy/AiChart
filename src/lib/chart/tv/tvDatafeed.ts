@@ -13,15 +13,53 @@ import type {
 import type { MarketType } from "@/lib/markets/types";
 import { barDurationMs } from "@/lib/intervals";
 import {
+  dropKlinesClientCache,
   getKlinesClientCache,
   setKlinesClientCache,
   klinesClientKey,
 } from "@/lib/ohlc/klinesClientCache";
 import { APP_WAKE_EVENT, tickReconnectDelayMs } from "@/lib/appWake";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { SYMBOL_MINMOV, symbolPriceScale } from "@/lib/chart/tv/tvSymbolTicks";
 
 /** No PRICE/tick for this long → treat the SSE as a zombie and poll again. */
 export const TICK_STALE_MS = 12_000;
+
+/**
+ * No SSE message AT ALL — including server heartbeats (every 15s) — for this
+ * long while visible → the socket is dead, whatever readyState claims.
+ * Mobile Chrome kills background EventSources without firing onerror, and a
+ * readyState of OPEN on such a corpse is a lie. Two missed heartbeats plus
+ * margin: a healthy stream can never go this quiet.
+ */
+export const SSE_SILENT_MS = 40_000;
+
+/**
+ * No bar emitted for this long when the tab comes back → the widget's own bar
+ * cache is missing candles (background tabs freeze the timers AND the SSE), so
+ * history must be re-requested, not just the forming bar re-polled. Re-polling
+ * alone painted the newest candle next to a hole the chart never repaired.
+ */
+export const BACKFILL_AFTER_MS = 30_000;
+
+/**
+ * May this bar be handed to TradingView's realtime callback?
+ *
+ * TV refuses a bar older than the last one it was given — a "time violation"
+ * that poisons the subscription: every later update is ignored and the chart
+ * sits frozen until a full page reload. The losing order happens exactly at
+ * wake/rollover, when the fresh-candle poll races the reconnected tick stream
+ * and resolves with the PREVIOUS bar after a tick already opened the next one.
+ * Equal time is an update of the current bar and is always allowed.
+ */
+export function barEmittable(
+  lastBarTimeMs: number | undefined,
+  nextBarTimeMs: number,
+): boolean {
+  if (!Number.isFinite(nextBarTimeMs)) return false;
+  if (lastBarTimeMs == null || !Number.isFinite(lastBarTimeMs)) return true;
+  return nextBarTimeMs >= lastBarTimeMs;
+}
 
 import { CHART_CAPTURE_CANDLES } from "@/lib/chart/captureWindow";
 
@@ -122,12 +160,9 @@ export interface TvLatestCandle {
   volume?: number;
 }
 
-function priceScale(symbol: string): number {
-  const s = symbol.toUpperCase();
-  if (s.includes("JPY")) return 1000; // 3 decimals
-  if (s.includes("XAU") || s.includes("XAG")) return 100; // metals, 2 decimals
-  return 100000; // forex majors, 5 decimals
-}
+// minmov/pricescale live in tvSymbolTicks — the drawing adapter converts the
+// position tool's profit/stop distances to ticks with the SAME numbers this
+// datafeed reports, so the library reconstructs the exact prices.
 
 /** Bars served by the platform OANDA feed. */
 const CLOUD_EXCHANGE = "OANDA";
@@ -144,7 +179,16 @@ type BarSubscription = {
 /** Datafeed backed by AiChart's own /api/market/klines + /api/instruments. */
 export function createAiChartDatafeed(
   market: MarketType = "forex",
-  opts: { onLatestCandle?: (candle: TvLatestCandle) => void } = {},
+  opts: {
+    onLatestCandle?: (candle: TvLatestCandle) => void;
+    /**
+     * The tab was away long enough that candles are MISSING, not merely the
+     * forming bar stale. The datafeed has already told TV to drop its bar
+     * cache; the widget owner must now call `resetData()` so history is
+     * re-requested and the hole backfills without a manual reload.
+     */
+    onBarsStale?: () => void;
+  } = {},
 ): IBasicDataFeed {
   // Every bar is served by the platform OANDA feed.
   const exchange = CLOUD_EXCHANGE;
@@ -261,8 +305,8 @@ export function createAiChartDatafeed(
         listed_exchange: exch,
         timezone: "Etc/UTC",
         format: "price",
-        minmov: 1,
-        pricescale: priceScale(sym),
+        minmov: SYMBOL_MINMOV,
+        pricescale: symbolPriceScale(sym),
         has_intraday: true,
         has_weekly_and_monthly: true,
         // Every resolution is served NATIVELY by our klines API. Without these,
@@ -390,6 +434,7 @@ export function createAiChartDatafeed(
       resolution,
       onTick: SubscribeBarsCallback,
       listenerGuid,
+      onResetCacheNeeded?: () => void,
     ) => {
       const interval = resolutionToInterval(resolution);
       const ticker = symbolInfo.ticker ?? symbolInfo.name;
@@ -397,9 +442,20 @@ export function createAiChartDatafeed(
       let forming: Bar | null = null;
       let streamAlive = false;
       let lastTickAt = 0;
+      let lastEmitAt = 0;
+      // Anchors the backfill decision when the tab was backgrounded BEFORE the
+      // first bar ever emitted — lastEmitAt alone stays 0 in that case and the
+      // wake path used to skip the history re-request entirely.
+      const subscribedAt = Date.now();
+      // Any SSE message counts — ready, heartbeat, tick. The silence watchdog
+      // compares against this, so a quiet market with live heartbeats is NOT
+      // mistaken for a dead socket, and a dead socket can no longer hide
+      // behind a stale readyState.
+      let lastMessageAt = 0;
 
       const emit = (bar: Bar) => {
         forming = bar;
+        lastEmitAt = Date.now();
         opts.onLatestCandle?.({
           symbol: ticker,
           interval,
@@ -423,7 +479,15 @@ export function createAiChartDatafeed(
           fresh: true,
         });
         const last = rows[rows.length - 1];
-        if (last && Number.isFinite(last.time)) {
+        if (
+          last &&
+          Number.isFinite(last.time) &&
+          // A poll resolving AFTER a live tick opened the next bar must be
+          // dropped, not emitted: TV treats a backwards bar time as a
+          // violation and stops accepting updates — the frozen chart that
+          // only a reload used to fix.
+          barEmittable(forming?.time, last.time * 1000)
+        ) {
           emit({
             time: last.time * 1000,
             open: last.open,
@@ -437,6 +501,9 @@ export function createAiChartDatafeed(
 
       const applyTickPrice = (price: number, timeMs: number) => {
         const openTime = Math.floor(timeMs / barMs) * barMs;
+        // Same monotonic rule as poll: a tick carrying a lagging server clock
+        // must not step the series backwards.
+        if (!barEmittable(forming?.time, openTime)) return;
         if (!forming || forming.time !== openTime) {
           emit({
             time: openTime,
@@ -477,6 +544,7 @@ export function createAiChartDatafeed(
 
         const bindSource = (source: EventSource) => {
           sub.source = source;
+          lastMessageAt = Date.now();
           source.onmessage = (event) => {
             try {
               const data = JSON.parse(event.data) as {
@@ -484,7 +552,8 @@ export function createAiChartDatafeed(
                 mid?: number;
                 time?: number;
               };
-              if (data.type === "ready") {
+              lastMessageAt = Date.now();
+              if (data.type === "ready" || data.type === "heartbeat") {
                 streamAlive = true;
                 reconnectAttempt = 0;
                 return;
@@ -540,6 +609,10 @@ export function createAiChartDatafeed(
           }, delay);
         };
 
+        // Resume events arrive in bursts (visibilitychange + focus + pageshow
+        // + app-wake within the same second); one full rebuild serves them all.
+        let lastWakeHandledAt = 0;
+
         const onVisibility = () => {
           if (document.visibilityState === "hidden") {
             streamAlive = false;
@@ -548,21 +621,60 @@ export function createAiChartDatafeed(
             sub.source = undefined;
             return;
           }
+          const now = Date.now();
+          if (now - lastWakeHandledAt < 1_000) return;
+          lastWakeHandledAt = now;
+          // Away long enough that whole candles are missing (frozen timers,
+          // dead SSE, bfcache restore, server-link recovery)? Re-polling only
+          // repaints the NEWEST bar next to a hole. Tell TV to drop its bar
+          // cache and ask the widget owner to resetData() so history is
+          // re-requested and the gap backfills without a manual reload.
+          // Never emitted yet? Judge against subscription time instead —
+          // a chart backgrounded before its first bar still needs the truth.
+          const missedBars =
+            now - (lastEmitAt > 0 ? lastEmitAt : subscribedAt) > BACKFILL_AFTER_MS;
           reconnectAttempt = 0;
           clearReconnect();
           streamAlive = false;
+          // Teardown + rebuild unconditionally — a background-killed
+          // EventSource can still claim readyState OPEN.
           openStream(true);
+          if (missedBars) {
+            // The forming-bar anchor belongs to the stale pre-sleep period;
+            // fresh emits must not be judged against it.
+            forming = null;
+            // Bars cached before the sleep ARE the hole — resetData() must
+            // not be answered from them, or the chart repaints its own gap.
+            dropKlinesClientCache(klinesClientKey(ticker, interval, market));
+            try {
+              onResetCacheNeeded?.();
+            } catch {
+              /* TV may be mid-teardown */
+            }
+            opts.onBarsStale?.();
+          }
           void poll();
         };
 
+        // Staleness watchdog. Message silence — no tick, no heartbeat, no
+        // ready — is the one reliable death signal now that the server
+        // heartbeats every 15s: readyState lies after mobile Chrome kills a
+        // background socket, and tick gaps alone are normal in a quiet
+        // market. Also self-heals a subscription left with neither a socket
+        // nor a pending reconnect (e.g. reconnect was skipped while hidden).
         sub.staleTimer = setInterval(() => {
           if (typeof document !== "undefined" && document.visibilityState === "hidden") {
             return;
           }
-          if (lastTickAt === 0 || Date.now() - lastTickAt <= TICK_STALE_MS) return;
-          streamAlive = false;
-          openStream(true);
-          void poll();
+          if (!sub.source) {
+            if (!sub.reconnectTimer) openStream(true);
+            return;
+          }
+          if (lastMessageAt > 0 && Date.now() - lastMessageAt > SSE_SILENT_MS) {
+            streamAlive = false;
+            openStream(true);
+            void poll();
+          }
         }, 4_000);
 
         openStream();
