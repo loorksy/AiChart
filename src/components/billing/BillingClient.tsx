@@ -9,6 +9,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { Button, buttonVariants } from "@/components/squareui/button";
 import { CardSkeleton } from "@/components/ui/skeletons/page-skeletons";
 import type { TranslationKey } from "@/lib/i18n";
+import { formatInteger } from "@/lib/display/numericDisplay";
 import { cn } from "@/lib/utils";
 
 interface LedgerRow {
@@ -244,7 +245,10 @@ export function BillingClient() {
             dir="ltr"
             data-testid="credit-balance"
           >
-            {data.balance}
+            {formatInteger(data.balance, "en")}{" "}
+            <span className="text-base font-semibold text-muted-foreground">
+              {t("account.credits_unit")}
+            </span>
           </p>
         </Surface>
         <Surface padding="lg">

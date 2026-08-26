@@ -17,13 +17,18 @@ export const metadata = { title: t("ar", "support.title") };
  * There was no user-facing support surface in the web app at all — the only
  * way to reach a human was Telegram, and the admin console's inbox had nothing
  * on this side to talk to.
+ *
+ * The page is the agent chat's shape: the shell gives this route the same
+ * chrome-free, non-scrolling main as /chat (see workspaceNoPadding), and the
+ * chat component owns its own scroll region and docked composer — no page
+ * header, no boxed column.
  */
 export default async function SupportPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/console/support");
   return (
-    <main className="page-shell flex h-[calc(100dvh-8rem)] max-w-3xl flex-col">
+    <div className="flex min-h-0 w-full flex-1 flex-col">
       <SupportChat />
-    </main>
+    </div>
   );
 }

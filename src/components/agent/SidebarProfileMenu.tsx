@@ -73,7 +73,7 @@ function ProfileMenuItems({
   const supportUnread = useSupportUnread();
   const isDark = resolved === "dark";
   const themeLabel = isDark ? t("shell.theme_to_light") : t("shell.theme_to_dark");
-  const rowClass = cn(ITEM_CLASS, touchSize && "min-h-12");
+  const rowClass = cn(ITEM_CLASS, touchSize && "min-h-11");
 
   async function logout() {
     onDone();
@@ -229,7 +229,7 @@ function ProfileMenuItems({
         role="menuitem"
         className={cn(
           "flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-start text-sm text-destructive transition-colors duration-150 hover:bg-destructive/10 focus-visible:outline-none focus-visible:bg-destructive/10",
-          touchSize && "min-h-12",
+          touchSize && "min-h-11",
         )}
         onClick={() => void logout()}
       >
@@ -251,8 +251,8 @@ function ProfileIdentity({
   email: string;
 }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-2">
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-gradient-to-b from-muted to-muted/40 text-base font-semibold text-foreground">
+    <div className="flex items-center gap-3 px-4 pb-1.5 pt-1">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-gradient-to-b from-muted to-muted/40 text-sm font-semibold text-foreground">
         {initial}
       </span>
       <span className="flex min-w-0 flex-col">
@@ -543,7 +543,7 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
           {/* The account panel: status, balance, expiry, the alerts and both
               actions — everything visible at once, contained in ONE card. */}
           <AccountFacts />
-          <div className="px-2 pb-1 pt-2">
+          <div className="px-2 pb-1 pt-1.5">
             <ProfileMenuItems
               onDone={() => setOpen(false)}
               langOpen={langOpen}
@@ -558,11 +558,12 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
 }
 
 /**
- * The plan-and-balance card (billing v3), in one contained frame with a real
- * hierarchy: the plan chip and the renewal date share the top axis, the
- * credit balance is the card's hero number (in the reader's own digits), the
- * threshold alerts render as styled banners INSIDE the card, and the two
- * actions are buttons rather than floating text links.
+ * The plan-and-balance card (billing v3): one COMPACT contained frame, sized
+ * like the account popovers of the big AI platforms. The plan chip and the
+ * renewal date share the top axis; the balance is one strong "10 Credits"
+ * line (credit amounts always render in Western digits with "Credits" as the
+ * unit — owner's convention — even in the Arabic UI); the threshold alerts
+ * are slim notices INSIDE the card; the two actions are one row of buttons.
  */
 function AccountFacts() {
   const { t, locale } = useLocale();
@@ -576,7 +577,7 @@ function AccountFacts() {
   return (
     <div
       data-testid="account-facts"
-      className="mx-4 mt-2 rounded-[var(--radius-lg)] border border-border/70 bg-muted/20 p-4"
+      className="mx-4 mt-1.5 rounded-[var(--radius-lg)] border border-border/70 bg-muted/20 p-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <AccountStatusBadge />
@@ -591,18 +592,14 @@ function AccountFacts() {
         ) : null}
       </div>
 
-      <p className="mt-4 text-[11px] font-medium text-muted-foreground">
-        {t("account.balance_label")}
-      </p>
-      <div className="mt-1 flex items-baseline gap-1.5">
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{t("account.balance_label")}</span>
         <span
           data-testid="account-balance"
-          className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-foreground"
+          dir="ltr"
+          className="text-sm font-semibold tabular-nums text-foreground"
         >
-          {formatInteger(summary.balance, locale)}
-        </span>
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("account.credits_unit")}
+          {formatInteger(summary.balance, "en")} {t("account.credits_unit")}
         </span>
       </div>
 
@@ -611,13 +608,13 @@ function AccountFacts() {
           role="status"
           data-testid="account-alert"
           className={cn(
-            "mt-3 flex items-start gap-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-5",
+            "mt-2 flex items-start gap-1.5 rounded-[var(--radius)] border px-2.5 py-1.5 text-[11px] leading-4",
             summary.alerts.exhausted
               ? "border-destructive/25 bg-destructive/10 text-destructive"
               : "border-warning/25 bg-warning/10 text-warning",
           )}
         >
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <AlertTriangle className="mt-px size-3 shrink-0" aria-hidden />
           <span>
             {summary.alerts.exhausted
               ? t("account.alert.exhausted")
@@ -629,25 +626,25 @@ function AccountFacts() {
         <div
           role="status"
           data-testid="account-alert"
-          className="mt-3 flex items-start gap-2 rounded-[var(--radius)] border border-warning/25 bg-warning/10 px-3 py-2 text-xs leading-5 text-warning"
+          className="mt-2 flex items-start gap-1.5 rounded-[var(--radius)] border border-warning/25 bg-warning/10 px-2.5 py-1.5 text-[11px] leading-4 text-warning"
         >
-          <CalendarClock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <CalendarClock className="mt-px size-3 shrink-0" aria-hidden />
           <span>{t("account.alert.expiring_soon")}</span>
         </div>
       )}
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-2.5 flex items-center gap-2">
         <Link
           href={pro ? "/console/billing" : "/subscribe"}
           data-testid="account-cta"
-          className="inline-flex min-h-9 flex-1 items-center justify-center rounded-full bg-foreground px-3 text-center text-xs font-semibold text-background transition-opacity duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex min-h-8 flex-1 items-center justify-center rounded-full bg-foreground px-3 text-center text-xs font-semibold text-background transition-opacity duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {pro ? t("billing.cta.topup") : t("billing.cta.subscribe")}
         </Link>
         <Link
           href="/console/billing"
           data-testid="account-ledger"
-          className="metal-chip min-h-9 flex-1 justify-center text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="metal-chip !min-h-8 flex-1 justify-center text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {t("account.ledger_link")}
         </Link>

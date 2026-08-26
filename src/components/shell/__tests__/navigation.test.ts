@@ -226,9 +226,10 @@ test("account sheet frames plan, balance and actions in ONE card", () => {
   const menu = read("components/agent/SidebarProfileMenu.tsx");
   // The card is a contained surface, not loose lines under the identity row.
   assert.match(menu, /data-testid="account-facts"/);
-  // The hero number is locale-formatted (Arabic-Indic digits for ar), never
-  // a raw JS number pasted into the markup.
-  assert.match(menu, /formatInteger\(summary\.balance/);
+  // Credit amounts render in WESTERN digits with "Credits" as the unit —
+  // owner's convention, matching the global AI platforms — even in the
+  // Arabic UI. The formatter is pinned to "en" on purpose.
+  assert.match(menu, /formatInteger\(summary\.balance, "en"\)/);
   // The renewal date goes through the RTL-safe formatter — toLocaleDateString
   // with numeric fields is the same class of bug the support thread had.
   assert.match(menu, /formatFullDate/);

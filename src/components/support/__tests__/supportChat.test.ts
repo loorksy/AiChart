@@ -70,6 +70,19 @@ test("every refusal the server can send has words the user can read", () => {
   }
 });
 
+test("the support surface IS the agent chat surface", () => {
+  // Owner's instruction: same chat, different counterpart. The thread lives
+  // in the agent panel's shell — the same scroll region and the same docked
+  // composer on the same fade wall — with NO page-header block above it.
+  assert.match(CHAT, /chat-panel-shell/);
+  assert.match(CHAT, /chat-scroll-region/);
+  assert.match(CHAT, /chat-composer-fade/);
+  assert.match(CHAT, /chat-composer-dock/);
+  assert.match(CHAT, /--composer-height/, "thread padding tracks the live composer height");
+  assert.doesNotMatch(CHAT, /PageHeader/);
+  assert.doesNotMatch(CHAT, /support\.subtitle/, "no title block floating over the thread");
+});
+
 test("timestamps go through the shared RTL-safe formatter, never a local one", () => {
   // The thread used to build its own "day/month + clock" format with numeric
   // fields ("26/08، 03:04 ص"); inside the RTL page the bidi algorithm tore it
