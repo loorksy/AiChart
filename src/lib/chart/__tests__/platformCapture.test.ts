@@ -249,20 +249,31 @@ describe("ensureChartHostTab", () => {
     }
   });
 
-  it("a container that answers but a tab that never polls is host_not_ready", async () => {
+  it("a container that answers but a tab that never polls is host_not_ready — and the zombie is torn down", async () => {
     process.env.CHART_HOST_URL = "http://chart-host.test";
     process.env.AICHART_SERVICE_TOKEN = "test-service-token-16";
     let now = 0;
+    const calls: string[] = [];
     try {
       const result = await ensureChartHostTab({
         isTabFresh: () => false,
-        fetchImpl: (async () => new Response(JSON.stringify({ ok: true }))) as typeof fetch,
+        fetchImpl: (async (url: RequestInfo | URL) => {
+          calls.push(String(url));
+          return new Response(JSON.stringify({ ok: true }));
+        }) as typeof fetch,
         now: () => now,
         sleep: async () => {
           now += 30_000; // blow straight past the warmup window
         },
       });
       assert.deepEqual(result, { ok: false, reason: "host_not_ready" });
+      // A page that survived a whole warmup without one poll is a zombie —
+      // ensure() keeps reporting it alive and every ensure renews its idle
+      // lease, so it MUST be closed here or the next attempt re-adopts it.
+      assert.deepEqual(calls, [
+        "http://chart-host.test/session/ensure",
+        "http://chart-host.test/session/close",
+      ]);
     } finally {
       delete process.env.CHART_HOST_URL;
       delete process.env.AICHART_SERVICE_TOKEN;

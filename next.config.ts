@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Deploys build IN PLACE while `next start` serves the same .next, and every
+  // capture failure logged in production clustered inside those build windows
+  // (pages launched mid-build against chunks that no longer existed). Setting
+  // NEXT_DIST_DIR at build time writes the new build to a staging directory,
+  // which the deploy script then swaps in atomically before restarting. At
+  // runtime the variable is unset, so `next start` reads the default .next.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   async redirects() {
     return [
       {

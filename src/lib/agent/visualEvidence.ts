@@ -363,10 +363,13 @@ export async function collectVisualEvidence(input: {
         snapshot.drawings_included === true,
     );
 
-    log.debug("visual.captured", {
+    // Info, not debug: production logs hide debug, and an analysis whose eyes
+    // failed silently is exactly the incident this line exists to explain.
+    log.info("visual.captured", {
       symbol: input.symbol,
       captured: snapshots.length,
       missing: result.missing_timeframes.length,
+      reasons: result.missing_timeframes.map((m) => m.reason),
       visuallyVerified,
       elapsedMs: result.elapsed_ms,
     });
