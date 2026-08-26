@@ -4,7 +4,7 @@
  * (a `as Recommendation` cast hid the omission), so the chart adapter fell
  * back to wall-clock "now" — and every redraw, poll hydration, and page
  * reload re-anchored the zones at the latest candle. That is the reported
- * "الصندوق يتحرك مع الشمعة": the box slid right to hug the live bar instead
+ * "the box moves with the candle": it slid right to hug the live bar instead
  * of staying where the plan was issued.
  *
  * This module is the single rule for stamping that anchor: a recommendation

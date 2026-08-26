@@ -1,24 +1,26 @@
 /**
- * The drawn trade box must stay where it was drawn.
+ * The drawn trade zones must be TradingView's NATIVE position tool, pinned
+ * where the plan was issued.
  *
- * Pinned from the real complaint: the profit/stop boxes drifted rightward
- * until they touched the live price ("الصندوق يتحرك حتى يلامس منطقة الدخول").
- * The cause was TradingView's single-point position tool: its second anchor
- * is completed by the library — at "now" — so every redraw stretched the box
- * to the current bar. The fix draws the risk and reward zones as explicit
- * two-anchor rectangles whose left edge is the recommendation's CREATION time
- * and whose right edge is a fixed bar span. These tests fail on the
- * single-point form and pass on the pinned rectangles.
+ * History of the complaint this file pins, in order:
+ * 1. "الصندوق يتحرك حتى يلامس منطقة الدخول" — the zones slid because every
+ *    redraw re-anchored them at wall-clock "now" (the live recommendation
+ *    payload lost `created_at` behind an `as Recommendation` cast). Fixed by
+ *    persisting `created_at` + a sticky per-trade fallback anchor.
+ * 2. "المناطق تتمدد مع حركة الشموع" — the then hand-drawn rectangles placed
+ *    their RIGHT anchor at created_at + 24 bars, a time in the FUTURE. This
+ *    library build cannot resolve a future time to a stable bar: it clamps
+ *    it to the MOVING last bar, so the pair degenerated into a thin column
+ *    hugging the live candle that widened with every new bar.
+ * 3. The user asked for the native tool: `long_position`/`short_position`
+ *    (LineToolRiskRewardLong/Short) — SINGLE-point creation at the entry,
+ *    profit/stop as TICK levels via overrides (the library special-cases
+ *    exactly `profitLevel`/`stopLevel` for these tools), body synthesized
+ *    by the tool itself as a fixed INDEX span. No anchor in the future, no
+ *    text option (the library throws on it for position tools).
  *
- * Second round of the same complaint ("مناطق الربح والخسارة ما زالت تتحرك مع
- * الشمعة"): the rectangles were correct, but the LIVE recommendation payload
- * reached the adapter WITHOUT `created_at` (three producers built it via an
- * `as Recommendation` cast that omitted the field), so the anchor fell back
- * to wall-clock "now" — recomputed on EVERY redraw. Any payload change (poll
- * hydration, MCP re-draw, forced re-apply, reload) rebuilt the zones hugging
- * the latest candle. The tests below simulate exactly that failing sequence:
- * draw → several new bars pass → redraw paths run → the anchors must be
- * byte-identical.
+ * The tests simulate the failing sequences: draw → several new bars pass →
+ * redraw/force/reload paths run → the anchor must be byte-identical.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -41,6 +43,7 @@ interface MultiCall {
 interface SingleCall {
   point: { time?: number; price?: number };
   shape: string;
+  options: Record<string, unknown>;
 }
 
 function fakeChart() {
@@ -65,7 +68,11 @@ function fakeChart() {
       return Promise.resolve(`shape-${n}` as EntityId);
     },
     createShape: (point: ShapePoint, options: { shape: string }) => {
-      single.push({ point: point as SingleCall["point"], shape: options.shape });
+      single.push({
+        point: point as SingleCall["point"],
+        shape: options.shape,
+        options: options as unknown as Record<string, unknown>,
+      });
       n += 1;
       return Promise.resolve(`shape-${n}` as EntityId);
     },
@@ -87,84 +94,147 @@ const REC = {
   created_at: CREATED_AT_MS,
 } as unknown as Recommendation;
 
-function positionRects(multi: MultiCall[]): MultiCall[] {
-  return multi.filter((c) => c.shape === "rectangle");
+const CTX = { symbol: "XAUUSD", interval: "15m" };
+
+function positionCalls(single: SingleCall[]): SingleCall[] {
+  return single.filter(
+    (c) => c.shape === "long_position" || c.shape === "short_position",
+  );
 }
 
-describe("tvDrawingAdapter — the trade box is pinned at both ends", () => {
-  it("draws the profit and loss zones as two-anchor rectangles, never a single-point position tool", async () => {
+describe("tvDrawingAdapter — the native position tool, pinned at the plan's creation", () => {
+  it("draws ONE native long_position for a buy — never hand-drawn rectangles", async () => {
     const { chart, multi, single } = fakeChart();
-    const mgr = new TvDrawingManager(chart);
-    mgr.apply([], { recommendation: REC, targets: [4660.02, 4670.46] }, { interval: "15m" });
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: REC, targets: [4660.02, 4670.46] },
+      CTX,
+    );
     await flush();
 
-    const rects = positionRects(multi);
-    assert.equal(rects.length, 2, "one reward box + one risk box");
-    for (const rect of rects) {
-      assert.equal(rect.points.length, 2, "both anchors are supplied by us");
-    }
-    // The single-point API is the drift bug: TradingView completes the second
-    // anchor at "now" and stretches it as price advances.
+    const tools = positionCalls(single);
+    assert.equal(tools.length, 1, "exactly one position tool");
+    assert.equal(tools[0]!.shape, "long_position");
     assert.ok(
-      !single.some((c) => c.shape === "long_position" || c.shape === "short_position"),
-      "the single-point position tool must not be used",
+      !multi.some((c) => c.shape === "rectangle"),
+      "the rectangle pair is the degenerate-column bug — the native tool replaces it",
     );
   });
 
-  it("anchors the left edge at the recommendation's creation time and the right edge a fixed span later", async () => {
-    const { chart, multi } = fakeChart();
-    const mgr = new TvDrawingManager(chart);
-    mgr.apply([], { recommendation: REC }, { interval: "15m" });
+  it("draws short_position for a sell", async () => {
+    const { chart, single } = fakeChart();
+    const sell = {
+      ...REC,
+      action: "sell",
+      entry: 4660,
+      stop_loss: 4671,
+      take_profit: 4640,
+    } as unknown as Recommendation;
+    new TvDrawingManager(chart).apply([], { recommendation: sell }, CTX);
+    await flush();
+    assert.equal(positionCalls(single)[0]?.shape, "short_position");
+  });
+
+  it("anchors the single entry point at the recommendation's creation time and entry price", async () => {
+    const { chart, single } = fakeChart();
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX);
     await flush();
 
-    const expectedLeft = Math.round(CREATED_AT_MS / 1000);
-    for (const rect of positionRects(multi)) {
-      const [a, b] = rect.points;
-      assert.equal(a!.time, expectedLeft, "left edge = creation time, not wall-clock now");
-      assert.equal(
-        b!.time - a!.time,
-        BAR_SEC * 24,
-        "right edge is a FIXED bar span — extending to 'now' is the reported drift",
-      );
-    }
+    const tool = positionCalls(single)[0]!;
+    assert.equal(tool.point.time, Math.round(CREATED_AT_MS / 1000));
+    assert.equal(tool.point.price, 4646.19);
+  });
+
+  it("supplies NO second time anchor — a future anchor is the thin-expanding-column bug", async () => {
+    const { chart, multi, single } = fakeChart();
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX);
+    await flush();
+
+    // This build clamps any time beyond the last bar to the MOVING last bar,
+    // so a caller-supplied right edge collapses onto the live candle and
+    // crawls right with every new bar. The tool must synthesize its own
+    // fixed INDEX-based body from the one entry point.
+    assert.equal(positionCalls(single).length, 1, "single-point creation only");
+    assert.ok(
+      !multi.some(
+        (c) => c.shape === "long_position" || c.shape === "short_position",
+      ),
+      "the position tool must not be created through the multipoint API",
+    );
+  });
+
+  it("converts profit/stop to TICKS from the datafeed's symbol info (XAUUSD: 2 decimals)", async () => {
+    const { chart, single } = fakeChart();
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX);
+    await flush();
+
+    const overrides = positionCalls(single)[0]!.options.overrides as Record<
+      string,
+      number
+    >;
+    // pricescale/minmov for XAU* is 100/1 → 1 tick = 0.01.
+    assert.equal(overrides.profitLevel, Math.round((4660.02 - 4646.19) * 100));
+    assert.equal(overrides.stopLevel, Math.round((4646.19 - 4642.93) * 100));
+  });
+
+  it("never sets `text` on the position tool — the library throws and the shape silently vanishes", async () => {
+    const { chart, single } = fakeChart();
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX);
+    await flush();
+    assert.ok(
+      !("text" in positionCalls(single)[0]!.options),
+      "position tools generate their own stats label; caller text throws 'Value is undefined'",
+    );
+  });
+
+  it("keeps extra targets beyond TP1 as labeled lines — the tool shows one profit level", async () => {
+    const { chart, single } = fakeChart();
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: REC, targets: [4660.02, 4670.46, 4680.1] },
+      CTX,
+    );
+    await flush();
+    const hlines = single.filter((c) => c.shape === "horizontal_line");
+    assert.equal(hlines.length, 2, "TP2 and TP3 lines");
   });
 
   it("re-applying the same payload is a no-op (poll no-flicker, no snap-back)", async () => {
-    const { chart, multi } = fakeChart();
+    const { chart, single } = fakeChart();
     const mgr = new TvDrawingManager(chart);
     const trade = { recommendation: REC, targets: [4660.02] };
-    mgr.apply([], trade, { interval: "15m" });
+    mgr.apply([], trade, CTX);
     await flush();
-    const after = multi.length;
+    const after = single.length;
 
-    mgr.apply([], trade, { interval: "15m" });
-    mgr.apply([], { ...trade }, { interval: "15m" });
+    mgr.apply([], trade, CTX);
+    mgr.apply([], { ...trade }, CTX);
     await flush();
-    assert.equal(multi.length, after, "unchanged payload must not destroy/recreate shapes");
+    assert.equal(single.length, after, "unchanged payload must not destroy/recreate shapes");
   });
 
-  it("a forced redraw reproduces byte-identical anchors — the box never migrates", async () => {
-    const { chart, multi } = fakeChart();
+  it("a forced redraw reproduces a byte-identical anchor and levels — the tool never migrates", async () => {
+    const { chart, single } = fakeChart();
     const mgr = new TvDrawingManager(chart);
-    mgr.apply([], { recommendation: REC }, { interval: "15m" });
+    mgr.apply([], { recommendation: REC }, CTX);
     await flush();
-    const firstAnchors = positionRects(multi).map((c) => c.points);
+    const first = positionCalls(single)[0]!;
 
-    mgr.apply([], { recommendation: REC }, { interval: "15m" }, { force: true });
+    mgr.apply([], { recommendation: REC }, CTX, { force: true });
     await flush();
-    const rects = positionRects(multi);
-    const secondAnchors = rects.slice(firstAnchors.length).map((c) => c.points);
+    const second = positionCalls(single)[1]!;
+    assert.deepEqual(second.point, first.point, "same entry anchor");
     assert.deepEqual(
-      secondAnchors,
-      firstAnchors,
-      "a redraw later in time must land on the exact same anchors",
+      second.options.overrides,
+      first.options.overrides,
+      "same tick levels",
     );
   });
 
-  it("new bars never shift the zones — even for a legacy payload without created_at", async () => {
+  it("new bars never shift the tool — even for a legacy payload without created_at", async () => {
     // The live bug: producers delivered the recommendation WITHOUT created_at,
-    // the anchor fell back to "now", and every redraw re-anchored the boxes at
-    // the latest candle. The fallback must now resolve ONCE per trade and be
+    // the anchor fell back to "now", and every redraw re-anchored the zones at
+    // the latest candle. The fallback must resolve ONCE per trade and be
     // reused by every later redraw, no matter how far the clock advanced.
     const noCreatedAt = {
       action: "buy",
@@ -172,17 +242,16 @@ describe("tvDrawingAdapter — the trade box is pinned at both ends", () => {
       stop_loss: 4642.93,
       take_profit: 4660.02,
     } as unknown as Recommendation;
-    const { chart, multi } = fakeChart();
+    const { chart, single } = fakeChart();
     const mgr = new TvDrawingManager(chart);
     const realNow = Date.now;
     try {
       let clock = Date.UTC(2026, 7, 25, 12, 0, 0);
       Date.now = () => clock;
 
-      mgr.apply([], { recommendation: noCreatedAt }, { interval: "15m" });
+      mgr.apply([], { recommendation: noCreatedAt }, CTX);
       await flush();
-      const firstAnchors = positionRects(multi).map((c) => c.points);
-      assert.equal(firstAnchors.length, 2, "both zones drawn");
+      const firstAnchor = positionCalls(single)[0]!.point;
 
       // Several new 15m candles form, then a payload change (poll hydration /
       // MCP re-draw) forces a full clear+recreate of every shape.
@@ -195,88 +264,70 @@ describe("tvDrawingAdapter — the trade box is pinned at both ends", () => {
           points: [{ price: 4630, time: clock }],
         },
       ];
-      mgr.apply(
-        changedDrawings,
-        { recommendation: noCreatedAt },
-        { interval: "15m" },
-      );
+      mgr.apply(changedDrawings, { recommendation: noCreatedAt }, CTX);
       await flush();
-      let rects = positionRects(multi);
       assert.deepEqual(
-        rects.slice(firstAnchors.length).map((c) => c.points),
-        firstAnchors,
+        positionCalls(single)[1]!.point,
+        firstAnchor,
         "a redraw after new candles must reuse the FIRST anchor, not re-anchor at 'now'",
       );
 
       // More candles, then a forced re-apply (frame switch / data reload path).
       clock += BAR_SEC * 7 * 1000;
-      mgr.apply(
-        changedDrawings,
-        { recommendation: noCreatedAt },
-        { interval: "15m" },
-        { force: true },
-      );
+      mgr.apply(changedDrawings, { recommendation: noCreatedAt }, CTX, {
+        force: true,
+      });
       await flush();
-      rects = positionRects(multi);
       assert.deepEqual(
-        rects.slice(rects.length - 2).map((c) => c.points),
-        firstAnchors,
-        "a forced redraw later in time must also land on the original anchors",
+        positionCalls(single)[2]!.point,
+        firstAnchor,
+        "a forced redraw later in time must also land on the original anchor",
       );
     } finally {
       Date.now = realNow;
     }
   });
 
-  it("a reload reproduces the anchors from the persisted created_at, not from 'now'", async () => {
-    // Page reload = a brand-new manager with the clock far ahead. The zones
-    // stay exactly where drawn because the anchor comes from the STORED
+  it("a reload reproduces the anchor from the persisted created_at, not from 'now'", async () => {
+    // Page reload = a brand-new manager with the clock far ahead. The tool
+    // stays exactly where drawn because the anchor comes from the STORED
     // recommendation data (created_at), never from render time.
     const realNow = Date.now;
     try {
       Date.now = () => CREATED_AT_MS;
       const first = fakeChart();
-      new TvDrawingManager(first.chart).apply(
-        [],
-        { recommendation: REC },
-        { interval: "15m" },
-      );
+      new TvDrawingManager(first.chart).apply([], { recommendation: REC }, CTX);
       await flush();
-      const before = positionRects(first.multi).map((c) => c.points);
+      const before = positionCalls(first.single)[0]!;
 
       // Hours later, a fresh widget + manager hydrate the same stored payload.
       Date.now = () => CREATED_AT_MS + 6 * 60 * 60 * 1000;
       const second = fakeChart();
-      new TvDrawingManager(second.chart).apply(
-        [],
-        { recommendation: REC },
-        { interval: "15m" },
-      );
+      new TvDrawingManager(second.chart).apply([], { recommendation: REC }, CTX);
       await flush();
-      const after = positionRects(second.multi).map((c) => c.points);
-      assert.deepEqual(after, before, "reload must reuse the persisted anchor byte-for-byte");
+      const after = positionCalls(second.single)[0]!;
+      assert.deepEqual(after.point, before.point, "reload must reuse the persisted anchor byte-for-byte");
+      assert.deepEqual(after.options.overrides, before.options.overrides);
     } finally {
       Date.now = realNow;
     }
   });
 
-  it("covers the price extents: reward from entry to TP, risk from entry to SL", async () => {
-    const { chart, multi } = fakeChart();
-    const mgr = new TvDrawingManager(chart);
-    mgr.apply([], { recommendation: REC }, { interval: "15m" });
+  it("renders the AI-drawn long_position/short_position ChartDrawing through the same native tool", async () => {
+    const { chart, single } = fakeChart();
+    const drawing: ChartDrawing = {
+      type: "short_position",
+      confidence: 80,
+      points: [{ time: CREATED_AT_MS, price: 4660 }],
+      meta: { takeProfit: 4640, stopLoss: 4671 },
+    };
+    new TvDrawingManager(chart).apply([drawing], undefined, CTX);
     await flush();
-
-    const rects = positionRects(multi);
-    const prices = rects.map((r) => r.points.map((p) => p.price).sort((x, y) => x - y));
-    assert.deepEqual(
-      prices.find((p) => p[1] === 4660.02),
-      [4646.19, 4660.02],
-      "reward box spans entry → TP1",
-    );
-    assert.deepEqual(
-      prices.find((p) => p[0] === 4642.93),
-      [4642.93, 4646.19],
-      "risk box spans SL → entry",
-    );
+    const tool = positionCalls(single)[0]!;
+    assert.equal(tool.shape, "short_position");
+    assert.equal(tool.point.time, Math.round(CREATED_AT_MS / 1000));
+    const overrides = tool.options.overrides as Record<string, number>;
+    assert.equal(overrides.profitLevel, Math.round((4660 - 4640) * 100));
+    assert.equal(overrides.stopLevel, Math.round((4671 - 4660) * 100));
   });
 });

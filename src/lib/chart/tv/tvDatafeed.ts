@@ -20,6 +20,7 @@ import {
 } from "@/lib/ohlc/klinesClientCache";
 import { APP_WAKE_EVENT, tickReconnectDelayMs } from "@/lib/appWake";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { SYMBOL_MINMOV, symbolPriceScale } from "@/lib/chart/tv/tvSymbolTicks";
 
 /** No PRICE/tick for this long → treat the SSE as a zombie and poll again. */
 export const TICK_STALE_MS = 12_000;
@@ -159,12 +160,9 @@ export interface TvLatestCandle {
   volume?: number;
 }
 
-function priceScale(symbol: string): number {
-  const s = symbol.toUpperCase();
-  if (s.includes("JPY")) return 1000; // 3 decimals
-  if (s.includes("XAU") || s.includes("XAG")) return 100; // metals, 2 decimals
-  return 100000; // forex majors, 5 decimals
-}
+// minmov/pricescale live in tvSymbolTicks — the drawing adapter converts the
+// position tool's profit/stop distances to ticks with the SAME numbers this
+// datafeed reports, so the library reconstructs the exact prices.
 
 /** Bars served by the platform OANDA feed. */
 const CLOUD_EXCHANGE = "OANDA";
@@ -307,8 +305,8 @@ export function createAiChartDatafeed(
         listed_exchange: exch,
         timezone: "Etc/UTC",
         format: "price",
-        minmov: 1,
-        pricescale: priceScale(sym),
+        minmov: SYMBOL_MINMOV,
+        pricescale: symbolPriceScale(sym),
         has_intraday: true,
         has_weekly_and_monthly: true,
         // Every resolution is served NATIVELY by our klines API. Without these,

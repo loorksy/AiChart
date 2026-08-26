@@ -150,7 +150,7 @@
   "src/lib/chart/chartTerminology.ts": 70,
   "src/lib/chart/geometry/toDrawings.ts": 8,
   "src/lib/chart/processDrawings.ts": 1,
-  "src/lib/chart/tv/tvDrawingAdapter.ts": 6,
+  "src/lib/chart/tv/tvDrawingAdapter.ts": 4,
   "src/lib/chartDrawingLabels.ts": 38,
   "src/lib/chartOverlays.ts": 5,
   "src/lib/chartSnapshot.ts": 17,

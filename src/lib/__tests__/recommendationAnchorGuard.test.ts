@@ -78,4 +78,18 @@ describe("recommendation anchors come from stored creation time, never render-ti
       "the per-call wall-clock fallback is the bug — it must not come back",
     );
   });
+
+  it("the trade plan renders through the NATIVE position tool with no future time anchor", () => {
+    const src = read("lib/chart/tv/tvDrawingAdapter.ts");
+    assert.match(
+      src,
+      /shape: direction === "long" \? "long_position" : "short_position"/,
+      "the risk/reward zones must be TradingView's RiskReward tool, not hand-drawn rectangles",
+    );
+    assert.doesNotMatch(
+      src,
+      /LATERAL_BARS/,
+      "a caller-computed right edge beyond the last bar clamps to the MOVING live bar — that was the thin expanding column",
+    );
+  });
 });
