@@ -585,6 +585,14 @@ function AccountFacts() {
               credits: String(summary.balance),
             })}
       </p>
+      {/* Exhausted and low are distinct, mutually exclusive states: an
+          account at zero is told its balance HAS run out (and what stopped),
+          never that it is "running low". */}
+      {summary.alerts.exhausted && (
+        <p className="mt-1 text-xs text-destructive" role="status">
+          {t("account.alert.exhausted")}
+        </p>
+      )}
       {summary.alerts.low_balance && (
         <p className="mt-1 text-xs text-warning" role="status">
           {t("account.alert.low_balance")}

@@ -37,8 +37,11 @@ export function BalanceChip() {
   }
 
   const pro = summary.status === "pro";
-  const empty = pro && summary.balance <= 0;
-  const low = pro && !empty && summary.alerts.low_balance;
+  // The server derives both states from one place (accountSummary): exhausted
+  // means the balance is GONE and spending stopped — for Free accounts too —
+  // while low is an early warning that only exists above zero.
+  const empty = summary.alerts.exhausted;
+  const low = !empty && summary.alerts.low_balance;
 
   return (
     <Link
@@ -73,7 +76,7 @@ export function BalanceChip() {
       <span dir="ltr">{summary.balance}</span>
       {(empty || low) && (
         <span className="hidden sm:inline">
-          {empty ? t("balance.add_credit") : t("balance.low")}
+          {empty ? t("balance.empty") : t("balance.low")}
         </span>
       )}
     </Link>

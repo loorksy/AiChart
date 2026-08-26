@@ -24,8 +24,19 @@ export interface AccountSummary {
   balance: number;
   expires_at: string | null;
   alerts: {
-    /** Balance at/below the admin threshold (pro accounts only; 0 = off). */
+    /**
+     * Balance LOW but not gone: above zero and at/below the admin threshold
+     * (pro accounts only; 0 = off). Mutually exclusive with `exhausted` —
+     * an account at zero must never be told it is "running low".
+     */
     low_balance: boolean;
+    /**
+     * Balance fully spent (zero or below), free or pro. Spending operations
+     * are refused in this state, so the surfaces must say THAT — "your
+     * balance has run out" with a renewal/top-up path — not a warning about
+     * something that already happened.
+     */
+    exhausted: boolean;
     /** Subscription ends within the admin warning window (0 = off). */
     expiring_soon: boolean;
   };
@@ -46,8 +57,13 @@ export async function buildAccountSummary(
   ]);
   const pro = snapshot.isAdmin || snapshot.hasPaidAccess;
   const expiresMs = snapshot.expiresAt ? new Date(snapshot.expiresAt).getTime() : null;
+  // Admins never pay per operation, so an empty balance stops nothing for them.
+  const exhausted = !snapshot.isAdmin && balance <= 0;
   const lowBalance =
-    pro && plan.low_balance_threshold > 0 && balance <= plan.low_balance_threshold;
+    pro &&
+    !exhausted &&
+    plan.low_balance_threshold > 0 &&
+    balance <= plan.low_balance_threshold;
   const expiringSoon =
     pro &&
     plan.expiry_warn_days > 0 &&
@@ -63,7 +79,7 @@ export async function buildAccountSummary(
     language: await resolveUserLocale(user.id),
     balance,
     expires_at: snapshot.expiresAt,
-    alerts: { low_balance: lowBalance, expiring_soon: expiringSoon },
+    alerts: { low_balance: lowBalance, exhausted, expiring_soon: expiringSoon },
     thresholds: {
       low_balance: plan.low_balance_threshold,
       expiry_warn_days: plan.expiry_warn_days,

@@ -94,6 +94,58 @@ describe("buildAccountSummary", () => {
     assert.equal(s.balance, 120, "frozen, not hidden and not deleted");
   });
 
+  it("a spent balance reads EXHAUSTED, never 'running low'", async () => {
+    await planConfig.updateBillingPlanSettings({ low_balance_threshold: 50 }, 1);
+    planConfig.bustBillingConfigCache();
+
+    // Pro at zero: the exact user complaint — the panel showed 0 next to
+    // "your balance is about to run out". Zero is not "about to" anything.
+    const proEmpty = await makeUser({ plan: "active", balance: 0 });
+    const proSummary = await summaryMod.buildAccountSummary(proEmpty);
+    assert.equal(proSummary.balance, 0);
+    assert.equal(proSummary.alerts.exhausted, true, "0 = the balance HAS run out");
+    assert.equal(
+      proSummary.alerts.low_balance,
+      false,
+      "exhausted and low are mutually exclusive — 0 <= threshold must not warn",
+    );
+
+    // Free at zero: spending is refused for them too, so the state shows.
+    const freeEmpty = await makeUser({ plan: "trial", balance: 0 });
+    const freeSummary = await summaryMod.buildAccountSummary(freeEmpty);
+    assert.equal(freeSummary.alerts.exhausted, true);
+
+    // Above zero but under the threshold: LOW, not exhausted.
+    const low = await makeUser({ plan: "active", balance: 30 });
+    const lowSummary = await summaryMod.buildAccountSummary(low);
+    assert.equal(lowSummary.alerts.low_balance, true);
+    assert.equal(lowSummary.alerts.exhausted, false);
+
+    // Healthy balance: neither.
+    const fine = await makeUser({ plan: "active", balance: 500 });
+    const fineSummary = await summaryMod.buildAccountSummary(fine);
+    assert.equal(fineSummary.alerts.exhausted, false);
+    assert.equal(fineSummary.alerts.low_balance, false);
+
+    await planConfig.updateBillingPlanSettings({ low_balance_threshold: 0 }, 1);
+    planConfig.bustBillingConfigCache();
+  });
+
+  it("an admin never reads exhausted — they are not charged per operation", async () => {
+    seq += 1;
+    const id = await db.insertReturningId(
+      "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+      [`status-admin-${seq}@example.com`, "x", "admin", "active"],
+    );
+    const s = await summaryMod.buildAccountSummary({
+      id,
+      role: "admin",
+      status: "active",
+    } as never);
+    assert.equal(s.balance, 0);
+    assert.equal(s.alerts.exhausted, false);
+  });
+
   it("the quiet alerts fire exactly on the ADMIN thresholds", async () => {
     await planConfig.updateBillingPlanSettings(
       { low_balance_threshold: 50, expiry_warn_days: 5 },
@@ -135,13 +187,35 @@ describe("the status UI is readable without color", () => {
     assert.match(badge, /account\.badge\.pro/);
     assert.match(badge, /account\.badge\.free/);
     assert.match(badge, /sr-only/, "the alert dot alone is never the message");
+    assert.match(badge, /account\.alert\.exhausted/, "zero has its own words");
   });
 
   it("the balance chip reads the shared summary and the admin threshold — no constants", () => {
     const chip = readFileSync(path.join(SRC, "components/shell/BalanceChip.tsx"), "utf8");
     assert.match(chip, /useBillingSummary/);
     assert.match(chip, /alerts\.low_balance/);
+    assert.match(chip, /alerts\.exhausted/, "empty comes from the shared summary too");
     assert.doesNotMatch(chip, /LOW_BALANCE_USD/);
+  });
+
+  it("every passive surface distinguishes exhausted from low", () => {
+    // The user's complaint verbatim: the balance read 0 while the message
+    // said "your balance is ABOUT to run out". Each surface that shows the
+    // warning must know the difference.
+    const sheet = readFileSync(
+      path.join(SRC, "components/agent/SidebarProfileMenu.tsx"),
+      "utf8",
+    );
+    assert.match(sheet, /alerts\.exhausted/);
+    assert.match(sheet, /account\.alert\.exhausted/);
+
+    const billing = readFileSync(
+      path.join(SRC, "components/billing/BillingClient.tsx"),
+      "utf8",
+    );
+    assert.match(billing, /billing\.exhausted_title/);
+    assert.match(billing, /billing\.exhausted_body_pro/);
+    assert.match(billing, /billing\.exhausted_body_free/);
   });
 
   it("completed turns and link submissions refresh the badge instantly", () => {
