@@ -133,27 +133,50 @@ function styleOverrides(d: ChartDrawing): Record<string, unknown> {
   };
 }
 
-/**
- * Stable time anchor for a recommendation's position tool: its creation time
- * when parseable, else the current bar's open — never raw wall-clock, which
- * drifts between redraws.
- */
-function stableAnchorSec(rec: Recommendation, barSec: number): number {
+/** Recommendation creation time in TV seconds, or null when the payload
+ *  carries no parseable `created_at`. */
+function createdAtSec(rec: Recommendation): number | null {
   const raw = rec.created_at;
   const parsed =
     typeof raw === "number" ? Number(raw) : raw ? Date.parse(String(raw)) : NaN;
-  if (Number.isFinite(parsed) && parsed > 0) return toSec(parsed);
-  const now = nowSec();
-  const step = Math.max(60, barSec);
-  return now - (now % step);
+  return Number.isFinite(parsed) && parsed > 0 ? toSec(parsed) : null;
 }
 
 /** Manages TradingView shapes for one chart — mirrors ChartDrawing[] onto it. */
 export class TvDrawingManager {
   private ids: EntityId[] = [];
   private lastFingerprint = "";
+  /**
+   * Fallback anchors for recommendations that arrived WITHOUT `created_at`,
+   * keyed by trade identity. Resolved once per trade and reused on every
+   * later apply — recomputing "now" on each redraw was exactly the reported
+   * slide: any payload change (poll hydration, MCP re-draw, forced re-apply)
+   * rebuilt the profit/loss boxes hugging the latest candle. Deliberately
+   * survives clear(): clear() runs before every redraw, and re-anchoring
+   * there would be the bug all over again. Dies only with the widget.
+   */
+  private readonly fallbackAnchorSec = new Map<string, number>();
 
   constructor(private readonly chart: IChartWidgetApi) {}
+
+  /**
+   * Time anchor for the recommendation's risk/reward boxes: the persisted
+   * creation time when present, else a bar-quantized "now" resolved ONCE for
+   * this trade and cached, so new candles/ticks never shift the zones.
+   */
+  private anchorSec(rec: Recommendation, barSec: number): number {
+    const fromCreatedAt = createdAtSec(rec);
+    if (fromCreatedAt != null) return fromCreatedAt;
+    const key = [rec.symbol ?? "", rec.action, rec.entry, rec.stop_loss, rec.take_profit].join("|");
+    const cached = this.fallbackAnchorSec.get(key);
+    if (cached != null) return cached;
+    const step = Math.max(60, barSec);
+    const now = nowSec();
+    const anchor = now - (now % step);
+    if (this.fallbackAnchorSec.size >= 16) this.fallbackAnchorSec.clear();
+    this.fallbackAnchorSec.set(key, anchor);
+    return anchor;
+  }
 
   /** Entity ids this manager owns (agent + recommendation shapes). Everything
    *  else on the chart is a user-drawn shape. */
@@ -470,11 +493,12 @@ export class TvDrawingManager {
       const tp1 = tps[0];
       if (entry != null && entry > 0 && sl != null && sl > 0 && tp1 != null) {
         // Native TV position tool: entry/target/stop with automatic R/R stats.
-        // Anchored at the recommendation's creation time (bar-quantized fallback)
-        // so re-applies reproduce the exact same shape instead of drifting to
-        // wall-clock "now" on every redraw.
+        // Anchored at the recommendation's PERSISTED creation time (sticky
+        // bar-quantized fallback for legacy payloads without one) so re-applies
+        // reproduce the exact same shape instead of drifting to wall-clock
+        // "now" on every redraw.
         this.position(
-          { time: stableAnchorSec(rec, barSec), price: entry },
+          { time: this.anchorSec(rec, barSec), price: entry },
           tp1,
           sl,
           barSec,

@@ -9,10 +9,21 @@
  * two-anchor rectangles whose left edge is the recommendation's CREATION time
  * and whose right edge is a fixed bar span. These tests fail on the
  * single-point form and pass on the pinned rectangles.
+ *
+ * Second round of the same complaint ("مناطق الربح والخسارة ما زالت تتحرك مع
+ * الشمعة"): the rectangles were correct, but the LIVE recommendation payload
+ * reached the adapter WITHOUT `created_at` (three producers built it via an
+ * `as Recommendation` cast that omitted the field), so the anchor fell back
+ * to wall-clock "now" — recomputed on EVERY redraw. Any payload change (poll
+ * hydration, MCP re-draw, forced re-apply, reload) rebuilt the zones hugging
+ * the latest candle. The tests below simulate exactly that failing sequence:
+ * draw → several new bars pass → redraw paths run → the anchors must be
+ * byte-identical.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TvDrawingManager } from "@/lib/chart/tv/tvDrawingAdapter";
+import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { Recommendation } from "@/lib/types";
 import type {
   EntityId,
@@ -148,6 +159,105 @@ describe("tvDrawingAdapter — the trade box is pinned at both ends", () => {
       firstAnchors,
       "a redraw later in time must land on the exact same anchors",
     );
+  });
+
+  it("new bars never shift the zones — even for a legacy payload without created_at", async () => {
+    // The live bug: producers delivered the recommendation WITHOUT created_at,
+    // the anchor fell back to "now", and every redraw re-anchored the boxes at
+    // the latest candle. The fallback must now resolve ONCE per trade and be
+    // reused by every later redraw, no matter how far the clock advanced.
+    const noCreatedAt = {
+      action: "buy",
+      entry: 4646.19,
+      stop_loss: 4642.93,
+      take_profit: 4660.02,
+    } as unknown as Recommendation;
+    const { chart, multi } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    const realNow = Date.now;
+    try {
+      let clock = Date.UTC(2026, 7, 25, 12, 0, 0);
+      Date.now = () => clock;
+
+      mgr.apply([], { recommendation: noCreatedAt }, { interval: "15m" });
+      await flush();
+      const firstAnchors = positionRects(multi).map((c) => c.points);
+      assert.equal(firstAnchors.length, 2, "both zones drawn");
+
+      // Several new 15m candles form, then a payload change (poll hydration /
+      // MCP re-draw) forces a full clear+recreate of every shape.
+      clock += BAR_SEC * 5 * 1000;
+      const changedDrawings: ChartDrawing[] = [
+        {
+          type: "price_line",
+          confidence: 80,
+          label: "دعم",
+          points: [{ price: 4630, time: clock }],
+        },
+      ];
+      mgr.apply(
+        changedDrawings,
+        { recommendation: noCreatedAt },
+        { interval: "15m" },
+      );
+      await flush();
+      let rects = positionRects(multi);
+      assert.deepEqual(
+        rects.slice(firstAnchors.length).map((c) => c.points),
+        firstAnchors,
+        "a redraw after new candles must reuse the FIRST anchor, not re-anchor at 'now'",
+      );
+
+      // More candles, then a forced re-apply (frame switch / data reload path).
+      clock += BAR_SEC * 7 * 1000;
+      mgr.apply(
+        changedDrawings,
+        { recommendation: noCreatedAt },
+        { interval: "15m" },
+        { force: true },
+      );
+      await flush();
+      rects = positionRects(multi);
+      assert.deepEqual(
+        rects.slice(rects.length - 2).map((c) => c.points),
+        firstAnchors,
+        "a forced redraw later in time must also land on the original anchors",
+      );
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("a reload reproduces the anchors from the persisted created_at, not from 'now'", async () => {
+    // Page reload = a brand-new manager with the clock far ahead. The zones
+    // stay exactly where drawn because the anchor comes from the STORED
+    // recommendation data (created_at), never from render time.
+    const realNow = Date.now;
+    try {
+      Date.now = () => CREATED_AT_MS;
+      const first = fakeChart();
+      new TvDrawingManager(first.chart).apply(
+        [],
+        { recommendation: REC },
+        { interval: "15m" },
+      );
+      await flush();
+      const before = positionRects(first.multi).map((c) => c.points);
+
+      // Hours later, a fresh widget + manager hydrate the same stored payload.
+      Date.now = () => CREATED_AT_MS + 6 * 60 * 60 * 1000;
+      const second = fakeChart();
+      new TvDrawingManager(second.chart).apply(
+        [],
+        { recommendation: REC },
+        { interval: "15m" },
+      );
+      await flush();
+      const after = positionRects(second.multi).map((c) => c.points);
+      assert.deepEqual(after, before, "reload must reuse the persisted anchor byte-for-byte");
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   it("covers the price extents: reward from entry to TP, risk from entry to SL", async () => {
