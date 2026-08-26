@@ -20,7 +20,7 @@ export const en = {
 
   // Welcoming Phase
   "welcome.title": "Welcome, {name} 👋",
-  "welcome.subtitle": "Type your message to begin — gold analysis via OANDA.",
+  "welcome.subtitle": "Type your message to begin — professional gold analysis on live OANDA pricing.",
   "welcome.session_settings": "Session Settings",
   "welcome.response_mode": "Response Type",
   "welcome.market": "Market",
@@ -51,7 +51,7 @@ export const en = {
   // Profile menu items
   "profile.settings": "Global Settings",
   "profile.analytics": "Analytics",
-  "profile.account": "Account Parameters",
+  "profile.account": "Account details",
   "profile.theme": "Theme",
   "profile.theme.dark": "Dark",
   "profile.theme.light": "Light",
@@ -260,7 +260,7 @@ export const en = {
   "profile.select_language": "Language",
 
   "agent.title": "Smart Chart Agent",
-  "agent.empty": "Ask the agent or start a chart analysis",
+  "agent.empty": "Put your question to the agent, or start an analysis of the current chart.",
   "agent.analyze_chart": "Analyze chart",
   "agent.news_risk": "News risk",
   "agent.send": "Send",
@@ -313,6 +313,28 @@ export const en = {
   "agent.stage.research": "Research",
   "agent.stage.resumed": "(from a previous run)",
   "agent.run_details": "Run details",
+  // --- Live agent-thinking lines: templates filled ONLY from real run values ---
+  "agent.think.market_read": "Read {count} candles on the {interval} frame — current price {price}",
+  "agent.think.structure": "Checking {interval} structure… the trend is {trend}",
+  "agent.think.structure_levels": "Checking {interval} structure… trend {trend}, nearest support {support}, nearest resistance {resistance}",
+  "agent.think.trend.uptrend": "up",
+  "agent.think.trend.downtrend": "down",
+  "agent.think.trend.range": "sideways",
+  "agent.think.trend.unknown": "undecided",
+  "agent.think.htf": "The higher frame ({interval}) leans {bias}",
+  "agent.think.bias.bullish": "bullish",
+  "agent.think.bias.bearish": "bearish",
+  "agent.think.bias.neutral": "neutral",
+  "agent.think.bias.unknown": "without a clear read",
+  "agent.think.news_low": "The news window is quiet — no high-impact events nearby",
+  "agent.think.news_medium": "A medium-impact event is on the calendar — weighing it in the risks",
+  "agent.think.news_high": "A high-impact event is near — weighing its risk to the plan",
+  "agent.think.news_unknown": "Could not verify the calendar — treating news risk as unknown",
+  "agent.think.weighing": "Weighing {count} candidate entry scenarios against the evidence before deciding…",
+  "agent.think.weighing_none": "No ready entry candidate — building the plan directly from the evidence levels…",
+  "agent.think.gates_passed": "The plan passed the platform's mandatory checks ({count})",
+  "agent.think.gate_veto": "Check {gate} stopped the plan: {reason}",
+  "agent.think.followup": "Reviewing the {direction} plan from {entry} against the live price…",
   "agent.error": "Something went wrong",
   "agent.run_failed": "The request could not be completed because the agent run failed.",
   "agent.reconnecting": "Connection lost — reconnecting…",
@@ -409,7 +431,7 @@ export const en = {
   "orch.visual_partial": "Could not capture {missing} — the analysis reads only what remains.",
   "orch.visual_none": "Could not capture any chart — the analysis reads the numbers alone.",
   "orch.visual_host_unconfigured": "Could not capture any chart: the shared chart session is not configured on the server — set CHART_HOST_URL in the settings panel. The analysis reads the numbers alone.",
-  "orch.no_rec_now": "No recommendation right now.",
+  "orch.no_rec_now": "No executable recommendation right now.",
   "orch.no_saved_rec": "There is no saved recommendation in this session right now.",
   "orch.restored_trigger": "Recommendation restored from the current chart.",
   "orch.invalidation_below": "A candle close below {level} invalidates the scenario.",
@@ -450,7 +472,7 @@ export const en = {
   "fault.named.auth":
     "The {provider} key was rejected or is invalid — review it in the keys panel.",
   "fault.named.rate_limit": "{provider} is busy right now — try again shortly.",
-  "api.guest_rate_limit": "Too many requests — sign in to continue.",
+  "api.guest_rate_limit": "You have exceeded the guest request limit — sign in to continue.",
   "fault.timeout": "The operation took longer than allowed — try again shortly.",
   "fault.network": "A network connection problem occurred — try again shortly.",
   "fault.provider_unavailable":
@@ -485,9 +507,9 @@ export const en = {
   "tg.chart_caption": "{name} · 15m",
   "tg.chart_caption_closed": "{name} · 15m — last snapshot before the close.",
   "tg.chart_failed":
-    "Couldn't prepare the chart photo right now. Open the platform from the button, or try again shortly.",
+    "The chart image could not be prepared right now. Open the platform from the button below, or try again shortly.",
   "tg.open_report": "📊 Open report",
-  "tg.tools_used": "Used {count} checks and tools",
+  "tg.tools_used": "{count} checks and tools were run",
   "tg.link_prompt":
     "This chat is not linked to an account. Open Settings on the Lonora platform and tap “Link Telegram” to get your link code, then come back here.",
   "tg.option_expired": "This option has expired",
@@ -589,10 +611,10 @@ export const en = {
   // --- Signal card: the head read at a glance, detail behind one button ---
   "agent.signal.buy": "Buy",
   "agent.signal.sell": "Sell",
-  "agent.signal.none": "No trade right now",
+  "agent.signal.none": "No executable recommendation right now",
   "agent.signal.strength": "Signal strength",
   "agent.signal.why": "Why this call?",
-  "agent.signal.what_plan": "What was the plan?",
+  "agent.signal.what_plan": "View the plan considered",
   "agent.signal.hide": "Hide details",
   "agent.signal.live": "Price now",
   "agent.signal.target_n": "Target {n}",
@@ -615,12 +637,12 @@ export const en = {
   "config.model_wrong_provider": "The model \"{model}\" does not belong to {provider} — the field {field} takes {provider} models only.",
   "support.notify.reply": "You have a new reply from support.",
   "support.title": "Support",
-  "support.subtitle": "Tell us what is happening, and we will answer here.",
+  "support.subtitle": "Describe exactly what you are facing, and the support team will answer you right here.",
   "support.placeholder": "Write a message…",
   "support.send": "Send",
   "support.attach": "Attach a file",
   "support.attach_remove": "Remove the file",
-  "support.empty": "No messages yet — start by describing what is happening.",
+  "support.empty": "No messages yet — describe what you are facing and we will take it from there, step by step.",
   "support.you": "You",
   "support.team": "Support team",
   "support.bot": "Assistant",
@@ -714,7 +736,8 @@ export const en = {
   "settings.save_failed": "Could not save settings.",
   // Billing and usage
   "balance.add_credit": "Add credit to continue",
-  "balance.low": "Balance almost gone",
+  "balance.low": "Balance running low",
+  "balance.empty": "Balance depleted — top up",
   "balance.credit_short": "Credit",
   "balance.loading": "…",
   "balance.unavailable": "Unavailable",
@@ -849,7 +872,7 @@ export const en = {
   "rec.page.title": "Recommendations",
   "rec.page.active": "Active",
   "rec.page.history": "History",
-  "rec.page.empty": "No tracked recommendations yet.",
+  "rec.page.empty": "No tracked recommendations yet — the agent's first recommendation will appear here and be followed to its outcome.",
   "rec.page.refresh": "Refresh status",
   "exec.button": "Execute",
   "exec.modal.title": "Execute recommendation",
@@ -863,13 +886,18 @@ export const en = {
   "exec.modal.close": "Close",
 
   // --- Billing: the three refusals and the status surface ---
-  "billing.refusal.subscription_expired": "Your subscription has expired.",
+  "billing.refusal.subscription_expired":
+    "Your subscription has expired; your balance is kept in full until renewal. Renew to resume the service.",
   // One empty balance, two different next steps: top-up packs are sold to
   // live subscribers only, so a Free account is sent to subscribe instead.
-  "billing.refusal.no_credits_free": "You are out of credits. Subscribe to continue.",
-  "billing.refusal.no_credits_pro": "You are out of credits.",
-  "billing.refusal.subscription_required": "Linking a trading account is available after subscribing.",
-  "billing.refusal.account_blocked": "This account is suspended.",
+  "billing.refusal.no_credits_free":
+    "Your balance has run out. Activate a subscription to keep receiving analyses and recommendations.",
+  "billing.refusal.no_credits_pro":
+    "Your balance has run out. Add credit to keep receiving analyses and recommendations without interruption.",
+  "billing.refusal.subscription_required":
+    "Linking a trading account is a subscriber feature — activate your subscription to use it.",
+  "billing.refusal.account_blocked":
+    "This account is currently suspended. Contact support to review its status.",
   "admin.billing.title": "Plan and pricing",
   "admin.billing.subtitle": "Every priced or bounded number is set here — nothing lives in code.",
   "admin.billing.request_failed": "Request failed ({status})",
@@ -951,8 +979,12 @@ export const en = {
   "account.credits_unit": "credits",
   "account.expires_on": "Subscribed until {date}",
   "account.free_balance": "Your balance: {credits} credits",
-  "account.alert.low_balance": "Your balance is running low.",
-  "account.alert.expiring_soon": "Your subscription is ending soon.",
+  "account.alert.low_balance":
+    "Your balance is running low — top up before the service is interrupted.",
+  "account.alert.exhausted":
+    "Your balance has run out, and new analyses and recommendations are paused until you restore it.",
+  "account.alert.expiring_soon":
+    "Your subscription is ending soon — renew to keep the service uninterrupted.",
   "account.ledger_link": "Credit ledger",
   "account.tg_line_pro": "Status: Pro · Balance: {balance} credits · Subscribed until {date}",
   "account.tg_line_pro_no_date": "Status: Pro · Balance: {balance} credits",
@@ -973,6 +1005,11 @@ export const en = {
   "billing.pack_button": "{credits} credits — ${price}",
   "billing.no_packs": "No credit packs are available right now.",
   "billing.topup_needs_active": "Buying credits requires an active subscription — activate yours first.",
+  "billing.exhausted_title": "Your balance has run out",
+  "billing.exhausted_body_pro":
+    "Your credits are fully spent, so new analyses and recommendations are paused. Add credit from the packs below to resume instantly.",
+  "billing.exhausted_body_free":
+    "Your credits are fully spent, so new analyses and recommendations are paused. Activate your subscription to resume instantly.",
   "billing.kind.cycle_grant": "Subscription cycle credits",
   "billing.kind.debit_recommendation": "Recommendation",
   "billing.kind.debit_chat": "Chat",
@@ -1018,7 +1055,7 @@ export const en = {
   "exec.trades.open": "Open",
   "exec.trades.closed": "Closed (7 days)",
   "exec.trades.net": "Net",
-  "exec.trades.empty": "No trades.",
+  "exec.trades.empty": "No trades yet.",
   "exec.trades.not_linked": "Link an MT5 account to view trades.",
   "rec.page.open": "Open details",
   "rec.page.cancel": "Cancel",
@@ -1058,7 +1095,7 @@ export const en = {
   "stats.filter.today": "Today",
   "stats.filter.7d": "7 days",
   "stats.filter.30d": "30 days",
-  "stats.filter.all": "All time",
+  "stats.filter.all": "Full history",
 
   // User drawings — reading, discussing, modifying, deleting the drawings the
   // user made by hand on the chart (owner = user; never agent drawings).
@@ -1151,7 +1188,7 @@ export const en = {
   "trade_mode.error": "Could not update the trade mode.",
 
   // Active recommendations panel
-  "rec.active.empty": "No active recommendations.",
+  "rec.active.empty": "No active recommendations right now — request a fresh analysis and its recommendation will appear here the moment it is issued.",
   "rec.active.error": "Could not load active recommendations.",
   "rec.card.buy": "Buy recommendation",
   "rec.card.sell": "Sell recommendation",

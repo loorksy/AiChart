@@ -19,7 +19,7 @@ export const ar: Record<TranslationKey, string> = {
 
   // Welcoming Phase
   "welcome.title": "مرحباً {name} 👋",
-  "welcome.subtitle": "اكتب رسالتك لتبدأ — تحليل الذهب عبر OANDA.",
+  "welcome.subtitle": "اكتب رسالتك لتبدأ — تحليل احترافي للذهب بأسعار OANDA الحية.",
   "welcome.session_settings": "إعدادات الجلسة",
   "welcome.response_mode": "نوع الرد",
   "welcome.market": "السوق",
@@ -50,7 +50,7 @@ export const ar: Record<TranslationKey, string> = {
   // Profile menu items
   "profile.settings": "الإعدادات العامة",
   "profile.analytics": "التحليلات",
-  "profile.account": "معلمات الحساب",
+  "profile.account": "بيانات الحساب",
   "profile.theme": "المظهر",
   "profile.theme.dark": "داكن",
   "profile.theme.light": "مضيء",
@@ -258,7 +258,7 @@ export const ar: Record<TranslationKey, string> = {
   "profile.select_language": "اللغة",
 
   "agent.title": "الوكيل الذكي للشارت",
-  "agent.empty": "اسأل الوكيل أو ابدأ تحليل الشارت",
+  "agent.empty": "وجّه سؤالك إلى الوكيل، أو ابدأ تحليلًا للشارت الحالي.",
   "agent.analyze_chart": "تحليل الشارت",
   "agent.news_risk": "خطر الأخبار",
   "agent.send": "إرسال",
@@ -311,6 +311,28 @@ export const ar: Record<TranslationKey, string> = {
   "agent.stage.research": "البحث",
   "agent.stage.resumed": "(من تشغيل سابق)",
   "agent.run_details": "تفاصيل التنفيذ",
+  // --- سطور تفكير الوكيل الحيّة: قوالب تُملأ من قيم التشغيل الفعلية فقط ---
+  "agent.think.market_read": "قرأت {count} شمعة على فريم {interval} — السعر الحالي {price}",
+  "agent.think.structure": "أفحص بنية فريم {interval}… الاتجاه {trend}",
+  "agent.think.structure_levels": "أفحص بنية فريم {interval}… الاتجاه {trend}، أقرب دعم {support} وأقرب مقاومة {resistance}",
+  "agent.think.trend.uptrend": "صاعد",
+  "agent.think.trend.downtrend": "هابط",
+  "agent.think.trend.range": "عرضي",
+  "agent.think.trend.unknown": "غير محسوم",
+  "agent.think.htf": "الفريم الأعلى ({interval}) يميل {bias}",
+  "agent.think.bias.bullish": "صعوداً",
+  "agent.think.bias.bearish": "هبوطاً",
+  "agent.think.bias.neutral": "بلا انحياز واضح",
+  "agent.think.bias.unknown": "بلا قراءة كافية",
+  "agent.think.news_low": "نافذة الأخبار هادئة — لا أحداث عالية الأثر قريبة",
+  "agent.think.news_medium": "في الأجندة حدث متوسط الأثر — أزنه ضمن المخاطر",
+  "agent.think.news_high": "حدث عالي الأثر قريب — أزن خطره على الخطة",
+  "agent.think.news_unknown": "تعذّر التحقق من الأجندة — أتعامل مع مخاطر الأخبار كمجهولة",
+  "agent.think.weighing": "أزن {count} سيناريو دخول مرشّحاً مقابل الأدلة قبل القرار…",
+  "agent.think.weighing_none": "لا مرشّح دخول جاهزاً — أبني الخطة من مستويات الأدلة مباشرة…",
+  "agent.think.gates_passed": "اجتازت الخطة فحوص المنصة الإلزامية ({count})",
+  "agent.think.gate_veto": "فحص {gate} أوقف الخطة: {reason}",
+  "agent.think.followup": "أراجع خطة {direction} من {entry} مقابل السعر اللحظي…",
   "agent.error": "حدث خطأ",
   "agent.run_failed": "تعذّر إكمال الطلب بسبب خطأ أثناء تشغيل الوكيل.",
   "agent.reconnecting": "انقطع الاتصال — نعيد المحاولة…",
@@ -403,7 +425,7 @@ export const ar: Record<TranslationKey, string> = {
   "orch.visual_partial": "تعذّر التقاط {missing} — التحليل يقرأ ما تبقّى فقط.",
   "orch.visual_none": "تعذّر التقاط أي شارت — التحليل يقرأ الأرقام وحدها.",
   "orch.visual_host_unconfigured": "تعذّر التقاط أي شارت: جلسة الشارت المشتركة غير مُعدّة على الخادم — أضِف CHART_HOST_URL من لوحة الإعدادات. التحليل يقرأ الأرقام وحدها.",
-  "orch.no_rec_now": "لا توجد توصية الآن.",
+  "orch.no_rec_now": "لا توجد توصية قابلة للتنفيذ الآن.",
   "orch.no_saved_rec": "لا توجد توصية محفوظة في هذه الجلسة حاليًا.",
   "orch.restored_trigger": "توصية مستعادة من الشارت الحالي.",
   "orch.invalidation_below": "إغلاق شمعة تحت {level} يبطل السيناريو.",
@@ -439,7 +461,7 @@ export const ar: Record<TranslationKey, string> = {
     "رفض {provider} الطلب (نموذج غير موجود أو معاملات غير مدعومة) — راجع إعداد النموذج في لوحة المفاتيح.",
   "fault.named.auth": "مفتاح {provider} مرفوض أو غير صالح — راجعه في لوحة المفاتيح.",
   "fault.named.rate_limit": "مزوّد {provider} مشغول حالياً — أعد المحاولة بعد قليل.",
-  "api.guest_rate_limit": "طلبات كثيرة — سجّل الدخول للمتابعة.",
+  "api.guest_rate_limit": "تجاوزت طلباتك الحد المسموح للزوار — سجّل الدخول للمتابعة.",
   "fault.timeout": "استغرقت العملية وقتاً أطول من المسموح — أعد المحاولة بعد قليل.",
   "fault.network": "تعذّر الاتصال بالشبكة — أعد المحاولة بعد قليل.",
   "fault.provider_unavailable": "مزوّد الخدمة غير متاح مؤقتاً — أعد المحاولة بعد قليل.",
@@ -468,9 +490,9 @@ export const ar: Record<TranslationKey, string> = {
   "tg.chart_caption": "{name} · 15م",
   "tg.chart_caption_closed": "{name} · 15م — آخر لقطة قبل الإغلاق.",
   "tg.chart_failed":
-    "ما قدرت أجهّز صورة الشارت الآن. افتح المنصة من الزر، أو أعد المحاولة بعد قليل.",
+    "تعذّر تجهيز صورة الشارت الآن. افتح المنصة من الزر أدناه، أو أعد المحاولة بعد قليل.",
   "tg.open_report": "📊 افتح التقرير",
-  "tg.tools_used": "استخدمت {count} فحوصات وأدوات",
+  "tg.tools_used": "استُخدم {count} من الفحوص والأدوات",
   "tg.link_prompt":
     "هذه المحادثة غير مرتبطة بحساب. افتح الإعدادات في منصة Lonora واضغط «ربط تليجرام» لتحصل على رابط الربط، ثم عد إلى هنا.",
   "tg.option_expired": "انتهت صلاحية هذا الخيار",
@@ -571,10 +593,10 @@ export const ar: Record<TranslationKey, string> = {
   // --- بطاقة الإشارة: الرأس الذي يُقرأ بلمحة، والتفاصيل خلف زرّ واحد ---
   "agent.signal.buy": "شراء",
   "agent.signal.sell": "بيع",
-  "agent.signal.none": "لا توصية الآن",
+  "agent.signal.none": "لا توصية قابلة للتنفيذ الآن",
   "agent.signal.strength": "قوة الإشارة",
   "agent.signal.why": "لماذا هذا القرار؟",
-  "agent.signal.what_plan": "ماذا كانت الخطة؟",
+  "agent.signal.what_plan": "عرض الخطة المدروسة",
   "agent.signal.hide": "إخفاء التفاصيل",
   "agent.signal.live": "السعر الآن",
   "agent.signal.target_n": "هدف {n}",
@@ -599,12 +621,12 @@ export const ar: Record<TranslationKey, string> = {
   "config.model_wrong_provider": "النموذج «{model}» لا يخصّ {provider} — الحقل {field} يقبل نماذج {provider} وحدها.",
   "support.notify.reply": "لديك ردّ جديد من الدعم.",
   "support.title": "الدعم",
-  "support.subtitle": "اكتب ما يحدث، وسنردّ هنا.",
+  "support.subtitle": "صِف ما تواجهه بدقّة، وسيوافيك فريق الدعم بالرد هنا مباشرة.",
   "support.placeholder": "اكتب رسالة…",
   "support.send": "إرسال",
   "support.attach": "إرفاق ملف",
   "support.attach_remove": "إزالة الملف",
-  "support.empty": "لا رسائل بعد — ابدأ بوصف ما يحدث معك.",
+  "support.empty": "لا رسائل بعد — صِف ما تواجهه وسنتولى المتابعة معك خطوة بخطوة.",
   "support.you": "أنت",
   "support.team": "فريق الدعم",
   "support.bot": "المساعد",
@@ -698,7 +720,8 @@ export const ar: Record<TranslationKey, string> = {
   "settings.save_failed": "تعذّر حفظ الإعدادات.",
   // Billing and usage
   "balance.add_credit": "أضِف رصيدًا للمتابعة",
-  "balance.low": "الرصيد أوشك على النفاد",
+  "balance.low": "الرصيد يقارب النفاد",
+  "balance.empty": "انتهى الرصيد — أعِد التعبئة",
   "balance.credit_short": "رصيد",
   "balance.loading": "…",
   "balance.unavailable": "غير متاح",
@@ -833,7 +856,7 @@ export const ar: Record<TranslationKey, string> = {
   "rec.page.title": "التوصيات",
   "rec.page.active": "النشطة",
   "rec.page.history": "السجل",
-  "rec.page.empty": "لا توجد توصيات متتبعة بعد.",
+  "rec.page.empty": "لا توصيات قيد المتابعة بعد — أول توصية يصدرها الوكيل ستظهر هنا وتُتابَع حالتها أولًا بأول.",
   "rec.page.refresh": "تحديث الحالة",
   "exec.button": "تنفيذ",
   "exec.modal.title": "تنفيذ التوصية",
@@ -847,13 +870,18 @@ export const ar: Record<TranslationKey, string> = {
   "exec.modal.close": "إغلاق",
 
   // --- الفوترة: الرفضات الثلاث وواجهة الحالة ---
-  "billing.refusal.subscription_expired": "اشتراكك منتهٍ.",
+  "billing.refusal.subscription_expired":
+    "انتهى اشتراكك، ورصيدك محفوظ بالكامل حتى التجديد. جدّد اشتراكك لاستئناف الخدمة.",
   // رصيد فارغ واحد بخطوتين مختلفتين: باقات الرصيد تُباع للمشترك الساري وحده،
   // فمستخدم Free يُوجَّه إلى الاشتراك لا إلى الشراء.
-  "billing.refusal.no_credits_free": "نفد رصيدك. اشترك للمتابعة.",
-  "billing.refusal.no_credits_pro": "نفد رصيدك.",
-  "billing.refusal.subscription_required": "ربط حساب التداول متاح بعد الاشتراك.",
-  "billing.refusal.account_blocked": "هذا الحساب موقوف.",
+  "billing.refusal.no_credits_free":
+    "انتهى رصيدك بالكامل. فعّل اشتراكك لمواصلة التحليلات والتوصيات.",
+  "billing.refusal.no_credits_pro":
+    "انتهى رصيدك بالكامل. أضف رصيدًا لمواصلة التحليلات والتوصيات دون انقطاع.",
+  "billing.refusal.subscription_required":
+    "ربط حساب التداول ميزة خاصة بالمشتركين — فعّل اشتراكك لاستخدامها.",
+  "billing.refusal.account_blocked":
+    "هذا الحساب موقوف حاليًا. تواصل مع فريق الدعم لمراجعة حالته.",
   "admin.billing.title": "الباقة والأسعار",
   "admin.billing.subtitle": "كل قيمة مسعّرة أو محدودة تُضبط من هنا — لا شيء مكتوب في الكود.",
   "admin.billing.request_failed": "فشل الطلب ({status})",
@@ -935,8 +963,10 @@ export const ar: Record<TranslationKey, string> = {
   "account.credits_unit": "كريدت",
   "account.expires_on": "الاشتراك حتى {date}",
   "account.free_balance": "رصيدك: {credits} كريدت",
-  "account.alert.low_balance": "رصيدك قارب على النفاد.",
-  "account.alert.expiring_soon": "اشتراكك يقارب الانتهاء.",
+  "account.alert.low_balance": "رصيدك يقارب النفاد — نوصي بإعادة التعبئة قبل انقطاع الخدمة.",
+  "account.alert.exhausted":
+    "انتهى رصيدك بالكامل، وتوقّف معه إصدار التحليلات والتوصيات الجديدة حتى تعيد تفعيل رصيدك.",
+  "account.alert.expiring_soon": "اشتراكك يقارب الانتهاء — جدّده لضمان استمرار الخدمة دون انقطاع.",
   "account.ledger_link": "سجل حركة الكريدت",
   "account.tg_line_pro": "الحالة: Pro · الرصيد: {balance} كريدت · الاشتراك حتى {date}",
   "account.tg_line_pro_no_date": "الحالة: Pro · الرصيد: {balance} كريدت",
@@ -957,6 +987,11 @@ export const ar: Record<TranslationKey, string> = {
   "billing.pack_button": "{credits} كريدت — {price}$",
   "billing.no_packs": "لا باقات رصيد متاحة حالياً.",
   "billing.topup_needs_active": "شراء الرصيد متاح للمشتركين — فعّل اشتراكك أولاً.",
+  "billing.exhausted_title": "انتهى رصيدك",
+  "billing.exhausted_body_pro":
+    "استُهلك رصيدك بالكامل، فتوقّف إصدار التحليلات والتوصيات الجديدة مؤقتًا. أضف رصيدًا من الباقات أدناه لاستئناف الخدمة فورًا.",
+  "billing.exhausted_body_free":
+    "استُهلك رصيدك بالكامل، فتوقّف إصدار التحليلات والتوصيات الجديدة مؤقتًا. فعّل اشتراكك لاستئناف الخدمة فورًا.",
   "billing.kind.cycle_grant": "رصيد دورة الاشتراك",
   "billing.kind.debit_recommendation": "توصية",
   "billing.kind.debit_chat": "دردشة",
@@ -1002,7 +1037,7 @@ export const ar: Record<TranslationKey, string> = {
   "exec.trades.open": "المفتوحة",
   "exec.trades.closed": "المغلقة (7 أيام)",
   "exec.trades.net": "الصافي",
-  "exec.trades.empty": "لا صفقات.",
+  "exec.trades.empty": "لا صفقات حتى الآن.",
   "exec.trades.not_linked": "اربط حساب MT5 لعرض الصفقات.",
   "rec.page.open": "فتح التفاصيل",
   "rec.page.cancel": "إلغاء",
@@ -1012,8 +1047,8 @@ export const ar: Record<TranslationKey, string> = {
   "stats.total": "الإجمالي",
   "stats.active": "نشطة",
   "stats.pending": "معلقة",
-  "stats.winning": "ناجحة",
-  "stats.losing": "فاشلة",
+  "stats.winning": "رابحة",
+  "stats.losing": "خاسرة",
   "stats.win_rate": "نسبة النجاح",
   "stats.completed": "صفقات منتهية",
   "stats.breakdown": "تفصيل النتائج",
@@ -1041,8 +1076,8 @@ export const ar: Record<TranslationKey, string> = {
     "لا توجد توصيات متتبعة بعد. ابدأ بتحليل شارت أو اطلب توصية ليبدأ النظام بتجميع الإحصائيات.",
   "stats.filter.today": "اليوم",
   "stats.filter.7d": "آخر 7 أيام",
-  "stats.filter.30d": "آخر 30 يوم",
-  "stats.filter.all": "كل الوقت",
+  "stats.filter.30d": "آخر 30 يومًا",
+  "stats.filter.all": "كامل السجل",
 
   // رسومات المستخدم — قراءة/مناقشة/تعديل/حذف الرسومات التي رسمها المستخدم يدويًا
   // على الشارت (المالك = المستخدم؛ ليست رسومات الوكيل إطلاقًا).
@@ -1135,7 +1170,7 @@ export const ar: Record<TranslationKey, string> = {
   "trade_mode.error": "تعذّر تغيير وضع التداول.",
 
   // Active recommendations panel
-  "rec.active.empty": "لا توصيات نشطة.",
+  "rec.active.empty": "لا توصيات نشطة حاليًا — اطلب تحليلًا جديدًا وستظهر توصيته هنا فور صدورها.",
   "rec.active.error": "تعذّر تحميل التوصيات النشطة.",
   "rec.card.buy": "توصية شراء",
   "rec.card.sell": "توصية بيع",

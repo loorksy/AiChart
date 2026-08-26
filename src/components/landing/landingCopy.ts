@@ -206,9 +206,9 @@ const ar: LandingCopy = {
     primaryCta: "افتح Lonora",
     secondaryCta: "افتح مساحة العمل",
     quickPrompts: [
-      "حلّل الذهب",
-      "اقترح سيناريو WAIT",
-      "راجع مستويات الدخول",
+      "حلّل الذهب الآن",
+      "اقترح فرصة تداول مدروسة",
+      "راجع مستويات الدخول الحالية",
     ],
     highlights: [
       {
@@ -529,9 +529,9 @@ const en: LandingCopy = {
     primaryCta: "Open Lonora",
     secondaryCta: "Open workspace",
     quickPrompts: [
-      "Analyze gold",
-      "Suggest a WAIT scenario",
-      "Review entry levels",
+      "Analyze gold now",
+      "Suggest a well-founded trade idea",
+      "Review the current entry levels",
     ],
     highlights: [
       {
