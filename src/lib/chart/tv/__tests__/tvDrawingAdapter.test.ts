@@ -187,7 +187,55 @@ describe("tvDrawingAdapter — the native position tool, pinned at the plan's cr
     );
   });
 
-  it("keeps extra targets beyond TP1 as labeled lines — the tool shows one profit level", async () => {
+  it("extends the profit zone to the FURTHEST target of a buy (max), not TP1", async () => {
+    const { chart, single } = fakeChart();
+    // Deliberately unsorted: the furthest target is picked by VALUE, side-aware.
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: REC, targets: [4660.02, 4680.1, 4670.46] },
+      CTX,
+    );
+    await flush();
+
+    const overrides = positionCalls(single)[0]!.options.overrides as Record<
+      string,
+      number
+    >;
+    assert.equal(
+      overrides.profitLevel,
+      Math.round((4680.1 - 4646.19) * 100),
+      "the tool's profit edge must be the most distant TP, not the first",
+    );
+    assert.equal(overrides.stopLevel, Math.round((4646.19 - 4642.93) * 100));
+  });
+
+  it("extends the profit zone to the FURTHEST target of a sell (min)", async () => {
+    const { chart, single } = fakeChart();
+    const sell = {
+      ...REC,
+      action: "sell",
+      entry: 4660,
+      stop_loss: 4671,
+    } as unknown as Recommendation;
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: sell, targets: [4640, 4622.5, 4635] },
+      CTX,
+    );
+    await flush();
+
+    const overrides = positionCalls(single)[0]!.options.overrides as Record<
+      string,
+      number
+    >;
+    assert.equal(
+      overrides.profitLevel,
+      Math.round((4660 - 4622.5) * 100),
+      "for a sell the furthest target is the LOWEST price",
+    );
+  });
+
+  it("keeps the intermediate targets as labeled lines inside the extended zone", async () => {
     const { chart, single } = fakeChart();
     new TvDrawingManager(chart).apply(
       [],
@@ -195,14 +243,45 @@ describe("tvDrawingAdapter — the native position tool, pinned at the plan's cr
       CTX,
     );
     await flush();
+
+    // TP3 is now the tool's profit edge, so TP1 and TP2 become the lines —
+    // numbered by their original order in the plan.
     const hlines = single.filter((c) => c.shape === "horizontal_line");
-    assert.equal(hlines.length, 2, "TP2 and TP3 lines");
+    assert.deepEqual(
+      hlines.map((c) => ({ price: c.point.price, text: c.options.text })),
+      [
+        { price: 4660.02, text: "هدف 1" },
+        { price: 4670.46, text: "هدف 2" },
+      ],
+      "every target that is not the tool's edge stays visible as a numbered line",
+    );
+  });
+
+  it("a single-target plan is unchanged: the tool spans entry → the only TP, no lines", async () => {
+    const { chart, single } = fakeChart();
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: REC, targets: [4660.02] },
+      CTX,
+    );
+    await flush();
+
+    const overrides = positionCalls(single)[0]!.options.overrides as Record<
+      string,
+      number
+    >;
+    assert.equal(overrides.profitLevel, Math.round((4660.02 - 4646.19) * 100));
+    assert.equal(
+      single.filter((c) => c.shape === "horizontal_line").length,
+      0,
+      "no intermediate target lines for a one-target plan",
+    );
   });
 
   it("re-applying the same payload is a no-op (poll no-flicker, no snap-back)", async () => {
     const { chart, single } = fakeChart();
     const mgr = new TvDrawingManager(chart);
-    const trade = { recommendation: REC, targets: [4660.02] };
+    const trade = { recommendation: REC, targets: [4660.02, 4670.46] };
     mgr.apply([], trade, CTX);
     await flush();
     const after = single.length;
@@ -329,5 +408,33 @@ describe("tvDrawingAdapter — the native position tool, pinned at the plan's cr
     const overrides = tool.options.overrides as Record<string, number>;
     assert.equal(overrides.profitLevel, Math.round((4660 - 4640) * 100));
     assert.equal(overrides.stopLevel, Math.round((4671 - 4660) * 100));
+  });
+
+  it("a multi-target ChartDrawing position follows the same furthest-target rule", async () => {
+    const { chart, single } = fakeChart();
+    const drawing: ChartDrawing = {
+      type: "short_position",
+      confidence: 80,
+      points: [{ time: CREATED_AT_MS, price: 4660 }],
+      meta: { stopLoss: 4671, targets: [4640, 4622.5] },
+    };
+    new TvDrawingManager(chart).apply([drawing], undefined, CTX);
+    await flush();
+
+    const overrides = positionCalls(single)[0]!.options.overrides as Record<
+      string,
+      number
+    >;
+    assert.equal(
+      overrides.profitLevel,
+      Math.round((4660 - 4622.5) * 100),
+      "the tool's edge is the furthest (lowest) target of the short",
+    );
+    const hlines = single.filter((c) => c.shape === "horizontal_line");
+    assert.deepEqual(
+      hlines.map((c) => ({ price: c.point.price, text: c.options.text })),
+      [{ price: 4640, text: "هدف 1" }],
+      "the nearer target stays visible as a numbered line",
+    );
   });
 });

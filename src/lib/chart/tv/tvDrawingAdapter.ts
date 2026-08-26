@@ -125,6 +125,23 @@ function styleOverrides(d: ChartDrawing): Record<string, unknown> {
   };
 }
 
+/** Numbered target-line label (a single Arabic line, for the i18n ratchet). */
+const targetLabel = (n: number): string => `هدف ${n}`;
+
+/**
+ * The profit edge of the position tool: the FURTHEST target on the trade's
+ * own side — max for a long, min for a short (side-aware, so an unsorted
+ * target list still yields the most distant TP). The user's rule: the box
+ * must span the WHOLE plan; cutting it at TP1 hid where the trade ends.
+ */
+function furthestTarget(
+  direction: "long" | "short",
+  targets: number[],
+): number | undefined {
+  if (targets.length === 0) return undefined;
+  return direction === "long" ? Math.max(...targets) : Math.min(...targets);
+}
+
 /** Recommendation creation time in TV seconds, or null when the payload
  *  carries no parseable `created_at`. */
 function createdAtSec(rec: Recommendation): number | null {
@@ -320,6 +337,29 @@ export class TvDrawingManager {
     );
   }
 
+  /**
+   * The native tool spanning entry → the FURTHEST target, with every other
+   * target kept visible as a numbered line inside the extended profit zone
+   * (numbered by its original order in the plan, so TP1/TP2 read as issued).
+   */
+  private positionWithTargets(
+    direction: "long" | "short",
+    entry: PricedPointLike,
+    targets: number[],
+    stopLoss: number,
+    symbol: string,
+  ): void {
+    const edge = furthestTarget(direction, targets);
+    if (edge == null) return;
+    this.position(direction, entry, edge, stopLoss, symbol);
+    targets.forEach((price, i) => {
+      // The edge is the tool's own profit line — a duplicate labeled line
+      // would sit exactly on top of it.
+      if (price === edge) return;
+      this.hline(price, "#3b82f6", targetLabel(i + 1));
+    });
+  }
+
   private drawOne(d: ChartDrawing, symbol: string, barSec: number): void {
     const ov = styleOverrides(d);
     const color = String(ov.linecolor);
@@ -330,17 +370,22 @@ export class TvDrawingManager {
 
     // AI-drawn buy/sell positions (entry/tp/sl via meta or 2–3 points).
     if (t === "long_position" || t === "short_position") {
+      const direction = t === "long_position" ? "long" : "short";
       const entry = pts[0];
-      const tp = (d.meta?.takeProfit as number) ?? pts[1]?.price;
       const sl = (d.meta?.stopLoss as number) ?? pts[2]?.price;
-      if (entry && tp && sl) {
-        this.position(
-          t === "long_position" ? "long" : "short",
-          entry,
-          tp,
-          sl,
-          symbol,
-        );
+      if (!entry || !sl) return;
+      // A multi-target plan extends the tool to its furthest TP, same as the
+      // recommendation path; a single-tp drawing keeps the plain contract.
+      const metaTargets = Array.isArray(d.meta?.targets)
+        ? (d.meta.targets as unknown[]).filter(
+            (x): x is number => typeof x === "number" && x > 0,
+          )
+        : [];
+      if (metaTargets.length > 0) {
+        this.positionWithTargets(direction, entry, metaTargets, sl, symbol);
+      } else {
+        const tp = (d.meta?.takeProfit as number) ?? pts[1]?.price;
+        if (tp) this.position(direction, entry, tp, sl, symbol);
       }
       return;
     }
@@ -496,30 +541,26 @@ export class TvDrawingManager {
             : [];
       const entry = rec.entry;
       const sl = rec.stop_loss;
-      const tp1 = tps[0];
-      if (entry != null && entry > 0 && sl != null && sl > 0 && tp1 != null) {
+      if (entry != null && entry > 0 && sl != null && sl > 0 && tps.length > 0) {
         // Native TV position tool: entry/target/stop with automatic R/R stats.
         // Anchored at the recommendation's PERSISTED creation time (sticky
         // bar-quantized fallback for legacy payloads without one) so re-applies
         // reproduce the exact same shape instead of drifting to wall-clock
-        // "now" on every redraw.
-        this.position(
+        // "now" on every redraw. The profit zone reaches the FURTHEST target;
+        // the nearer TPs render as numbered lines inside it.
+        this.positionWithTargets(
           rec.action === "buy" ? "long" : "short",
           { time: this.anchorSec(rec, barSec), price: entry },
-          tp1,
+          tps,
           sl,
           rec.symbol || symbol,
         );
-        // Extra targets beyond TP1 as labeled blue lines.
-        tps.slice(1).forEach((price, i) => {
-          this.hline(price, "#3b82f6", `هدف ${i + 2}`);
-        });
       } else {
         // Partial setups fall back to labeled horizontal lines.
         if (entry != null && entry > 0) this.hline(entry, "#22c55e", "دخول");
         if (sl != null && sl > 0) this.hline(sl, "#ef4444", "وقف خسارة", true);
         tps.forEach((price, i) => {
-          this.hline(price, "#3b82f6", tps.length > 1 ? `هدف ${i + 1}` : "هدف ربح");
+          this.hline(price, "#3b82f6", tps.length > 1 ? targetLabel(i + 1) : "هدف ربح");
         });
       }
     }
