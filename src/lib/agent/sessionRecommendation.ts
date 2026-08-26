@@ -90,6 +90,11 @@ export type ActiveRecommendation = {
 
 const store = new Map<string, ActiveRecommendation>();
 
+/** Test seam: simulate a process restart (the in-memory cache is per-process). */
+export function resetSessionRecommendationStoreForTests(): void {
+  store.clear();
+}
+
 function normalizeSymbol(symbol?: string | null): string {
   return (symbol ?? "").toUpperCase().trim();
 }
@@ -129,11 +134,25 @@ export async function getActiveRecommendation(
     null;
   if (!rec && userId != null) {
     const tracked = await listActiveTrackedRecommendations({ userId, limit: 100 });
-    const match = tracked.find(
-      (item) =>
-        item.chatId === sessionId &&
-        (!symbol || normalizeSymbol(item.symbol) === normalizeSymbol(symbol)),
-    );
+    const sameSymbol = (item: { symbol: string }) =>
+      !symbol || normalizeSymbol(item.symbol) === normalizeSymbol(symbol);
+    // The session-keyed row first; failing that, the USER's newest live plan.
+    //
+    // The user-scoped fallback is the fix for a real transcript: the lifecycle
+    // notifier told a Telegram chat its plan was still standing (the notifier
+    // is user-scoped), the very next question — "what is the recommendation's
+    // status?" — answered "no recommendation is stored in this session",
+    // because this lookup demanded an exact chatId match and the in-memory
+    // copy had died with a worker restart, and the turn after that described
+    // the plan again from conversation context (also user-scoped). One user,
+    // one instrument, three answers. A user's live plan is a fact about the
+    // USER — every surface that asks on their behalf must see the same one.
+    const match =
+      tracked.find((item) => item.chatId === sessionId && sameSymbol(item)) ??
+      tracked
+        .filter(sameSymbol)
+        .sort((a, b) => b.createdAt - a.createdAt)[0] ??
+      null;
     if (match) {
       const drawings = parseChartDrawingsJson(match.chartDrawingsJson);
       rec = {

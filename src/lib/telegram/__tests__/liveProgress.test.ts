@@ -12,6 +12,7 @@ import { describe, it } from "node:test";
 import {
   EDIT_GAP_MS,
   renderProgress,
+  SPINNER_FRAMES,
   stageLabel,
   TelegramProgressReporter,
 } from "@/lib/telegram/liveProgress";
@@ -78,6 +79,31 @@ describe("renderProgress", () => {
   it("renders an unknown stage as its raw name instead of hiding it", () => {
     assert.equal(stageLabel("mystery_stage", "ar"), "mystery_stage");
   });
+
+  it("heads the bubble with a live count of the checklist", () => {
+    const text = renderProgress(
+      [
+        { stage: "market_data", status: "done" },
+        { stage: "structure", status: "running" },
+      ],
+      "ar",
+    );
+    assert.ok(text.includes("جارٍ التحليل"), "the header names the work");
+    assert.ok(text.includes("(1/2)"), "…and says how far along it is");
+  });
+
+  it("turns the header clock one frame per edit — animation without premium", () => {
+    const rows = [{ stage: "structure", status: "running" as const }];
+    const first = renderProgress(rows, "ar", null, 0);
+    const second = renderProgress(rows, "ar", null, 1);
+    assert.ok(first.startsWith(SPINNER_FRAMES[0]!));
+    assert.ok(second.startsWith(SPINNER_FRAMES[1]!));
+    assert.notEqual(first.split("\n")[0], second.split("\n")[0], "the clock must turn");
+    // Wraps rather than running off the end of the dial.
+    assert.ok(
+      renderProgress(rows, "ar", null, SPINNER_FRAMES.length).startsWith(SPINNER_FRAMES[0]!),
+    );
+  });
 });
 
 describe("TelegramProgressReporter", () => {
@@ -95,6 +121,12 @@ describe("TelegramProgressReporter", () => {
     assert.equal(h.shows.length, 2, "exactly one trailing edit");
     // The trailing edit carries the NEWEST state, not the state at schedule time.
     assert.ok(h.shows[1]!.includes("✓ البنية السعرية"));
+    // …and the header clock turned between the two edits.
+    assert.notEqual(
+      h.shows[0]!.split("\n")[0],
+      h.shows[1]!.split("\n")[0],
+      "consecutive edits must advance the spinner frame",
+    );
   });
 
   it("never regresses a finished stage back to running", () => {

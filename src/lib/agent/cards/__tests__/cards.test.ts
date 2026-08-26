@@ -24,7 +24,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
-import { renderCardForTelegram, renderCardsForTelegram } from "@/lib/agent/cards/telegramCards";
+import {
+  renderCardForTelegram,
+  renderCardsForTelegram,
+  renderTelegramDetails,
+  renderTelegramLead,
+  scrubTelegramInternals,
+} from "@/lib/agent/cards/telegramCards";
 import {
   CARD_ORDER,
   COLLAPSED_BY_DEFAULT,
@@ -341,6 +347,151 @@ describe("the phone gets the same answer", () => {
       /unhandled agent card/,
     );
     assert.throws(() => assertNeverCard("x" as never), /unhandled agent card/);
+  });
+});
+
+describe("the lead card and the folded depth (the phone's reading order)", () => {
+  it("leads with what the operator acts on, folds the rest into expandable quotes", () => {
+    const text = renderCardsForTelegram(
+      deriveCards(fullResult({ marketClosedScenario: undefined })),
+      "ar",
+    );
+    const firstFold = text.indexOf("<blockquote expandable>");
+    assert.ok(firstFold > 0, "the long sections must be folded");
+    const lead = text.slice(0, firstFold);
+    // Everything needed to ACT is visible before the first fold.
+    for (const visible of ["<b>شراء</b>", "الخطة", "الدخول", "الوقف", "الأهداف", "التفعيل", "ما يُبطل الخطة"]) {
+      assert.ok(lead.includes(visible), `${visible} must be visible without a tap`);
+    }
+    // The depth — reasons, evidence, warnings, checks, alternative — is folded.
+    const folded = text.slice(firstFold);
+    for (const fold of ["الأسباب", "الأدلة", "تنبيهات", "الفحوصات", "السيناريو البديل"]) {
+      assert.ok(folded.includes(fold), `${fold} belongs in the folded depth`);
+    }
+    // Every fold closes — an unbalanced quote 400s the whole send.
+    assert.equal(
+      (text.match(/<blockquote expandable>/g) ?? []).length,
+      (text.match(/<\/blockquote>/g) ?? []).length,
+    );
+  });
+
+  it("the lead alone fits a photo caption's shape: no folds inside it", () => {
+    const cards = deriveCards(fullResult());
+    const lead = renderTelegramLead(cards, "ar");
+    assert.ok(lead.includes("الخطة"), "the caption carries the plan");
+    assert.ok(!lead.includes("<blockquote"), "a caption cannot fold");
+    const details = renderTelegramDetails(cards, "ar");
+    assert.ok(details.startsWith("<blockquote expandable>"), "details are all folds");
+    assert.ok(details.includes("الأسباب"));
+  });
+
+  it("an empty section renders no fold — a heading with nothing under it", () => {
+    const details = renderTelegramDetails(
+      deriveCards(
+        fullResult({
+          keyReasons: [],
+          publicReasoningSummary: [],
+          riskWarnings: [],
+          newsRisk: undefined,
+        }),
+      ),
+      "ar",
+    );
+    assert.ok(!details.includes("الأسباب"), "no reasons — no reasons fold");
+    assert.ok(!details.includes("تنبيهات"), "no warnings — no warnings fold");
+    assert.ok(details.includes("الفحوصات"), "sections with data still fold in");
+  });
+});
+
+describe("internals never reach the phone (each pattern is a real transcript)", () => {
+  it("scrubs candidate ids, shortens UUIDs, drops parroted decision enums", () => {
+    assert.equal(
+      scrubTelegramInternals("تنبيه على الخطة (tc-15) بعد الإغلاق"),
+      "تنبيه على الخطة بعد الإغلاق",
+    );
+    assert.equal(
+      scrubTelegramInternals("توصية #c438afb4-f73c-4095-b939-1a10d419d61a قائمة"),
+      "توصية #c438afb4 قائمة",
+    );
+    assert.equal(
+      scrubTelegramInternals("أهلاً. Decision: informational كيف أساعدك؟"),
+      "أهلاً. كيف أساعدك؟",
+    );
+  });
+
+  it("a removed gate's placeholder verdict simply does not render", () => {
+    const result = fullResult({
+      gateVerdicts: [
+        { id: "G1", name: "news", status: "pass", startedAt: 1, finishedAt: 2 },
+        { id: "G5", name: "removed", status: "pass", startedAt: 2, finishedAt: 2 },
+        { id: "G6", name: "risk_geometry", status: "pass", startedAt: 2, finishedAt: 3 },
+      ] as AgentFinalResult["gateVerdicts"],
+    });
+    const text = renderCardsForTelegram(deriveCards(result), "ar");
+    assert.ok(!text.includes("أُزيل"), "the relic gate's label must never render");
+    assert.ok(!text.includes("✅ Removed"), "nor its English label");
+    assert.ok(text.includes("الأخبار والأحداث الاقتصادية"), "real gates still render");
+  });
+
+  it("evidence renders as graded human sentences, never key:value dumps", () => {
+    const result = fullResult({
+      evidenceDimensions: [
+        { key: "signal_strength", grade: "weak", detail: "قوة الإشارة الحالية 42%.", value: 42 },
+        { key: "cot_positioning", grade: "moderate", detail: "تموضع المضاربين ضمن نطاقه المعتاد." },
+        { key: "plan_type", grade: "moderate", detail: "خطة مشروطة — تنتظر شرط التفعيل." },
+      ] as AgentFinalResult["evidenceDimensions"],
+    });
+    const text = renderCardsForTelegram(deriveCards(result), "ar");
+    for (const machineKey of ["signal_strength", "cot_positioning", "plan_type"]) {
+      assert.ok(!text.includes(machineKey), `${machineKey} is a lookup handle, not an answer`);
+    }
+    assert.ok(text.includes("قوة الإشارة الحالية 42%"), "the human sentence survives");
+    assert.ok(text.includes("🔴"), "the grade rides as a mark");
+  });
+
+  it("the news level renders in the reader's language, never the raw enum", () => {
+    const text = renderCardsForTelegram(deriveCards(fullResult()), "ar");
+    assert.ok(!/\bmedium\b/.test(text), "the raw level enum must not render");
+    assert.ok(text.includes("متوسط"), "the level renders as a word");
+  });
+
+  it("the tracked status renders localized, never the raw snake_case", () => {
+    const text = renderCardsForTelegram(
+      deriveCards(
+        fullResult({
+          activeRecommendation: {
+            id: "rec_1",
+            status: "pending_entry",
+            direction: "buy",
+            symbol: "XAUUSD",
+            interval: "15m",
+          },
+        }),
+      ),
+      "ar",
+    );
+    assert.ok(!text.includes("pending_entry"));
+    assert.ok(text.includes("تُفعَّل عند منطقة الدخول"));
+  });
+
+  it("a full recommendation message carries no UUID, no Decision:, no tc-N", () => {
+    const text = renderCardsForTelegram(
+      deriveCards(
+        fullResult({
+          summary: "بيع مشروط (tc-15) — Decision: sell",
+          keyReasons: ["السيولة أعلى — راجع توصية #c438afb4-f73c-4095-b939-1a10d419d61a"],
+        }),
+      ),
+      "ar",
+    );
+    assert.doesNotMatch(
+      text,
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+      "a full UUID is an internal identifier",
+    );
+    assert.ok(!text.includes("Decision:"), "the decision enum line must not render");
+    assert.doesNotMatch(text, /\btc-\d+\b/, "candidate ids are internal vocabulary");
+    assert.ok(text.includes("#c438afb4"), "the short id remains as the honest reference");
   });
 });
 

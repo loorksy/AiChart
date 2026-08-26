@@ -518,6 +518,18 @@ export const ar: Record<TranslationKey, string> = {
   "tg.warnings": "تنبيهات",
   "tg.cost_line": "التكلفة المتوقعة: {pips} نقطة{suffix}",
   "tg.estimate": "تقدير",
+  "tg.progress_header": "جارٍ التحليل",
+  "tg.refresh_status": "🔄 تحديث الحالة",
+  "tg.refresh_status_prompt": "ما وضع التوصية الحالية؟",
+  "tg.photo_failed": "📷 تعذّر التقاط صورة الشارت لهذه التوصية — التفاصيل نصية أعلاه.",
+  "news.level.high": "مرتفع",
+  "news.level.medium": "متوسط",
+  "news.level.low": "منخفض",
+  "news.level.unknown": "غير معروف",
+  "pattern.stage.forming": "قيد التكوّن",
+  "pattern.stage.completed": "مكتمل",
+  "pattern.stage.confirmed": "مؤكد",
+  "pattern.stage.invalidated": "مُبطل",
 
   // --- وضع سيناريو السوق المغلق (closedMarketScenario.ts) ---
   "scenario.notice":
@@ -811,6 +823,7 @@ export const ar: Record<TranslationKey, string> = {
 
   // --- Parts 16-18: recommendation tracker + statistics ---
   "rec.status.pending_entry": "تُفعَّل عند منطقة الدخول",
+  "rec.status.active": "نشطة",
   "rec.lifecycle.waiting_entry": "تُفعَّل عند منطقة الدخول",
   "rec.lifecycle.active_now": "صفقة نشطة الآن",
   "rec.row.current_price": "السعر الحالي",
@@ -1187,7 +1200,14 @@ export const ar: Record<TranslationKey, string> = {
   "notify.category.target": "تحقّق هدف",
   "notify.category.invalidation": "إبطال الخطة أو وقفها",
   "notify.category.news_block": "حدث إخباري وشيك — نافذة حظر",
-  "notify.trace": "المصدر: توصية #{id} · {symbol} · حدث {event}",
+  "notify.trace": "المصدر: توصية #{id} · {symbol} · {event}",
+  "notify.event.activated": "تفعّل الدخول",
+  "notify.event.tp1_hit": "تحقق الهدف الأول",
+  "notify.event.tp2_hit": "تحقق الهدف الثاني",
+  "notify.event.tp3_hit": "تحقق الهدف الثالث",
+  "notify.event.sl_hit": "ضُرب الوقف",
+  "notify.event.invalidated": "أُبطلت الخطة",
+  "notify.event.economic_event_near": "اقتراب حدث اقتصادي",
   "scenario.block.title": "ملف {symbol} (من نتائج توصياتك المكتملة):",
   "scenario.block.counts_only": "- {total} توصية مكتملة: {wins} رابحة و{losses} خاسرة (العيّنة أصغر من أن تُشتق منها نسبة نجاح).",
   "scenario.block.with_rate": "- {total} توصية مكتملة: {wins} رابحة و{losses} خاسرة (نسبة النجاح {pct}%).",

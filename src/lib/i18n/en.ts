@@ -535,6 +535,18 @@ export const en = {
   "tg.warnings": "Warnings",
   "tg.cost_line": "Expected cost: {pips} pips{suffix}",
   "tg.estimate": "estimate",
+  "tg.progress_header": "Analyzing",
+  "tg.refresh_status": "🔄 Refresh status",
+  "tg.refresh_status_prompt": "What is the status of the current recommendation?",
+  "tg.photo_failed": "📷 Could not capture the chart image for this recommendation — the details above are text-only.",
+  "news.level.high": "High",
+  "news.level.medium": "Medium",
+  "news.level.low": "Low",
+  "news.level.unknown": "Unknown",
+  "pattern.stage.forming": "forming",
+  "pattern.stage.completed": "completed",
+  "pattern.stage.confirmed": "confirmed",
+  "pattern.stage.invalidated": "invalidated",
 
   // --- Closed-market scenario mode (closedMarketScenario.ts) ---
   "scenario.notice":
@@ -827,6 +839,7 @@ export const en = {
 
   // --- Parts 16-18: recommendation tracker + statistics ---
   "rec.status.pending_entry": "Activates at the entry zone",
+  "rec.status.active": "Active",
   "rec.lifecycle.waiting_entry": "Activates at the entry zone",
   "rec.lifecycle.active_now": "Active trade now",
   "rec.row.current_price": "Current",
@@ -1205,7 +1218,14 @@ export const en = {
   "notify.category.target": "Target reached",
   "notify.category.invalidation": "Plan invalidated or stopped",
   "notify.category.news_block": "High-impact news imminent — block window",
-  "notify.trace": "Source: recommendation #{id} · {symbol} · event {event}",
+  "notify.trace": "Source: recommendation #{id} · {symbol} · {event}",
+  "notify.event.activated": "entry activated",
+  "notify.event.tp1_hit": "first target reached",
+  "notify.event.tp2_hit": "second target reached",
+  "notify.event.tp3_hit": "third target reached",
+  "notify.event.sl_hit": "stop loss hit",
+  "notify.event.invalidated": "plan invalidated",
+  "notify.event.economic_event_near": "economic event approaching",
   "scenario.block.title": "{symbol} profile (from your completed recommendation outcomes):",
   "scenario.block.counts_only": "- {total} completed recommendations: {wins} wins and {losses} losses (sample too small to derive a win rate).",
   "scenario.block.with_rate": "- {total} completed recommendations: {wins} wins and {losses} losses (win rate {pct}%).",

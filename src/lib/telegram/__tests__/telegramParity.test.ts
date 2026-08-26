@@ -258,6 +258,39 @@ describe("the webhook route survives Telegram's retry contract", () => {
   });
 });
 
+describe("a recommendation ships with its drawn chart", () => {
+  it("captures through the one pipeline, with the plan's own drawings", () => {
+    // The platform draws every recommendation; the phone gets a photo of the
+    // SAME chart with the SAME drawings — never a second renderer.
+    assert.match(agentSource, /captureRecommendationPhoto\(/);
+    assert.match(agentSource, /result\.drawings/);
+    assert.match(agentSource, /sendChatAction\(message\.chatId, "upload_photo"\)/);
+  });
+
+  it("leads with the lead card as the caption, folded details as the follow-up", () => {
+    assert.match(agentSource, /renderTelegramLead\(/);
+    assert.match(agentSource, /TELEGRAM_CAPTION_LIMIT/);
+    assert.match(agentSource, /renderTelegramDetails\(/);
+  });
+
+  it("never blocks the answer on the photograph, and says so when it fails", () => {
+    // The capture runs after the engine finished; a failed capture ships the
+    // text answer with one honest line — no substitute image, no silence.
+    assert.match(agentSource, /tg\.photo_failed/);
+    const finish = agentSource.indexOf("reporter.finish()");
+    const photo = agentSource.indexOf("captureRecommendationPhoto(");
+    const textDelivery = agentSource.lastIndexOf("await deliverReply({");
+    assert.ok(finish > 0 && photo > 0, "both stages must exist");
+    assert.ok(finish < photo, "the engine's answer is complete before any photograph");
+    assert.ok(photo < textDelivery, "the text path stays as the fallback delivery");
+  });
+
+  it("offers the status-refresh tap on every plan", () => {
+    assert.match(agentSource, /tg\.refresh_status/);
+    assert.match(agentSource, /tg\.refresh_status_prompt/);
+  });
+});
+
 describe("the professional turn: progress, memory, and the right theatre", () => {
   it("wires the engine's stage narration into the live bubble", () => {
     // The engine narrated itself all along (emitStage); the surface passed a

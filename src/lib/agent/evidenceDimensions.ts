@@ -9,6 +9,8 @@
  * a first-class answer — an absent backtest is reported as absent, never
  * softened into a number.
  */
+import { PATTERN_TYPE_LABELS } from "@/lib/chart/chartTerminology";
+import { t } from "@/lib/i18n";
 
 export type DimensionGrade = "strong" | "moderate" | "weak" | "unavailable";
 
@@ -116,13 +118,14 @@ export function buildEvidenceDimensions(
 
   if (input.patternState) {
     const completion = input.patternCompletion ?? null;
+    const pattern = humanPatternState(input.patternState);
     dimensions.push(
       dim(
         "pattern_state",
         completion == null ? "moderate" : completion >= 0.8 ? "strong" : "moderate",
         completion == null
-          ? `النموذج: ${input.patternState}.`
-          : `النموذج: ${input.patternState} (اكتمال ≈${Math.round(completion * 100)}%).`,
+          ? `النموذج: ${pattern}.`
+          : `النموذج: ${pattern} (اكتمال ≈${Math.round(completion * 100)}%).`,
         completion == null ? undefined : Math.round(completion * 100),
       ),
     );
@@ -185,7 +188,9 @@ export function buildEvidenceDimensions(
       news === "low" ? "strong" : news === "medium" ? "moderate" : news === "high" ? "weak" : "unavailable",
       news === "unknown"
         ? "التقويم الاقتصادي غير متاح — لم تُراجَع الأحداث."
-        : `خطر الأحداث الاقتصادية: ${news}.`,
+        : // The level in words, never the raw enum — "medium" inside an
+          // Arabic sentence is a leak, not a grade.
+          `خطر الأحداث الاقتصادية: ${t("ar", `news.level.${news}`)}.`,
     ),
   );
 
@@ -296,6 +301,25 @@ export function buildEvidenceDimensions(
   );
 
   return { dimensions };
+}
+
+/**
+ * The synthesizer's pattern string carries the detector's own enums
+ * ("ascending_triangle · forming"); the card is operator-facing, so the
+ * vocabulary is translated here — pattern names through the chart
+ * terminology map, stage words through the language map — and any enum
+ * neither map knows at least loses its underscores rather than printing raw.
+ */
+function humanPatternState(state: string): string {
+  let out = state;
+  for (const [key, label] of Object.entries(PATTERN_TYPE_LABELS)) {
+    out = out.split(key).join(label);
+  }
+  return out
+    .replace(/\b(forming|completed|confirmed|invalidated)\b/g, (word) =>
+      t("ar", `pattern.stage.${word}`),
+    )
+    .replace(/_/g, " ");
 }
 
 function planTypeDetail(planType: string, executionState: string): string {

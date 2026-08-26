@@ -25,7 +25,17 @@ function safeAssistantContext(message: AgentChatMessageRecord): string {
   const recommendation = record(result.recommendation);
   const lines = [message.content || result.summary]
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  if (typeof result.decision === "string") lines.push(`Decision: ${result.decision}`);
+  // Only market verdicts are worth restating; "informational" and
+  // "action_required" are envelope plumbing, and a model reading
+  // "Decision: informational" in its own history parrots it into replies —
+  // a real transcript, not a hypothesis.
+  if (
+    result.decision === "buy" ||
+    result.decision === "sell" ||
+    result.decision === "wait"
+  ) {
+    lines.push(`Decision: ${result.decision}`);
+  }
   if (typeof result.activeRecommendation?.status === "string") {
     lines.push(`Recommendation status: ${result.activeRecommendation.status}`);
   }

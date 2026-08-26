@@ -11,6 +11,7 @@ import { describe, it } from "node:test";
 import {
   escapeTelegramHtml,
   splitTelegramMessage,
+  TELEGRAM_CAPTION_LIMIT,
   TELEGRAM_TEXT_LIMIT,
 } from "@/lib/telegram/html";
 
@@ -62,5 +63,38 @@ describe("splitTelegramMessage", () => {
     const chunks = splitTelegramMessage(monster);
     assert.equal(chunks.length, 2);
     assert.ok(chunks[0]!.length <= TELEGRAM_TEXT_LIMIT);
+  });
+
+  it("repairs a split landing inside an expandable blockquote — both chunks stay valid HTML", () => {
+    // A folded card section spans many lines; a cut inside it used to leave
+    // an unclosed <blockquote> in chunk one AND a stray close in chunk two,
+    // and an unbalanced tag 400s BOTH sends.
+    const line = "س".repeat(40);
+    const fold = `<blockquote expandable>العنوان\n${Array.from({ length: 20 }, () => line).join("\n")}</blockquote>`;
+    const text = `مقدمة\n\n${fold}`;
+    const chunks = splitTelegramMessage(text, 300);
+    assert.ok(chunks.length > 1, "the fixture must actually force a split");
+    for (const chunk of chunks) {
+      assert.ok(chunk.length <= 300, `chunk of ${chunk.length} exceeds limit`);
+      const opens = (chunk.match(/<blockquote\b/g) ?? []).length;
+      const closes = (chunk.match(/<\/blockquote>/g) ?? []).length;
+      assert.equal(opens, closes, "a chunk left a blockquote unbalanced");
+    }
+    // Nothing of the CONTENT was lost — only repair markup was added.
+    const stripped = chunks
+      .join("\n")
+      .replaceAll("<blockquote expandable>", "")
+      .replaceAll("</blockquote>", "")
+      .replace(/\s+/g, "");
+    const original = text
+      .replaceAll("<blockquote expandable>", "")
+      .replaceAll("</blockquote>", "")
+      .replace(/\s+/g, "");
+    assert.equal(stripped, original);
+  });
+
+  it("knows Telegram's caption cap, which the photo path splits against", () => {
+    assert.equal(TELEGRAM_CAPTION_LIMIT, 1024);
+    assert.ok(TELEGRAM_CAPTION_LIMIT < TELEGRAM_TEXT_LIMIT);
   });
 });
