@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  formatInteger,
   formatUsd,
   isNumericReady,
   numericFromOptional,
@@ -19,6 +20,13 @@ describe("numericDisplay", () => {
   it("does not treat null as ready", () => {
     assert.equal(isNumericReady(null), false);
     assert.deepEqual(numericFromOptional(null), { status: "loading" });
+  });
+
+  it("formats integers in the reader's own digits", () => {
+    assert.equal(formatInteger(1250, "en"), "1,250");
+    assert.equal(formatInteger(1250, "ar"), "١٬٢٥٠");
+    assert.equal(formatInteger(0, "ar"), "٠");
+    assert.equal(formatInteger(Number.NaN, "ar"), "", "never 'NaN' on screen");
   });
 });
 

@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, LifeBuoy, Paperclip, X } from "lucide-react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowUp, Bot, LifeBuoy, Paperclip, X } from "lucide-react";
 
-import { PageHeader } from "@/components/foundation";
+import { EmptyState } from "@/components/foundation";
 import { LiquidMetalFrame } from "@/components/ui/liquid-metal-button";
 import { useLocale } from "@/hooks/useLocale";
 import { notifySupportRead } from "@/hooks/useSupportUnread";
 import { APP_WAKE_EVENT } from "@/lib/appWake";
+import { formatClock, formatDayLabel, isSameCalendarDay } from "@/lib/display/timestamp";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,6 +21,12 @@ import { cn } from "@/lib/utils";
  * a bordered card, the composer a bare input row — "containers and texts"
  * next to the agent panel. The data path is unchanged; only the surface now
  * matches the rest of the platform.
+ *
+ * Timestamps go through `@/lib/display/timestamp` and ONLY through it. The
+ * thread used to build its own "day/month + clock" format with numeric
+ * fields; the Arabic pattern carries a bidi mark before the slash, so inside
+ * this RTL page the pieces re-ordered, the day digits thrown to the far end.
+ * The shared formatter spells the day as a word and isolates every fragment.
  */
 
 interface SupportMessage {
@@ -170,96 +177,139 @@ export function SupportChat() {
     }
   }
 
-  const time = new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en", {
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-  });
-
   const canSend = (draft.trim().length > 0 || file != null) && !sending;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader
-        title={t("support.title")}
-        description={t("support.subtitle")}
-        icon={<LifeBuoy className="h-5 w-5" />}
-      />
+      {/* Compact header: a small icon face, the title and one quiet line —
+          not a display heading floating over an empty page. */}
+      <header className="flex items-center gap-3 border-b border-border/60 pb-3 pt-1">
+        <span
+          aria-hidden
+          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground"
+        >
+          <LifeBuoy className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-semibold text-foreground">
+            {t("support.title")}
+          </h1>
+          <p className="truncate text-xs text-muted-foreground">{t("support.subtitle")}</p>
+        </div>
+      </header>
 
       {/* The thread: one centred reading column, exactly like the agent chat.
-          The operator's own messages sit in a soft bubble on the END edge
-          (logical margins keep RTL correct); the team answers as plain text
-          across the column — no boxed card around the whole conversation. */}
+          Date separators carry the day; each message then needs only its
+          clock. The operator's own messages sit in a soft bubble on the END
+          edge (logical margins keep RTL correct); the team answers under a
+          small team badge across the column — no boxed card around the whole
+          conversation. */}
       <div
         className="aichart-scroll min-h-0 flex-1 overflow-y-auto py-4"
         data-testid="support-thread"
         aria-live="polite"
       >
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-1">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-1">
           {loading ? (
             <div className="flex flex-col gap-5" aria-busy="true">
+              <div className="mx-auto h-6 w-24 animate-pulse rounded-full bg-muted/60" />
               <div className="ms-auto h-9 w-2/5 animate-pulse rounded-2xl bg-muted" />
-              <div className="space-y-2.5">
-                <div className="h-4 w-11/12 animate-pulse rounded bg-muted/70" />
-                <div className="h-4 w-3/4 animate-pulse rounded bg-muted/70" />
+              <div className="flex items-start gap-2.5">
+                <div className="size-7 shrink-0 animate-pulse rounded-full bg-muted/70" />
+                <div className="flex-1 space-y-2.5 pt-1">
+                  <div className="h-4 w-11/12 animate-pulse rounded bg-muted/70" />
+                  <div className="h-4 w-3/4 animate-pulse rounded bg-muted/70" />
+                </div>
               </div>
               <div className="ms-auto h-9 w-1/3 animate-pulse rounded-2xl bg-muted" />
             </div>
           ) : messages.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              {t("support.empty")}
-            </p>
+            <EmptyState
+              icon={<LifeBuoy />}
+              title={t("support.empty_title")}
+              description={t("support.empty")}
+              className="py-14"
+            />
           ) : (
-            messages.map((m) => {
+            messages.map((m, index) => {
               const mine = m.author === "user";
               const author = mine
                 ? t("support.you")
                 : m.author === "bot"
                   ? t("support.bot")
                   : t("support.team");
-              return mine ? (
-                <div key={m.id} data-author={m.author} className="w-full">
-                  <div className="ms-auto flex w-fit max-w-[min(85%,36rem)] flex-col items-end">
-                    <div className="rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm leading-6 text-foreground">
-                      {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
-                      {m.attachment_path && (
-                        <SupportAttachment
-                          path={m.attachment_path}
-                          name={m.attachment_name}
-                          bytes={m.attachment_bytes}
-                          label={t("support.attachment")}
-                          openLabel={t("support.attachment_open")}
-                        />
-                      )}
+              const previous = messages[index - 1];
+              const newDay =
+                !previous || !isSameCalendarDay(previous.created_at, m.created_at);
+              const separator = newDay ? (
+                <div className="flex items-center gap-3 py-1">
+                  <span className="h-px flex-1 bg-border/60" aria-hidden />
+                  <span className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-[11px] font-medium text-muted-foreground">
+                    {formatDayLabel(m.created_at, locale)}
+                  </span>
+                  <span className="h-px flex-1 bg-border/60" aria-hidden />
+                </div>
+              ) : null;
+              return (
+                <Fragment key={m.id}>
+                  {separator}
+                  {mine ? (
+                    <div data-author={m.author} className="w-full">
+                      <div className="ms-auto flex w-fit max-w-[min(85%,36rem)] flex-col items-end">
+                        <div className="rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm leading-6 text-foreground">
+                          {m.body && (
+                            <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                          )}
+                          {m.attachment_path && (
+                            <SupportAttachment
+                              path={m.attachment_path}
+                              name={m.attachment_name}
+                              bytes={m.attachment_bytes}
+                              label={t("support.attachment")}
+                              openLabel={t("support.attachment_open")}
+                            />
+                          )}
+                        </div>
+                        <span className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                          {formatClock(m.created_at, locale)}
+                        </span>
+                      </div>
                     </div>
-                    <span className="mt-1 text-[11px] text-muted-foreground" dir="ltr">
-                      {time.format(new Date(m.created_at))}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  key={m.id}
-                  data-author={m.author}
-                  className="w-full px-1 text-[0.9375rem] leading-7 text-foreground"
-                >
-                  <p className="mb-0.5 text-[11px] text-muted-foreground">
-                    {author}
-                    {" · "}
-                    <span dir="ltr">{time.format(new Date(m.created_at))}</span>
-                  </p>
-                  {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
-                  {m.attachment_path && (
-                    <SupportAttachment
-                      path={m.attachment_path}
-                      name={m.attachment_name}
-                      bytes={m.attachment_bytes}
-                      label={t("support.attachment")}
-                      openLabel={t("support.attachment_open")}
-                    />
+                  ) : (
+                    <div data-author={m.author} className="flex w-full items-start gap-2.5">
+                      <span
+                        aria-hidden
+                        className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-accent-gold/40 bg-accent-gold/10 text-accent-gold"
+                      >
+                        {m.author === "bot" ? (
+                          <Bot className="size-3.5" />
+                        ) : (
+                          <LifeBuoy className="size-3.5" />
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1 text-[0.9375rem] leading-7 text-foreground">
+                        <p className="mb-0.5 flex items-baseline gap-2 text-[11px] leading-4">
+                          <span className="font-semibold text-foreground/85">{author}</span>
+                          <span className="tabular-nums text-muted-foreground">
+                            {formatClock(m.created_at, locale)}
+                          </span>
+                        </p>
+                        {m.body && (
+                          <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                        )}
+                        {m.attachment_path && (
+                          <SupportAttachment
+                            path={m.attachment_path}
+                            name={m.attachment_name}
+                            bytes={m.attachment_bytes}
+                            label={t("support.attachment")}
+                            openLabel={t("support.attachment_open")}
+                          />
+                        )}
+                      </div>
+                    </div>
                   )}
-                </div>
+                </Fragment>
               );
             })
           )}
@@ -294,7 +344,7 @@ export function SupportChat() {
         }}
       >
         <LiquidMetalFrame className="chat-gpt-input mx-auto w-full max-w-3xl">
-          <div className="flex flex-col px-4 pb-4 pt-5">
+          <div className="flex flex-col px-4 pb-3.5 pt-4">
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -312,7 +362,7 @@ export function SupportChat() {
               aria-label={t("support.placeholder")}
               data-testid="support-input"
               disabled={sending}
-              className="mb-4 max-h-[148px] min-h-4 w-full resize-none bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
+              className="mb-3 max-h-[148px] min-h-4 w-full resize-none bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
             />
 
             <div className="flex items-center gap-2">

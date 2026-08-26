@@ -70,6 +70,19 @@ test("every refusal the server can send has words the user can read", () => {
   }
 });
 
+test("timestamps go through the shared RTL-safe formatter, never a local one", () => {
+  // The thread used to build its own "day/month + clock" format with numeric
+  // fields ("26/08، 03:04 ص"); inside the RTL page the bidi algorithm tore it
+  // into "/08، 03:04 ص26". The shared formatter spells the day as a word,
+  // isolates every fragment, and is the ONLY way a time may be rendered here.
+  assert.match(CHAT, /from "@\/lib\/display\/timestamp"/);
+  assert.match(CHAT, /formatClock\(/);
+  assert.match(CHAT, /formatDayLabel\(/);
+  assert.match(CHAT, /isSameCalendarDay\(/, "days are grouped under date separators");
+  assert.doesNotMatch(CHAT, /new Intl\.DateTimeFormat/);
+  assert.doesNotMatch(CHAT, /toLocale(?:Date|Time)?String/);
+});
+
 test("the badge counts without clearing what it counts", () => {
   const hook = readFileSync(
     path.join(import.meta.dirname, "..", "..", "..", "hooks", "useSupportUnread.ts"),
