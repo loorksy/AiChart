@@ -13,6 +13,7 @@ import type {
 import type { MarketType } from "@/lib/markets/types";
 import { barDurationMs } from "@/lib/intervals";
 import {
+  dropKlinesClientCache,
   getKlinesClientCache,
   setKlinesClientCache,
   klinesClientKey,
@@ -22,6 +23,15 @@ import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 /** No PRICE/tick for this long → treat the SSE as a zombie and poll again. */
 export const TICK_STALE_MS = 12_000;
+
+/**
+ * No SSE message AT ALL — including server heartbeats (every 15s) — for this
+ * long while visible → the socket is dead, whatever readyState claims.
+ * Mobile Chrome kills background EventSources without firing onerror, and a
+ * readyState of OPEN on such a corpse is a lie. Two missed heartbeats plus
+ * margin: a healthy stream can never go this quiet.
+ */
+export const SSE_SILENT_MS = 40_000;
 
 /**
  * No bar emitted for this long when the tab comes back → the widget's own bar
@@ -435,6 +445,15 @@ export function createAiChartDatafeed(
       let streamAlive = false;
       let lastTickAt = 0;
       let lastEmitAt = 0;
+      // Anchors the backfill decision when the tab was backgrounded BEFORE the
+      // first bar ever emitted — lastEmitAt alone stays 0 in that case and the
+      // wake path used to skip the history re-request entirely.
+      const subscribedAt = Date.now();
+      // Any SSE message counts — ready, heartbeat, tick. The silence watchdog
+      // compares against this, so a quiet market with live heartbeats is NOT
+      // mistaken for a dead socket, and a dead socket can no longer hide
+      // behind a stale readyState.
+      let lastMessageAt = 0;
 
       const emit = (bar: Bar) => {
         forming = bar;
@@ -527,6 +546,7 @@ export function createAiChartDatafeed(
 
         const bindSource = (source: EventSource) => {
           sub.source = source;
+          lastMessageAt = Date.now();
           source.onmessage = (event) => {
             try {
               const data = JSON.parse(event.data) as {
@@ -534,7 +554,8 @@ export function createAiChartDatafeed(
                 mid?: number;
                 time?: number;
               };
-              if (data.type === "ready") {
+              lastMessageAt = Date.now();
+              if (data.type === "ready" || data.type === "heartbeat") {
                 streamAlive = true;
                 reconnectAttempt = 0;
                 return;
@@ -590,6 +611,10 @@ export function createAiChartDatafeed(
           }, delay);
         };
 
+        // Resume events arrive in bursts (visibilitychange + focus + pageshow
+        // + app-wake within the same second); one full rebuild serves them all.
+        let lastWakeHandledAt = 0;
+
         const onVisibility = () => {
           if (document.visibilityState === "hidden") {
             streamAlive = false;
@@ -598,21 +623,31 @@ export function createAiChartDatafeed(
             sub.source = undefined;
             return;
           }
+          const now = Date.now();
+          if (now - lastWakeHandledAt < 1_000) return;
+          lastWakeHandledAt = now;
           // Away long enough that whole candles are missing (frozen timers,
           // dead SSE, bfcache restore, server-link recovery)? Re-polling only
           // repaints the NEWEST bar next to a hole. Tell TV to drop its bar
           // cache and ask the widget owner to resetData() so history is
           // re-requested and the gap backfills without a manual reload.
+          // Never emitted yet? Judge against subscription time instead —
+          // a chart backgrounded before its first bar still needs the truth.
           const missedBars =
-            lastEmitAt > 0 && Date.now() - lastEmitAt > BACKFILL_AFTER_MS;
+            now - (lastEmitAt > 0 ? lastEmitAt : subscribedAt) > BACKFILL_AFTER_MS;
           reconnectAttempt = 0;
           clearReconnect();
           streamAlive = false;
+          // Teardown + rebuild unconditionally — a background-killed
+          // EventSource can still claim readyState OPEN.
           openStream(true);
           if (missedBars) {
             // The forming-bar anchor belongs to the stale pre-sleep period;
             // fresh emits must not be judged against it.
             forming = null;
+            // Bars cached before the sleep ARE the hole — resetData() must
+            // not be answered from them, or the chart repaints its own gap.
+            dropKlinesClientCache(klinesClientKey(ticker, interval, market));
             try {
               onResetCacheNeeded?.();
             } catch {
@@ -623,14 +658,25 @@ export function createAiChartDatafeed(
           void poll();
         };
 
+        // Staleness watchdog. Message silence — no tick, no heartbeat, no
+        // ready — is the one reliable death signal now that the server
+        // heartbeats every 15s: readyState lies after mobile Chrome kills a
+        // background socket, and tick gaps alone are normal in a quiet
+        // market. Also self-heals a subscription left with neither a socket
+        // nor a pending reconnect (e.g. reconnect was skipped while hidden).
         sub.staleTimer = setInterval(() => {
           if (typeof document !== "undefined" && document.visibilityState === "hidden") {
             return;
           }
-          if (lastTickAt === 0 || Date.now() - lastTickAt <= TICK_STALE_MS) return;
-          streamAlive = false;
-          openStream(true);
-          void poll();
+          if (!sub.source) {
+            if (!sub.reconnectTimer) openStream(true);
+            return;
+          }
+          if (lastMessageAt > 0 && Date.now() - lastMessageAt > SSE_SILENT_MS) {
+            streamAlive = false;
+            openStream(true);
+            void poll();
+          }
         }, 4_000);
 
         openStream();

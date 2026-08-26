@@ -40,6 +40,16 @@ export function setKlinesClientCache(key: string, candles: ClientKlineBar[]): vo
   store.set(key, { candles, at: Date.now() });
 }
 
+/**
+ * Invalidate one cached series. The wake-backfill path calls this before
+ * asking TradingView to re-request history: bars cached BEFORE the device
+ * slept are exactly the hole the backfill exists to repair, and serving them
+ * from this cache made resetData() repaint the stale chart.
+ */
+export function dropKlinesClientCache(key: string): void {
+  store.delete(key);
+}
+
 /** Fire-and-forget warm-up — populates client cache before the chart mounts. */
 export function prefetchKlines(
   symbol: string,
