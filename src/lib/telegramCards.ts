@@ -45,6 +45,7 @@ const LIFECYCLE_EMOJI: Record<LifecycleEventType, string> = {
   tp1_hit: "✅",
   tp2_hit: "✅",
   tp3_hit: "🏆",
+  stop_breach_survived: "🛡️",
   sl_hit: "🛑",
   invalidated: "❌",
   expired: "⌛",
@@ -85,6 +86,8 @@ export function lifecycleEventLabel(type: LifecycleEventType): string {
       return "تحقق الهدف الثاني";
     case "tp3_hit":
       return "تحقق الهدف الثالث";
+    case "stop_breach_survived":
+      return t("ar", "rec.timeline.stop_breach_survived");
     case "sl_hit":
       return "ضُرب وقف الخسارة";
     case "invalidated":

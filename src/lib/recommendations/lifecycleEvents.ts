@@ -10,6 +10,7 @@
  * Pure and deterministic: same inputs, same events. Delivery, deduplication,
  * and channel preferences belong to the alert layer, not here.
  */
+import { t } from "@/lib/i18n";
 import type { TrackedRecommendation } from "./types";
 
 export type LifecycleEventType =
@@ -35,6 +36,14 @@ export type LifecycleEventType =
   | "tp1_hit"
   | "tp2_hit"
   | "tp3_hit"
+  /**
+   * A close-mode candle wicked THROUGH the stop and closed back inside — the
+   * rejection the plan's own invalidation wording promised to survive. Worth
+   * announcing because the operator watching the wick sees a stop-out; the
+   * record saying "survived, by the plan's own rule" is the whole point of
+   * close-confirmed invalidation.
+   */
+  | "stop_breach_survived"
   | "sl_hit"
   | "invalidated"
   | "expired"
@@ -104,6 +113,12 @@ export interface DeriveEventsInput {
   excursionAtr?: number | null;
   /** The evaluator flagged this expiry as "TP1 reached without a fill". */
   missedWithoutFill?: boolean | null;
+  /**
+   * A close-mode stop breach the position survived, NEW since the last sweep
+   * (the caller compares against what was already persisted). The candle time
+   * is part of the dedupe identity, so each survival announces exactly once.
+   */
+  stopBreachSurvivedAt?: number | null;
   now?: number;
 }
 
@@ -181,6 +196,21 @@ export function deriveLifecycleEvents(input: DeriveEventsInput): LifecycleEvent[
         ? ("missed_no_fill" as const)
         : STATUS_EVENTS[input.nextStatus];
     if (type) push(type, statusDetail(type, rec.symbol));
+  }
+
+  // A survived stop breach is not a status change — the status stays
+  // triggered — but it is exactly the moment the operator is staring at the
+  // chart thinking the plan just died. Keyed by the breach candle's time.
+  const breachAt = Number(input.stopBreachSurvivedAt);
+  if (Number.isFinite(breachAt) && breachAt > 0) {
+    push(
+      "stop_breach_survived",
+      t("ar", "rec.lifecycle.stop_breach_survived", {
+        symbol: rec.symbol,
+        stop: String(rec.stopLoss),
+      }),
+      `:${breachAt}`,
+    );
   }
 
   // Proximity only makes sense while the plan is still waiting or running, and

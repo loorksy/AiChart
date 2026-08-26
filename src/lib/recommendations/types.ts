@@ -121,6 +121,38 @@ export interface TrackedRecommendation {
   expiredAt?: number;
   priceAtCreation?: number;
   lastCheckedAt?: number;
+  /**
+   * Post-fill measurement, persisted by the sweep (see tradeMetrics.ts).
+   * All in the plan's own R (|effectiveEntry − stopLoss|). Null/absent on
+   * rows the sweep never measured — legacy history derives what it can
+   * (realizedROf) and fabricates nothing.
+   */
+  mfePrice?: number | null;
+  maePrice?: number | null;
+  /** Max favorable excursion in R (≥ 0) while the position existed. */
+  mfeR?: number | null;
+  /** Max adverse excursion in R (≤ 0) the position survived. */
+  maeR?: number | null;
+  /** The R multiple of the actual exit; terminal records only. */
+  realizedR?: number | null;
+  exitPrice?: number | null;
+  exitAt?: number | null;
+  /** target | stop | stop_after_target | expiry | expiry_after_target | … */
+  exitReason?: string | null;
+  /** Fill → exit; null while live (readers derive "so far" from triggeredAt). */
+  timeInTradeMs?: number | null;
+  /** Close-mode wicks through the stop that closed back inside. */
+  stopBreachSurvivedCount?: number;
+  lastStopBreachSurvivedAt?: number | null;
+  /**
+   * The expiry was "price ran to TP1 without a fill" — the predicted move
+   * happened and the plan watched. Persisted so HISTORY grades it a missed
+   * opportunity instead of a plain expiry (the lifecycle event alone
+   * evaporated with the sweep that derived it).
+   */
+  missedWithoutFill?: boolean;
+  /** Set when the agent superseded this plan with a newer analysis. */
+  supersededAt?: number | null;
   /** Serialized chart drawings captured with the plan (JSON string). */
   chartDrawingsJson?: string;
   /**

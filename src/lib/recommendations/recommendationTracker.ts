@@ -42,6 +42,7 @@ import {
 } from "./recommendationStatus";
 import { entryFillTolerance } from "./entrySemantics";
 import { activationRuleTimeframe } from "./activationRule";
+import { computeTradeMetrics, mergeTradeMetrics } from "./tradeMetrics";
 import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
 import {
   admitTriggers,
@@ -206,6 +207,46 @@ export async function trackOneRecommendation(
     entryTolerance,
   });
 
+  // Post-fill measurement (tradeMetrics.ts): MFE/MAE, realized R, exit,
+  // durations, survived stop breaches — pure arithmetic over the SAME candles
+  // the evaluator just walked, merged monotonically with what earlier sweeps
+  // observed so a shorter candle window can only add information.
+  const metrics = mergeTradeMetrics(
+    rec,
+    computeTradeMetrics({
+      recommendation: {
+        direction: rec.direction,
+        entryType: rec.entryType,
+        entry: rec.entry,
+        effectiveEntry: result.effectiveEntry ?? rec.effectiveEntry,
+        stopLoss: rec.stopLoss,
+        invalidationMode: rec.invalidationMode,
+        planType: rec.planType,
+        activationRule: rec.activationRule,
+        targets: rec.targets,
+        outcome: result.outcome,
+        createdAt: toMs(rec.createdAt),
+        expiresAt: rec.expiresAt,
+        triggeredAt: result.triggeredAt,
+        tp1HitAt: result.tp1HitAt,
+        tp2HitAt: result.tp2HitAt,
+        tp3HitAt: result.tp3HitAt,
+        slHitAt: result.slHitAt,
+        invalidatedAt: rec.invalidatedAt,
+        cancelledAt: rec.cancelledAt,
+        expiredAt: result.expiredAt ?? rec.expiredAt,
+      },
+      candles,
+    }),
+  );
+  // A survived stop breach that is NEW since the last persisted observation —
+  // announced once, keyed by its candle time.
+  const newStopBreachAt =
+    metrics.lastStopBreachSurvivedAt != null &&
+    metrics.lastStopBreachSurvivedAt !== (rec.lastStopBreachSurvivedAt ?? null)
+      ? metrics.lastStopBreachSurvivedAt
+      : null;
+
   // The execution state is a function of the market from here on. The card
   // badge reads this — leaving it at its creation value is how a plan whose
   // condition was satisfied kept saying "بانتظار التفعيل" forever.
@@ -232,6 +273,10 @@ export async function trackOneRecommendation(
     expiredAt: result.expiredAt,
     executionState: nextExecutionState,
     activationEvidence: result.activationEvidence,
+    metrics,
+    // Persisted so HISTORY keeps grading it a missed opportunity — the
+    // lifecycle event alone evaporates with the sweep that derived it.
+    missedWithoutFill: result.missedWithoutFill ? true : undefined,
     lastCheckedAt: Date.now(),
   });
 
@@ -277,6 +322,7 @@ export async function trackOneRecommendation(
     retestLevel,
     excursionAtr,
     missedWithoutFill: result.missedWithoutFill ?? null,
+    stopBreachSurvivedAt: newStopBreachAt,
     revisionNo: rec.revisionNo ?? null,
   });
   if (result.outcome !== "pending") {

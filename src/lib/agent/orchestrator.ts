@@ -2153,6 +2153,7 @@ async function runUnifiedChartAgentInner(
         sessionId,
         supersededRecommendation.symbol,
         ctx.userId,
+        { superseded: true },
       ).catch(() => {
         // Closing the old plan is best-effort: the new plan overwrites the
         // session slot either way, and the tracker sweep grades what remains.

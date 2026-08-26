@@ -289,10 +289,22 @@ export async function clearActiveRecommendation(
   sessionId: string,
   symbol?: string,
   userId?: number,
+  opts: {
+    /**
+     * True when a NEWER analysis is replacing this plan (the orchestrator's
+     * supersede path). The tracked record then grades "superseded" instead of
+     * a plain withdrawal — different facts to the operator reading history.
+     */
+    superseded?: boolean;
+  } = {},
 ): Promise<void> {
   const rec = await getActiveRecommendation(sessionId, symbol, userId);
   if (!rec) return;
-  if (rec.userId != null) await cancelTrackedRecommendation(rec.userId, rec.id);
+  if (rec.userId != null) {
+    await cancelTrackedRecommendation(rec.userId, rec.id, {
+      superseded: opts.superseded,
+    });
+  }
   await rememberActiveRecommendation({ ...rec, status: "cancelled" });
 }
 
