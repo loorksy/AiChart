@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   compositionFallback,
   scanForInternalLeakage,
+  scrubInternalIdentifiers,
   toUserSafeResearchProjection,
   stripInternalFieldsFromClientResult,
 } from "@/lib/agent/userSafeOutbound";
@@ -88,6 +89,41 @@ describe("userSafeOutbound", () => {
     assert.equal(en.markedFallback, true);
     assert.equal(scanForInternalLeakage(ar.text).length, 0);
     assert.equal(scanForInternalLeakage(en.text).length, 0);
+  });
+
+  describe("scrubInternalIdentifiers (leakage policy, outbound layer)", () => {
+    it("removes env-var names, keys, provider hosts, model slugs and URLs", () => {
+      const dirty =
+        "I use OPENAI_API_KEY with sk-abc123def456ghi789 against " +
+        "https://api.openai.com/v1/chat and api.anthropic.com running " +
+        "gpt-4o and claude-sonnet-4 via OPENROUTER_BASE_URL.";
+      const clean = scrubInternalIdentifiers(dirty);
+      assert.doesNotMatch(clean, /OPENAI_API_KEY/);
+      assert.doesNotMatch(clean, /sk-abc123/);
+      assert.doesNotMatch(clean, /openai\.com/);
+      assert.doesNotMatch(clean, /anthropic\.com/);
+      assert.doesNotMatch(clean, /gpt-4o/i);
+      assert.doesNotMatch(clean, /claude-sonnet/i);
+      assert.doesNotMatch(clean, /OPENROUTER_BASE_URL/);
+    });
+
+    it("removes stack frames and repo file paths", () => {
+      const dirty =
+        "Error: boom\n" +
+        "    at runAgent (src/lib/agent/orchestrator.ts:100:5)\n" +
+        "    at /app/node_modules/next/dist/server.js:1:1\n" +
+        "see src/lib/agent/webTurn.ts for details";
+      const clean = scrubInternalIdentifiers(dirty);
+      assert.doesNotMatch(clean, /orchestrator\.ts/);
+      assert.doesNotMatch(clean, /node_modules/);
+      assert.doesNotMatch(clean, /webTurn\.ts/);
+    });
+
+    it("preserves market vocabulary — XAUUSD, OANDA, prices, Arabic", () => {
+      const line =
+        "قرأت 240 شمعة على XAUUSD فريم 1h — السعر 4651.38، البيانات من OANDA، الهدف TP1 عند 4688.25";
+      assert.equal(scrubInternalIdentifiers(line), line);
+    });
   });
 
   it("strips researchEvidence and evidenceTimeline from client payload", () => {

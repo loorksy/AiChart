@@ -135,6 +135,16 @@ export interface AgentRunContext {
   /** Live cumulative SANITIZED answer text for the pending bubble (general
    *  answers only — replace semantics). The final result stays authoritative. */
   emitAnswerText?: (fullText: string) => void;
+  /**
+   * Live "thinking" narration for the pending bubble: one short sentence per
+   * real reasoning step, DERIVED from actual evidence values at the moment
+   * they exist (candle counts, the detected trend, the news window, the gate
+   * that refused) — never a scripted ticker and never raw chain-of-thought.
+   * Built by thinkingNarration.ts; the transport scrubs internals before it
+   * leaves the process. Optional: surfaces without a live client (Telegram,
+   * MCP, cron) simply do not provide it.
+   */
+  emitThinking?: (text: string) => void;
   /** Cooperative cancellation from the client (AbortController). */
   signal?: AbortSignal;
   /** Session preferences (educational-only, minimal drawings, no execution…). */
@@ -224,6 +234,14 @@ export interface AgentOption {
 
 export interface AgentFinalResult {
   decision: AgentDecision;
+  /**
+   * How this turn was routed (core/turnPlanner.ts) — the PRESENTATION
+   * contract, not a second decision. Conversation and specialist turns render
+   * as plain text (no signal card, no chip stack); analysis and
+   * recommendation-follow-up turns keep their cards. Additive: results
+   * persisted before this field infer a conservative fallback client-side.
+   */
+  turnMode?: import("./core/turnPlanner").TurnMode;
   /**
    * The visual basis of this analysis (Phase 8 transparency): `confirmed`
    * ONLY when a TradingView client capture with drawings rendered backed the

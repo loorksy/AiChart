@@ -4,7 +4,9 @@ import {
   appendUserAndPending,
   applyFinal,
   applyLiveNote,
+  applyThinking,
   dropPending,
+  MAX_THINKING_LINES,
 } from "@/hooks/agentChatReducer";
 
 // The live note is the ENGINE's own sentence, streamed at the moment the work
@@ -68,5 +70,49 @@ describe("agentChatReducer (pending narration bubble)", () => {
     );
     const next = dropPending(base, "p1");
     assert.equal(next.length, 2); // finalized message survives
+  });
+
+  describe("applyThinking (live thinking trace)", () => {
+    const base = () => appendUserAndPending([], { id: "u1", content: "حلل" }, "p1");
+
+    it("appends the agent's thinking lines to the pending bubble in order", () => {
+      let msgs = applyThinking(base(), "p1", "قرأت 240 شمعة على فريم 1h");
+      msgs = applyThinking(msgs, "p1", "الاتجاه صاعد فوق 4620.50");
+      assert.deepEqual(msgs[1].thinking, [
+        "قرأت 240 شمعة على فريم 1h",
+        "الاتجاه صاعد فوق 4620.50",
+      ]);
+      assert.equal(msgs[1].pending, true);
+    });
+
+    it("dedupes a replayed frame (same line twice in a row)", () => {
+      let msgs = applyThinking(base(), "p1", "سطر واحد");
+      msgs = applyThinking(msgs, "p1", "سطر واحد");
+      assert.deepEqual(msgs[1].thinking, ["سطر واحد"]);
+    });
+
+    it("caps the trace so a pathological run cannot grow the DOM unbounded", () => {
+      let msgs = base();
+      for (let i = 0; i < MAX_THINKING_LINES + 10; i += 1) {
+        msgs = applyThinking(msgs, "p1", `line ${i}`);
+      }
+      assert.equal(msgs[1].thinking!.length, MAX_THINKING_LINES);
+      assert.equal(msgs[1].thinking![MAX_THINKING_LINES - 1], `line ${MAX_THINKING_LINES + 9}`);
+    });
+
+    it("ignores blank lines and never touches a finalized message", () => {
+      const blank = applyThinking(base(), "p1", "   ");
+      assert.equal(blank[1].thinking, undefined);
+      const done = applyFinal(base(), "p1", { content: "done" });
+      const after = applyThinking(done, "p1", "late line");
+      assert.equal(after[1].thinking, undefined);
+    });
+
+    it("the final replacement discards the live thinking lines", () => {
+      const withThinking = applyThinking(base(), "p1", "قرأت البيانات");
+      const finalized = applyFinal(withThinking, "p1", { content: "الجواب" });
+      assert.equal(finalized[1].thinking, undefined);
+      assert.equal(finalized[1].content, "الجواب");
+    });
   });
 });

@@ -15,6 +15,7 @@ import {
   applyFinal,
   applyStreamText,
   applyLiveNote,
+  applyThinking,
   dropPending,
 } from "@/hooks/agentChatReducer";
 import { resolveLatestChartCandle } from "@/lib/agent/marketContext/resolveLatestChartCandle";
@@ -46,6 +47,9 @@ export interface AgentChatMessage {
   pending?: boolean;
   /** Latest engine narration line shown inside the pending bubble. */
   liveNote?: string | null;
+  /** Live thinking lines (server `thinking` SSE events — real per-step
+   *  narration derived from run evidence). UI-only, never persisted. */
+  thinking?: string[] | null;
   /** Live streamed answer text (cumulative, sanitized) for general answers.
    *  UI-only — the final event replaces the whole bubble. */
   streamText?: string | null;
@@ -313,7 +317,12 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
           if (hasPending) {
             return prev.map((m) =>
               m.id === run.pendingId && m.pending
-                ? { ...m, liveNote: run.liveNote, streamText: run.streamText }
+                ? {
+                    ...m,
+                    liveNote: run.liveNote,
+                    streamText: run.streamText,
+                    thinking: run.thinking.length ? [...run.thinking] : m.thinking,
+                  }
                 : m,
             );
           }
@@ -333,6 +342,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               pending: true,
               liveNote: run.liveNote,
               streamText: run.streamText,
+              thinking: run.thinking.length ? [...run.thinking] : null,
             },
           ];
         });
@@ -501,6 +511,16 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               updateLiveRun(chatId, pendingId, {
                 addStageEvent: data as AgentStageEvent,
               });
+            } else if (eventName === "thinking") {
+              // The agent's own reasoning line for this step — composed
+              // server-side from real run evidence (thinkingNarration.ts),
+              // scrubbed of internals, and appended to the pending bubble's
+              // collapsible trace. UI-only, never persisted.
+              const line = (data as { text?: string }).text;
+              if (typeof line === "string" && line.trim()) {
+                setMessages((prev) => applyThinking(prev, pendingId, line));
+                updateLiveRun(chatId, pendingId, { addThought: line });
+              }
             } else if (eventName === "activity") {
               // Live stream only — the server already filtered to visible work.
               const event = data as AgentActivityEvent;

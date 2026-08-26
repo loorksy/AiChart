@@ -1,36 +1,13 @@
 /**
- * Result-envelope badge mapping.
+ * Result-envelope standing checks.
  *
- * Pure function so the mapping (envelope → label + visual tone) is unit-tested
- * without a DOM. The badge is ALWAYS shown above an assistant analysis result
- * so the basis of the answer — a real analysis vs an operational fault — is
- * never ambiguous.
- *
- * The execution-mode tones (shadow/demo/live) are gone with the execution
- * layer: a recommendations platform has exactly two things to say about an
- * answer's standing — it is an analysis, or it is a blocker.
+ * The per-message badge mapping that used to live here is gone with the badge
+ * itself: the "descriptive — not authorized" pill was stamped above every
+ * assistant reply (greetings included), and it now lives ONCE as small print
+ * under the composer. What remains is the one distinction the chat still
+ * renders per message: an operational fault shows its fault card.
  */
-import type { TranslationKey } from "@/lib/i18n";
 import type { ResultEnvelope } from "./resultEnvelope";
-
-export type BadgeTone = "descriptive" | "blocker";
-
-export interface EnvelopeBadge {
-  labelKey: TranslationKey;
-  tone: BadgeTone;
-}
-
-/**
- * Map a result envelope to its badge. Returns null only when there is no
- * envelope at all (legacy result) — every real result has one.
- */
-export function envelopeBadge(envelope?: ResultEnvelope | null): EnvelopeBadge | null {
-  if (!envelope) return null;
-  if (envelope.outcome_class === "operational_blocker") {
-    return { labelKey: "agent.mode.blocker", tone: "blocker" };
-  }
-  return { labelKey: "agent.mode.descriptive", tone: "descriptive" };
-}
 
 /** True when the envelope is a real operational fault (fault card should show). */
 export function isOperationalBlocker(envelope?: ResultEnvelope | null): boolean {

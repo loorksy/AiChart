@@ -36,6 +36,9 @@ export interface LiveRunSnapshot {
   userMessage: string;
   liveNote: string | null;
   streamText: string | null;
+  /** The agent's own reasoning lines (`thinking` SSE) so a remounted chat
+   *  rebuilds the full trace, not just what arrived after the remount. */
+  thinking: string[];
   stageEvents: AgentStageEvent[];
   running: boolean;
   /**
@@ -70,6 +73,7 @@ export function beginLiveRun(input: {
     ...input,
     liveNote: null,
     streamText: null,
+    thinking: [],
     stageEvents: [],
     running: true,
     final: null,
@@ -84,11 +88,18 @@ export function updateLiveRun(
   pendingId: string,
   patch: Partial<
     Pick<LiveRunSnapshot, "liveNote" | "streamText" | "running" | "final">
-  > & { addStageEvent?: AgentStageEvent },
+  > & { addStageEvent?: AgentStageEvent; addThought?: string },
 ): void {
   const run = runs.get(chatId);
   if (!run || run.pendingId !== pendingId) return;
   if (patch.addStageEvent) run.stageEvents = [...run.stageEvents, patch.addStageEvent];
+  if (patch.addThought?.trim()) {
+    const text = patch.addThought.trim();
+    // Dedupe against a replayed frame; cap mirrors the reducer's bound.
+    if (run.thinking[run.thinking.length - 1] !== text) {
+      run.thinking = [...run.thinking, text].slice(-40);
+    }
+  }
   if ("liveNote" in patch) run.liveNote = patch.liveNote ?? null;
   if ("streamText" in patch) run.streamText = patch.streamText ?? null;
   if ("final" in patch) run.final = patch.final ?? null;

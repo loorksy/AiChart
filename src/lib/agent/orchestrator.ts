@@ -148,6 +148,15 @@ import {
 } from "./recommendation/followupAnswer";
 import { planTurn } from "./core/turnPlanner";
 import {
+  narrateFollowupCheck,
+  narrateGateOutcome,
+  narrateHigherTimeframe,
+  narrateMarketRead,
+  narrateNews,
+  narrateStructure,
+  narrateWeighing,
+} from "./thinkingNarration";
+import {
   getTradingSessionInfo,
   tradingSessionPromptBlock,
 } from "./core/tradingSessions";
@@ -220,14 +229,22 @@ async function settleGeneralAnswer(
   try {
     const summary = await withTimeout(work, generalStageTimeoutMs(), null);
     if (summary == null) {
-      return buildAgentFallbackResult(
-        "General answer exceeded its deadline.",
-        collected,
-        locale,
-        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: requestId },
-      );
+      return {
+        ...buildAgentFallbackResult(
+          "General answer exceeded its deadline.",
+          collected,
+          locale,
+          { failureStage: "general", failureCode: "timeout", retryable: true, traceId: requestId },
+        ),
+        turnMode: "conversation",
+      };
     }
-    return buildInformationalResult(summary, collected, { traceId: requestId });
+    return {
+      ...buildInformationalResult(summary, collected, { traceId: requestId }),
+      // Presentation contract: a plain conversational answer renders as text
+      // only — no signal card, no chip stack (see turnPresentation.ts).
+      turnMode: "conversation",
+    };
   } catch (error) {
     const classified = classifyAgentError(error);
     log.warn("agent.general.failed", {
@@ -235,7 +252,10 @@ async function settleGeneralAnswer(
       code: classified.code,
       detail: classified.detail.slice(0, 300),
     });
-    return resultForGeneralQuestionFailure(error, collected, locale, { traceId: requestId });
+    return {
+      ...resultForGeneralQuestionFailure(error, collected, locale, { traceId: requestId }),
+      turnMode: "conversation",
+    };
   }
 }
 
@@ -501,6 +521,7 @@ async function runUnifiedChartAgentInner(
       });
       return {
         decision: "informational",
+        turnMode: "specialist",
         confidence: 0.9,
         summary,
         keyReasons: [],
@@ -539,12 +560,15 @@ async function runUnifiedChartAgentInner(
   // before explain_chart_drawings because "what do you think of my drawing" references the user's
   // OWN manual drawing, not the agent's AiChart drawings.
   if (isUserDrawingEdit(intents)) {
-    return handleUserDrawingCommand({
-      intents,
-      userMessage,
-      chartContext,
-      locale,
-    });
+    return {
+      ...(await handleUserDrawingCommand({
+        intents,
+        userMessage,
+        chartContext,
+        locale,
+      })),
+      turnMode: "specialist",
+    };
   }
 
   if (intents.includes("explain_chart_drawings")) {
@@ -568,6 +592,7 @@ async function runUnifiedChartAgentInner(
     }
     return {
       decision: "informational",
+      turnMode: "specialist",
       confidence: 0.8,
       summary,
       keyReasons: [],
@@ -594,7 +619,7 @@ async function runUnifiedChartAgentInner(
   // market agents. The result carries `studies`; the client mirrors them onto
   // the TradingView chart and the layout autosave makes them survive refresh.
   if (intents.includes("enable_indicators")) {
-    return handleIndicatorCommand({ userMessage, locale });
+    return { ...(await handleIndicatorCommand({ userMessage, locale })), turnMode: "specialist" };
   }
 
   if (isDrawingOnly(intents)) {
@@ -607,6 +632,7 @@ async function runUnifiedChartAgentInner(
     });
     return {
       ...drawingResult,
+      turnMode: "specialist",
       options: contextualOptionsFor({ decision: drawingResult.decision, drawingOnly: true, locale }),
     };
   }
@@ -739,6 +765,7 @@ async function runUnifiedChartAgentInner(
     });
     return {
       decision: "informational",
+      turnMode: "specialist",
       confidence: 0,
       confidenceSemantics: newsSemantics,
       summary: unknownNews
@@ -1008,6 +1035,20 @@ async function runUnifiedChartAgentInner(
   // Cancelled right after market data: never start the fleet for nobody.
   if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
 
+  // Live thinking trace: one sentence per REAL step, composed from the values
+  // that step just produced (thinkingNarration.ts). No value → no line.
+  const think = (line: string | null) => {
+    if (line) ctx.emitThinking?.(line);
+  };
+  think(
+    narrateMarketRead({
+      locale,
+      interval: market.interval,
+      candleCount: market.currentTfCandles.length,
+      currentPrice: market.currentPrice,
+    }),
+  );
+
   // Stage checkpoint (item 2): an identical market snapshot means the fleet —
   // pure functions of the candle window — would produce identical output, so a
   // retry after a failed decision resumes instead of re-earning the evidence.
@@ -1099,6 +1140,39 @@ async function runUnifiedChartAgentInner(
     // stage's checklist row here or it would spin forever in the UI.
     ctx.emitStage?.({ stage: failure.stage, status: "failed" });
   }
+
+  // Narrate what the fleet actually found — the detected trend, the nearest
+  // real levels around the live price, the higher-frame lean, the news
+  // window. Skipped entirely for a specialist that degraded to null.
+  if (structure) {
+    const supportsBelow = structure.support
+      .map((level) => level.price)
+      .filter((p) => Number.isFinite(p) && p < market.currentPrice!);
+    const resistancesAbove = structure.resistance
+      .map((level) => level.price)
+      .filter((p) => Number.isFinite(p) && p > market.currentPrice!);
+    think(
+      narrateStructure({
+        locale,
+        interval: market.interval,
+        trend: structure.trend,
+        nearestSupport: supportsBelow.length ? Math.max(...supportsBelow) : null,
+        nearestResistance: resistancesAbove.length
+          ? Math.min(...resistancesAbove)
+          : null,
+      }),
+    );
+  }
+  if (mtf) {
+    think(
+      narrateHigherTimeframe({
+        locale,
+        higherInterval: market.higherInterval,
+        higherBias: mtf.higherBias,
+      }),
+    );
+  }
+  think(narrateNews({ locale, level: news?.newsRisk ?? "unknown" }));
 
   // Deterministic chart geometry — computed ONCE, BEFORE the candidate engine,
   // so forming-pattern boundaries become real entry zones rather than prompt
@@ -1328,6 +1402,8 @@ async function runUnifiedChartAgentInner(
       },
     });
   }
+
+  think(narrateWeighing({ locale, candidateCount: candidates.length }));
 
   const decisionStartedAt = performance.now();
   ctx.emitStage?.({ stage: "final_decision", status: "running" });
@@ -1734,6 +1810,15 @@ async function runUnifiedChartAgentInner(
       });
     }
 
+    think(
+      narrateGateOutcome({
+        locale,
+        verdicts: gateChain.verdicts,
+        allowed: gateChain.allowed,
+        vetoedBy: gateChain.vetoedBy,
+      }),
+    );
+
     if (!gateChain.allowed) {
       const refusal = refusalSummaryAr(gateChain) ?? t("ar", "orch.no_rec_now");
       log.info("agent.gate_chain.refused", {
@@ -2101,6 +2186,10 @@ async function runUnifiedChartAgentInner(
 
   return {
     decision: finalDecision.decision,
+    // The planner's routing, carried out to both surfaces: an explicit fresh
+    // analysis that replaced a live plan says so; everything else here is the
+    // full pipeline. Presentation (cards vs plain text) keys off this.
+    turnMode: supersededRecommendation ? "supersede_analysis" : "full_analysis",
     visualReview,
     envelope: presented.envelope,
     confidence: finalDecision.confidence,
@@ -2222,6 +2311,7 @@ async function noStoredRecommendation(
   });
   return {
     decision: "informational",
+    turnMode: "specialist",
     confidence: 0.75,
     summary,
     keyReasons: [],
@@ -2333,6 +2423,7 @@ async function drawStoredRecommendation(
     });
     return {
       decision: "informational",
+      turnMode: "specialist",
       confidence: 0.7,
       summary,
       keyReasons: [],
@@ -2370,6 +2461,8 @@ async function drawStoredRecommendation(
   });
   return {
     decision: "informational",
+    // Re-presents the LIVE plan — keeps the recommendation card treatment.
+    turnMode: "recommendation_followup",
     confidence: 0.85,
     summary,
     keyReasons: [
@@ -2426,6 +2519,7 @@ async function explainStoredRecommendation(
   });
   return {
     decision: "informational",
+    turnMode: "recommendation_followup",
     confidence: 0.85,
     summary,
     keyReasons: rec.keyReasons,
@@ -2459,6 +2553,10 @@ async function trackStoredRecommendation(input: {
     status: "started",
     message: t("ar", "orch.reviewing_rec"),
   });
+  // The follow-up's real work, narrated from the plan under review.
+  ctx.emitThinking?.(
+    narrateFollowupCheck({ locale, direction: rec.direction, entry: rec.entry }),
+  );
   const market = await runMarketDataAgent({ ...ctx, emitActivity: () => {} }, {
     symbol: rec.symbol,
     interval: rec.interval,
@@ -2569,6 +2667,7 @@ async function trackStoredRecommendation(input: {
 
   return {
     decision: "informational",
+    turnMode: "recommendation_followup",
     confidence: 0.85,
     summary,
     keyReasons: [evaluated.reason],

@@ -59,14 +59,34 @@ function StatusIcon({ status }: { status: TraceRow["status"] }) {
 function TraceBody({
   rows,
   tickerText,
+  thoughts,
 }: {
   rows: TraceRow[];
   tickerText?: string | null;
+  /** The agent's own reasoning lines (server `thinking` SSE) — each one is
+   *  composed from real run evidence at the moment the step happened. */
+  thoughts?: readonly string[] | null;
 }) {
   const { t } = useLocale();
   return (
     <div className="relative ms-[7px] border-s border-border/70 ps-3.5">
       <div className="flex flex-col gap-0.5 py-1">
+        {thoughts?.length ? (
+          <div
+            className="mb-1 flex flex-col gap-1 pt-0.5"
+            data-testid="agent-thinking-lines"
+          >
+            {thoughts.map((line, i) => (
+              <p
+                key={`${i}-${line.slice(0, 24)}`}
+                className="min-w-0 px-1 text-[12px] leading-relaxed text-muted-foreground"
+                style={{ animation: "trace-fade-in 300ms ease-out both" }}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+        ) : null}
         {rows.map((row, i) => {
           const label = KNOWN_STAGES.has(row.stage)
             ? t(`agent.stage.${row.stage}`)
@@ -123,11 +143,13 @@ function TraceShell({
   headerLabel,
   rows,
   tickerText,
+  thoughts,
 }: {
   live: boolean;
   headerLabel: string;
   rows: TraceRow[];
   tickerText?: string | null;
+  thoughts?: readonly string[] | null;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -137,7 +159,7 @@ function TraceShell({
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
-        className="-ms-1.5 flex w-fit min-h-8 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors duration-100 hover:bg-muted/60"
+        className="-ms-1.5 flex w-fit max-w-full min-h-8 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors duration-100 hover:bg-muted/60"
       >
         <Sparkles
           className={cn(
@@ -148,7 +170,7 @@ function TraceShell({
         />
         {live ? (
           <span
-            className="whitespace-nowrap bg-clip-text text-[13px] font-medium text-transparent"
+            className="min-w-0 truncate bg-clip-text text-[13px] font-medium text-transparent"
             style={{
               backgroundImage:
                 "linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%)",
@@ -159,7 +181,7 @@ function TraceShell({
             {headerLabel}
           </span>
         ) : (
-          <span className="whitespace-nowrap text-[13px] font-medium text-muted-foreground">
+          <span className="min-w-0 truncate text-[13px] font-medium text-muted-foreground">
             {headerLabel}
           </span>
         )}
@@ -181,7 +203,7 @@ function TraceShell({
         }}
       >
         <div className="overflow-hidden">
-          <TraceBody rows={rows} tickerText={tickerText} />
+          <TraceBody rows={rows} tickerText={tickerText} thoughts={thoughts} />
         </div>
       </div>
     </div>
@@ -192,10 +214,14 @@ function TraceShell({
 export function AgentThinkingTraceLive({
   events,
   liveNote,
+  thoughts,
 }: {
   events: readonly AgentStageEvent[];
   /** The engine's latest visible activity sentence — real work, live. */
   liveNote?: string | null;
+  /** The agent's own per-step reasoning lines (`thinking` SSE) — derived
+   *  from actual run evidence server-side, never a scripted ticker. */
+  thoughts?: readonly string[] | null;
 }) {
   const { t } = useLocale();
   const rows = useMemo(() => aggregateStageEvents(events), [events]);
@@ -207,17 +233,22 @@ export function AgentThinkingTraceLive({
   const labelFor = (stage: string) =>
     KNOWN_STAGES.has(stage) ? t(`agent.stage.${stage}`) : stage;
   const lastRow = rows[rows.length - 1];
-  const headerLabel = runningRow
-    ? labelFor(runningRow.stage)
-    : lastRow
-      ? labelFor(lastRow.stage)
-      : "";
+  // The newest thought doubles as the collapsed header when it exists — the
+  // agent's own sentence beats a stage NAME as a live status line.
+  const latestThought = thoughts?.length ? thoughts[thoughts.length - 1] : null;
+  const headerLabel =
+    latestThought ??
+    (runningRow
+      ? labelFor(runningRow.stage)
+      : lastRow
+        ? labelFor(lastRow.stage)
+        : "");
   const tickerText = liveNote?.trim()
     ? liveNote.replace(/[.،…\s]+$/g, "")
     : null;
 
   // Nothing recorded yet — a bare shimmer line, no empty chevron box.
-  if (!rows.length && !tickerText) {
+  if (!rows.length && !tickerText && !thoughts?.length) {
     return (
       <div className="flex min-h-8 items-center gap-2 py-1" data-testid="agent-thinking-trace">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-foreground/70" aria-hidden />
@@ -242,6 +273,7 @@ export function AgentThinkingTraceLive({
       headerLabel={headerLabel}
       rows={rows}
       tickerText={tickerText}
+      thoughts={thoughts}
     />
   );
 }

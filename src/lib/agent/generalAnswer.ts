@@ -5,6 +5,7 @@
  */
 import { callLLM, callLLMStream, isLLMConfigured } from "@/lib/llm";
 import { sanitizeActivityMessage } from "./activity";
+import { scrubInternalIdentifiers } from "./userSafeOutbound";
 import {
   SMART_CHART_AGENT_SYSTEM_PROMPT,
   GENERAL_ANSWER_SUFFIX,
@@ -94,7 +95,12 @@ function sanitizeAnswerText(text: string): string {
   const stripped = sanitizeActivityMessage(text);
   // sanitizeActivityMessage caps at 240 — for long answers, re-run on the full
   // text via a manual pass so we don't truncate legitimate content.
-  return stripped.length >= 240 ? stripLeakPhrasesFull(text) : stripped;
+  const noReasoning =
+    stripped.length >= 240 ? stripLeakPhrasesFull(text) : stripped;
+  // Leakage policy, outbound layer: even if the model ignores the prompt-level
+  // decline rule, env-var names / provider hosts / model slugs / key-shaped
+  // tokens never leave a conversational reply.
+  return scrubInternalIdentifiers(noReasoning);
 }
 
 const LEAK = [

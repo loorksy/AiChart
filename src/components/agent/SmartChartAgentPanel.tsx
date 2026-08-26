@@ -23,9 +23,10 @@ import { BillingRefusalModal } from "@/components/billing/BillingRefusalModal";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTraceLive } from "./AgentThinkingTrace";
 import { AgentChatInput } from "./AgentChatInput";
-import { AgentModeBadge, AgentFaultCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
+import { AgentFaultCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
 import { AgentCards } from "./cards/AgentCards";
 import { isOperationalBlocker } from "@/lib/agent/envelopeBadge";
+import { isPlainTalkResult } from "@/lib/agent/turnPresentation";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import {
@@ -230,15 +231,26 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       [sendAndFollow],
     );
     const composer = (
-      <AgentChatInput
-        running={running}
-        onSend={sendAndFollow}
-        onCancel={cancel}
-        symbol={symbol}
-        interval={interval}
-        onSymbolChange={onSymbolChange}
-        onIntervalChange={onIntervalChange}
-      />
+      <div className="w-full">
+        <AgentChatInput
+          running={running}
+          onSend={sendAndFollow}
+          onCancel={cancel}
+          symbol={symbol}
+          interval={interval}
+          onSymbolChange={onSymbolChange}
+          onIntervalChange={onIntervalChange}
+        />
+        {/* The compliance line, ONCE: the per-message badge is gone, and the
+            disclaimer lives here as small print instead of shouting over
+            every reply. */}
+        <p
+          data-testid="agent-compliance-footnote"
+          className="mt-1.5 px-2 text-center text-[10px] leading-4 text-muted-foreground/60"
+        >
+          {t("agent.mode.descriptive")}
+        </p>
+      </div>
     );
 
     return (
@@ -324,13 +336,27 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   />
                 </div>
               ) : (
-              <div className="min-w-0">
+              <div className="flex min-w-0 items-start gap-2.5">
+              {/* The agent's face, not a compliance pill: every assistant
+                  turn is signed by the avatar (thinking while pending). The
+                  old per-message "descriptive — not authorized" badge moved
+                  to ONE unobtrusive line under the composer. */}
+              <AgentAvatar
+                size={22}
+                state={m.pending ? "thinking" : "idle"}
+                className="mt-1.5 shrink-0"
+              />
+              <div className="min-w-0 flex-1">
               {/* Temporary assistant turn: the Claude-style trace runs while
                   the pipeline is in flight — real stages, collapsed by
                   default — and the final answer replaces it in place. */}
               {m.pending ? (
                 <div className="min-w-0">
-                  <AgentThinkingTraceLive events={stageEvents} liveNote={m.liveNote} />
+                  <AgentThinkingTraceLive
+                    events={stageEvents}
+                    liveNote={m.liveNote}
+                    thoughts={m.thinking}
+                  />
                   {m.streamText ? (
                     /* Live streamed answer (general questions): the text
                        grows in place; the final event replaces the bubble. */
@@ -342,20 +368,19 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 </div>
               ) : (
                 <>
-              {/* Persistent execution-mode badge above every assistant result. */}
-              {m.role === "assistant" && m.result?.envelope ? (
-                <div className="mb-1">
-                  <AgentModeBadge envelope={m.result.envelope} />
-                </div>
-              ) : null}
-              {m.role === "assistant" && m.result?.envelope ? (
+              {/* Presentation facts (data source, key levels) belong to
+                  ANALYSIS answers. A conversational turn renders none of the
+                  chrome — see turnPresentation.ts. */}
+              {m.role === "assistant" &&
+              m.result?.envelope &&
+              !isPlainTalkResult(m.result) ? (
                 <AgentPresentationFacts envelope={m.result.envelope} />
               ) : null}
               {m.role === "assistant" && isOperationalBlocker(m.result?.envelope) ? (
                 <AgentFaultCard envelope={m.result!.envelope!} />
               ) : (
                 <>
-              {m.role === "assistant" && m.result && (
+              {m.role === "assistant" && m.result && !isPlainTalkResult(m.result) && (
                 <div className="mb-1 flex items-center gap-2 text-[11px]">
                   <span
                     className={`font-bold ${DECISION_COLOR[m.result.decision]}`}
@@ -469,6 +494,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 text={messageCopyText(m)}
                 align="start"
               />
+              </div>
               </div>
               )}
             </div>
