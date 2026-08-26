@@ -89,8 +89,10 @@ export function scanForInternalLeakage(text: string): string[] {
  * anything that still looks like an env var, an API key, a provider host, a
  * model slug, or a stack frame is removed before the text leaves the process.
  * Patterns are deliberately shaped so market vocabulary survives — XAUUSD,
- * OANDA (the publicly named data source), TP1/SL, and price numbers carry no
- * underscores, no scheme, and no key prefix, so none of them match.
+ * TP1/SL, and price numbers carry no underscores, no scheme, and no key
+ * prefix, so none of them match. The market-data VENDOR name is scrubbed to
+ * the neutral "platform feed" phrase (operator instruction: the data source
+ * never appears in user-facing output; provenance lives in logs only).
  *
  * NOT applied to analysis summaries: those already pass the semantic
  * scanForInternalLeakage → compositionFallback path, and an aggressive regex
@@ -121,6 +123,11 @@ const SYSTEM_IDENTIFIER_PATTERNS: RegExp[] = [
 
 export function scrubInternalIdentifiers(text: string): string {
   let out = String(text ?? "");
+  // The data vendor first, as a REPLACEMENT rather than a removal: deleting
+  // it mid-sentence leaves broken prose, while the neutral phrase keeps the
+  // sentence readable in either language. Exchange prefixes just drop.
+  out = out.replace(/\bOANDA:\s*/g, "");
+  out = out.replace(/\bOANDA\b|أواندا|آواندا|اواندا/g, () => (/[\u0600-\u06FF]/.test(out) ? "تغذية المنصة" : "the platform feed"));
   for (const re of SYSTEM_IDENTIFIER_PATTERNS) {
     out = out.replace(re, "");
   }

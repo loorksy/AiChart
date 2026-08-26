@@ -20,7 +20,7 @@ function highlightNumbers(escaped: string): string {
 }
 
 function envLine(profile: AccountProfile): string {
-  return `الأداة: ${profile.instrument} · المصدر: ${profile.dataSource}`;
+  return `الأداة: ${profile.instrument}`;
 }
 
 export function formatCard(title: string, fields: string[], footer?: AccountProfile): string {
@@ -145,7 +145,6 @@ export function sessionStartCard(
     [
       `🔹 ${t(locale, "tg.session_card_hint")}`,
       `🔹 ${t(locale, "tg.session_card_instrument", { name: instrument })}`,
-      `🔹 ${t(locale, "tg.session_card_instrument", { name: profile.instrument })} · ${t(locale, "tg.session_card_source", { source: profile.dataSource })}`,
     ],
     profile,
   );
@@ -198,7 +197,6 @@ export function recommendationCard(rec: {
   const profile: AccountProfile = rec.profile ?? {
     marketType: "forex",
     instrument: DISPLAY_NAME_AR,
-    dataSource: "OANDA",
   };
   return analysisCard({
     symbol: rec.symbol,

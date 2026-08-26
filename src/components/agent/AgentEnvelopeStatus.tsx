@@ -86,7 +86,10 @@ export function AgentPresentationFacts({
   envelope?: ResultEnvelope | null;
 }) {
   const { t } = useLocale();
-  if (!envelope?.market_data_source && !envelope?.key_price_levels?.length) {
+  // The data source row is gone on operator instruction: provenance is
+  // internal and never user-facing. Old envelopes may still carry
+  // market_data_source; it is deliberately not rendered.
+  if (!envelope?.key_price_levels?.length) {
     return null;
   }
   return (
@@ -94,18 +97,10 @@ export function AgentPresentationFacts({
       data-testid="agent-presentation-facts"
       className="mb-2 rounded-md border border-border/60 bg-muted/25 px-2.5 py-2 text-[11px] text-muted-foreground"
     >
-      {envelope.market_data_source ? (
-        <p>
-          <span className="font-semibold text-foreground/90">{t("agent.source_label")}: </span>
-          <span dir="ltr">{envelope.market_data_source}</span>
-        </p>
-      ) : null}
-      {envelope.key_price_levels?.length ? (
-        <p className="mt-1 tabular-nums" dir="ltr">
-          <span className="font-semibold text-foreground/90">{t("agent.levels_label")}: </span>
-          {envelope.key_price_levels.slice(0, 6).map((l) => l.toFixed(2)).join(", ")}
-        </p>
-      ) : null}
+      <p className="mt-1 tabular-nums" dir="ltr">
+        <span className="font-semibold text-foreground/90">{t("agent.levels_label")}: </span>
+        {envelope.key_price_levels.slice(0, 6).map((l) => l.toFixed(2)).join(", ")}
+      </p>
     </div>
   );
 }

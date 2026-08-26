@@ -32,5 +32,5 @@ export function normalizeIntentSymbol(
 }
 
 export function marketLabel(_market: MarketType = DEFAULT_MARKET): string {
-  return "الذهب · OANDA";
+  return "الذهب";
 }

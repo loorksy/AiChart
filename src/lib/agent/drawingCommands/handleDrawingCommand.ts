@@ -157,7 +157,6 @@ export async function handleDrawingCommand(input: {
   const presented = attachMandatoryPresentation({
     summary,
     envelope: descriptiveEnvelope({ traceId: ctx.requestId }),
-    source: chartContext?.dataSource ?? "oanda",
     levels: priceLevelsFromDrawings(drawings),
     locale,
   });

@@ -129,7 +129,7 @@
     {
       "name": "draw_on_chart",
       "version": "1.1.1",
-      "description": "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. Can also turn on chart indicators (studies) via `studies`: RSI, EMA, SMA, MACD, Bollinger (BB), ATR, Stochastic, VWAP — rendered as native TradingView indicators beside the drawings. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. Studies are only touched when `studies` is passed (mode=set replaces the study set, add merges by id); clear_chart_drawings removes them too. dataSource is oanda-only (drawings are time-anchored against the platform OANDA candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
+      "description": "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. Can also turn on chart indicators (studies) via `studies`: RSI, EMA, SMA, MACD, Bollinger (BB), ATR, Stochastic, VWAP — rendered as native TradingView indicators beside the drawings. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. Studies are only touched when `studies` is passed (mode=set replaces the study set, add merges by id); clear_chart_drawings removes them too. dataSource accepts only \"oanda\" — the platform feed's internal pipe id, kept for wire compatibility (drawings are time-anchored against the platform candles); any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
       "permission": "chart.write",
       "riskClass": "write",
       "surfaces": [
@@ -415,7 +415,7 @@
     {
       "name": "get_ohlc",
       "version": "1.1.1",
-      "description": "Returns raw OHLC candles for a symbol and interval from the platform OANDA feed, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "description": "Returns raw OHLC candles for a symbol and interval from the platform feed, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Broker-suffixed symbols are canonicalized to the 6-letter key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -698,7 +698,7 @@
     {
       "name": "show_live_chart",
       "version": "1.1.1",
-      "description": "Shows a live gold chart card in chat — candles from the platform OANDA feed, ticks updating in place, plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch gold live inside the conversation. Not after every analysis if create_recommendation already delivered recommendation-card + chart; never together with a lessons or jobs JSON card. Not for a one-off static picture — capture_chart_snapshot is cheaper for that. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
+      "description": "Shows a live gold chart card in chat — candles from the platform feed, ticks updating in place, plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch gold live inside the conversation. Not after every analysis if create_recommendation already delivered recommendation-card + chart; never together with a lessons or jobs JSON card. Not for a one-off static picture — capture_chart_snapshot is cheaper for that. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
       "permission": "chart.read",
       "riskClass": "read",
       "surfaces": [

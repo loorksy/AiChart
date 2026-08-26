@@ -119,10 +119,29 @@ describe("userSafeOutbound", () => {
       assert.doesNotMatch(clean, /webTurn\.ts/);
     });
 
-    it("preserves market vocabulary — XAUUSD, OANDA, prices, Arabic", () => {
+    it("preserves market vocabulary — XAUUSD, prices, TP1, Arabic", () => {
       const line =
-        "قرأت 240 شمعة على XAUUSD فريم 1h — السعر 4651.38، البيانات من OANDA، الهدف TP1 عند 4688.25";
+        "قرأت 240 شمعة على XAUUSD فريم 1h — السعر 4651.38، الهدف TP1 عند 4688.25";
       assert.equal(scrubInternalIdentifiers(line), line);
+    });
+
+    it("replaces the data vendor with the neutral platform-feed phrase", () => {
+      // Operator instruction: the vendor never reaches users. The scrub
+      // REPLACES rather than deletes so the sentence stays readable.
+      const ar = scrubInternalIdentifiers("البيانات من OANDA، السعر 4651.38");
+      assert.doesNotMatch(ar, /OANDA/i);
+      assert.match(ar, /تغذية المنصة/);
+      assert.match(ar, /4651\.38/);
+
+      const en = scrubInternalIdentifiers("Candles come from OANDA every 15m.");
+      assert.doesNotMatch(en, /OANDA/i);
+      assert.match(en, /the platform feed/);
+
+      // Exchange-prefixed symbols drop the prefix, keep the symbol.
+      assert.equal(scrubInternalIdentifiers("OANDA: XAUUSD 15m"), "XAUUSD 15m");
+
+      // Arabic transliterations are covered too.
+      assert.doesNotMatch(scrubInternalIdentifiers("البيانات من أواندا"), /أواندا/);
     });
   });
 

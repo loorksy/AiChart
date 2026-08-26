@@ -38,29 +38,31 @@ describe("balanceChipStateFromApi", () => {
 });
 
 describe("attachMandatoryPresentation", () => {
-  it("always names the OANDA platform feed and adds two numeric levels", () => {
+  it("cites two numeric levels and NEVER names the data vendor", () => {
+    // The "مصدر البيانات: …" line used to be prepended here. Operator
+    // instruction: the data source is internal provenance — no user-facing
+    // surface may carry it, so presentation only guarantees the levels.
     const { summary, envelope } = attachMandatoryPresentation({
       summary: "Short analysis.",
       envelope: descriptiveEnvelope(),
-      source: "oanda",
       levels: [4090.5, 4110.25],
       locale: "en",
     });
-    assert.match(summary, /OANDA platform feed/i);
+    assert.doesNotMatch(summary, /OANDA|مصدر البيانات|data source/i);
     assert.match(summary, /4090\.50/);
     assert.match(summary, /4110\.25/);
-    assert.equal(envelope.market_data_source?.includes("OANDA"), true);
+    assert.equal(envelope.market_data_source, undefined);
     assert.deepEqual(envelope.key_price_levels, [4090.5, 4110.25]);
   });
 
-  it("names OANDA on the platform-feed path", () => {
-    const { envelope } = attachMandatoryPresentation({
-      summary: "Broker read.",
+  it("leaves a summary that already cites numbers untouched", () => {
+    const { summary, envelope } = attachMandatoryPresentation({
+      summary: "Support at 4090.50, resistance at 4110.25.",
       envelope: descriptiveEnvelope(),
-      source: "oanda",
-      levels: [1.05, 1.06],
+      levels: [4090.5, 4110.25],
       locale: "en",
     });
-    assert.match(envelope.market_data_source ?? "", /OANDA/i);
+    assert.equal(summary, "Support at 4090.50, resistance at 4110.25.");
+    assert.equal(envelope.market_data_source, undefined);
   });
 });
