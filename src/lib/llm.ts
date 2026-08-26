@@ -23,6 +23,7 @@ import {
   type OpenAICompatTarget,
 } from "./openaiCompat";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import {
   LLM_PROVIDERS,
   providerLabel,
@@ -424,14 +425,50 @@ function openaiCompatTarget(model: string): OpenAICompatTarget {
 /**
  * V2-A1: every successful call meters its provider-reported token counts.
  * Fire-and-forget by design — metering must never slow or fail a call.
+ *
+ * Cache accounting rides along: reads are ~90% cheaper (Anthropic) / heavily
+ * discounted (OpenAI), writes cost 1.25× — the meter needs the split to price
+ * a cached call honestly, and the log line is how the operator verifies in
+ * production that the prompt cache is actually being hit.
  */
 function meterUsage(provider: LLMProvider, model: string, res: AnthropicResponse): void {
+  const cacheRead = res.usage?.cache_read_input_tokens ?? 0;
+  const cacheWrite = res.usage?.cache_creation_input_tokens ?? 0;
   recordLLMUsage({
     provider,
     model,
     inputTokens: res.usage?.input_tokens ?? 0,
     outputTokens: res.usage?.output_tokens ?? 0,
+    cacheReadTokens: cacheRead,
+    cacheWriteTokens: cacheWrite,
   });
+  if (cacheRead > 0 || cacheWrite > 0) {
+    // Visible at the default log level on purpose: one compact line per
+    // cache-active call, token counts only, never prompt content.
+    llmLog.info("llm.cache", {
+      provider,
+      model,
+      inputTokens: res.usage?.input_tokens ?? 0,
+      cacheReadTokens: cacheRead,
+      cacheWriteTokens: cacheWrite,
+    });
+  }
+}
+
+/**
+ * `prompt_cache_key` for OpenAI-bound calls: requests that share a prompt
+ * prefix should carry the same key so they route to the same cache machine.
+ * Keyed on the STATIC system text — the identity of the shared prefix — so
+ * every call of one stage family (decision synthesizer, general answer,
+ * follow-up…) lands together, across turns and users, while distinct stages
+ * spread across keys (the documented ~15 req/min-per-key routing budget).
+ * Never derived from volatile content: a key that changes per call routes
+ * every request to a cold cache.
+ */
+export function openaiPromptCacheKey(system: SystemPromptInput): string {
+  const staticText = typeof system === "string" ? system : system.static;
+  const hash = createHash("sha256").update(staticText).digest("hex").slice(0, 16);
+  return `lonora:v1:${hash}`;
 }
 
 /**
@@ -485,13 +522,6 @@ export interface LLMCallParams {
   maxTokens?: number;
 }
 
-function flattenSystem(system: SystemPromptInput): string {
-  if (typeof system === "string") return system;
-  return system.dynamic?.trim()
-    ? `${system.static}\n\n${system.dynamic}`
-    : system.static;
-}
-
 export interface LLMCallOptions {
   /** Which model tier serves this call. Defaults to "deep". */
   tier?: ModelTier;
@@ -536,9 +566,9 @@ export async function callLLM(
           })
         : await callOpenAICompat(openaiCompatTarget(model), {
             ...params,
-            system: flattenSystem(params.system),
             signal: opts?.signal,
             timeoutMs: opts?.timeoutMs,
+            cacheKey: openaiPromptCacheKey(params.system),
           });
     meterUsage(provider, model, res);
     void noteProviderOutcome(provider, null);
@@ -572,7 +602,11 @@ export async function callLLMStream(
           )
         : await callOpenAICompatStream(
             openaiCompatTarget(model),
-            { ...params, system: flattenSystem(params.system), signal: opts?.signal },
+            {
+              ...params,
+              signal: opts?.signal,
+              cacheKey: openaiPromptCacheKey(params.system),
+            },
             handlers,
           );
     meterUsage(provider, model, res);
@@ -586,4 +620,7 @@ export async function callLLMStream(
   }
 }
 
-export type { AnthropicResponse, ContentBlock, Message, StreamHandlers, ToolDef } from "./anthropic";
+// Stable-prefix cache breakpoint marker — re-exported so prompt builders mark
+// cacheable content without importing a provider client directly.
+export { withCacheBreakpoint } from "./anthropic";
+export type { AnthropicResponse, ContentBlock, LLMUsage, Message, StreamHandlers, SystemPromptInput, ToolDef } from "./anthropic";

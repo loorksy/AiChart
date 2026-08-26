@@ -158,6 +158,10 @@ const SCHEMA = `
     kind              TEXT NOT NULL DEFAULT 'other',
     input_tokens      INTEGER NOT NULL DEFAULT 0,
     output_tokens     INTEGER NOT NULL DEFAULT 0,
+    -- Prompt-cache accounting: reads are ~10x cheaper than input tokens,
+    -- writes ~1.25x. input_tokens holds only the UNCACHED input portion.
+    cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     provider_cost_usd DOUBLE PRECISION,
     retail_cost_usd   DOUBLE PRECISION,
     request_id        TEXT
@@ -785,6 +789,9 @@ const SCHEMA = `
   -- index is what makes re-analysis inside one candle an UPDATE, not a
   -- duplicate comparison row.
   ALTER TABLE trading_settings ADD COLUMN IF NOT EXISTS favourite_symbols TEXT NOT NULL DEFAULT '[]';
+  -- Prompt-cache accounting on existing installs (additive, default 0).
+  ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS cache_write_tokens INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS parity_key TEXT;

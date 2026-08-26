@@ -13,8 +13,13 @@
  * data failure is an operational blocker with a name, never a decision to wait.
  */
 import { z } from "zod";
-import { callLLM, isLLMConfiguredAsync, resolveActiveSelection } from "@/lib/llm";
-import type { ContentBlock } from "@/lib/anthropic";
+import {
+  callLLM,
+  isLLMConfiguredAsync,
+  resolveActiveSelection,
+  withCacheBreakpoint,
+} from "@/lib/llm";
+import type { ContentBlock, SystemPromptInput } from "@/lib/anthropic";
 import { extractJson } from "@/lib/extractJson";
 import { isReasoningModel, modelAcceptsVision } from "@/lib/modelCatalog";
 import { createLogger } from "@/lib/logger";
@@ -165,9 +170,34 @@ async function visionSafeBlocks(blocks: ContentBlock[]): Promise<ContentBlock[]>
   return blocks.filter((b) => b.type !== "image");
 }
 
+/**
+ * The one user-message layout every decision call uses, built for prompt
+ * caching: the evidence JSON and the chart images come FIRST — byte-identical
+ * across a retry and append-only across browse rounds — with the stable-prefix
+ * cache breakpoint on the last of them. The volatile tail (schema correction,
+ * browse transcript) is a SEPARATE trailing block, outside the cached prefix.
+ * Concatenating the tail into the evidence text is what used to re-bill the
+ * full evidence bundle and every chart image at full price on every retry and
+ * every browse round.
+ *
+ * Exported for the prompt-caching tests: prefix stability is a billing
+ * invariant, and a regression here silently multiplies provider spend.
+ */
+export function buildDecisionUserContent(
+  evidence: string,
+  visuals: ContentBlock[],
+  tail: string | null,
+): ContentBlock[] {
+  const stable: ContentBlock[] = [{ type: "text", text: evidence }, ...visuals];
+  stable[stable.length - 1] = withCacheBreakpoint(stable[stable.length - 1]!);
+  if (tail?.trim()) stable.push({ type: "text", text: tail });
+  return stable;
+}
+
 async function callModelWithBlocks(
-  system: string,
-  userMsg: string,
+  system: SystemPromptInput,
+  evidence: string,
+  tail: string,
   blocks: ContentBlock[],
   ctx: AgentRunContext,
   /** What is left of the browse window; keeps a round inside it. */
@@ -179,7 +209,11 @@ async function callModelWithBlocks(
       messages: [
         {
           role: "user",
-          content: [{ type: "text", text: userMsg }, ...(await visionSafeBlocks(blocks))],
+          content: buildDecisionUserContent(
+            evidence,
+            await visionSafeBlocks(blocks),
+            tail,
+          ),
         },
       ],
       maxTokens: await decisionMaxTokens(),
@@ -918,8 +952,13 @@ export async function runFinalDecisionSynthesizer(
   }
 
   const language = input.locale === "en" ? "English" : "Arabic";
-  const system = [
-    SYNTH_SYSTEM_PROMPT.replace("{{LANGUAGE}}", language),
+  // Prompt caching: the big instruction block is byte-stable per locale and
+  // cached across turns and users; everything that varies per turn (skills,
+  // lessons, conversation excerpt) is the DYNAMIC system tail so it can never
+  // invalidate the static prefix. Nothing volatile (timestamps, live prices)
+  // may ever enter the static block.
+  const systemStatic = SYNTH_SYSTEM_PROMPT.replace("{{LANGUAGE}}", language);
+  const systemDynamic = [
     input.skillContextBlock?.trim() || null,
     // Realised-outcome context (RELIABILITY_PLAN.md item 14). Evidence the
     // model weighs — never a veto, never a substitute for the live read.
@@ -934,6 +973,14 @@ export async function runFinalDecisionSynthesizer(
   ]
     .filter(Boolean)
     .join("\n\n");
+  const system: SystemPromptInput = systemDynamic
+    ? { static: systemStatic, dynamic: systemDynamic }
+    : systemStatic;
+  // The injectable test path keeps receiving the flattened string it always
+  // did — byte-identical to the pre-caching prompt.
+  const systemText = systemDynamic
+    ? `${systemStatic}\n\n${systemDynamic}`
+    : systemStatic;
   let evidenceSnapshot = frozenEvidenceSnapshot(input);
   const user = JSON.stringify(evidenceSnapshot.modelContext);
   // Charts, when we have them. The platform's decision engine used to read a
@@ -947,46 +994,52 @@ export async function runFinalDecisionSynthesizer(
   let includeVisuals = modelAcceptsVision((await resolveActiveSelection("deep")).model);
   // Mutable so a truncated attempt can ask again with room to finish.
   let outputBudget = await decisionMaxTokens();
-  const callModel =
-    deps.callModel ??
-    (async (system: string, userMsg: string) => {
-      const content: ContentBlock[] =
-        includeVisuals && visualBlocks.length
-          ? [{ type: "text", text: userMsg }, ...visualBlocks]
-          : [{ type: "text", text: userMsg }];
-      const budget = outputBudget;
-      const res = await callLLM({
-        system,
-        messages: [{ role: "user", content }],
-        // Headroom for reasoning tokens plus the full plan payload: the three
-        // layers, the levels, the conditions, and the decision trace.
-        maxTokens: budget,
-        // The trade decision ALWAYS runs on the deep model (item 15) — never a
-        // quick/auxiliary tier, regardless of any default change.
-        // The run signal (stage deadline / total budget / client disconnect)
-        // tears the call down instead of leaving it running (item 2).
-      }, {
-        tier: "deep",
-        signal: ctx.signal,
-        timeoutMs: DECISION_ATTEMPT_TIMEOUT_MS,
-      });
-      // Truncation is a NAMED failure, not a mystery.
-      //
-      // The provider says plainly that it stopped because it hit the output
-      // ceiling. Ignoring that and handing the cut-off text to JSON.parse
-      // turned "the budget was too small" into "invalid_json", which is
-      // classified retryable — so the run spent a second full model call
-      // reproducing the same truncation and then died on the stage deadline
-      // with nothing pointing at the budget.
-      if (res.stop_reason === "max_tokens") {
-        throw new TruncatedDecisionError(budget);
-      }
-      return res.content
-        .filter((b): b is { type: "text"; text: string } => b.type === "text")
-        .map((b) => b.text)
-        .join("")
-        .trim();
+  /**
+   * One decision call. `tail` is the volatile suffix (schema correction) —
+   * kept OUTSIDE the stable evidence+charts prefix so a retry reads the whole
+   * bundle from the provider's prompt cache instead of re-billing it.
+   */
+  const invokeDecision = async (tail: string | null): Promise<string> => {
+    if (deps.callModel) {
+      // The injectable path (tests) keeps the historical concatenated shape.
+      return deps.callModel(systemText, tail ? `${user}\n\n${tail}` : user);
+    }
+    const visuals = includeVisuals && visualBlocks.length ? visualBlocks : [];
+    const budget = outputBudget;
+    const res = await callLLM({
+      system,
+      messages: [
+        { role: "user", content: buildDecisionUserContent(user, visuals, tail) },
+      ],
+      // Headroom for reasoning tokens plus the full plan payload: the three
+      // layers, the levels, the conditions, and the decision trace.
+      maxTokens: budget,
+      // The trade decision ALWAYS runs on the deep model (item 15) — never a
+      // quick/auxiliary tier, regardless of any default change.
+      // The run signal (stage deadline / total budget / client disconnect)
+      // tears the call down instead of leaving it running (item 2).
+    }, {
+      tier: "deep",
+      signal: ctx.signal,
+      timeoutMs: DECISION_ATTEMPT_TIMEOUT_MS,
     });
+    // Truncation is a NAMED failure, not a mystery.
+    //
+    // The provider says plainly that it stopped because it hit the output
+    // ceiling. Ignoring that and handing the cut-off text to JSON.parse
+    // turned "the budget was too small" into "invalid_json", which is
+    // classified retryable — so the run spent a second full model call
+    // reproducing the same truncation and then died on the stage deadline
+    // with nothing pointing at the budget.
+    if (res.stop_reason === "max_tokens") {
+      throw new TruncatedDecisionError(budget);
+    }
+    return res.content
+      .filter((b): b is { type: "text"; text: string } => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .trim();
+  };
 
   // ONE automatic retry for transient failures (timeout, network blip, 429/5xx,
   // or a malformed reply the model can usually re-emit correctly). Auth errors
@@ -1024,13 +1077,11 @@ export async function runFinalDecisionSynthesizer(
     // failure this whole trail was built to diagnose.
     let replyCounted = false;
     try {
-      const userMsg = correction
-        ? `${user}
-
-[SCHEMA CORRECTION — أعد نفس القرار مع إصلاح هذه الحقول فقط]
-${correction}`
-        : user;
-      const raw = await callModel(system, userMsg);
+      const raw = await invokeDecision(
+        correction
+          ? `[SCHEMA CORRECTION — أعد نفس القرار مع إصلاح هذه الحقول فقط]\n${correction}`
+          : null,
+      );
       // The provider ANSWERED. Whether the answer survives validation is the
       // next question — but "a call completed" is exactly the fact that
       // separates a slow payload from a socket that never replied.
@@ -1204,8 +1255,11 @@ ${correction}`
     });
 
     const remaining = MAX_BROWSE_CALLS - spent;
-    const nextUser =
-      `${user}\n\n## Chart reading${browseTranscript}\n\n` +
+    // The volatile browse tail. The evidence text and the (append-only) chart
+    // blocks stay byte-stable ahead of it, so each round reads the previous
+    // round's cached prefix instead of re-billing the whole bundle.
+    const browseTail =
+      `## Chart reading${browseTranscript}\n\n` +
       `Re-issue your FULL decision JSON with everything above taken into account. ` +
       (remaining > 0
         ? `You may browse ${remaining} more time(s); set browse to null when you have what you need.`
@@ -1214,10 +1268,11 @@ ${correction}`
     let next: z.infer<typeof FinalDecisionModelSchema>;
     try {
       const raw = deps.callModel
-        ? await deps.callModel(system, nextUser)
+        ? await deps.callModel(systemText, `${user}\n\n${browseTail}`)
         : await callModelWithBlocks(
             system,
-            nextUser,
+            user,
+            browseTail,
             buildVisualBlocks(attachedSnapshots),
             ctx,
             // Never longer than what is left of the browse window. A round

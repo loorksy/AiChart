@@ -109,6 +109,23 @@ export interface ToolDef {
 
 type CacheControl = { cache_control: { type: "ephemeral" } };
 
+/**
+ * Mark a block as the END of a stable prompt prefix (an explicit cache
+ * breakpoint). Cache writes happen ONLY at breakpoints, and the lookback that
+ * finds prior writes never caches "stable content behind the breakpoint" — so
+ * a caller whose message is [big stable evidence + images, volatile tail]
+ * MUST mark the last stable block, or every call re-bills the evidence and
+ * the images at full price and the automatic last-block breakpoint only ever
+ * pays cache WRITES for the tail (never a read).
+ */
+export function withCacheBreakpoint<T extends ContentBlock>(block: T): T {
+  return { ...block, cache_control: { type: "ephemeral" as const } };
+}
+
+function hasBreakpoint(block: ContentBlock): boolean {
+  return Boolean((block as Partial<CacheControl>).cache_control);
+}
+
 export const DEFAULT_MAX_TOKENS = 4096;
 export const ROUTINE_MAX_TOKENS = 4096;
 
@@ -155,22 +172,65 @@ function cachedTools(tools?: ToolDef[]): (ToolDef | (ToolDef & CacheControl))[] 
   );
 }
 
+/**
+ * The Anthropic API allows at most 4 cache breakpoints per request. Tools
+ * take one (last tool def) and the system static block takes one, leaving
+ * two for message content: one caller-placed stable-prefix breakpoint (see
+ * `withCacheBreakpoint`) and the automatic last-block breakpoint below.
+ */
+const MAX_MESSAGE_BREAKPOINTS = 2;
+
+function messageBreakpointCount(messages: Message[]): number {
+  let count = 0;
+  for (const msg of messages) {
+    if (typeof msg.content === "string") continue;
+    for (const block of msg.content) if (hasBreakpoint(block)) count += 1;
+  }
+  return count;
+}
+
+/** Strip all but the LAST `keep` caller breakpoints so the total stays ≤4. */
+function capMessageBreakpoints(messages: Message[], keep: number): Message[] {
+  const total = messageBreakpointCount(messages);
+  if (total <= keep) return messages;
+  let toDrop = total - keep;
+  return messages.map((msg) => {
+    if (toDrop <= 0 || typeof msg.content === "string") return msg;
+    const content = msg.content.map((block) => {
+      if (toDrop > 0 && hasBreakpoint(block)) {
+        toDrop -= 1;
+        const { cache_control: _dropped, ...rest } = block as ContentBlock &
+          Partial<CacheControl>;
+        return rest as ContentBlock;
+      }
+      return block;
+    });
+    return { ...msg, content };
+  });
+}
+
 function cachedMessages(messages: Message[]): Message[] {
   if (messages.length === 0) return messages;
-  const last = messages[messages.length - 1]!;
+  // Caller-placed stable-prefix breakpoints are respected first; the
+  // automatic last-block breakpoint (incremental conversation caching) is
+  // added only while a slot remains for it.
+  const capped = capMessageBreakpoints(messages, MAX_MESSAGE_BREAKPOINTS);
+  if (messageBreakpointCount(capped) >= MAX_MESSAGE_BREAKPOINTS) return capped;
+  const last = capped[capped.length - 1]!;
   const content: ContentBlock[] =
     typeof last.content === "string"
       ? last.content
         ? [{ type: "text", text: last.content }]
         : []
       : [...last.content];
-  if (content.length === 0) return messages;
+  if (content.length === 0) return capped;
+  if (hasBreakpoint(content[content.length - 1]!)) return capped;
   const lastBlock = {
     ...content[content.length - 1]!,
     cache_control: { type: "ephemeral" as const },
   } as unknown as ContentBlock;
   return [
-    ...messages.slice(0, -1),
+    ...capped.slice(0, -1),
     { ...last, content: [...content.slice(0, -1), lastBlock] },
   ];
 }
@@ -178,7 +238,7 @@ function cachedMessages(messages: Message[]): Message[] {
 export type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
 
 export type ContentBlock =
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; cache_control?: { type: "ephemeral" } }
   | {
       type: "image";
       source: {
@@ -186,6 +246,7 @@ export type ContentBlock =
         media_type: ImageMediaType;
         data: string;
       };
+      cache_control?: { type: "ephemeral" };
     }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | {
@@ -200,11 +261,29 @@ export interface Message {
   content: string | ContentBlock[];
 }
 
+/**
+ * Provider-reported token accounting, unified across providers.
+ *
+ * With prompt caching on, Anthropic's `input_tokens` counts ONLY the tokens
+ * after the last cache breakpoint — the true total is
+ * input + cache_read + cache_creation. The cache fields are surfaced so the
+ * usage meter can price a cached call honestly (reads ≈ 0.1×, writes 1.25×)
+ * and so production logs can prove the cache is actually being hit.
+ */
+export interface LLMUsage {
+  input_tokens: number;
+  output_tokens: number;
+  /** Tokens served from the prompt cache (Anthropic reads / OpenAI cached_tokens). */
+  cache_read_input_tokens?: number;
+  /** Tokens written to the prompt cache this call. */
+  cache_creation_input_tokens?: number;
+}
+
 export interface AnthropicResponse {
   id: string;
   content: ContentBlock[];
   stop_reason: string;
-  usage: { input_tokens: number; output_tokens: number };
+  usage: LLMUsage;
 }
 
 export function isAnthropicConfigured(): boolean {
@@ -427,6 +506,8 @@ export async function callAnthropicStream(
   let stopReason = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
   const contentBlocks: ContentBlock[] = [];
   let currentBlockIndex = -1;
   let currentText = "";
@@ -484,9 +565,18 @@ export async function callAnthropicStream(
       const type = String(event.type ?? "");
 
       if (type === "message_start") {
-        const msg = event.message as { id?: string; usage?: { input_tokens?: number } };
+        const msg = event.message as {
+          id?: string;
+          usage?: {
+            input_tokens?: number;
+            cache_read_input_tokens?: number;
+            cache_creation_input_tokens?: number;
+          };
+        };
         messageId = msg?.id ?? "";
         inputTokens = msg?.usage?.input_tokens ?? 0;
+        cacheReadTokens = msg?.usage?.cache_read_input_tokens ?? 0;
+        cacheCreationTokens = msg?.usage?.cache_creation_input_tokens ?? 0;
       } else if (type === "content_block_start") {
         const block = event.content_block as {
           type?: string;
@@ -540,6 +630,11 @@ export async function callAnthropicStream(
     id: messageId,
     content: contentBlocks,
     stop_reason: stopReason || "end_turn",
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_read_input_tokens: cacheReadTokens,
+      cache_creation_input_tokens: cacheCreationTokens,
+    },
   };
 }

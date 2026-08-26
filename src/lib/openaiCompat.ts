@@ -9,6 +9,7 @@ import type {
   ContentBlock,
   Message,
   StreamHandlers,
+  SystemPromptInput,
   ToolDef,
 } from "./anthropic";
 import {
@@ -44,8 +45,12 @@ interface OAToolCall {
 }
 
 type OAContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+  | { type: "text"; text: string; prompt_cache_breakpoint?: { mode: "explicit" } }
+  | {
+      type: "image_url";
+      image_url: { url: string };
+      prompt_cache_breakpoint?: { mode: "explicit" };
+    };
 
 interface OAMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -54,7 +59,31 @@ interface OAMessage {
   tool_call_id?: string;
 }
 
-function blocksToOA(msg: Message): OAMessage[] {
+/**
+ * GPT-5.6+ supports explicit prompt-cache breakpoints on content blocks
+ * (`prompt_cache_breakpoint: {mode:"explicit"}`), and its implicit-only mode
+ * bills cache WRITES at 1.25× — placing the implicit breakpoint on a volatile
+ * suffix pays for writes that never get a read. Marking the end of the stable
+ * prefix explicitly gives the shared prefix a reusable entry. Older models
+ * (gpt-4.1 era) are implicit-only: the field would be rejected, so it is only
+ * emitted for the families known to accept it.
+ */
+export function supportsExplicitPromptCache(model: string): boolean {
+  const id = bareModelId(model);
+  return /^gpt-5\.[6-9]/.test(id) || /^gpt-[6-9]/.test(id);
+}
+
+/** Anthropic-style stable-prefix marker → OpenAI explicit breakpoint. */
+function oaBreakpoint(
+  block: Extract<ContentBlock, { type: "text" | "image" }>,
+  explicitCache: boolean,
+): { prompt_cache_breakpoint: { mode: "explicit" } } | Record<string, never> {
+  return explicitCache && block.cache_control
+    ? { prompt_cache_breakpoint: { mode: "explicit" } }
+    : {};
+}
+
+function blocksToOA(msg: Message, explicitCache: boolean): OAMessage[] {
   if (typeof msg.content === "string") {
     return [{ role: msg.role, content: msg.content }];
   }
@@ -66,13 +95,14 @@ function blocksToOA(msg: Message): OAMessage[] {
 
   for (const block of msg.content) {
     if (block.type === "text") {
-      parts.push({ type: "text", text: block.text });
+      parts.push({ type: "text", text: block.text, ...oaBreakpoint(block, explicitCache) });
     } else if (block.type === "image") {
       parts.push({
         type: "image_url",
         image_url: {
           url: `data:${block.source.media_type};base64,${block.source.data}`,
         },
+        ...oaBreakpoint(block, explicitCache),
       });
     } else if (block.type === "tool_use") {
       toolCalls.push({
@@ -111,9 +141,42 @@ function blocksToOA(msg: Message): OAMessage[] {
   return out;
 }
 
-function toOAMessages(system: string, messages: Message[]): OAMessage[] {
-  const out: OAMessage[] = [{ role: "system", content: system }];
-  for (const m of messages) out.push(...blocksToOA(m));
+function flattenSystemText(system: SystemPromptInput): string {
+  if (typeof system === "string") return system;
+  return system.dynamic?.trim()
+    ? `${system.static}\n\n${system.dynamic}`
+    : system.static;
+}
+
+/**
+ * Prompt-caching prompt shape: stable prefix first, dynamic tail last.
+ *
+ * On explicit-cache models the STATIC system text gets its own breakpoint so
+ * the shared instructions prefix stays reusable across turns even when the
+ * dynamic system tail (lessons, conversation excerpt) changes. On implicit-only
+ * models the flattened string keeps the same byte order, which is all
+ * automatic prefix caching needs.
+ */
+function toOAMessages(
+  system: SystemPromptInput,
+  messages: Message[],
+  explicitCache: boolean,
+): OAMessage[] {
+  const out: OAMessage[] = [];
+  if (explicitCache && typeof system !== "string") {
+    const parts: OAContentPart[] = [
+      {
+        type: "text",
+        text: system.static,
+        prompt_cache_breakpoint: { mode: "explicit" },
+      },
+    ];
+    if (system.dynamic?.trim()) parts.push({ type: "text", text: system.dynamic });
+    out.push({ role: "system", content: parts });
+  } else {
+    out.push({ role: "system", content: flattenSystemText(system) });
+  }
+  for (const m of messages) out.push(...blocksToOA(m, explicitCache));
   return out;
 }
 
@@ -254,6 +317,30 @@ export function fromOAChoice(choice: {
   return { content: blocks, stop_reason };
 }
 
+interface OAUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+}
+
+/**
+ * OpenAI's `prompt_tokens` INCLUDES cached and cache-written tokens, while the
+ * platform's unified usage shape (LLMUsage, modeled on Anthropic) counts them
+ * separately: input + cache_read + cache_creation = the true total. Normalize
+ * here so the usage meter prices both providers with one formula.
+ */
+function normalizeOAUsage(usage: OAUsage | undefined): AnthropicResponse["usage"] {
+  const prompt = usage?.prompt_tokens ?? 0;
+  const cached = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+  const written = usage?.prompt_tokens_details?.cache_write_tokens ?? 0;
+  return {
+    input_tokens: Math.max(0, prompt - cached - written),
+    output_tokens: usage?.completion_tokens ?? 0,
+    cache_read_input_tokens: cached,
+    cache_creation_input_tokens: written,
+  };
+}
+
 async function readError(res: Response, label: string): Promise<string> {
   const body = (await res.json().catch(() => ({}))) as {
     error?: { message?: string } | string;
@@ -278,7 +365,7 @@ async function readError(res: Response, label: string): Promise<string> {
 export async function callOpenAICompat(
   target: OpenAICompatTarget,
   params: {
-    system: string;
+    system: SystemPromptInput;
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
@@ -286,6 +373,12 @@ export async function callOpenAICompat(
     signal?: AbortSignal;
     /** Per-call HTTP budget; falls back to the global LLM timeout. */
     timeoutMs?: number;
+    /**
+     * `prompt_cache_key` — groups requests that share a prompt prefix so they
+     * route to the same cache. A routing hint, never a correctness input;
+     * passed through harmlessly by OpenAI-compatible aggregators.
+     */
+    cacheKey?: string;
   },
 ): Promise<AnthropicResponse> {
   // Circuit breaker (RELIABILITY_PLAN.md item 6): a provider outage fails fast
@@ -309,7 +402,9 @@ export async function callOpenAICompat(
         messages: toOAMessages(
           params.system,
           dropUnsupportedVision(target.model, params.messages),
+          supportsExplicitPromptCache(target.model),
         ),
+        ...(params.cacheKey ? { prompt_cache_key: params.cacheKey } : {}),
         ...(params.tools ? { tools: toOATools(params.tools) } : {}),
       }),
       cache: "no-store",
@@ -326,7 +421,7 @@ export async function callOpenAICompat(
   const data = (await res.json()) as {
     id?: string;
     choices?: Parameters<typeof fromOAChoice>[0][];
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: OAUsage;
   };
 
   const choice = data.choices?.[0];
@@ -337,22 +432,21 @@ export async function callOpenAICompat(
     id: data.id ?? "",
     content,
     stop_reason,
-    usage: {
-      input_tokens: data.usage?.prompt_tokens ?? 0,
-      output_tokens: data.usage?.completion_tokens ?? 0,
-    },
+    usage: normalizeOAUsage(data.usage),
   };
 }
 
 export async function callOpenAICompatStream(
   target: OpenAICompatTarget,
   params: {
-    system: string;
+    system: SystemPromptInput;
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
     /** Caller cancellation/deadline — aborts the in-flight stream. */
     signal?: AbortSignal;
+    /** `prompt_cache_key` routing hint — see callOpenAICompat. */
+    cacheKey?: string;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
@@ -382,11 +476,12 @@ export async function callOpenAICompatStream(
 async function streamOnce(
   target: OpenAICompatTarget,
   params: {
-    system: string;
+    system: SystemPromptInput;
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
     signal?: AbortSignal;
+    cacheKey?: string;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
@@ -421,8 +516,13 @@ async function streamOnce(
       messages: toOAMessages(
         params.system,
         dropUnsupportedVision(target.model, params.messages),
+        supportsExplicitPromptCache(target.model),
       ),
       stream: true,
+      // Without this the stream carries NO usage chunk at all — streamed
+      // calls metered zero tokens and cache hits were invisible.
+      stream_options: { include_usage: true },
+      ...(params.cacheKey ? { prompt_cache_key: params.cacheKey } : {}),
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),
     }),
     cache: "no-store",
@@ -457,8 +557,7 @@ async function streamOnce(
     number,
     { id: string; name: string; args: string }
   >();
-  let inputTokens = 0;
-  let outputTokens = 0;
+  let usage: OAUsage | undefined;
 
   try {
    while (true) {
@@ -487,7 +586,7 @@ async function streamOnce(
           };
           finish_reason?: string | null;
         }[];
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        usage?: OAUsage;
       };
       try {
         event = JSON.parse(raw);
@@ -496,10 +595,7 @@ async function streamOnce(
       }
 
       if (event.id) messageId = event.id;
-      if (event.usage) {
-        inputTokens = event.usage.prompt_tokens ?? inputTokens;
-        outputTokens = event.usage.completion_tokens ?? outputTokens;
-      }
+      if (event.usage) usage = event.usage;
 
       const choice = event.choices?.[0];
       if (!choice) continue;
@@ -555,7 +651,7 @@ async function streamOnce(
     id: messageId,
     content,
     stop_reason,
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+    usage: normalizeOAUsage(usage),
   };
 }
 
@@ -563,11 +659,13 @@ async function streamOnce(
 export async function callOpenAICompatStructured<T extends Record<string, unknown>>(
   target: OpenAICompatTarget,
   params: {
-    system: string;
+    system: SystemPromptInput;
     messages: Message[];
     schemaName: string;
     schema: Record<string, unknown>;
     maxTokens?: number;
+    /** `prompt_cache_key` routing hint — see callOpenAICompat. */
+    cacheKey?: string;
   },
   handlers?: Pick<StreamHandlers, "onTextDelta">,
 ): Promise<{
@@ -590,7 +688,9 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
         messages: toOAMessages(
           params.system,
           dropUnsupportedVision(target.model, params.messages),
+          supportsExplicitPromptCache(target.model),
         ),
+        ...(params.cacheKey ? { prompt_cache_key: params.cacheKey } : {}),
         response_format: {
           type: "json_schema",
           json_schema: {
@@ -611,7 +711,7 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
     choices?: {
       message?: { content?: string | null; reasoning_content?: string | null };
     }[];
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: OAUsage;
   };
   const msg = payload.choices?.[0]?.message;
   const raw =
@@ -633,10 +733,7 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
 
   return {
     data,
-    usage: {
-      input_tokens: payload.usage?.prompt_tokens ?? 0,
-      output_tokens: payload.usage?.completion_tokens ?? 0,
-    },
+    usage: normalizeOAUsage(payload.usage),
   };
 }
 
