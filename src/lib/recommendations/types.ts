@@ -5,6 +5,7 @@
  * result (drives statistics). A record is TERMINAL when `outcome !== "pending"`.
  */
 import type { ActivationRule } from "./activationRule";
+import type { InvalidationMode } from "./entrySemantics";
 
 export type TrackedRecommendationStatus =
   | "pending_entry"
@@ -62,6 +63,13 @@ export interface TrackedRecommendation {
   /** Fill band for retest_zone entries. */
   retestZone?: { from: number; to: number } | null;
   stopLoss: number;
+  /**
+   * How the stop terminates the plan — see entrySemantics.INVALIDATION_MODES.
+   * Absent on rows written before the mode existed; every evaluator then
+   * derives the same default from the plan's structure
+   * (resolveInvalidationMode), so old rows grade by the words they promised.
+   */
+  invalidationMode?: InvalidationMode;
   targets: number[];
   invalidationLevel?: number;
   /**

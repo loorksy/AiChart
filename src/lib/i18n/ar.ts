@@ -19,7 +19,7 @@ export const ar: Record<TranslationKey, string> = {
 
   // Welcoming Phase
   "welcome.title": "مرحباً {name} 👋",
-  "welcome.subtitle": "اكتب رسالتك لتبدأ — تحليل احترافي للذهب بأسعار OANDA الحية.",
+  "welcome.subtitle": "اكتب رسالتك لتبدأ — تحليل احترافي للذهب بأسعار حية من تغذية المنصة.",
   "welcome.session_settings": "إعدادات الجلسة",
   "welcome.response_mode": "نوع الرد",
   "welcome.market": "السوق",
@@ -96,11 +96,11 @@ export const ar: Record<TranslationKey, string> = {
 
   // مصدر بيانات السوق (قناة واحدة: تغذية OANDA على مستوى المنصة)
   "data_source.title": "مصدر بيانات السوق",
-  "data_source.oanda": "تغذية OANDA",
-  "data_source.oanda_hint": "شموع وأسعار حية عبر OANDA — لا حاجة لربط حساب.",
+  "data_source.oanda": "تغذية المنصة",
+  "data_source.oanda_hint": "شموع وأسعار حية عبر تغذية المنصة — لا حاجة لربط حساب.",
   "data_source.needs_link": "بيانات السوق غير متاحة حاليًا.",
   "data_source.link_cta": "غير متاح",
-  "data_source.short.oanda": "OANDA",
+  "data_source.short.oanda": "تغذية المنصة",
 
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
   "composer.more": "خيارات إضافية",
@@ -111,7 +111,7 @@ export const ar: Record<TranslationKey, string> = {
   // كتالوج الأزواج
   "symbol.picker.title": "اختر الزوج",
   "symbol.picker.search": "ابحث عن زوج أو عملة",
-  "symbol.picker.source_cloud": "تغذية OANDA للمنصة",
+  "symbol.picker.source_cloud": "تغذية المنصة",
   "symbol.picker.none": "لا يوجد زوج يطابق هذا البحث.",
   "symbol.picker.favourites": "المفضلة",
   "symbol.picker.all": "كل الأزواج",
@@ -409,12 +409,12 @@ export const ar: Record<TranslationKey, string> = {
   "orch.market_data_failed_activity":
     "تعذّر تجهيز بيانات السوق — لا يمكن إكمال تحليل الشارت الآن.",
   "orch.market_data_failed_summary":
-    "تعذّر تجهيز بيانات السوق من تغذية OANDA. حاول مرة أخرى بعد قليل.",
+    "تعذّر تجهيز بيانات السوق من تغذية المنصة. حاول مرة أخرى بعد قليل.",
   "orch.no_rec_missing_data": "لم تصدر توصية بسبب نقص البيانات.",
   "orch.tail_age_seconds": " آخر شمعة متوفرة عمرها {age} ثانية.",
   "orch.tail_age_minutes": " آخر شمعة متوفرة عمرها {age} دقيقة.",
   "orch.sync_stale_summary":
-    "{reason}{age} بدأ تحديث تلقائي من تغذية OANDA — أعد طلبك خلال لحظات وسيكتمل التحليل.",
+    "{reason}{age} بدأ تحديث تلقائي من تغذية المنصة — أعد طلبك خلال لحظات وسيكتمل التحليل.",
   "orch.prices_unconfirmed": "تعذّر تأكيد أحدث الأسعار — لم تُصدر توصية.",
   "orch.analysis_stopped_gaps":
     "أُوقف التحليل لأن سلسلة الأسعار تفتقد جزءاً كبيراً من البيانات — بدأ الإصلاح التلقائي.",
@@ -439,7 +439,7 @@ export const ar: Record<TranslationKey, string> = {
     "التوصية النشطة موجودة لكن لا توجد رسومات محفوظة لها لإعادة عرضها.",
   "orch.reviewing_rec": "أراجع التوصية السابقة وحالتها الحالية.",
   "orch.broker_prices_unconfirmed":
-    "تعذّر تأكيد أحدث الأسعار من تغذية OANDA الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
+    "تعذّر تأكيد أحدث الأسعار من تغذية المنصة الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
   "orch.rec_update_stopped_gaps":
     "أُوقف تحديث التوصية لأن سلسلة الأسعار تفتقد جزءاً كبيراً من البيانات — بدأ الإصلاح التلقائي.",
   "orch.rec_status_updated": "حدّثت حالة التوصية المحفوظة.",

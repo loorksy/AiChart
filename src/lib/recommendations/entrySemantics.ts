@@ -53,6 +53,62 @@ export interface RetestZone {
   to: number;
 }
 
+/**
+ * How the STOP terminates a live plan.
+ *
+ *  - `touch` — any trade at the stop level ends the plan (a hard order at a
+ *              broker would have filled). The pre-existing behaviour.
+ *  - `close` — only a candle CLOSE beyond the stop ends it. A wick through the
+ *              level with a close back inside is a rejection, not a stop-out.
+ *
+ * This exists because of a real transcript: a conditional XAUUSD sell promised
+ * "a 15m candle CLOSE above 4667.29 kills the idea entirely", price wicked to
+ * ~4670 intrabar — no close above — got rejected exactly as the plan predicted
+ * and fell toward TP1, and the tracker graded the wick as a stop-out. The
+ * plan's own words and the grader disagreed about what the stop MEANS, which
+ * is the same class of contradiction the entry-type contract fixed for fills.
+ */
+export const INVALIDATION_MODES = ["close", "touch"] as const;
+
+export type InvalidationMode = (typeof INVALIDATION_MODES)[number];
+
+export function isInvalidationMode(value: unknown): value is InvalidationMode {
+  return (
+    typeof value === "string" &&
+    (INVALIDATION_MODES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The canonical invalidation mode for a plan, derived from its STRUCTURE —
+ * mirroring `resolveEntryType`: a stated mode wins; otherwise the plan's own
+ * shape decides.
+ *
+ * Default is CLOSE for every conditional/pending plan (an activation rule, a
+ * non-market fill, or a conditional/anticipatory plan type), because that is
+ * what the synthesizer's invalidation sentence has always promised — "a full
+ * candle close beyond the level kills the scenario" — and grading a promise
+ * written on the close against an intrabar wick is the contradiction this
+ * mode exists to end.
+ * Only a plain immediate market fill keeps touch semantics: a live position's
+ * protective stop is an order, and orders fill on a touch.
+ */
+export function resolveInvalidationMode(input: {
+  declared?: string | null;
+  entryType?: string | null;
+  planType?: "immediate" | "anticipatory" | "conditional" | null;
+  activationRule?: ActivationRule | null;
+}): InvalidationMode {
+  const declared = (input.declared ?? "").toLowerCase();
+  if (isInvalidationMode(declared)) return declared;
+  if (input.activationRule) return "close";
+  if (input.planType === "conditional" || input.planType === "anticipatory") {
+    return "close";
+  }
+  const entryType = normalizeStoredEntryType(input.entryType ?? null);
+  return entryType === "market" ? "touch" : "close";
+}
+
 export interface EntryPlan {
   direction: "buy" | "sell";
   entryType: EntryType;
@@ -319,6 +375,75 @@ export function entryFillTolerance(input: {
       ? input.atr * 0.15
       : 0;
   return Math.min(cap, Math.max(floor, fromAtr));
+}
+
+/**
+ * The safety margin a STOP must sit beyond the structural level it protects.
+ *
+ * Same proportional family as `entryFillTolerance`, deliberately wider: the
+ * entry band answers "how close counts as a touch" (spread-scale), while this
+ * answers "how far can an ordinary rejection wick overshoot the obvious swing
+ * before falling" — a stop placed exactly ON that swing is a stop-hunt
+ * donation. From the transcript this exists for: stop at 4667.29 on the swing,
+ * rejection wick to 4670 (≈3 points through), then the fall the plan
+ * predicted. The band:
+ *  - floor  ~0.022% of price (≈ 1.0 USD on gold at 4600)
+ *  - cap    ~0.11%  of price (≈ 5.0 USD on gold at 4600)
+ *  - inside the band, volatility decides: 40% of ATR — a rejection wick is a
+ *    fraction of one candle's range, so the margin scales with that range.
+ */
+export function stopSafetyBuffer(input: {
+  price: number;
+  atr?: number | null;
+}): number {
+  const price = input.price;
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  const floor = price * 2.2e-4;
+  const cap = price * 1.1e-3;
+  const fromAtr =
+    input.atr != null && Number.isFinite(input.atr) && input.atr > 0
+      ? input.atr * 0.4
+      : 0;
+  return Math.min(cap, Math.max(floor, fromAtr));
+}
+
+/**
+ * Push a stop the safety margin beyond its structural level, in the direction
+ * that protects the trade. Idempotent on already-buffered stops: the input
+ * stop is treated as the structural invalidation only when it sits closer to
+ * the entry than the buffered level — a stop the producer already placed
+ * beyond the margin is kept as stated.
+ */
+export function applyStopSafetyBuffer(input: {
+  direction: "buy" | "sell";
+  stopLoss: number;
+  /** The structural level the stop protects; defaults to the stop itself. */
+  structuralLevel?: number | null;
+  atr?: number | null;
+  /** Instrument scale for the proportional floor/cap; defaults to the stop. */
+  price?: number | null;
+}): { stopLoss: number; buffer: number; buffered: boolean } {
+  const structural =
+    input.structuralLevel != null && Number.isFinite(input.structuralLevel)
+      ? input.structuralLevel
+      : input.stopLoss;
+  if (!Number.isFinite(structural)) {
+    return { stopLoss: input.stopLoss, buffer: 0, buffered: false };
+  }
+  const buffer = stopSafetyBuffer({
+    price:
+      input.price != null && Number.isFinite(input.price) && input.price > 0
+        ? input.price
+        : Math.abs(structural),
+    atr: input.atr,
+  });
+  if (!(buffer > 0)) return { stopLoss: input.stopLoss, buffer: 0, buffered: false };
+  const safe =
+    input.direction === "sell" ? structural + buffer : structural - buffer;
+  const alreadySafe =
+    input.direction === "sell" ? input.stopLoss >= safe : input.stopLoss <= safe;
+  if (alreadySafe) return { stopLoss: input.stopLoss, buffer, buffered: false };
+  return { stopLoss: safe, buffer, buffered: true };
 }
 
 /**

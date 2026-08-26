@@ -42,6 +42,8 @@ import {
   normalizeActivationRule,
 } from "@/lib/recommendations/activationRule";
 import { entryTolerance } from "@/lib/agent/trading/buildTradeCandidates";
+import { applyStopSafetyBuffer } from "@/lib/recommendations/entrySemantics";
+import { roundToTick } from "../trading/scalpGeometry";
 import {
   buildEvidenceLevels,
   deriveExecutionState,
@@ -1605,6 +1607,29 @@ function applyModelDecision(
     tolerance,
     meta: { spread: input.market.spread },
   });
+
+  // Stop safety margin for MODEL-authored levels. The grounding check above
+  // accepts a stop precisely BECAUSE it sits on an evidence level — which is
+  // also exactly where an ordinary rejection wick overshoots (the transcript:
+  // stop 4667.29 on the swing, wick to 4670, then the fall the plan
+  // predicted). Candidate-sourced stops are already buffered at construction
+  // (buildTradeCandidates); this closes the same gap on the evidence path.
+  // The buffered stop is what everything downstream sees, so R:R, gates and
+  // the tracker all grade the same number.
+  if (resolved.levels && resolved.source === "evidence_levels") {
+    const buffered = applyStopSafetyBuffer({
+      direction,
+      stopLoss: resolved.levels.stopLoss,
+      atr: input.market.atr,
+      price: input.market.currentPrice,
+    });
+    if (buffered.buffered) {
+      resolved.levels = {
+        ...resolved.levels,
+        stopLoss: roundToTick(buffered.stopLoss, { spread: input.market.spread }),
+      };
+    }
+  }
 
   if (!resolved.levels) {
     riskWarnings.unshift(

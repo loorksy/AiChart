@@ -66,7 +66,7 @@ import { buildGates } from "./gates/buildGates";
 import { gateLineAr, refusalSummaryAr, runGateChain } from "./gates/chain";
 import type { GateChainResult, GateVerdict } from "./gates/types";
 import { newsProviderConfigured } from "./news/newsProvider";
-import { resolveEntryType } from "@/lib/recommendations/entrySemantics";
+import { resolveEntryType, resolveInvalidationMode } from "@/lib/recommendations/entrySemantics";
 import type { EntryType } from "@/lib/recommendations/entrySemantics";
 import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { answerGeneralQuestion } from "./generalAnswer";
@@ -2179,7 +2179,6 @@ async function runUnifiedChartAgentInner(
   const presented = attachMandatoryPresentation({
     summary: summaryWithScenario,
     envelope,
-    source: chartContext?.dataSource ?? "oanda",
     levels,
     locale,
   });
@@ -2725,6 +2724,13 @@ async function storeFinalRecommendation(input: {
   const candidate = input.risk.selectedCandidate;
   const id = newId();
   const createdCandleTime = input.market.currentTfCandles.at(-1)?.time;
+  const entryTypeResolved =
+    input.entryType ??
+    resolveEntryType({
+      declared: rec.entryType,
+      planType: rec.planType ?? input.finalDecision.planType,
+      activationRule: rec.activationRule,
+    });
   const active: ActiveRecommendation = {
     id,
     userId: input.userId,
@@ -2760,14 +2766,17 @@ async function storeFinalRecommendation(input: {
     // Canonical semantics from the gate chain, falling back to a structural
     // derivation so a path that skipped the chain still stores a real fill rule
     // rather than the model's declared order type.
-    entryType:
-      input.entryType ??
-      resolveEntryType({
-        declared: rec.entryType,
-        planType: rec.planType ?? input.finalDecision.planType,
-        activationRule: rec.activationRule,
-      }),
+    entryType: entryTypeResolved,
     stopLoss: rec.stop_loss,
+    // What the stop MEANS, decided at construction from the plan's own shape:
+    // a conditional plan whose invalidation sentence is written on the close
+    // stores close-confirmed invalidation, so no evaluator can later grade a
+    // rejection wick as a stop-out.
+    invalidationMode: resolveInvalidationMode({
+      entryType: entryTypeResolved,
+      planType: rec.planType ?? input.finalDecision.planType ?? null,
+      activationRule: rec.activationRule ?? null,
+    }),
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],
     rr: rec.rr,
@@ -2989,6 +2998,9 @@ async function persistTrackedRecommendation(
     entry: active.entry,
     retestZone: active.retestZone ?? null,
     stopLoss: active.stopLoss,
+    // The stop's own termination semantics, persisted with the plan so the
+    // sweep, the chat status path and the cards all grade the same promise.
+    invalidationMode: active.invalidationMode,
     targets: active.targets,
     invalidationLevel: active.invalidationLevel,
     // Mirrors the ActiveRecommendation derivation above: only a plan that is

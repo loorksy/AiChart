@@ -174,7 +174,15 @@ export async function trackOneRecommendation(
       direction: rec.direction,
       entryType: rec.entryType,
       entry: rec.entry,
+      // The honest fill from an earlier sweep and the retest band: dropping
+      // either here regrades the plan on prices it never filled at — and a
+      // retest_zone plan with no band can NEVER fill, which is one way a plan
+      // whose condition came true stays "pending activation" forever.
+      effectiveEntry: rec.effectiveEntry,
+      retestZone: rec.retestZone,
       stopLoss: rec.stopLoss,
+      invalidationMode: rec.invalidationMode,
+      planType: rec.planType,
       targets: rec.targets,
       invalidationLevel: rec.invalidationLevel,
       status: rec.status,
@@ -214,6 +222,9 @@ export async function trackOneRecommendation(
     status: result.status,
     outcome: result.outcome,
     triggeredAt: result.triggeredAt,
+    // Persist the honest fill so performance grades what actually filled and
+    // later sweeps do not re-derive it from ever-shortening candle history.
+    effectiveEntry: result.effectiveEntry,
     tp1HitAt: result.tp1HitAt,
     tp2HitAt: result.tp2HitAt,
     tp3HitAt: result.tp3HitAt,

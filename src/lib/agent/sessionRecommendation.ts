@@ -5,6 +5,7 @@ import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import {
   normalizeStoredEntryType,
   type EntryType,
+  type InvalidationMode,
 } from "@/lib/recommendations/entrySemantics";
 import {
   cancelTrackedRecommendation,
@@ -53,6 +54,19 @@ export type ActiveRecommendation = {
   /** Fill band for a `retest_zone` entry; absent for every other type. */
   retestZone?: { from: number; to: number } | null;
   stopLoss: number;
+  /**
+   * How the stop terminates the plan — a candle CLOSE beyond it ("close") or
+   * any touch ("touch"). See recommendations/entrySemantics.ts; absent means
+   * every evaluator derives the same structural default.
+   */
+  invalidationMode?: InvalidationMode;
+  /**
+   * The honest fill once triggered (confirming candle's close / nearest traded
+   * price) — the price status answers and R math must be measured from.
+   */
+  effectiveEntry?: number;
+  /** When the entry filled, from the canonical record. */
+  triggeredAt?: number;
   targets: number[];
   takeProfit?: number;
   rr?: number;
@@ -177,6 +191,13 @@ export async function getActiveRecommendation(
         // it as buy_limit/sell_limit threw away `confirmation_close` on every
         // replay, so a restored plan graded differently from the original.
         entryType: normalizeStoredEntryType(match.entryType),
+        // The full fill/stop semantics must survive the replay: the retest
+        // band (without it a retest plan can never fill), the stop's own
+        // termination mode, and the honest fill price already recorded.
+        retestZone: match.retestZone,
+        invalidationMode: match.invalidationMode,
+        effectiveEntry: match.effectiveEntry,
+        triggeredAt: match.triggeredAt,
         stopLoss: match.stopLoss,
         targets: match.targets,
         takeProfit: match.targets[0],

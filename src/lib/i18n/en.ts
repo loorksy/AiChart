@@ -20,7 +20,7 @@ export const en = {
 
   // Welcoming Phase
   "welcome.title": "Welcome, {name} 👋",
-  "welcome.subtitle": "Type your message to begin — professional gold analysis on live OANDA pricing.",
+  "welcome.subtitle": "Type your message to begin — professional gold analysis on live platform pricing.",
   "welcome.session_settings": "Session Settings",
   "welcome.response_mode": "Response Type",
   "welcome.market": "Market",
@@ -97,11 +97,11 @@ export const en = {
 
   // Market data source (the one pipe: the platform's OANDA feed)
   "data_source.title": "Market data",
-  "data_source.oanda": "OANDA feed",
-  "data_source.oanda_hint": "Live candles and prices via OANDA — no account link needed.",
+  "data_source.oanda": "Platform feed",
+  "data_source.oanda_hint": "Live candles and prices via the platform feed — no account link needed.",
   "data_source.needs_link": "Market data is temporarily unavailable.",
   "data_source.link_cta": "Unavailable",
-  "data_source.short.oanda": "OANDA",
+  "data_source.short.oanda": "Platform feed",
 
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",
@@ -112,7 +112,7 @@ export const en = {
   // Pair catalogue
   "symbol.picker.title": "Choose a pair",
   "symbol.picker.search": "Search a pair or a currency",
-  "symbol.picker.source_cloud": "Platform OANDA feed",
+  "symbol.picker.source_cloud": "Platform feed",
   "symbol.picker.none": "No pair matches this search.",
   "symbol.picker.favourites": "Favourites",
   "symbol.picker.all": "All pairs",
@@ -413,12 +413,12 @@ export const en = {
   "orch.market_data_failed_activity":
     "Could not prepare market data — the chart analysis cannot be completed right now.",
   "orch.market_data_failed_summary":
-    "Could not prepare market data from the OANDA feed. Try again shortly.",
+    "Could not prepare market data from the platform feed. Try again shortly.",
   "orch.no_rec_missing_data": "No recommendation was issued due to missing data.",
   "orch.tail_age_seconds": " Latest available candle is {age}s old.",
   "orch.tail_age_minutes": " Latest available candle is {age}m old.",
   "orch.sync_stale_summary":
-    "{reason}{age} An automatic refresh from the OANDA feed is already running — ask again in a moment and the analysis will complete.",
+    "{reason}{age} An automatic refresh from the platform feed is already running — ask again in a moment and the analysis will complete.",
   "orch.prices_unconfirmed":
     "Latest prices could not be confirmed — no recommendation was issued.",
   "orch.analysis_stopped_gaps":

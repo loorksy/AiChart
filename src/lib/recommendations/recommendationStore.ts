@@ -20,7 +20,7 @@ import {
   type RecommendationStatus as CanonicalStatus,
 } from "./canonical";
 import type { ActivationEvidence } from "./activationRule";
-import { normalizeStoredEntryType } from "./entrySemantics";
+import { isInvalidationMode, normalizeStoredEntryType } from "./entrySemantics";
 import type {
   TrackedRecommendation,
   TrackedRecommendationOutcome,
@@ -231,6 +231,9 @@ function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unk
     // confirming candle's close rather than the nominal trigger level.
     retestZone: input.retestZone ?? null,
     effectiveEntry: input.effectiveEntry,
+    // What the stop MEANS — a close beyond it or any touch. Absent on old
+    // rows; every evaluator then derives the same structural default.
+    invalidationMode: input.invalidationMode ?? null,
   };
 }
 
@@ -334,6 +337,9 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     effectiveEntry: numberValue(risk.effectiveEntry),
     retestZone: retestZoneValue(risk.retestZone),
     stopLoss: effective?.stopLoss ?? recommendation.stopLoss ?? 0,
+    invalidationMode: isInvalidationMode(risk.invalidationMode)
+      ? risk.invalidationMode
+      : undefined,
     targets: effective?.targets.length ? effective.targets : recommendation.targets,
     invalidationLevel: numberValue(risk.invalidationLevel),
     status: legacyStatus(recommendation, outcomes),
@@ -506,6 +512,12 @@ export interface TrackedStatusPatch {
   status: TrackedRecommendationStatus;
   outcome: TrackedRecommendationOutcome;
   triggeredAt?: number;
+  /**
+   * The honest fill price once triggered (confirming candle's close for a
+   * confirmation_close plan, nearest traded price for a tolerance touch).
+   * Persisted into risk_json so grading and status text read what filled.
+   */
+  effectiveEntry?: number;
   tp1HitAt?: number;
   tp2HitAt?: number;
   tp3HitAt?: number;
@@ -710,10 +722,13 @@ export async function updateTrackedRecommendation(
       patch.reason ?? `legacy partial outcome ${patch.outcome}`,
     );
   }
-  if (patch.lastCheckedAt != null) {
+  if (patch.lastCheckedAt != null || patch.effectiveEntry != null) {
     const nextRisk = {
       ...recommendation.risk,
-      lastCheckedAt: patch.lastCheckedAt,
+      ...(patch.lastCheckedAt != null ? { lastCheckedAt: patch.lastCheckedAt } : {}),
+      ...(patch.effectiveEntry != null && Number.isFinite(patch.effectiveEntry)
+        ? { effectiveEntry: patch.effectiveEntry }
+        : {}),
     };
     await execute(
       `UPDATE recommendations
@@ -721,7 +736,7 @@ export async function updateTrackedRecommendation(
         WHERE id = ? AND user_id = ?`,
       [
         JSON.stringify(nextRisk),
-        patch.lastCheckedAt,
+        patch.lastCheckedAt ?? now,
         recommendation.recommendationId,
         userId,
       ],
