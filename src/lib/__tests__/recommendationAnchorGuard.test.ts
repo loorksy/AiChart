@@ -72,6 +72,11 @@ describe("recommendation anchors come from stored creation time, never render-ti
       /time: this\.anchorSec\(rec, barSec\)/,
       "the position boxes must anchor through anchorSec (created_at, else the cached fallback)",
     );
+    assert.match(
+      src,
+      /printAnchorSec\(rec\)/,
+      "immediate follow-through must prefer anchor_time / triggeredAt over created_at",
+    );
     assert.doesNotMatch(
       src,
       /time: stableAnchorSec\(/,

@@ -166,10 +166,11 @@ export async function POST(req: NextRequest) {
           targets: tps,
           confidence: Math.round(result.confidence * 100),
           timeframe: interval,
-          // The chart anchors the profit/loss zones at this instant. Persisted
-          // with the layout below so every re-render, poll, and reload reuses
-          // the SAME anchor instead of re-anchoring to "now" (the reported
-          // zones-slide-with-the-candle bug).
+          ...(recommendation.anchorTime != null
+            ? { anchor_time: recommendation.anchorTime }
+            : {}),
+          // Chart P/L boxes: created_at is issue time; print-time follow-through
+          // prefers `anchor_time` so the box sits on the confirming candle.
           created_at: new Date().toISOString(),
         } as Recommendation)
       : null;

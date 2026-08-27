@@ -142,6 +142,25 @@ function closeBasedLeaves(rule: ActivationRule | null | undefined): LeafActivati
   );
 }
 
+/** True when the plan still needs a confirming close, not just a touch. */
+export function activationRequiresClose(
+  rule: ActivationRule | { kind: string; rules?: Array<{ kind: string }> } | null | undefined,
+): boolean {
+  return closeBasedLeaves(rule as ActivationRule | null | undefined).length > 0;
+}
+
+/** The level a close-based rule is waiting to print beyond, if any. */
+export function closeTriggerLevel(
+  rule: ActivationRule | { kind: string; rules?: Array<{ kind: string }> } | null | undefined,
+): number | null {
+  for (const leaf of closeBasedLeaves(rule as ActivationRule | null | undefined)) {
+    if ("level" in leaf && typeof leaf.level === "number" && leaf.level > 0) {
+      return leaf.level;
+    }
+  }
+  return null;
+}
+
 /** The price level a close-based leaf is measured against. */
 function leafLevel(leaf: LeafActivationRule): number | null {
   return "level" in leaf && typeof leaf.level === "number" ? leaf.level : null;
@@ -353,19 +372,27 @@ export interface FillResult {
 }
 
 /**
+ * Gold (XAUUSD) touch band, in price units. The operator was explicit: 10–15
+ * points. A live 5m sell at 4610 with price 10 points above counts as filled;
+ * 20 points above is still a wait. These are USD on gold, not 0.10 "pips".
+ */
+export const GOLD_FILL_TOLERANCE_FLOOR = 10;
+export const GOLD_FILL_TOLERANCE_CAP = 15;
+
+/**
  * How close price must come to a touch-filled entry for the touch to count.
  *
  * Exists because of a real complaint: a XAUUSD plan whose entry sat at
  * 4646.19 watched price turn 30 cents above it and run to every target — and
  * the record graded the plan as never filled. Requiring the exact cent is
- * grading a fill the market never owed us; a real limit order at that level
- * with normal spread WOULD have filled.
+ * grading a fill the market never owed us.
  *
- * The band is proportional to price so one rule serves every instrument:
- *  - floor  ~0.011% of price (≈ 0.50 USD on gold at 4600 — "5 points")
- *  - cap    ~0.033% of price (≈ 1.50 USD on gold at 4600 — "15 points")
- *  - inside the band, volatility decides: 15% of ATR, matching the tolerance
- *    the plan builder already applies to activation rules at creation.
+ * On gold (price ≥ 100) the operator-mandated band is 10–15 points: floor 10,
+ * cap 15, ATR-scaled inside. The previous ~0.5–1.5 USD / 0.5×ATR / 5-point
+ * overshoot was too wide a *requirement* for converting leftover waits (a
+ * 4605.39 sell with live 4601.89 — 3.5 points through — still shipped as
+ * "wait") and too *narrow* a touch band for approach-from-the-waiting-side.
+ * Smaller instruments keep a proportional spread-scale band.
  */
 export function entryFillTolerance(input: {
   price: number;
@@ -373,12 +400,18 @@ export function entryFillTolerance(input: {
 }): number {
   const price = input.price;
   if (!Number.isFinite(price) || price <= 0) return 0;
-  const floor = price * 1.1e-4;
-  const cap = price * 3.3e-4;
   const fromAtr =
     input.atr != null && Number.isFinite(input.atr) && input.atr > 0
       ? input.atr * 0.15
       : 0;
+  if (price >= 100) {
+    return Math.min(
+      GOLD_FILL_TOLERANCE_CAP,
+      Math.max(GOLD_FILL_TOLERANCE_FLOOR, fromAtr),
+    );
+  }
+  const floor = price * 1.1e-4;
+  const cap = price * 3.3e-4;
   return Math.min(cap, Math.max(floor, fromAtr));
 }
 
@@ -505,17 +538,18 @@ export function resolveFill(input: {
         input.tolerance != null && Number.isFinite(input.tolerance) && input.tolerance > 0
           ? input.tolerance
           : 0;
-      const touched =
-        plan.direction === "buy"
-          ? candle.low <= plan.entry + tol
-          : candle.high >= plan.entry - tol;
+      // Range overlap with [entry − tol, entry + tol]: a touch from EITHER
+      // side counts. The old one-sided test (sell: high ≥ entry − tol) treated
+      // a candle sitting 20 points ABOVE a sell as a fill once tol grew to
+      // 10–15, and missed a breakdown that had already gone through below.
+      const bandLow = plan.entry - tol;
+      const bandHigh = plan.entry + tol;
+      const touched = candle.low <= bandHigh && candle.high >= bandLow;
       if (!touched) return { filled: false };
       // Grading honesty: when only the tolerance band was reached, the fill is
-      // the nearest traded price (the candle's extreme), not the level itself.
-      const effectiveEntry =
-        plan.direction === "buy"
-          ? Math.max(plan.entry, candle.low)
-          : Math.min(plan.entry, candle.high);
+      // the nearest traded price (clamped into the candle's range), not the
+      // level itself — that gap is the recorded slip.
+      const effectiveEntry = Math.min(candle.high, Math.max(candle.low, plan.entry));
       return { filled: true, effectiveEntry };
     }
   }
@@ -553,9 +587,10 @@ export function describeEntry(plan: Pick<EntryPlan, "direction" | "entryType" | 
  * Minimum distance between consecutive take-profits, so TP2/TP3 are distinct
  * levels rather than a 0.09-point duplicate of their neighbour.
  *
- * Aligns with `entryFillTolerance` (spread-scale touch band) plus a gold-sane
- * floor of several points and 0.15×ATR. The 2026-08 production card printed
- * TP2 4593.80 / TP3 4593.71 — visually and practically the same line.
+ * Independent of the 10–15 point gold FILL band — that band is touch
+ * activation, not target spacing. Gold keeps a several-point floor plus
+ * 0.15×ATR. The 2026-08 production card printed TP2 4593.80 / TP3 4593.71 —
+ * visually and practically the same line.
  */
 export function minConsecutiveTargetSpacing(input: {
   price: number;
@@ -563,14 +598,13 @@ export function minConsecutiveTargetSpacing(input: {
 }): number {
   const price = input.price;
   if (!Number.isFinite(price) || price <= 0) return 0;
-  const fill = entryFillTolerance(input);
   const atrFrac =
     input.atr != null && Number.isFinite(input.atr) && input.atr > 0
       ? input.atr * 0.15
       : 0;
-  // Several points on XAUUSD (~4600); smaller instruments keep the fill floor.
-  const pointsFloor = price >= 100 ? 5 : fill;
-  return Math.max(pointsFloor, atrFrac, fill);
+  // Several points on XAUUSD (~4600); smaller instruments keep a spread-scale floor.
+  const pointsFloor = price >= 100 ? 5 : price * 1.1e-4;
+  return Math.max(pointsFloor, atrFrac);
 }
 
 /**

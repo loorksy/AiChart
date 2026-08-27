@@ -591,6 +591,7 @@ function SmartChartWorkspaceInner({
               targets: tps,
               confidence: Math.round(result.confidence * 100),
               timeframe: interval,
+              ...(rec.anchorTime != null ? { anchor_time: rec.anchorTime } : {}),
             } as Recommendation,
             prev,
           ),

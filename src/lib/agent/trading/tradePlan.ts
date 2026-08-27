@@ -252,12 +252,15 @@ export function deriveExecutionState(input: {
   if (input.blocked) return "blocked";
   if (!input.levels) return "awaiting_activation";
   if (input.planType === "conditional") return "awaiting_activation";
+  // Immediate follow-through is valid now even when live has already left
+  // the drawn zone (sell 4605.39 / live 4601.89). Requiring `inZone` here
+  // re-labelled those prints as awaiting_activation and sat the card in wait.
+  if (input.planType === "immediate") return "valid_now";
   const price = Number(input.currentPrice);
   if (!Number.isFinite(price)) return "awaiting_activation";
   const inZone =
     price >= Math.min(input.levels.entryLow, input.levels.entryHigh) &&
     price <= Math.max(input.levels.entryLow, input.levels.entryHigh);
-  if (input.planType === "immediate") return inZone ? "valid_now" : "awaiting_activation";
   // Anticipatory: acting early inside the zone is the point of the plan.
   return inZone ? "valid_now" : "awaiting_activation";
 }

@@ -67,9 +67,9 @@ import { gateLineAr, refusalSummaryAr, runGateChain } from "./gates/chain";
 import { repriceStaleScenario } from "./gates/repriceLoop";
 import type { GateChainResult, GateVerdict } from "./gates/types";
 import { newsProviderConfigured } from "./news/newsProvider";
-import { resolveEntryType, resolveInvalidationMode } from "@/lib/recommendations/entrySemantics";
+import { resolveEntryType, resolveInvalidationMode, entryFillTolerance } from "@/lib/recommendations/entrySemantics";
 import type { EntryType } from "@/lib/recommendations/entrySemantics";
-import { applyFollowThroughToPlan } from "./gates/revalidation";
+import { applyFollowThroughToPlan, findPrintAnchorMs } from "./gates/revalidation";
 import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
@@ -1761,6 +1761,7 @@ async function runUnifiedChartAgentInner(
         // not an acceptance threshold (systemPrompt.ts). Introducing one here
         // would silently change what the platform refuses.
       },
+      freezeEntry: gateRec.anchorTime != null,
       // A FRESH quote on purpose. The analysis takes tens of seconds and gold
       // does not stand still; a plan revalidated against the price the run
       // STARTED with has been validated against the past.
@@ -1803,7 +1804,19 @@ async function runUnifiedChartAgentInner(
         reanchoredEntry: entry,
         liveRr: reanchor.evidence!.liveRr,
       });
-      applyFollowThroughToPlan(gateRec, entry);
+      const written = gateRec.entry;
+      const direction = decision.decision === "buy" ? "buy" : "sell";
+      const anchorTime = findPrintAnchorMs({
+        direction,
+        entry: typeof written === "number" ? written : entry,
+        candles: market.currentTfCandles,
+        tolerance: entryFillTolerance({
+          price: typeof written === "number" ? written : entry,
+          atr: market.atr,
+        }),
+      });
+      applyFollowThroughToPlan(gateRec, entry, { anchorTime });
+      if (anchorTime != null) gateRec.anchorTime = anchorTime;
       decision.planType = "immediate";
       decision.executionState = "valid_now";
       gateEntryType = "market";

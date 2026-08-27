@@ -15,6 +15,8 @@ import { describe, it } from "node:test";
 import {
   describeEntry,
   entryFillTolerance,
+  GOLD_FILL_TOLERANCE_CAP,
+  GOLD_FILL_TOLERANCE_FLOOR,
   filterDistinctTargets,
   minConsecutiveTargetSpacing,
   resolveEntryType,
@@ -338,22 +340,63 @@ describe("limit_touch fills within the tolerance band", () => {
   });
 });
 
-describe("entryFillTolerance clamps to the instrument's scale", () => {
-  it("gold at ~4600 lands inside the operator's 5–15 point band (0.5–1.5 USD)", () => {
-    // No ATR → the floor: ~0.5 USD.
+describe("entryFillTolerance is a 10–15 point gold band", () => {
+  it("gold at ~4600 floors at 10 and caps at 15", () => {
     const floor = entryFillTolerance({ price: 4646 });
-    assert.ok(floor >= 0.45 && floor <= 0.6, `floor ${floor} should be ≈0.5`);
-    // Huge ATR → the cap: ~1.5 USD, never more.
-    const cap = entryFillTolerance({ price: 4646, atr: 50 });
-    assert.ok(cap >= 1.4 && cap <= 1.6, `cap ${cap} should be ≈1.5`);
-    // Normal 5m ATR (~4 USD) → volatility-scaled inside the band.
+    assert.equal(floor, GOLD_FILL_TOLERANCE_FLOOR);
+    const cap = entryFillTolerance({ price: 4646, atr: 200 });
+    assert.equal(cap, GOLD_FILL_TOLERANCE_CAP);
     const mid = entryFillTolerance({ price: 4646, atr: 4 });
-    assert.ok(mid >= floor && mid <= cap, `mid ${mid} must sit inside [${floor}, ${cap}]`);
+    assert.equal(mid, GOLD_FILL_TOLERANCE_FLOOR, "5m ATR sits on the 10-point floor");
   });
 
   it("degenerate prices produce zero, never NaN", () => {
     assert.equal(entryFillTolerance({ price: 0 }), 0);
     assert.equal(entryFillTolerance({ price: Number.NaN }), 0);
+  });
+});
+
+describe("10–15 point gold touch: approach and through", () => {
+  const PLAN = {
+    direction: "sell" as const,
+    entryType: "limit_touch" as const,
+    entry: 4610,
+    retestZone: null,
+  };
+
+  it("sell 4610 / live 4620 (10 pts above) fills at the nearest traded price", () => {
+    const fill = resolveFill({
+      plan: PLAN,
+      candle: candle(1, 4622, 4623, 4619.5, 4620),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 10,
+    });
+    assert.equal(fill.filled, true);
+    assert.equal(fill.effectiveEntry, 4619.5);
+  });
+
+  it("sell 4610 / live 4630 (20 pts above) does not fill", () => {
+    const fill = resolveFill({
+      plan: PLAN,
+      candle: candle(1, 4631, 4632, 4628, 4630),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 10,
+    });
+    assert.equal(fill.filled, false);
+  });
+
+  it("sell 4605.39 / live 4601.89 (already through) fills", () => {
+    const fill = resolveFill({
+      plan: { ...PLAN, entry: 4605.39 },
+      candle: candle(1, 4603, 4604, 4601.2, 4601.89),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 10,
+    });
+    assert.equal(fill.filled, true);
+    assert.equal(fill.effectiveEntry, 4604);
   });
 });
 

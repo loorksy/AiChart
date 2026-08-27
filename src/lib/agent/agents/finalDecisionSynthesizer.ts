@@ -43,10 +43,11 @@ import {
   normalizeActivationRule,
 } from "@/lib/recommendations/activationRule";
 import { entryTolerance } from "@/lib/agent/trading/buildTradeCandidates";
-import { applyStopSafetyBuffer, filterDistinctTargets, resolveEntryType } from "@/lib/recommendations/entrySemantics";
+import { applyStopSafetyBuffer, entryFillTolerance, filterDistinctTargets, resolveEntryType } from "@/lib/recommendations/entrySemantics";
 import { roundToTick } from "../trading/scalpGeometry";
 import {
-  confirmationAlreadyPrinted,
+  entryPrintState,
+  findPrintAnchorMs,
 } from "../gates/revalidation";
 import {
   buildEvidenceLevels,
@@ -822,6 +823,31 @@ Ask, in order:
 - Example (wrong, production): sell entry 4616.66, activation "price reaches 4616.66 then rejects with a 5m close below", live price already 4606. The rejection has printed and price has left the level in the sell direction. That MUST be planType:"immediate" at current structure (or a fresh retest of the broken level) — never "wait for 4616.66" after the market has already gone. Cover the buy symmetrically: a buy entry the live price has already run through in the profit direction is immediate follow-through, not a pending wait.
 - BEFORE proposing any level: read the attached charts for support, resistance, and trendlines, and whether the activation you are about to write has already closed on those candles.
 - AFTER you have proposed levels: look again at the same live charts (browse view_timeframe on the timing/lead frame if you need a second look — it is already in your budget). Confirm the same three facts with the levels in mind: support, resistance, trendlines, and whether the activation has already printed. The platform recaptures the chart once drawings are placed and will convert a leftover wait whose trigger already printed into an immediate follow-through; do not make it do that work for you.
+
+## Entry doctrine — apply LITERALLY to every recommendation
+This block is durable operating law.
+
+1. **Draw the entry at the MOMENT the condition printed, not from the latest moving candle.** When the condition is already true, the position-tool / zone TIME ANCHOR is the confirming candle's timestamp (the wick/price that printed the fill), never wall-clock "now" at issue time. A leftover wait converted to immediate MUST sit on that historical bar. Pending plans keep created_at. Counterexample (production, 5m XAUUSD SELL): entry 4605.39, live 4601.89 — the box must start at the bar that first tagged 4605.39 (~20:20–20:30), NOT at a later candle around 20:45–21:00.
+
+2. **No conditional after the condition already printed.** Convert conditional → immediate. Do not wait for another touch of the same zone.
+   - Sell: live < entry (already below) → immediate follow-through. Never "wait to touch 4605.39 again".
+   - Buy: live > entry → immediate.
+   - Touch tolerance 10–15 gold points on the WAITING side (sell still ABOVE entry, buy still BELOW): live within 10–15 points of the zone without exact touch counts as filled; activate and note the gap.
+   - Production counterexample: sell 4605.39 vs live 4601.89 (~3.5 points through) MUST be planType:"immediate". A 5-point / 0.5×ATR overshoot requirement is FORBIDDEN — that is what missed this card.
+
+3. **Do not assume price will return to retest the same zone** except exceptional cases you MUST name: weak S/R that may flip, gaps, strong news, abnormal liquidity/slippage. Default: one touch, maybe one more attempt, then the move. A leftover wait for a level the market already left is forbidden unless you explicitly tag a retest thesis with one of those reasons — and the plan must say so.
+
+4. **A trendline may BE the actual entry**, not the horizontal. Price may tag the trendline (sloped support/resistance) and reverse without tagging the horizontal. If a trendline is the trigger, the activation rule / entry zone is the trendline tag — say so in activationCondition. The horizontal remains a reference. Applies to buy and sell.
+
+5. **Correction after a trendline break:** price breaks the line, retests it, continues. You MUST state whether entry is from the BREAK or from the RETEST, according to the strategy.
+
+When they apply, NAME these strategies in the recommendation (summary / keyReasons / planTypeBecause):
+- A. False breakout: do not enter on the pierce; wait for a close beyond. If it already closed back inside, that is the false-break play — immediate in the rejection direction.
+- B. Retest after a real break.
+- C. Rejection candles at the zone — pin bar / engulfing. Mention if present; they strengthen the call.
+- D. Supply/demand confluence with the entry. Mention if present.
+- E. Gaps: entry may be the gap open, not the drawn zone.
+- F. News: state whether the plan is valid only before or only after the event.
 
 ## Choosing the entry LEVEL
 - Enter at the EDGE of the POI/zone nearest the current price plus a spread margin — not the middle of the zone and not its far side. The middle "feels safer" but gives up half the zone's R for no evidence.
@@ -1689,10 +1715,12 @@ function applyModelDecision(
     );
   }
 
-  // Live price already through a confirmation/rejection wait in the trade's
-  // profit direction: convert to immediate follow-through. The 2026-08 card
-  // shipped a conditional sell at 4616.66 while live sat at 4606. Conflict
-  // coercion above may have just MADE it conditional — the printed move wins.
+  // Live price already through a leftover wait (or within the 10–15 point
+  // approach band): convert to immediate follow-through. The 4605.39 / live
+  // 4601.89 card shipped as "wait" because we demanded 5 points / 0.5×ATR of
+  // overshoot — through by more than 0 is printed. Conflict coercion above
+  // may have just MADE it conditional — the printed move wins.
+  let printAnchorMs: number | undefined;
   if (
     resolved.levels &&
     planType !== "immediate" &&
@@ -1703,40 +1731,76 @@ function applyModelDecision(
       planType,
       activationRule,
     });
-    if (
-      confirmationAlreadyPrinted({
-        direction,
-        entry: resolved.levels.preferredEntry,
-        currentPrice,
-        entryType: pendingType,
-        atr: input.market.atr,
-      })
-    ) {
-      const writtenEntry = resolved.levels.preferredEntry;
+    const print = entryPrintState({
+      direction,
+      entry: resolved.levels.preferredEntry,
+      currentPrice,
+      entryType: pendingType,
+      atr: input.market.atr,
+      activationRule,
+    });
+    if (print.printed) {
+      // Conflict-coerced confirmation and anticipatory forming-structure
+      // waits stay on the waiting side when live has only APPROACHED the
+      // zone. Through (live already past the entry in the profit direction)
+      // still wins — that is the leftover-wait bug.
+      const keepApproachWait =
+        print.kind === "approach" &&
+        (coercedFromImmediate || planType === "anticipatory");
+      if (!keepApproachWait) {
+        const writtenEntry = resolved.levels.preferredEntry;
       const live = roundToTick(currentPrice, { spread: input.market.spread });
-      const nextTargets = filterDistinctTargets({
-        direction,
-        entry: live,
-        targets: resolved.levels.targets,
-        atr: input.market.atr,
-      });
-      if (nextTargets.length > 0) {
-        resolved.levels = {
-          ...resolved.levels,
-          preferredEntry: live,
-          entryLow: Math.min(resolved.levels.entryLow, live),
-          entryHigh: Math.max(resolved.levels.entryHigh, live),
-          targets: nextTargets,
-        };
-        planType = "immediate";
-        activationCondition = null;
-        activationRule = null;
-        riskWarnings.unshift(
-          t(input.locale === "en" ? "en" : "ar", "synth.activation_already_met", {
-            live: live.toFixed(2),
-            written: writtenEntry.toFixed(2),
-          }),
-        );
+      // Through: keep the written zone (the fill printed there). Approach:
+      // fill at live and note the gap — unless filling NOW would be born
+      // stopped (a sell 8 points above a stop 3 points above the entry).
+      const stop = resolved.levels.stopLoss;
+      const wouldBreachStop =
+        print.kind === "approach" &&
+        (direction === "sell" ? live >= stop : live <= stop);
+      if (!wouldBreachStop) {
+        const fillAt = print.kind === "through" ? writtenEntry : live;
+        const nextTargets = filterDistinctTargets({
+          direction,
+          entry: fillAt,
+          targets: resolved.levels.targets,
+          atr: input.market.atr,
+        });
+        if (nextTargets.length > 0) {
+          resolved.levels = {
+            ...resolved.levels,
+            preferredEntry: fillAt,
+            entryLow: Math.min(resolved.levels.entryLow, fillAt),
+            entryHigh: Math.max(resolved.levels.entryHigh, fillAt),
+            targets: nextTargets,
+          };
+          planType = "immediate";
+          activationCondition = null;
+          activationRule = null;
+          const found = findPrintAnchorMs({
+            direction,
+            entry: writtenEntry,
+            candles: input.market.currentTfCandles,
+            tolerance: entryFillTolerance({
+              price: writtenEntry,
+              atr: input.market.atr,
+            }),
+          });
+          if (found != null) printAnchorMs = found;
+          const gap = Math.abs(live - writtenEntry);
+          riskWarnings.unshift(
+            print.kind === "approach"
+              ? t(input.locale === "en" ? "en" : "ar", "synth.activation_approach_gap", {
+                  live: live.toFixed(2),
+                  written: writtenEntry.toFixed(2),
+                  gap: gap.toFixed(2),
+                })
+              : t(input.locale === "en" ? "en" : "ar", "synth.activation_already_met", {
+                  live: live.toFixed(2),
+                  written: writtenEntry.toFixed(2),
+                }),
+          );
+        }
+      }
       }
     }
   }
@@ -1848,6 +1912,7 @@ function applyModelDecision(
         validityCandles: parsed.validityCandles,
         levelSource: resolved.source ?? undefined,
         status: executionState === "valid_now" ? "triggered" : "pending_entry",
+        ...(printAnchorMs != null ? { anchorTime: printAnchorMs } : {}),
       }
     : {
         action: direction,

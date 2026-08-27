@@ -214,6 +214,12 @@ export interface AgentRecommendation {
   alternativeScenario?: string;
   /** How many candles of this timeframe the plan stays meaningful. */
   validityCandles?: number;
+  /**
+   * Epoch ms of the candle that printed the fill, when a leftover wait was
+   * converted to immediate. The chart position tool anchors here rather than
+   * at issue-time `created_at`.
+   */
+  anchorTime?: number;
   /** Where the numbers came from — a validated candidate or evidence levels. */
   levelSource?: "candidate" | "evidence_levels";
   chartSnapshotHash?: string;

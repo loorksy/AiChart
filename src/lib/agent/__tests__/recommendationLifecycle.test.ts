@@ -97,9 +97,13 @@ describe("evaluateRecommendationStatus", () => {
   // the creation moment is the candle that was FORMING at creation, and the
   // canonical evaluator (one source of truth with the sweep) never grades it.
   it("keeps a recommendation pending before entry touch", () => {
+    // Gold fill band is 10–15 points. Sitting 0.5 above the entry used to
+    // mean "not a touch"; it is now inside the band. Keep this fixture on
+    // the waiting side (buy still BELOW) and outside the band, without
+    // running through TP1 — a candle above the target expires as a miss.
     const status = evaluateRecommendationStatus({
       recommendation: rec(),
-      market: market([candle(1, 101, 101.2, 100.5, 101)]),
+      market: market([candle(1, 81, 81.2, 80.5, 81)]),
     });
     assert.equal(status.status, "pending_entry");
     assert.equal(status.triggered, false);

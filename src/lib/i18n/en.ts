@@ -394,6 +394,8 @@ export const en = {
     "The activation had already printed — live price {current} is through the waited-for entry {written} (distance {distance}). The plan is an immediate follow-through at the current price, not a wait for a level the market already left.",
   "synth.activation_already_met":
     "Activation had already printed — issued as an immediate follow-through at {live}, not a wait for {written}.",
+  "synth.activation_approach_gap":
+    "Price approached the entry within the 10–15 point band (gap {gap} from {written}); activated at {live}.",
   "gate.revalidation.invalidated":
     "Price has reached or passed the stop {stopLoss} — the idea itself is gone, and no entry is built on a plan whose stop is already hit.",
   "gate.revalidation.targets_passed":

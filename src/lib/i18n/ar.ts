@@ -390,6 +390,8 @@ export const ar: Record<TranslationKey, string> = {
     "شرط التفعيل كان قد تحقق — السعر الحي {current} تجاوز مستوى الدخول المنتظَر {written} بمسافة {distance}. الخطة دخول فوري عند السعر الحالي، لا انتظار لمستوى غادره السوق.",
   "synth.activation_already_met":
     "شرط التفعيل كان قد تحقق — صدرت الخطة دخولاً فورياً عند {live} لا انتظاراً لمستوى غادره السوق.",
+  "synth.activation_approach_gap":
+    "اقترب السعر من الدخول ضمن نطاق 10–15 نقطة (فجوة {gap} عن {written})؛ فُعِّل الدخول عند {live}.",
   "gate.revalidation.invalidated":
     "السعر بلغ وقف الخسارة {stopLoss} أو تجاوزه — الفكرة نفسها سقطت، ولا يُبنى دخول على خطة وقفها مضروب سلفاً.",
   "gate.revalidation.targets_passed":

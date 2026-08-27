@@ -9,6 +9,7 @@ import { normalizeTimestamp } from "@/lib/chart/chartTimeAnchor";
 import { ticksPerPriceUnit } from "@/lib/chart/tv/tvSymbolTicks";
 import { planTargetList } from "@/lib/chart/planTargets";
 import { barDurationMs } from "@/lib/intervals";
+import { createdAtMs } from "@/lib/recommendations/anchorTime";
 
 /** Milliseconds → TradingView time (seconds). */
 function toSec(ms: number): number {
@@ -146,10 +147,28 @@ function furthestTarget(
 /** Recommendation creation time in TV seconds, or null when the payload
  *  carries no parseable `created_at`. */
 function createdAtSec(rec: Recommendation): number | null {
-  const raw = rec.created_at;
-  const parsed =
-    typeof raw === "number" ? Number(raw) : raw ? Date.parse(String(raw)) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? toSec(parsed) : null;
+  return parseTimeSec(rec.created_at);
+}
+
+/** Epoch ms/ISO/seconds → TradingView seconds, or null. */
+function parseTimeSec(raw: unknown): number | null {
+  const ms = createdAtMs(raw);
+  return ms != null ? toSec(ms) : null;
+}
+
+/**
+ * Print-time / activation-time anchor: the candle that tagged the entry,
+ * persisted as `anchor_time` (or `triggeredAt` on some payloads). Preferred
+ * over `created_at` so a leftover wait converted to immediate sits on the
+ * historical print bar instead of hugging "now" at issue time.
+ */
+function printAnchorSec(rec: Recommendation): number | null {
+  const extra = rec as Recommendation & { triggeredAt?: unknown; triggered_at?: unknown };
+  return (
+    parseTimeSec(rec.anchor_time) ??
+    parseTimeSec(extra.triggeredAt) ??
+    parseTimeSec(extra.triggered_at)
+  );
 }
 
 /** Manages TradingView shapes for one chart — mirrors ChartDrawing[] onto it. */
@@ -170,11 +189,15 @@ export class TvDrawingManager {
   constructor(private readonly chart: IChartWidgetApi) {}
 
   /**
-   * Time anchor for the recommendation's risk/reward boxes: the persisted
-   * creation time when present, else a bar-quantized "now" resolved ONCE for
-   * this trade and cached, so new candles/ticks never shift the zones.
+   * Time anchor for the recommendation's risk/reward boxes: the printing
+   * candle (`anchor_time` / `triggeredAt`) when a leftover wait was converted
+   * to immediate, else the persisted creation time, else a bar-quantized
+   * "now" resolved ONCE for this trade and cached, so new candles/ticks never
+   * shift the zones. Pending plans have no print time and keep created_at.
    */
   private anchorSec(rec: Recommendation, barSec: number): number {
+    const fromPrint = printAnchorSec(rec);
+    if (fromPrint != null) return fromPrint;
     const fromCreatedAt = createdAtSec(rec);
     if (fromCreatedAt != null) return fromCreatedAt;
     const key = [rec.symbol ?? "", rec.action, rec.entry, rec.stop_loss, rec.take_profit].join("|");
@@ -511,7 +534,7 @@ export class TvDrawingManager {
     const fingerprint = JSON.stringify([
       drawings,
       rec0
-        ? [rec0.action, rec0.entry, rec0.stop_loss, rec0.take_profit, rec0.created_at]
+        ? [rec0.action, rec0.entry, rec0.stop_loss, rec0.take_profit, rec0.created_at, rec0.anchor_time]
         : null,
       planTargetList({
         targets: trade?.targets,
@@ -549,11 +572,12 @@ export class TvDrawingManager {
       const sl = rec.stop_loss;
       if (entry != null && entry > 0 && sl != null && sl > 0 && tps.length > 0) {
         // Native TV position tool: entry/target/stop with automatic R/R stats.
-        // Anchored at the recommendation's PERSISTED creation time (sticky
-        // bar-quantized fallback for legacy payloads without one) so re-applies
-        // reproduce the exact same shape instead of drifting to wall-clock
-        // "now" on every redraw. The profit zone reaches the FURTHEST target;
-        // the nearer TPs render as numbered lines inside it.
+        // Anchored at the printing candle when `anchor_time` is present (a
+        // leftover wait converted to immediate), else the persisted creation
+        // time (sticky bar-quantized fallback for legacy payloads without one)
+        // so re-applies reproduce the exact same shape instead of drifting to
+        // wall-clock "now" on every redraw. The profit zone reaches the
+        // FURTHEST target; the nearer TPs render as numbered lines inside it.
         this.positionWithTargets(
           rec.action === "buy" ? "long" : "short",
           { time: this.anchorSec(rec, barSec), price: entry },

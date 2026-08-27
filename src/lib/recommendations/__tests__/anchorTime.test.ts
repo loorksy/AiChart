@@ -79,6 +79,13 @@ describe("withStableCreatedAt", () => {
   it("passes null through", () => {
     assert.equal(withStableCreatedAt(null, { ...PLAN, created_at: "x" }), null);
   });
+
+  it("a re-delivered same plan without anchor_time inherits the print bar", () => {
+    const prev = { ...PLAN, created_at: "2026-08-24T18:00:00.000Z", anchor_time: 1_787_940_000_000 };
+    const redelivered = { ...PLAN, created_at: "2026-08-24T18:00:00.000Z" };
+    const out = withStableCreatedAt(redelivered, prev);
+    assert.equal(out?.anchor_time, 1_787_940_000_000);
+  });
 });
 
 describe("sameTradePlan", () => {

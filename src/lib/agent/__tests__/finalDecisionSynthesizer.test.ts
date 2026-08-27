@@ -203,7 +203,10 @@ describe("AI final decision authority", () => {
     });
     assert.equal(out.result?.recommendation.entry, 1.095);
     assert.equal(out.result?.recommendation.levelSource, "evidence_levels");
-    assert.equal(out.result?.executionState, "awaiting_activation");
+    // Live 1.1 is already through the buy entry at 1.095 — leftover wait
+    // converts to immediate follow-through rather than sitting pending.
+    assert.equal(out.result?.planType, "immediate");
+    assert.equal(out.result?.executionState, "valid_now");
   });
 
   it("refuses invented levels but keeps the direction and the reasoning", async () => {
@@ -347,8 +350,8 @@ describe("AI final decision authority", () => {
     assert.equal(out.result?.recommendation.activationRule, undefined);
     assert.equal(out.result?.recommendation.entryType, "market");
     assert.ok(
-      Math.abs((out.result?.recommendation.entry ?? 0) - 4606) < 0.5,
-      `entry should re-price to live ~4606, got ${out.result?.recommendation.entry}`,
+      Math.abs((out.result?.recommendation.entry ?? 0) - 4616.66) < 0.5,
+      `through-print keeps the written entry 4616.66, got ${out.result?.recommendation.entry}`,
     );
     const tps = out.result?.recommendation.targets ?? [];
     assert.ok(tps.length >= 1 && tps.length <= 2, `expected 1–2 spaced TPs, got ${tps.join(",")}`);
@@ -363,6 +366,72 @@ describe("AI final decision authority", () => {
     );
   });
 
+  it("converts the 4605.39 / 4601.89 screenshot sell into immediate follow-through", async () => {
+    const print = Date.UTC(2026, 7, 27, 17, 25, 0);
+    const bar = 5 * 60_000;
+    const gold = {
+      ...market(),
+      symbol: "XAUUSD",
+      interval: "5m",
+      currentPrice: 4601.89,
+      atr: 8.9,
+      spread: 0.3,
+      currentTfCandles: [
+        { time: print, open: 4607, high: 4608, low: 4604.2, close: 4605 },
+        { time: print + 2 * bar, open: 4604, high: 4604, low: 4600.5, close: 4601.5 },
+        { time: print + 10 * bar, open: 4602, high: 4603, low: 4601.2, close: 4601.89 },
+      ],
+    };
+    const sell: TradeCandidate = {
+      ...candidate("sell-shot", "sell"),
+      entry: 4605.39,
+      entryType: "sell_limit",
+      stop_loss: 4606.86,
+      targets: [4596.89, 4591.06],
+      rr: 6,
+      netRr: 5.5,
+      netRrTp2: 10,
+      activationClass: "conditional",
+      poi: {
+        type: "supply",
+        low: 4604,
+        high: 4607,
+        score: { score: 80, grade: "A", reasons: [], warnings: [], isTradable: true },
+      },
+    };
+    const out = await runFinalDecisionSynthesizer(
+      ctx,
+      { ...input(evidence(sell), { market: gold }), locale: "en" },
+      {
+        configured: true,
+        callModel: async () =>
+          model({
+            direction: "sell",
+            planType: "conditional",
+            selectedTradeCandidateId: "sell-shot",
+            activationCondition: "Wait for price to touch 4605.39 then reject.",
+            activationRule: {
+              kind: "rejection_confirmed",
+              level: 4605.39,
+              direction: "below",
+              timeframe: "5m",
+            },
+            invalidationRule: "A 5m close above 4606.86 kills the idea.",
+            alternativeScenario: "A reclaim flips the plan.",
+            summary: "XAUUSD 5m sell.",
+          }),
+      },
+    );
+    assert.equal(out.result?.planType, "immediate");
+    assert.equal(out.result?.executionState, "valid_now");
+    assert.notEqual(out.result?.recommendation.status, "pending_entry");
+    assert.ok(
+      Math.abs((out.result?.recommendation.entry ?? 0) - 4605.39) < 0.05,
+      `through-print keeps 4605.39, got ${out.result?.recommendation.entry}`,
+    );
+    assert.equal(out.result?.recommendation.anchorTime, print);
+  });
+
   it("instructs a before-and-after visual review and the production follow-through example", () => {
     const src = readFileSync(
       path.join(import.meta.dirname, "..", "agents", "finalDecisionSynthesizer.ts"),
@@ -372,6 +441,17 @@ describe("AI final decision authority", () => {
     assert.match(src, /AFTER you have proposed levels/);
     assert.match(src, /4616\.66/);
     assert.match(src, /4606/);
+    assert.match(src, /4605\.39/);
+    assert.match(src, /4601\.89/);
     assert.match(src, /planType:"immediate"/);
+    assert.match(src, /false breakout/i);
+    assert.match(src, /pin bar/i);
+    assert.match(src, /engulfing/i);
+    assert.match(src, /trendline may BE the actual entry/i);
+    assert.match(src, /BREAK or from the RETEST/);
+    assert.match(src, /supply\/demand/i);
+    assert.match(src, /Gaps:/);
+    assert.match(src, /News:/);
+    assert.match(src, /10–15/);
   });
 });

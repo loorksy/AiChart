@@ -439,6 +439,44 @@ describe("tvDrawingAdapter — the native position tool, pinned at the plan's cr
     );
   });
 
+  it("immediate follow-through with anchor_time stays on the print bar after new candles", async () => {
+    // The drawing-anchor bug: created_at is "now" at issue time, so the
+    // native position tool sat on the latest bar even though the 4605.39
+    // touch printed several bars earlier. `anchor_time` is the print bar;
+    // advancing the clock 10 bars and redrawing must not move it.
+    const PRINT_MS = Date.UTC(2026, 7, 27, 17, 25, 0);
+    const ISSUE_MS = PRINT_MS + 10 * 5 * 60_000;
+    const rec = {
+      action: "sell",
+      entry: 4605.39,
+      stop_loss: 4606.86,
+      take_profit: 4596.89,
+      targets: [4596.89, 4591.06],
+      created_at: ISSUE_MS,
+      anchor_time: PRINT_MS,
+    } as unknown as Recommendation;
+    const ctx = { symbol: "XAUUSD", interval: "5m" };
+    const realNow = Date.now;
+    try {
+      Date.now = () => ISSUE_MS;
+      const first = fakeChart();
+      const mgr = new TvDrawingManager(first.chart);
+      mgr.apply([], { recommendation: rec }, ctx);
+      await flush();
+      const firstAnchor = positionCalls(first.single)[0]!.point;
+      assert.equal(firstAnchor.time, Math.round(PRINT_MS / 1000));
+      assert.notEqual(firstAnchor.time, Math.round(ISSUE_MS / 1000));
+
+      Date.now = () => ISSUE_MS + 10 * 5 * 60_000;
+      mgr.apply([], { recommendation: rec }, ctx, { force: true });
+      await flush();
+      const later = positionCalls(first.single)[1]!.point;
+      assert.deepEqual(later, firstAnchor, "advancing 10 bars must not move the print-time anchor");
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   it("a 3-target sell on rec.targets (empty trade.targets) spans entry → TP3", async () => {
     // Production path: the chart payload used to send only take_profit = TP1
     // while the full ladder lived on rec.targets. The adapter must read it.

@@ -21,6 +21,8 @@ export interface TradePlanAnchorFields {
   stop_loss?: unknown;
   take_profit?: unknown;
   created_at?: unknown;
+  /** Printing-candle time for immediate follow-through; pending plans omit it. */
+  anchor_time?: unknown;
 }
 
 /** created_at → epoch ms, or null when absent/unparseable. Accepts epoch
@@ -76,12 +78,25 @@ export function withStableCreatedAt<T extends TradePlanAnchorFields>(
   nowIso: string = new Date().toISOString(),
 ): T | null {
   if (!next) return null;
-  if (createdAtMs(next.created_at) != null) return next;
-  if (prev && sameTradePlan(prev, next) && createdAtMs(prev.created_at) != null) {
+  const withAnchor = inheritAnchorTime(next, prev);
+  if (createdAtMs(withAnchor.created_at) != null) return withAnchor;
+  if (prev && sameTradePlan(prev, withAnchor) && createdAtMs(prev.created_at) != null) {
     // createdAtMs validated prev.created_at as a parseable string/number, so
     // carrying it verbatim is safe — and required: the anchor must be reused
     // byte-for-byte, never re-serialized.
-    return { ...next, created_at: prev.created_at } as T;
+    return { ...withAnchor, created_at: prev.created_at } as T;
   }
-  return { ...next, created_at: nowIso } as T;
+  return { ...withAnchor, created_at: nowIso } as T;
+}
+
+/** A re-delivered same plan without `anchor_time` inherits the print bar. */
+function inheritAnchorTime<T extends TradePlanAnchorFields>(
+  next: T,
+  prev: TradePlanAnchorFields | null | undefined,
+): T {
+  if (createdAtMs(next.anchor_time) != null) return next;
+  if (prev && sameTradePlan(prev, next) && createdAtMs(prev.anchor_time) != null) {
+    return { ...next, anchor_time: prev.anchor_time } as T;
+  }
+  return next;
 }
