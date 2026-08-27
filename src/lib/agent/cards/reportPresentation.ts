@@ -5,7 +5,8 @@
  * modal used to ship: a relic gate's placeholder label, and the invalidation
  * price printed twice when the rule already named it.
  */
-import { t } from "@/lib/i18n";
+import { ar } from "@/lib/i18n/ar";
+import { en } from "@/lib/i18n/en";
 import { GATE_NAMES, type GateId } from "../gates/types";
 
 /** Relic slots the chain keeps so ids stay stable — never a check the operator sees. */
@@ -18,8 +19,9 @@ function relicGateLabels(): Set<string> {
   const labels = new Set<string>();
   for (const id of Object.keys(GATE_NAMES) as GateId[]) {
     if (GATE_NAMES[id] !== "removed") continue;
-    labels.add(t("ar", `gate.label.${id}`));
-    labels.add(t("en", `gate.label.${id}`));
+    const key = `gate.label.${id}` as keyof typeof ar;
+    if (key in ar) labels.add(ar[key]);
+    if (key in en) labels.add(en[key as keyof typeof en]);
   }
   return labels;
 }
