@@ -20,8 +20,8 @@ import {
   stateConfidence,
 } from "./patternState";
 
-const MIN_HEAD_PROMINENCE_ATR = 0.8;
-const MAX_SHOULDER_ASYMMETRY = 0.35;
+const MIN_HEAD_PROMINENCE_ATR = 1.2;
+const MAX_SHOULDER_ASYMMETRY = 0.25;
 
 function scanVariant(
   input: GeometryDetectorInput,

@@ -136,13 +136,11 @@ export interface AgentRunContext {
    *  answers only — replace semantics). The final result stays authoritative. */
   emitAnswerText?: (fullText: string) => void;
   /**
-   * Live "thinking" narration for the pending bubble: one short sentence per
-   * real reasoning step, DERIVED from actual evidence values at the moment
-   * they exist (candle counts, the detected trend, the news window, the gate
-   * that refused) — never a scripted ticker and never raw chain-of-thought.
-   * Built by thinkingNarration.ts; the transport scrubs internals before it
-   * leaves the process. Optional: surfaces without a live client (MCP, cron)
-   * simply do not provide it. Telegram wires the same seam the web does.
+   * Live "thinking" narration for the pending bubble. Prefer the model's own
+   * reasoning/thinking channel (streamed as SSE `thinking` events). Canned
+   * narration from thinkingNarration.ts is fallback only when the model
+   * produced zero thinking. The transport scrubs internals before a line
+   * leaves the process.
    */
   emitThinking?: (text: string) => void;
   /** Cooperative cancellation from the client (AbortController). */
@@ -249,10 +247,11 @@ export interface AgentFinalResult {
    */
   turnMode?: import("./core/turnPlanner").TurnMode;
   /**
-   * The visual basis of this analysis (Phase 8 transparency): `confirmed`
-   * ONLY when a TradingView client capture with drawings rendered backed the
-   * run; every other case — including every browserless run — is
-   * `not_checked`. Rendered on every recommendation, in both states.
+   * The visual basis of this analysis. `confirmed` when chart snapshots were
+   * captured and shown to the model this run (those timeframes are listed);
+   * `not_checked` when capture failed or never ran. Every operator surface
+   * — thinking line, Telegram visual line, web `visual.line.*`, evidence
+   * card `visual_review` — must agree with this object.
    */
   visualReview?: {
     state: "confirmed" | "contradicted" | "not_checked";

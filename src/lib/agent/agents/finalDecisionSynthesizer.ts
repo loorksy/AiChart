@@ -14,7 +14,7 @@
  */
 import { z } from "zod";
 import {
-  callLLM,
+  callLLMStream,
   isLLMConfiguredAsync,
   resolveActiveSelection,
   withCacheBreakpoint,
@@ -36,6 +36,7 @@ import {
   buildRecommendationConfidence,
 } from "../confidenceSemantics";
 import { buildEvidenceDimensions } from "../evidenceDimensions";
+import { PATTERN_IDENTIFICATION_DOCTRINE } from "../patternDoctrine";
 import {
   activationRuleSchema,
   describeActivationRule,
@@ -209,8 +210,9 @@ async function callModelWithBlocks(
   ctx: AgentRunContext,
   /** What is left of the browse window; keeps a round inside it. */
   budgetMs?: number,
+  onThinkingDelta?: (text: string) => void,
 ): Promise<string> {
-  const res = await callLLM(
+  const res = await callLLMStream(
     {
       system,
       messages: [
@@ -225,6 +227,7 @@ async function callModelWithBlocks(
       ],
       maxTokens: await decisionMaxTokens(),
     },
+    { onThinkingDelta },
     // Bounded like any other decision call. Without this the browse round
     // inherited the global 120s LLM timeout — longer than the 95s stage that
     // contains it — and the loop's own 25s window could not stop it, because
@@ -825,6 +828,11 @@ export interface SynthesizerDeps {
     timeframe: string,
     count: number,
   ) => Promise<BrowseCandle[] | null>;
+  /**
+   * Live provider thinking/reasoning deltas. The orchestrator sinks these
+   * into the operator-facing thinking trace. Optional: tests omit it.
+   */
+  onThinkingDelta?: (text: string) => void;
 }
 
 interface BrowseAnswer {
@@ -973,6 +981,8 @@ When they apply, NAME these strategies in the recommendation (summary / keyReaso
 - Images confirm SHAPE — a rejection, a gap, a formation, where a structure sits. Every precise level you quote must come from the numeric evidence, never estimated off the pixels.
 - Say which timeframe LEADS this decision, which provides CONTEXT, and which times the ENTRY, in timeframeRoles. When the timeframes disagree, that assignment IS the resolution — never let disagreement remove the direction.
 - Your coverage is stated explicitly in the evidence, naming every frame requested and every frame that did not arrive. Trust that line over the attachments: never describe price action on a view it says you were not shown, and when it reports no chart at all, say you read numbers alone.
+
+${PATTERN_IDENTIFICATION_DOCTRINE}
 
 ## Levels
 - Prefer a same-direction tradeCandidate: set selectedTradeCandidateId and leave proposedLevels null. Its geometry is already validated.
@@ -1157,7 +1167,7 @@ export async function runFinalDecisionSynthesizer(
     }
     const visuals = includeVisuals && visualBlocks.length ? visualBlocks : [];
     const budget = outputBudget;
-    const res = await callLLM({
+    const res = await callLLMStream({
       system,
       messages: [
         { role: "user", content: buildDecisionUserContent(user, visuals, tail) },
@@ -1169,6 +1179,8 @@ export async function runFinalDecisionSynthesizer(
       // quick/auxiliary tier, regardless of any default change.
       // The run signal (stage deadline / total budget / client disconnect)
       // tears the call down instead of leaving it running (item 2).
+    }, {
+      onThinkingDelta: deps.onThinkingDelta,
     }, {
       tier: "deep",
       signal: ctx.signal,
@@ -1430,6 +1442,7 @@ export async function runFinalDecisionSynthesizer(
             // that outlives it takes the decision already in hand down with
             // the stage — the opposite of what browsing is for.
             Math.max(1_000, browseDeadline - Date.now()),
+            deps.onThinkingDelta,
           );
       next = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
     } catch {
@@ -1718,6 +1731,7 @@ function applyModelDecision(
     macroRegime?: MacroRegimeBlock | null;
     cotPositioning?: CotPositioning[] | null;
     locale?: "ar" | "en";
+    visualSnapshots?: VisualSnapshot[] | null;
   },
 ): FinalDecisionResult {
   const confidence = Math.max(0, Math.min(1, parsed.confidence));
@@ -2111,6 +2125,8 @@ function applyModelDecision(
       macroRegime: input.macroRegime ?? null,
       cotPositioning: input.cotPositioning ?? null,
       dataSufficient: input.market.dataQuality.sufficient,
+      visualConfirmation: (input.visualSnapshots?.length ?? 0) > 0 ? "confirmed" : "not_checked",
+      visualTimeframes: (input.visualSnapshots ?? []).map((s) => s.timeframe),
       validityCandles: parsed.validityCandles,
     }).dimensions,
     publicReasoningSummary: publicReasoningSummary.slice(0, 5),
@@ -2244,8 +2260,14 @@ function historicalCaseCard(
 
 /** Short human label for the most significant detected pattern. */
 function describePrimaryPattern(geometry: GeometrySnapshot): string | null {
-  const pattern = (geometry.patterns ?? [])[0];
-  if (!pattern) return null;
-  return `${pattern.patternType} · ${pattern.stage ?? pattern.status}`;
+  const ranked = [...(geometry.patterns ?? [])].sort(
+    (a, b) => b.confidence - a.confidence,
+  );
+  // Weak detector hits — especially a default-looking H&S — must not stamp
+  // the evidence card. The model names the pattern from the chart image.
+  const MIN_CARD_CONFIDENCE = 78;
+  const top = ranked.find((pattern) => pattern.confidence >= MIN_CARD_CONFIDENCE);
+  if (!top) return null;
+  return `${top.patternType} · ${top.stage ?? top.status}`;
 }
 

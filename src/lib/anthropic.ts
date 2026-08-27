@@ -426,6 +426,8 @@ export async function callAnthropic(params: {
 
 export interface StreamHandlers {
   onTextDelta?: (text: string) => void;
+  /** Provider thinking/reasoning channel (Anthropic thinking blocks, OpenAI reasoning). */
+  onThinkingDelta?: (text: string) => void;
 }
 
 /** Streaming Messages API — accumulates full response while emitting text deltas. */
@@ -509,7 +511,7 @@ export async function callAnthropicStream(
   let cacheReadTokens = 0;
   let cacheCreationTokens = 0;
   const contentBlocks: ContentBlock[] = [];
-  let currentBlockIndex = -1;
+  let currentBlockType = "";
   let currentText = "";
   let currentToolId = "";
   let currentToolName = "";
@@ -583,7 +585,7 @@ export async function callAnthropicStream(
           id?: string;
           name?: string;
         };
-        currentBlockIndex = Number(event.index ?? 0);
+        currentBlockType = block?.type ?? "";
         if (block?.type === "text") {
           finishToolBlock();
           currentText = "";
@@ -592,18 +594,31 @@ export async function callAnthropicStream(
           currentToolId = block.id ?? "";
           currentToolName = block.name ?? "";
           currentToolJson = "";
+        } else if (block?.type === "thinking" || block?.type === "redacted_thinking") {
+          finishTextBlock();
+          finishToolBlock();
         }
       } else if (type === "content_block_delta") {
-        const delta = event.delta as { type?: string; text?: string; partial_json?: string };
-        if (delta?.type === "text_delta" && delta.text) {
+        const delta = event.delta as {
+          type?: string;
+          text?: string;
+          partial_json?: string;
+          thinking?: string;
+        };
+        if (delta?.type === "thinking_delta" && delta.thinking) {
+          handlers?.onThinkingDelta?.(delta.thinking);
+        } else if (delta?.type === "text_delta" && delta.text) {
           currentText += delta.text;
           handlers?.onTextDelta?.(delta.text);
         } else if (delta?.type === "input_json_delta" && delta.partial_json) {
           currentToolJson += delta.partial_json;
         }
       } else if (type === "content_block_stop") {
-        if (currentText) finishTextBlock();
+        if (currentBlockType === "thinking" || currentBlockType === "redacted_thinking") {
+          currentBlockType = "";
+        } else if (currentText) finishTextBlock();
         else if (currentToolId) finishToolBlock();
+        currentBlockType = "";
       } else if (type === "message_delta") {
         const delta = event.delta as { stop_reason?: string };
         stopReason = delta?.stop_reason ?? stopReason;

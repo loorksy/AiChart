@@ -74,6 +74,8 @@ export interface BuildEvidenceDimensionsInput {
   dataSufficient: boolean;
   /** Visual review outcome when charts were actually read. */
   visualConfirmation?: "confirmed" | "contradicted" | "not_checked";
+  /** Frames the model was actually shown — named on the visual_review row. */
+  visualTimeframes?: string[];
   validityCandles?: number | null;
   executionReadiness?: { ready: boolean; reason?: string } | null;
   /** Operator's current trade mode, so the card says what would happen next. */
@@ -248,16 +250,10 @@ export function buildEvidenceDimensions(
     );
   }
 
-  const visual = input.visualConfirmation ?? "not_checked";
   dimensions.push(
-    dim(
-      "visual_review",
-      visual === "confirmed" ? "strong" : visual === "contradicted" ? "weak" : "unavailable",
-      visual === "confirmed"
-        ? "الصورة تؤكد البنية الرقمية."
-        : visual === "contradicted"
-          ? "الصورة تعارض القراءة الرقمية."
-          : "لم تُراجَع لقطات الشارت في هذا التحليل.",
+    visualReviewDimension(
+      input.visualConfirmation ?? "not_checked",
+      input.visualTimeframes ?? [],
     ),
   );
 
@@ -320,6 +316,45 @@ function humanPatternState(state: string): string {
       t("ar", `pattern.stage.${word}`),
     )
     .replace(/_/g, " ");
+}
+
+/**
+ * The visual_review row — same state the transparency line uses.
+ * Confirmed never grades `unavailable` and never says the charts were not
+ * reviewed; not_checked never claims a review.
+ */
+export function visualReviewDimension(
+  visualConfirmation: "confirmed" | "contradicted" | "not_checked",
+  timeframes: readonly string[] = [],
+): EvidenceDimension {
+  const frames = timeframes.filter(Boolean).join(t("ar", "list.separator"));
+  if (visualConfirmation === "confirmed") {
+    return dim(
+      "visual_review",
+      "strong",
+      frames
+        ? t("ar", "visual.dimension.reviewed_frames", { frames })
+        : t("ar", "visual.dimension.reviewed"),
+    );
+  }
+  if (visualConfirmation === "contradicted") {
+    return dim("visual_review", "weak", t("ar", "visual.dimension.contradicted"));
+  }
+  return dim("visual_review", "unavailable", t("ar", "visual.dimension.not_reviewed"));
+}
+
+/** Overlay the canonical visual-review row onto an existing card. */
+export function applyVisualReviewDimension(
+  dimensions: EvidenceDimension[],
+  visual: {
+    state: "confirmed" | "contradicted" | "not_checked";
+    timeframes: readonly string[];
+  },
+): EvidenceDimension[] {
+  const next = visualReviewDimension(visual.state, visual.timeframes);
+  const idx = dimensions.findIndex((d) => d.key === "visual_review");
+  if (idx < 0) return [...dimensions, next];
+  return [...dimensions.slice(0, idx), next, ...dimensions.slice(idx + 1)];
 }
 
 function planTypeDetail(planType: string, executionState: string): string {

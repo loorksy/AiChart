@@ -12,11 +12,9 @@
  * without one, which is what keeps this from ever regressing into the
  * scripted ticker that staticPhrases.test.ts bans.
  *
- * Strings live in src/lib/i18n (the Arabic-in-system-files ratchet) and only
- * interpolate run data. The orchestrator calls these; every live surface
- * (webTurn.ts SSE, Telegram's progress bubble) sanitizes + scrubs internals
- * through `sanitizeThinkingLine` before a thinking line is shown. Surfaces
- * without a live client (MCP, cron) simply omit `emitThinking`.
+ * Canned interpolation lives here as FALLBACK only — used when the
+ * provider produced zero thinking/reasoning for the run. The live path is
+ * `liveThinking.ts` sinking Anthropic thinking blocks / OpenAI reasoning.
  */
 import { t, type AppLocale } from "@/lib/i18n";
 import { sanitizeActivityMessage } from "./activity";

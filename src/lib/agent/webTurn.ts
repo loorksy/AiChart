@@ -399,12 +399,10 @@ export async function runWebChatTurn(
     send("answer_text", { text: fullText });
   };
 
-  // Live thinking trace: the orchestrator's per-step narration, composed from
-  // real evidence values (thinkingNarration.ts). The transport owns the
-  // leakage guard via sanitizeThinkingLine (same pair Telegram uses):
-  // chain-of-thought phrasing is stripped, and system identifiers are
-  // scrubbed so the trace can never become an internals side-channel.
-  // UI-only — never persisted with the message.
+  // Live thinking: the model's own reasoning channel (and narration fallback
+  // only when that channel was empty). The transport owns the leakage guard
+  // via sanitizeThinkingLine (same pair Telegram uses). UI-only — never
+  // persisted with the message.
   const emitThinking = (text: string) => {
     const clean = sanitizeThinkingLine(text);
     if (clean) send("thinking", { text: clean, at: Date.now() });

@@ -585,6 +585,22 @@ describe("both surfaces are wired to the derivation", () => {
     );
   });
 
+  it("the report button opens a modal, not an in-chat expansion", () => {
+    const view = readFileSync(
+      path.join(SRC, "components", "agent", "cards", "AgentCards.tsx"),
+      "utf8",
+    );
+    assert.match(view, /agent\.signal\.show_report/);
+    assert.match(view, /recommendation-report-modal/);
+    assert.match(view, /Dialog\.Root/);
+    assert.match(view, /LiquidMetalFrame/);
+    assert.doesNotMatch(
+      view,
+      /data-testid="agent-cards-details"/,
+      "the report must not expand inside the chat thread",
+    );
+  });
+
   it("the react renderer handles every kind the contract declares", () => {
     // `tsc` already enforces this through the never-guard; this asserts the
     // guard is actually PRESENT, since deleting it would silently reopen the

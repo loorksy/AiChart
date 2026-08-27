@@ -119,14 +119,14 @@ export function detectChartGeometry(input: {
   // overlap, then confidence breaks ties. Deterministic ordering throughout.
   const specificity = (pattern: PatternInstance): number => {
     switch (pattern.patternType) {
-      case "head_and_shoulders":
-      case "inverse_head_and_shoulders":
-        return 3;
       case "ascending_triangle":
       case "descending_triangle":
       case "symmetrical_triangle":
       case "wedge":
-        return 2;
+        return 3;
+      case "head_and_shoulders":
+      case "inverse_head_and_shoulders":
+        return 1;
       default:
         return 1;
     }

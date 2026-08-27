@@ -19,7 +19,8 @@
  * No card carries a control. The platform places no orders, so the only
  * interactive variant sends a chat message.
  */
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { Dialog } from "@base-ui/react/dialog";
 import {
   Activity,
   AlertTriangle,
@@ -34,12 +35,14 @@ import {
   Coins,
   Compass,
   Eye,
+  FileText,
   FlaskConical,
   ListChecks,
   Newspaper,
   Route,
   Sparkles,
   Target,
+  X,
 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
@@ -58,6 +61,7 @@ import type { AgentDecision, AgentFinalResult } from "@/lib/agent/types";
 import { isPlainTalkResult } from "@/lib/agent/turnPresentation";
 import { AgentEvidenceCard, AgentFaultCard } from "../AgentEnvelopeStatus";
 import { AgentThinkingTraceDone } from "../AgentThinkingTrace";
+import { LiquidMetalFrame } from "@/components/ui/liquid-metal-button";
 
 /** A card's frame. Uniform on purpose: the CONTENT should distinguish them. */
 function Shell({
@@ -264,9 +268,7 @@ function SignalHero({
   blocker,
   symbol,
   interval,
-  open,
-  onToggle,
-  detailsId,
+  onShowReport,
 }: {
   decision: AgentDecision;
   confidence?: number;
@@ -274,9 +276,7 @@ function SignalHero({
   blocker?: GateVerdict;
   symbol?: string;
   interval?: string;
-  open: boolean;
-  onToggle: () => void;
-  detailsId: string;
+  onShowReport: () => void;
 }) {
   const { t } = useLocale();
   const side = decision === "buy" ? "buy" : decision === "sell" ? "sell" : "none";
@@ -365,20 +365,13 @@ function SignalHero({
 
       <button
         type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-controls={detailsId}
-        // min-h-11 for touch: this is the card's only control.
-        className="flex min-h-11 w-full items-center justify-center gap-1.5 border-t border-border/50 bg-muted/30 px-3.5 py-3 text-[12.5px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring"
+        onClick={onShowReport}
+        aria-haspopup="dialog"
+        data-testid="agent-show-report"
+        className="metal-chip mx-3.5 mb-3 flex min-h-11 w-[calc(100%-1.75rem)] items-center justify-center gap-1.5 px-3.5 py-3 text-[12.5px] font-semibold text-foreground transition-colors focus-ring"
       >
-        {open
-          ? t("agent.signal.hide")
-          : plan
-            ? t("agent.signal.why")
-            : t("agent.signal.what_plan")}
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-        />
+        <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        {t("agent.signal.show_report")}
       </button>
     </div>
   );
@@ -811,9 +804,8 @@ const SLOT: Record<CardKind, Slot> = {
  * checklist, in the same weight as the six that passed.
  *
  * So the answer is composed into ONE card — direction, instrument, confidence,
- * the price ladder, and the blocker when there is one — and everything else
- * moves behind that card's single button, into a section that opens in the
- * chat rather than over it.
+ * the price ladder — and the full report opens as a modal document, not
+ * expanded inside the chat thread.
  */
 export function AgentCards({
   result,
@@ -831,8 +823,8 @@ export function AgentCards({
   interval?: string;
 }) {
   const cards = useMemo(() => deriveCards(result), [result]);
-  const [open, setOpen] = useState(false);
-  const detailsId = useId();
+  const [reportOpen, setReportOpen] = useState(false);
+  const { t, dir } = useLocale();
 
   // Presentation contract (turnPresentation.ts): a conversational or
   // specialist turn is a SENTENCE. It renders none of the analysis chrome —
@@ -880,19 +872,47 @@ export function AgentCards({
           blocker={blocker}
           symbol={symbol}
           interval={interval}
-          open={open}
-          onToggle={() => setOpen((v) => !v)}
-          detailsId={detailsId}
+          onShowReport={() => setReportOpen(true)}
         />
       ) : null}
 
-      {/* Kept mounted so the browser keeps the scroll position when it closes,
-          and so a find-in-page still reaches the working. */}
-      <div id={detailsId} hidden={!open} data-testid="agent-cards-details">
-        {details.map((card) => (
-          <CardView key={card.kind} card={card} onOption={onOption} disabled={disabled} />
-        ))}
-      </div>
+      <Dialog.Root open={reportOpen} onOpenChange={setReportOpen}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-[120] bg-black/60 transition-opacity duration-250 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none" />
+          <Dialog.Popup
+            dir={dir}
+            data-testid="recommendation-report-modal"
+            className="fixed inset-x-3 top-[6vh] z-[121] mx-auto flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-background text-foreground shadow-2xl sm:inset-x-auto sm:top-[8vh]"
+          >
+            <LiquidMetalFrame className="shrink-0">
+              <div className="flex items-center gap-2 px-3 py-2.5">
+                <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                <Dialog.Title className="min-w-0 flex-1 truncate text-[14px] font-semibold">
+                  {t("agent.report.title")}
+                </Dialog.Title>
+                <button
+                  type="button"
+                  className="metal-chip metal-chip-icon shrink-0"
+                  aria-label={t("agent.signal.close_report")}
+                  data-testid="recommendation-report-close"
+                  onClick={() => setReportOpen(false)}
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+            </LiquidMetalFrame>
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-1">
+              {[
+                ...(planCard ? [planCard] : []),
+                ...(gates ? [gates] : []),
+                ...details,
+              ].map((card) => (
+                <CardView key={card.kind} card={card} onOption={onOption} disabled={disabled} />
+              ))}
+            </div>
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {trail.map((card) => (
         <CardView key={card.kind} card={card} onOption={onOption} disabled={disabled} />

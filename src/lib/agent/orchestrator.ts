@@ -117,7 +117,7 @@ import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { resolveValidity } from "./trading/tradePlan";
 import { recommendationClockAnchor } from "./recommendationExpiry";
 import { spanStyleForInterval } from "./trading/scalpGeometry";
-import { collectVisualEvidence, visualCoverageNote } from "./visualEvidence";
+import { collectVisualEvidence, visualCoverageNote, visualReviewFromEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { recordDecisionForParity } from "./parityLog";
 import { serializeCostEvidence } from "./marketContext/costEvidence";
@@ -159,6 +159,11 @@ import {
   narrateStructure,
   narrateWeighing,
 } from "./thinkingNarration";
+import {
+  createLiveThinkingSink,
+  emitNarrationFallback,
+} from "./liveThinking";
+import { applyVisualReviewDimension } from "./evidenceDimensions";
 import {
   getTradingSessionInfo,
   tradingSessionPromptBlock,
@@ -1038,12 +1043,15 @@ async function runUnifiedChartAgentInner(
   // Cancelled right after market data: never start the fleet for nobody.
   if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
 
-  // Live thinking trace: one sentence per REAL step, composed from the values
-  // that step just produced (thinkingNarration.ts). No value → no line.
-  const think = (line: string | null) => {
-    if (line) ctx.emitThinking?.(line);
+  // Live thinking: stream the model's own reasoning channel as the primary
+  // trace. Canned narration is collected as FALLBACK only — emitted if the
+  // model produced zero thinking for the whole run.
+  const thinking = createLiveThinkingSink((line) => ctx.emitThinking?.(line));
+  const narrationFallback: Array<string | null> = [];
+  const rememberNarration = (line: string | null) => {
+    if (line) narrationFallback.push(line);
   };
-  think(
+  rememberNarration(
     narrateMarketRead({
       locale,
       interval: market.interval,
@@ -1154,7 +1162,7 @@ async function runUnifiedChartAgentInner(
     const resistancesAbove = structure.resistance
       .map((level) => level.price)
       .filter((p) => Number.isFinite(p) && p > market.currentPrice!);
-    think(
+    rememberNarration(
       narrateStructure({
         locale,
         interval: market.interval,
@@ -1167,7 +1175,7 @@ async function runUnifiedChartAgentInner(
     );
   }
   if (mtf) {
-    think(
+    rememberNarration(
       narrateHigherTimeframe({
         locale,
         higherInterval: market.higherInterval,
@@ -1175,7 +1183,7 @@ async function runUnifiedChartAgentInner(
       }),
     );
   }
-  think(narrateNews({ locale, level: news?.newsRisk ?? "unknown" }));
+  rememberNarration(narrateNews({ locale, level: news?.newsRisk ?? "unknown" }));
 
   // Deterministic chart geometry — computed ONCE, BEFORE the candidate engine,
   // so forming-pattern boundaries become real entry zones rather than prompt
@@ -1363,10 +1371,7 @@ async function runUnifiedChartAgentInner(
   // TradingView client capture WITH drawings rendered — this run, this user.
   // Everything else, including every browserless run, is `not_checked`.
   // `let`: a post-draw recapture may upgrade not_checked → confirmed.
-  let visualReview = {
-    state: visual.visuallyVerified ? ("confirmed" as const) : ("not_checked" as const),
-    timeframes: visual.snapshots.map((snapshot) => snapshot.timeframe),
-  };
+  let visualReview = visualReviewFromEvidence(visual);
   if (visual.snapshots.length) {
     trackedCtx.emitActivity({
       type: "analysis",
@@ -1407,7 +1412,7 @@ async function runUnifiedChartAgentInner(
     });
   }
 
-  think(narrateWeighing({ locale, candidateCount: candidates.length }));
+  rememberNarration(narrateWeighing({ locale, candidateCount: candidates.length }));
 
   const decisionStartedAt = performance.now();
   ctx.emitStage?.({ stage: "final_decision", status: "running" });
@@ -1508,6 +1513,10 @@ async function runUnifiedChartAgentInner(
         },
         {
           ...input.synthesizerDeps,
+          onThinkingDelta: (text) => {
+            input.synthesizerDeps?.onThinkingDelta?.(text);
+            thinking.ingestDelta(text);
+          },
           onProgress: (p) => {
             synthProgress.current = p;
           },
@@ -1864,7 +1873,7 @@ async function runUnifiedChartAgentInner(
       });
     }
 
-    think(
+    rememberNarration(
       narrateGateOutcome({
         locale,
         verdicts: chain.verdicts,
@@ -2040,11 +2049,12 @@ async function runUnifiedChartAgentInner(
       liveSession: input.liveSession === true,
     }).catch(() => null);
     if (postDraw?.snapshots.length) {
+      const extra = visualReviewFromEvidence(postDraw);
       const seen = new Set(visualReview.timeframes);
-      for (const snap of postDraw.snapshots) {
-        if (!seen.has(snap.timeframe)) visualReview.timeframes.push(snap.timeframe);
+      for (const tf of extra.timeframes) {
+        if (!seen.has(tf)) visualReview.timeframes.push(tf);
       }
-      if (postDraw.visuallyVerified) visualReview.state = "confirmed";
+      if (extra.state === "confirmed") visualReview.state = "confirmed";
       trackedCtx.emitActivity({
         type: "analysis",
         status: "completed",
@@ -2056,6 +2066,13 @@ async function runUnifiedChartAgentInner(
       });
     }
   }
+
+  // One writer: the evidence card's visual_review row matches visualReview
+  // (and therefore the transparency line and the thinking "reviewed N frames").
+  finalDecision.evidenceDimensions = applyVisualReviewDimension(
+    finalDecision.evidenceDimensions ?? [],
+    visualReview,
+  );
 
   const debugDecisionFlow: AgentFinalResult["debugDecisionFlow"] =
     process.env.NODE_ENV === "development"
@@ -2367,6 +2384,13 @@ async function runUnifiedChartAgentInner(
     levels,
     locale,
   });
+
+  thinking.flush();
+  emitNarrationFallback(
+    (line) => ctx.emitThinking?.(line),
+    narrationFallback,
+    thinking.emittedCount(),
+  );
 
   return {
     decision: finalDecision.decision,

@@ -156,10 +156,12 @@ describe("thinking transport contract", () => {
     assert.match(webTurn, /send\("thinking"/);
   });
 
-  it("the orchestrator narrates through the optional emitThinking seam only", () => {
+  it("the orchestrator keeps narration as fallback and streams live thinking", () => {
     assert.match(orchestrator, /emitThinking\?\.\(/);
     assert.match(orchestrator, /narrateMarketRead/);
     assert.match(orchestrator, /narrateGateOutcome/);
+    assert.match(orchestrator, /createLiveThinkingSink/);
+    assert.match(orchestrator, /emitNarrationFallback/);
   });
 
   it("Telegram wires the same sanitized thinking seam the web uses", () => {
