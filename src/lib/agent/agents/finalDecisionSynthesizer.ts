@@ -245,23 +245,38 @@ async function callModelWithBlocks(
  * A PRESENTATIONAL cap that truncates instead of rejecting.
  *
  * These limits exist to bound what the card shows, not to police the model's
- * thinking — and `toDecisionTrace` below already slices the same lists to the
- * same sizes before rendering. Expressing them as `.max(n)` made zod reject
- * the ENTIRE decision when the model returned a seventh reason, so a complete,
- * correct trade plan was thrown away over a list length nobody would have
- * noticed. Live on 2026-08-24: attempt 1 died on `keyReasons`/`riskWarnings`
- * (>6) plus `opposing` (>4), attempt 2 on `publicReasoningSummary` (>5), and
- * the operator was told the model "does not match the expected contract" —
- * twice, after ~119s of perfectly good generation.
+ * thinking — and `sanitizeDecisionTrace` / `applyModelDecision` already slice
+ * the same lists and strings to the same sizes before rendering. Expressing
+ * them as `.max(n)` made zod reject the ENTIRE decision when the model
+ * returned a seventh reason or a slightly-too-long Arabic paragraph, so a
+ * complete, correct trade plan was thrown away over a length nobody would
+ * have noticed.
  *
- * Verbosity is not a contract violation. Take the first n and move on.
+ * Live on 2026-08-24: attempt 1 died on `keyReasons`/`riskWarnings` (>6) plus
+ * `opposing` (>4), attempt 2 on `publicReasoningSummary` (>5). Live again on
+ * 2026-08-27 (608da3bf, Claude Fable 5, 167.7s): attempt 1 died on
+ * `decisionTrace.planTypeBecause` (>400 characters), attempt 2 on `summary`
+ * (>900) — the entry-doctrine block made Fable write longer Arabic rationale,
+ * and the plan itself was complete (candidate, activationRule, all three
+ * layers). The operator was told the model "does not match the expected
+ * contract" after two full generations.
+ *
+ * Verbosity is not a contract violation. Take the first n / the prefix the
+ * card would have shown anyway, and move on.
  *
  * Deliberately NOT used for `targets`: a take-profit is a TRADING LEVEL, and
  * silently dropping one would change the plan the operator acts on. Levels
- * stay strict and still reject.
+ * stay strict and still reject. Direction, planType, and honesty gates stay
+ * strict too — a missing side or a `wait` is still a real mismatch.
  */
 function capped<T extends z.ZodTypeAny>(item: T, n: number) {
   return z.array(item).transform((xs) => xs.slice(0, n));
+}
+
+/** String analogue of `capped`: keep the prefix the card already slices to. */
+function cappedText(max: number, min = 0) {
+  const base = min > 0 ? z.string().min(min) : z.string();
+  return base.transform((value) => (value.length <= max ? value : value.slice(0, max)));
 }
 
 const PlanLevelsSchema = z.object({
@@ -275,14 +290,14 @@ const PlanLevelsSchema = z.object({
 const DecisionTraceSchema = z.object({
   hypotheses: capped(
     z.object({
-      scenario: z.string().max(240),
-      supporting: capped(z.string().max(160), 4),
-      opposing: capped(z.string().max(160), 4),
+      scenario: cappedText(240),
+      supporting: capped(cappedText(160), 4),
+      opposing: capped(cappedText(160), 4),
     }),
     3,
   ),
-  chosenBecause: z.string().max(400),
-  planTypeBecause: z.string().max(400),
+  chosenBecause: cappedText(400),
+  planTypeBecause: cappedText(400),
 });
 
 const FinalDecisionModelSchemaStrict = z.object({
@@ -301,7 +316,7 @@ const FinalDecisionModelSchemaStrict = z.object({
       timing: z.string().max(16).nullable().optional(),
     })
     .optional(),
-  activationCondition: z.string().max(400).nullable().optional(),
+  activationCondition: cappedText(400).nullable().optional(),
   /**
    * The machine-checkable form of `activationCondition`. Emitted by the model
    * rather than parsed out of its sentence: deriving a rule from free text
@@ -309,11 +324,11 @@ const FinalDecisionModelSchemaStrict = z.object({
    * plan ends up filling on something it never asked for.
    */
   activationRule: activationRuleSchema.nullable().optional(),
-  invalidationRule: z.string().max(400),
-  alternativeScenario: z.string().max(400),
+  invalidationRule: cappedText(400),
+  alternativeScenario: cappedText(400),
   validityCandles: z.number().int().min(1).max(96),
   confidence: z.number().min(0).max(1),
-  summary: z.string().min(10).max(900),
+  summary: cappedText(900, 10),
   keyReasons: capped(z.string(), 6),
   riskWarnings: capped(z.string(), 6),
   publicReasoningSummary: capped(z.string(), 5),
@@ -414,6 +429,105 @@ const FinalDecisionModelSchemaStrict = z.object({
  * anticipatory plan still cannot exist without a machine-checkable
  * activationRule. Nothing here invents or edits a price.
  */
+
+function coerceFiniteNumber(value: unknown): unknown {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) return n;
+  }
+  return value;
+}
+
+function coercePriceList(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map(coerceFiniteNumber);
+}
+
+/**
+ * Models (Fable 5 especially) keep sending the geometry under names the
+ * prompt's example does not use: `entry`/`stop` instead of
+ * `preferredEntry`/`stopLoss`. The shape printer (aaf588c5) made that
+ * visible — sibling keys `entry:number,stop:number,targets:array` — but the
+ * retry still asked the model to rename fields it believed it had already
+ * sent. Live on 2026-08-27 19:26: `entry` + `stopLoss` + `targets` died as
+ * `preferredEntry received undefined`. The prices were there; the names
+ * were not. Remap aliases, then coerce numeric strings. Never invent a
+ * missing price.
+ */
+function aliasProposedLevels(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const p = { ...(raw as Record<string, unknown>) };
+  if (p.preferredEntry == null) {
+    p.preferredEntry = p.entry ?? p.entryPrice ?? p.preferred_entry;
+  }
+  if (p.stopLoss == null) {
+    p.stopLoss = p.stop ?? p.stop_loss ?? p.sl;
+  }
+  if (!Array.isArray(p.targets) || p.targets.length === 0) {
+    const alt = p.takeProfit ?? p.take_profit ?? p.tp ?? p.tps;
+    if (Array.isArray(alt)) p.targets = alt;
+    else if (alt != null) p.targets = [alt];
+  }
+  p.entryLow = coerceFiniteNumber(p.entryLow);
+  p.entryHigh = coerceFiniteNumber(p.entryHigh);
+  p.preferredEntry = coerceFiniteNumber(p.preferredEntry);
+  p.stopLoss = coerceFiniteNumber(p.stopLoss);
+  p.targets = coercePriceList(p.targets);
+  return p;
+}
+
+function coerceActivationRule(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const rule = { ...(raw as Record<string, unknown>) };
+  if (rule.kind === "composite" && Array.isArray(rule.rules)) {
+    rule.rules = rule.rules.map(coerceActivationRule);
+    return rule;
+  }
+  rule.level = coerceFiniteNumber(rule.level);
+  if (rule.tolerance != null) rule.tolerance = coerceFiniteNumber(rule.tolerance);
+  if (rule.closes != null) rule.closes = coerceFiniteNumber(rule.closes);
+  if (rule.retestZone && typeof rule.retestZone === "object" && !Array.isArray(rule.retestZone)) {
+    const zone = { ...(rule.retestZone as Record<string, unknown>) };
+    zone.low = coerceFiniteNumber(zone.low);
+    zone.high = coerceFiniteNumber(zone.high);
+    rule.retestZone = zone;
+  }
+  return rule;
+}
+
+/**
+ * Recoverable shape repairs that run BEFORE the unread-field drop and the
+ * strict parse. Honesty gates stay intact: a missing direction, a `wait`,
+ * invented prices, or a non-immediate plan with no activationRule still
+ * fail. What this catches is a complete plan written under the wrong key,
+ * as a numeric string, or with a long Arabic paragraph the card was going
+ * to slice anyway.
+ */
+function repairRecoverableDecisionShape(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+  if (o.proposedLevels != null) o.proposedLevels = aliasProposedLevels(o.proposedLevels);
+  if (o.activationRule != null) o.activationRule = coerceActivationRule(o.activationRule);
+  o.confidence = coerceFiniteNumber(o.confidence);
+  o.validityCandles = coerceFiniteNumber(o.validityCandles);
+  if (o.drawingAdvice == null) {
+    // Prompt default is shouldDraw=true; omitting the object used to kill
+    // otherwise-complete plans (live 2026-08-25, drawingAdvice undefined
+    // on attempt 2 after a Too-big chosenBecause on attempt 1).
+    o.drawingAdvice = { shouldDraw: true, reason: "levels" };
+  }
+  return dropUnreadPlanFields(o);
+}
+
+/**
+ * See the block above: unread sketches beside a chosen candidate, and an
+ * activationRule on an immediate plan, are dropped rather than allowed to
+ * fail the run. Called after alias/coercion so a complete `entry`/`stop`
+ * sketch is recognised as complete.
+ */
 function dropUnreadPlanFields(raw: unknown): unknown {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
   const o = { ...(raw as Record<string, unknown>) };
@@ -439,7 +553,7 @@ function dropUnreadPlanFields(raw: unknown): unknown {
 }
 
 const FinalDecisionModelSchema = z.preprocess(
-  dropUnreadPlanFields,
+  repairRecoverableDecisionShape,
   FinalDecisionModelSchemaStrict,
 );
 
@@ -899,6 +1013,7 @@ When they apply, NAME these strategies in the recommendation (summary / keyReaso
   - {"verb":"read_zone","timeframe":"15m","low":4340,"high":4348} — what price DID at that band: how often it traded in, closed inside, closed through, or rejected. Ask this before claiming a level held or broke.
   You may browse several times; each answer comes back and you re-issue the FULL decision. Never repeat a question you already asked — the answer will not change and the budget is finite.
 - summary must be specific to THIS context (symbol, structure, the exact trigger or zone) — never a generic sentence.
+- LENGTH (presentational, not a veto): summary ≤900 characters; invalidationRule, alternativeScenario, activationCondition, decisionTrace.chosenBecause and planTypeBecause ≤400. Extra argument belongs in hypotheses supporting/opposing. The platform trims overflow rather than rejecting the plan — stay inside the cap so Arabic answers finish inside the token budget.
 - scalpingContext is fixed; higher timeframes are context evidence only.
 - Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
 

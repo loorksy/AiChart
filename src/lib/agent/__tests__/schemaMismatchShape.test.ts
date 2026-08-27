@@ -10,6 +10,12 @@
  *
  * The shape also travels back to the model on the corrective retry, where the
  * bare complaint reads as a demand for a field it believes it already sent.
+ *
+ * The 2026-08-27 Fable 5 incident (608da3bf) was the same class of fault on
+ * a STRING: the model sent planTypeBecause/summary that were simply too long
+ * for `.max()`, and the classifier correctly named the field — then the retry
+ * burned another 80s rewriting a complete plan. That shape now parses; see
+ * finalDecisionSynthesizer.test.ts "the 608da3bf Fable 5 shape".
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";

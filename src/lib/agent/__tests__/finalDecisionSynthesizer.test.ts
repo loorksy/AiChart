@@ -453,5 +453,120 @@ describe("AI final decision authority", () => {
     assert.match(src, /Gaps:/);
     assert.match(src, /News:/);
     assert.match(src, /10–15/);
+    assert.match(src, /LENGTH \(presentational/);
+    assert.match(src, /608da3bf/);
+  });
+});
+
+describe("presentational overflow and recoverable aliases are not contract faults", () => {
+  /**
+   * Production 2026-08-27, request 608da3bf-80a8-44d3-816d-8b0fabf1c2d6,
+   * Claude Fable 5, 167.7s. Attempt 1: planTypeBecause >400 characters.
+   * Attempt 2: summary >900. Both replies were complete JSON with direction,
+   * planType, candidate, activationRule. Zod `.max()` threw the whole plan
+   * away; the card would have sliced the same strings a few lines later.
+   */
+  function incidentAnswer(over: Record<string, unknown> = {}) {
+    return model({
+      selectedTradeCandidateId: "buy-1",
+      planType: "immediate",
+      summary: `تحليل XAUUSD على 5m: ${"السعر يعيد اختبار المنطقة والشرط تحقق. ".repeat(40)}`,
+      decisionTrace: {
+        hypotheses: [
+          {
+            scenario: "ارتداد من الطلب",
+            supporting: ["هيكل صاعد"],
+            opposing: ["سبريد واسع"],
+          },
+        ],
+        chosenBecause: `الطلب صمد والشرط طُبع عند السعر الحي. ${"تفاصيل إضافية عن البنية. ".repeat(20)}`,
+        planTypeBecause: `السيناريو تحقق سلفاً — الدخول فوري لا انتظار لمس ثانٍ. ${"شرح العقيدة حرفياً مع الاستراتيجيات. ".repeat(20)}`,
+      },
+      ...over,
+    });
+  }
+
+  it("the 608da3bf Fable 5 shape (oversize summary + planTypeBecause) parses on attempt 1", async () => {
+    const buy = candidate("buy-1", "buy");
+    let calls = 0;
+    const raw = incidentAnswer();
+    const parsed = JSON.parse(raw) as {
+      summary: string;
+      decisionTrace: { planTypeBecause: string; chosenBecause: string };
+    };
+    assert.ok(parsed.summary.length > 900, "fixture must exceed the old summary cap");
+    assert.ok(
+      parsed.decisionTrace.planTypeBecause.length > 400,
+      "fixture must exceed the old planTypeBecause cap",
+    );
+    assert.ok(
+      parsed.decisionTrace.chosenBecause.length > 400,
+      "fixture must exceed the old chosenBecause cap",
+    );
+
+    const out = await runFinalDecisionSynthesizer(ctx, input(evidence(buy)), {
+      configured: true,
+      callModel: async () => {
+        calls += 1;
+        return raw;
+      },
+    });
+    assert.equal(calls, 1, "trimming must not spend the corrective retry");
+    assert.equal(out.failure, undefined);
+    assert.equal(out.result?.decision, "buy");
+    assert.ok((out.result?.summary.length ?? 0) <= 900);
+    assert.ok((out.result?.decisionTrace?.planTypeBecause.length ?? 0) <= 400);
+    assert.ok((out.result?.decisionTrace?.chosenBecause.length ?? 0) <= 400);
+  });
+
+  it("accepts proposedLevels aliases entry/stop the model sent instead of preferredEntry/stopLoss", async () => {
+    // Live 2026-08-27 19:26: المُرسَل entry:number, stopLoss:number, targets:array
+    // died as preferredEntry received undefined. Same family as the
+    // schemaMismatchShape fixture (entry/stop/targets).
+    const out = await runFinalDecisionSynthesizer(ctx, input(null), {
+      configured: true,
+      callModel: async () =>
+        model({
+          direction: "buy",
+          planType: "conditional",
+          selectedTradeCandidateId: null,
+          activationCondition: "لمس 1.095 من الطلب.",
+          activationRule: { kind: "price_touch", level: "1.095", timeframe: "5m" },
+          proposedLevels: { entry: 1.095, stop: 1.09, targets: [1.12] },
+        }),
+    });
+    assert.equal(out.failure, undefined);
+    assert.equal(out.result?.decision, "buy");
+    assert.equal(out.result?.recommendation.entry, 1.095);
+    assert.equal(out.result?.recommendation.levelSource, "evidence_levels");
+  });
+
+  it("defaults a missing drawingAdvice instead of rejecting a complete plan", async () => {
+    const buy = candidate("buy-1", "buy");
+    const out = await runFinalDecisionSynthesizer(ctx, input(evidence(buy)), {
+      configured: true,
+      callModel: async () => model({ selectedTradeCandidateId: "buy-1", drawingAdvice: undefined }),
+    });
+    assert.equal(out.result?.decision, "buy");
+    assert.equal(out.drawingAdvice?.shouldDraw, true);
+  });
+
+  it("still rejects a missing direction — honesty gates are not loosened", async () => {
+    const out = await runFinalDecisionSynthesizer(ctx, input(null), {
+      configured: true,
+      callModel: async () => model({ direction: "wait", summary: "x".repeat(950) }),
+    });
+    assert.equal(out.result, null);
+    assert.equal(out.failure?.kind, "schema_mismatch");
+  });
+
+  it("still rejects a summary too short to be a decision", async () => {
+    const buy = candidate("buy-1", "buy");
+    const out = await runFinalDecisionSynthesizer(ctx, input(evidence(buy)), {
+      configured: true,
+      callModel: async () => model({ selectedTradeCandidateId: "buy-1", summary: "قصير" }),
+    });
+    assert.equal(out.result, null);
+    assert.equal(out.failure?.kind, "schema_mismatch");
   });
 });
