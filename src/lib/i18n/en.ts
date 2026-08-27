@@ -390,6 +390,10 @@ export const en = {
     "Price outran the written entry {written} by {distance}, so the plan is re-priced at the current {current}. Stop and targets unchanged — reward-to-risk is now {liveRr}, was {plannedRr}.",
   "gate.revalidation.reanchored_no_rr":
     "Price outran the written entry {written} by {distance}, so the plan is re-priced at the current {current}. Stop and targets unchanged.",
+  "gate.revalidation.activation_already_met":
+    "The activation had already printed — live price {current} is through the waited-for entry {written} (distance {distance}). The plan is an immediate follow-through at the current price, not a wait for a level the market already left.",
+  "synth.activation_already_met":
+    "Activation had already printed — issued as an immediate follow-through at {live}, not a wait for {written}.",
   "gate.revalidation.invalidated":
     "Price has reached or passed the stop {stopLoss} — the idea itself is gone, and no entry is built on a plan whose stop is already hit.",
   "gate.revalidation.targets_passed":
@@ -428,6 +432,8 @@ export const en = {
   "orch.risk_check_failed":
     "Could not complete the risk check — an operational blocker, not a market decision.",
   "orch.visual_reviewed": "Visually reviewed {count} chart snapshots.",
+  "orch.visual_post_draw":
+    "Re-reviewed the live chart after drawings were placed (support, resistance, trendlines, and whether the activation had already printed).",
   "orch.visual_partial": "Could not capture {missing} — the analysis reads only what remains.",
   "orch.visual_none": "Could not capture any chart — the analysis reads the numbers alone.",
   "orch.visual_host_unconfigured": "Could not capture any chart: the shared chart session is not configured on the server — set CHART_HOST_URL in the settings panel. The analysis reads the numbers alone.",
@@ -510,8 +516,8 @@ export const en = {
   "tg.chart_caption_closed": "{name} · 15m — last snapshot before the close.",
   "tg.chart_failed":
     "The chart image could not be prepared right now. Open the platform from the button below, or try again shortly.",
-  "tg.open_report": "📊 Open report",
-  "tg.tools_used": "{count} checks and tools were run",
+  "tg.open_report": "📊 Open Report",
+  "tg.tools_used": "Called {count} tools",
   "tg.link_prompt":
     "This chat is not linked to an account. Open Settings on the Lonora platform and tap “Link Telegram” to get your link code, then come back here.",
   "tg.option_expired": "This option has expired",
@@ -538,6 +544,14 @@ export const en = {
   "tg.cost_line": "Expected cost: {pips} pips{suffix}",
   "tg.estimate": "estimate",
   "tg.progress_header": "Analyzing",
+  "tg.tldr": "TL;DR",
+  "tg.tldr.direction": "Direction",
+  "tg.tldr.entry": "Entry",
+  "tg.tldr.stop": "Stop",
+  "tg.tldr.target": "Target",
+  "tg.tldr.rr": "R:R",
+  "tg.tldr.thesis": "Thesis",
+  "tg.tldr.invalid": "Invalidation",
   "tg.refresh_status": "🔄 Refresh status",
   "tg.refresh_status_prompt": "What is the status of the current recommendation?",
   "tg.photo_failed": "📷 Could not capture the chart image for this recommendation — the details above are text-only.",

@@ -279,7 +279,8 @@ describe("the phone gets the same answer", () => {
       deriveCards(fullResult({ marketClosedScenario: undefined })),
       "ar",
     );
-    assert.ok(openText.startsWith("<b>شراء</b>"), "mid-session the decision leads");
+    assert.ok(openText.startsWith("<b>TL;DR:</b>"), "mid-session the TL;DR leads");
+    assert.ok(openText.includes("<b>شراء</b>"), "the decision is in the lead");
     assert.ok(text.includes("3980"), "the stop must survive to the phone");
     assert.ok(text.includes("4040"), "so must the targets");
     // The four things the deleted `analysisCard` builder silently dropped.
@@ -351,6 +352,57 @@ describe("the phone gets the same answer", () => {
 });
 
 describe("the lead card and the folded depth (the phone's reading order)", () => {
+  it("opens the lead with a compact TL;DR before the plan", () => {
+    const lead = renderTelegramLead(
+      deriveCards(fullResult({ marketClosedScenario: undefined })),
+      "ar",
+    );
+    const tldrAt = lead.indexOf("<b>TL;DR:</b>");
+    const planAt = lead.indexOf("الخطة");
+    assert.ok(tldrAt === 0, "TL;DR is the first thing the operator reads");
+    assert.ok(planAt > tldrAt, "the plan section still follows");
+    for (const line of ["الاتجاه", "الدخول", "الوقف", "الهدف", "العائد/المخاطرة", "الأطروحة", "الإبطال"]) {
+      assert.ok(lead.includes(line), `TL;DR must name ${line}`);
+    }
+    assert.ok(lead.includes("🟢"), "buy is marked");
+    assert.ok(lead.includes("4000"), "entry is the real number");
+    assert.ok(lead.includes("3980"), "stop is the real number");
+    assert.ok(lead.includes("4040"), "first target is the real number");
+    assert.ok(lead.includes("1.80"), "net R:R is the real number");
+    assert.ok(lead.includes("شراء من منطقة الطلب"), "the thesis keeps the summary sentence");
+    assert.ok(!lead.includes("<blockquote"), "the TL;DR is always visible, never folded");
+  });
+
+  it("does not treat a price decimal as a sentence cut in the thesis", () => {
+    const lead = renderTelegramLead(
+      deriveCards(
+        fullResult({
+          marketClosedScenario: undefined,
+          summary: "بيع من إعادة اختبار المقاومة عند 4696.9 مع ضعف الزخم.",
+        }),
+      ),
+      "ar",
+    );
+    assert.ok(
+      lead.includes("بيع من إعادة اختبار المقاومة عند 4696.9 مع ضعف الزخم"),
+      "4696.9 must survive the thesis one-liner",
+    );
+  });
+
+  it("omits the TL;DR on a talk-only informational card", () => {
+    const text = renderCardsForTelegram(
+      deriveCards(
+        fullResult({
+          decision: "informational",
+          summary: "أهلاً — كيف أساعدك؟",
+          recommendation: undefined,
+        }),
+      ),
+      "ar",
+    );
+    assert.ok(!text.includes("TL;DR"));
+    assert.ok(text.includes("أهلاً — كيف أساعدك؟"));
+  });
   it("leads with what the operator acts on, folds the rest into expandable quotes", () => {
     const text = renderCardsForTelegram(
       deriveCards(fullResult({ marketClosedScenario: undefined })),

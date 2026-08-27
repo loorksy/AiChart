@@ -13,14 +13,26 @@
  * scripted ticker that staticPhrases.test.ts bans.
  *
  * Strings live in src/lib/i18n (the Arabic-in-system-files ratchet) and only
- * interpolate run data. The orchestrator calls these; the web transport
- * (webTurn.ts) sanitizes + scrubs internals and ships them as `thinking` SSE
- * events. Surfaces without a live client (Telegram, MCP, cron) never provide
- * `emitThinking`, so the lines are simply never built there.
+ * interpolate run data. The orchestrator calls these; every live surface
+ * (webTurn.ts SSE, Telegram's progress bubble) sanitizes + scrubs internals
+ * through `sanitizeThinkingLine` before a thinking line is shown. Surfaces
+ * without a live client (MCP, cron) simply omit `emitThinking`.
  */
 import { t, type AppLocale } from "@/lib/i18n";
+import { sanitizeActivityMessage } from "./activity";
+import { scrubInternalIdentifiers } from "./userSafeOutbound";
 import type { Bias, TrendLabel } from "./marketContext/detectors";
 import type { GateVerdict } from "./gates/types";
+
+/**
+ * The leakage guard every thinking line passes before it leaves the process:
+ * chain-of-thought phrasing is stripped (same sanitizer as activity events)
+ * and system identifiers are scrubbed. Both the web SSE transport and the
+ * Telegram progress bubble call this; a surface that skips it is a leak.
+ */
+export function sanitizeThinkingLine(text: string): string {
+  return scrubInternalIdentifiers(sanitizeActivityMessage(text));
+}
 
 const price = (value: number): string => value.toFixed(2);
 

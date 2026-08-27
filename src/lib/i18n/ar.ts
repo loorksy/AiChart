@@ -386,6 +386,10 @@ export const ar: Record<TranslationKey, string> = {
     "السعر سبق الدخول المكتوب {written} بمسافة {distance}، فأُعيد تسعير الخطة على السعر الحالي {current}. الوقف والأهداف كما هي — والعائد/المخاطرة الآن {liveRr} بدل {plannedRr}.",
   "gate.revalidation.reanchored_no_rr":
     "السعر سبق الدخول المكتوب {written} بمسافة {distance}، فأُعيد تسعير الخطة على السعر الحالي {current}. الوقف والأهداف كما هي.",
+  "gate.revalidation.activation_already_met":
+    "شرط التفعيل كان قد تحقق — السعر الحي {current} تجاوز مستوى الدخول المنتظَر {written} بمسافة {distance}. الخطة دخول فوري عند السعر الحالي، لا انتظار لمستوى غادره السوق.",
+  "synth.activation_already_met":
+    "شرط التفعيل كان قد تحقق — صدرت الخطة دخولاً فورياً عند {live} لا انتظاراً لمستوى غادره السوق.",
   "gate.revalidation.invalidated":
     "السعر بلغ وقف الخسارة {stopLoss} أو تجاوزه — الفكرة نفسها سقطت، ولا يُبنى دخول على خطة وقفها مضروب سلفاً.",
   "gate.revalidation.targets_passed":
@@ -422,6 +426,8 @@ export const ar: Record<TranslationKey, string> = {
     "توجد فجوات بيانات ملحوظة في بعض الفريمات — بدأ الإصلاح التلقائي؛ اعتُبرت الأدلة المتأثرة أضعف.",
   "orch.risk_check_failed": "تعذّر إكمال فحص المخاطر — عائق تشغيلي، لا قرار سوقي.",
   "orch.visual_reviewed": "تمت مراجعة {count} لقطات شارت بصرياً.",
+  "orch.visual_post_draw":
+    "أُعيدت مراجعة الشارت الحي بعد وضع الرسومات (الدعم والمقاومة وخطوط الاتجاه، وما إذا كان شرط التفعيل قد طبع أصلاً).",
   "orch.visual_partial": "تعذّر التقاط {missing} — التحليل يقرأ ما تبقّى فقط.",
   "orch.visual_none": "تعذّر التقاط أي شارت — التحليل يقرأ الأرقام وحدها.",
   "orch.visual_host_unconfigured": "تعذّر التقاط أي شارت: جلسة الشارت المشتركة غير مُعدّة على الخادم — أضِف CHART_HOST_URL من لوحة الإعدادات. التحليل يقرأ الأرقام وحدها.",
@@ -493,8 +499,8 @@ export const ar: Record<TranslationKey, string> = {
   "tg.chart_caption_closed": "{name} · 15م — آخر لقطة قبل الإغلاق.",
   "tg.chart_failed":
     "تعذّر تجهيز صورة الشارت الآن. افتح المنصة من الزر أدناه، أو أعد المحاولة بعد قليل.",
-  "tg.open_report": "📊 افتح التقرير",
-  "tg.tools_used": "استُخدم {count} من الفحوص والأدوات",
+  "tg.open_report": "📊 فتح التقرير",
+  "tg.tools_used": "نُفِّذت {count} أدوات",
   "tg.link_prompt":
     "هذه المحادثة غير مرتبطة بحساب. افتح الإعدادات في منصة Lonora واضغط «ربط تليجرام» لتحصل على رابط الربط، ثم عد إلى هنا.",
   "tg.option_expired": "انتهت صلاحية هذا الخيار",
@@ -521,6 +527,14 @@ export const ar: Record<TranslationKey, string> = {
   "tg.cost_line": "التكلفة المتوقعة: {pips} نقطة{suffix}",
   "tg.estimate": "تقدير",
   "tg.progress_header": "جارٍ التحليل",
+  "tg.tldr": "TL;DR",
+  "tg.tldr.direction": "الاتجاه",
+  "tg.tldr.entry": "الدخول",
+  "tg.tldr.stop": "الوقف",
+  "tg.tldr.target": "الهدف",
+  "tg.tldr.rr": "العائد/المخاطرة",
+  "tg.tldr.thesis": "الأطروحة",
+  "tg.tldr.invalid": "الإبطال",
   "tg.refresh_status": "🔄 تحديث الحالة",
   "tg.refresh_status_prompt": "ما وضع التوصية الحالية؟",
   "tg.photo_failed": "📷 تعذّر التقاط صورة الشارت لهذه التوصية — التفاصيل نصية أعلاه.",

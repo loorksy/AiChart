@@ -26,9 +26,9 @@ import { resolveUserLocale } from "@/lib/i18n/userLocale";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import {
   createActivityEvent,
-  sanitizeActivityMessage,
   shouldShowActivity,
 } from "@/lib/agent/activity";
+import { sanitizeThinkingLine } from "@/lib/agent/thinkingNarration";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
 import {
   updateSessionFromMessage,
@@ -53,10 +53,7 @@ import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalI
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
 import { appendMessage } from "@/lib/agent/chatHistory/chatStore";
 import { refreshChatMetaAfterAssistantTurn } from "@/lib/agent/chatHistory/refreshChatMeta";
-import {
-  scrubInternalIdentifiers,
-  stripInternalFieldsFromClientResult,
-} from "@/lib/agent/userSafeOutbound";
+import { stripInternalFieldsFromClientResult } from "@/lib/agent/userSafeOutbound";
 import {
   type AgentConversationContext,
   type SafeRecommendationContext,
@@ -404,14 +401,12 @@ export async function runWebChatTurn(
 
   // Live thinking trace: the orchestrator's per-step narration, composed from
   // real evidence values (thinkingNarration.ts). The transport owns the
-  // leakage guard: chain-of-thought phrasing is stripped by the same
-  // sanitizer every activity message passes, and system identifiers (env
-  // vars, provider hosts, model slugs, stack frames) are scrubbed so the
-  // trace can never become an internals side-channel. UI-only — never
-  // persisted with the message, and Telegram never receives it because that
-  // surface simply does not provide emitThinking.
+  // leakage guard via sanitizeThinkingLine (same pair Telegram uses):
+  // chain-of-thought phrasing is stripped, and system identifiers are
+  // scrubbed so the trace can never become an internals side-channel.
+  // UI-only — never persisted with the message.
   const emitThinking = (text: string) => {
-    const clean = scrubInternalIdentifiers(sanitizeActivityMessage(text));
+    const clean = sanitizeThinkingLine(text);
     if (clean) send("thinking", { text: clean, at: Date.now() });
   };
 
