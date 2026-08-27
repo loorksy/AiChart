@@ -634,6 +634,15 @@ describe("both surfaces are wired to the derivation", () => {
     assert.match(view, /Dialog\.Root/);
     assert.match(report, /recommendation-report-modal/);
     assert.match(report, /recommendation-report-close/);
+    assert.match(
+      report,
+      /hidden[^\n]*md:inline-flex[\s\S]{0,200}recommendation-report-close/,
+      "the X is hidden on mobile and only shown from md up",
+    );
+    assert.match(report, /recommendation-report-handle/, "the drag handle is the mobile close affordance");
+    assert.match(report, /useSheetGesture/, "mobile dismiss is a fold-down gesture, not an X");
+    assert.match(report, /sr-only md:hidden/, "screen readers can still dismiss on mobile");
+    assert.match(view, /Dialog\.Backdrop/, "tapping the dimmed overlay still dismisses");
     assert.doesNotMatch(
       view + report,
       /LiquidMetalFrame/,

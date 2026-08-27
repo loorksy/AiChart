@@ -9,8 +9,9 @@
  * a 2×2 metric grid for the plan, checks as wrapping chips, and a layout that
  * is a bottom sheet on a phone and a centred two-column dialog from tablet up.
  */
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useSheetGesture } from "@/hooks/useSheetGesture";
 import {
   Ban,
   CheckCircle2,
@@ -269,8 +270,9 @@ export function AlternativeBlock({ card }: { card: AlternativeScenarioCard }) {
 /**
  * Modal chrome + responsive document body.
  *
- * Mobile: full-width bottom sheet, nearly the viewport.
- * Tablet (`md`): centred dialog, 2-column primary grid.
+ * Mobile: full-width bottom sheet, nearly the viewport. Dismiss by folding
+ * the sheet down (handle + body) or tapping the dimmed overlay — no X.
+ * Tablet (`md`): centred dialog, 2-column primary grid, discreet close X.
  * Desktop (`lg`): the same grid, wider.
  */
 export function RecommendationReport({
@@ -296,39 +298,73 @@ export function RecommendationReport({
   extras: ReactNode;
   onClose: () => void;
 }) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { handleProps, surfaceProps } = useSheetGesture({
+    sheetRef,
+    scrollRef,
+    onDismiss: onClose,
+    // Tailwind `md` — the centred dialog keeps an X; only the phone sheet folds.
+    enabledQuery: "(max-width: 767px)",
+  });
+
   return (
     <Dialog.Popup
+      ref={sheetRef}
       dir={dir}
       data-testid="recommendation-report-modal"
       className={cn(
         "fixed z-[121] flex w-full flex-col overflow-hidden bg-background text-foreground shadow-2xl",
         "left-0 right-0 top-auto bottom-0 max-h-[92vh] rounded-t-2xl border-x border-t border-border",
         "pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+        "max-md:will-change-transform",
+        "max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(0.32,0.72,0,1)]",
+        "max-md:data-starting-style:translate-y-full max-md:data-ending-style:translate-y-full",
         "md:left-1/2 md:right-auto md:bottom-auto md:top-[6vh] md:max-h-[88vh]",
         "md:w-[min(100%-2rem,42rem)] md:-translate-x-1/2 md:rounded-2xl md:border md:pb-0",
+        "md:transition-opacity md:duration-250 md:data-ending-style:opacity-0 md:data-starting-style:opacity-0",
         "lg:top-[8vh] lg:w-[min(100%-2rem,56rem)]",
-        "transition-opacity duration-250 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none",
+        "motion-reduce:transition-none",
       )}
     >
-      <div className="flex justify-center pt-2 md:hidden" aria-hidden>
-        <span className="h-1 w-10 rounded-full bg-muted-foreground/35" />
+      <div
+        {...handleProps}
+        data-testid="recommendation-report-handle"
+        className="flex cursor-grab justify-center pt-3 pb-2 md:hidden active:cursor-grabbing"
+        aria-hidden
+      >
+        <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
       </div>
-      <header className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3">
+      <header
+        onPointerDown={handleProps.onPointerDown}
+        onPointerMove={handleProps.onPointerMove}
+        onPointerUp={handleProps.onPointerUp}
+        onPointerCancel={handleProps.onPointerCancel}
+        className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3 max-md:touch-none"
+      >
         <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <Dialog.Title className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
           {title}
         </Dialog.Title>
-        <button
-          type="button"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring"
+        <Dialog.Close
+          className="sr-only md:hidden"
+          aria-label={closeLabel}
+        >
+          {closeLabel}
+        </Dialog.Close>
+        <Dialog.Close
+          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring md:inline-flex"
           aria-label={closeLabel}
           data-testid="recommendation-report-close"
-          onClick={onClose}
         >
           <X className="h-4 w-4" aria-hidden />
-        </button>
+        </Dialog.Close>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
+      <div
+        ref={scrollRef}
+        {...surfaceProps}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
+      >
         <div className="flex flex-col gap-3 md:gap-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <div className="flex min-w-0 flex-col gap-3">

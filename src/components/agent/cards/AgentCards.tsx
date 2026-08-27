@@ -843,7 +843,7 @@ export function AgentCards({
 
       <Dialog.Root open={reportOpen} onOpenChange={setReportOpen}>
         <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-[120] bg-black/60 transition-opacity duration-250 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none" />
+          <Dialog.Backdrop className="fixed inset-0 z-[120] bg-black/60 touch-none transition-opacity duration-250 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none" />
           <RecommendationReport
             dir={dir}
             title={t("agent.report.title")}
