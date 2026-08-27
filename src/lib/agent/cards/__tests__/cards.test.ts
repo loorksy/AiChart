@@ -39,6 +39,11 @@ import {
   type AgentCard,
   type CardKind,
 } from "@/lib/agent/cards/types";
+import {
+  invalidationDisplay,
+  isPlaceholderGateLabel,
+  visibleGateVerdicts,
+} from "@/lib/agent/cards/reportPresentation";
 import type { AgentFinalResult } from "@/lib/agent/types";
 
 const SRC = path.join(import.meta.dirname, "..", "..", "..", "..");
@@ -483,6 +488,37 @@ describe("internals never reach the phone (each pattern is a real transcript)", 
     assert.ok(!text.includes("أُزيل"), "the relic gate's label must never render");
     assert.ok(!text.includes("✅ Removed"), "nor its English label");
     assert.ok(text.includes("الأخبار والأحداث الاقتصادية"), "real gates still render");
+
+    const card = deriveCards(result).find((c) => c.kind === "gate_checklist");
+    assert.ok(card && card.kind === "gate_checklist");
+    const visible = visibleGateVerdicts(card.verdicts);
+    assert.deepEqual(
+      visible.map((v) => v.id),
+      ["G1", "G6"],
+      "the platform report drops the relic slot too",
+    );
+    assert.equal(isPlaceholderGateLabel("أُزيل"), true);
+    assert.equal(isPlaceholderGateLabel("Removed"), true);
+    assert.equal(isPlaceholderGateLabel("الأخبار والأحداث الاقتصادية"), false);
+  });
+
+  it("invalidation prints the rule once — never the price twice", () => {
+    assert.deepEqual(invalidationDisplay("إغلاق تحت 3975", 3975), {
+      statement: "إغلاق تحت 3975",
+      price: null,
+    });
+    assert.deepEqual(invalidationDisplay("إغلاق تحت 4612.76", 4612.76), {
+      statement: "إغلاق تحت 4612.76",
+      price: null,
+    });
+    assert.deepEqual(invalidationDisplay("كسر قاع الجلسة", 4612.76), {
+      statement: "كسر قاع الجلسة",
+      price: "4612.76",
+    });
+    assert.deepEqual(invalidationDisplay(undefined, 3975), {
+      statement: null,
+      price: "3975.00",
+    });
   });
 
   it("evidence renders as graded human sentences, never key:value dumps", () => {
@@ -590,15 +626,45 @@ describe("both surfaces are wired to the derivation", () => {
       path.join(SRC, "components", "agent", "cards", "AgentCards.tsx"),
       "utf8",
     );
+    const report = readFileSync(
+      path.join(SRC, "components", "agent", "cards", "RecommendationReport.tsx"),
+      "utf8",
+    );
     assert.match(view, /agent\.signal\.show_report/);
-    assert.match(view, /recommendation-report-modal/);
     assert.match(view, /Dialog\.Root/);
-    assert.match(view, /LiquidMetalFrame/);
+    assert.match(report, /recommendation-report-modal/);
+    assert.match(report, /recommendation-report-close/);
+    assert.doesNotMatch(
+      view + report,
+      /LiquidMetalFrame/,
+      "the report is a document, not a liquid-metal gadget",
+    );
+    assert.doesNotMatch(
+      report,
+      /metal-chip/,
+      "report chrome is not metal-chip",
+    );
     assert.doesNotMatch(
       view,
       /data-testid="agent-cards-details"/,
       "the report must not expand inside the chat thread",
     );
+  });
+
+  it("the report document is responsive: sheet on mobile, two columns from tablet", () => {
+    const report = readFileSync(
+      path.join(SRC, "components", "agent", "cards", "RecommendationReport.tsx"),
+      "utf8",
+    );
+    assert.match(report, /left-0 right-0 top-auto bottom-0/);
+    assert.match(report, /md:left-1\/2/);
+    assert.match(report, /md:grid-cols-2/);
+    assert.match(report, /lg:w-\[min\(100%-2rem,56rem\)\]/);
+    assert.match(report, /flex-wrap gap-2/);
+    assert.match(report, /grid-cols-2 gap-x-4 gap-y-3/);
+    assert.match(report, /visibleGateVerdicts/);
+    assert.match(report, /isPlaceholderGateLabel/);
+    assert.match(report, /invalidationDisplay/);
   });
 
   it("the react renderer handles every kind the contract declares", () => {

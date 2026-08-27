@@ -29,20 +29,16 @@ import {
   BarChart3,
   Ban,
   CalendarClock,
-  CheckCircle2,
   ChevronDown,
   Clock,
   Coins,
-  Compass,
   Eye,
   FileText,
   FlaskConical,
-  ListChecks,
   Newspaper,
   Route,
   Sparkles,
   Target,
-  X,
 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { deriveCards } from "@/lib/agent/cards/deriveCards";
@@ -50,31 +46,54 @@ import { buildLadder } from "@/lib/agent/cards/ladder";
 import {
   assertNeverCard,
   COLLAPSED_BY_DEFAULT,
+  type ActivationCard,
   type AgentCard,
+  type AlternativeScenarioCard,
   type CardKind,
+  type GateChecklistCard,
+  type InvalidationCard,
   type PlanLevelsCard,
 } from "@/lib/agent/cards/types";
-import { GATE_LABELS_AR } from "@/lib/agent/gates/chain";
 import type { GateVerdict } from "@/lib/agent/gates/types";
 import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency";
 import type { AgentDecision, AgentFinalResult } from "@/lib/agent/types";
 import { isPlainTalkResult } from "@/lib/agent/turnPresentation";
+import { cn } from "@/lib/utils";
 import { AgentEvidenceCard, AgentFaultCard } from "../AgentEnvelopeStatus";
 import { AgentThinkingTraceDone } from "../AgentThinkingTrace";
-import { LiquidMetalFrame } from "@/components/ui/liquid-metal-button";
+import {
+  ActivationRow,
+  AlternativeBlock,
+  ChecksChips,
+  InvalidationBlock,
+  PlanMetrics,
+  RecommendationReport,
+  ReportSection,
+} from "./RecommendationReport";
 
 /** A card's frame. Uniform on purpose: the CONTENT should distinguish them. */
 function Shell({
   icon,
   title,
   tone = "neutral",
+  variant = "chat",
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   tone?: "neutral" | "warn" | "danger" | "good";
+  variant?: "chat" | "document";
   children: React.ReactNode;
 }) {
+  if (variant === "document") {
+    const accent =
+      tone === "good" ? "good" : tone === "warn" ? "warn" : tone === "danger" ? "danger" : "neutral";
+    return (
+      <ReportSection icon={icon} title={title} accent={accent}>
+        {children}
+      </ReportSection>
+    );
+  }
   const tones = {
     neutral: "border-border/60 bg-muted/25",
     good: "border-buy/35 bg-buy/[0.06]",
@@ -98,14 +117,23 @@ function Shell({
 function Collapsible({
   icon,
   title,
+  variant = "chat",
   children,
 }: {
   icon: React.ReactNode;
   title: string;
+  variant?: "chat" | "document";
   children: React.ReactNode;
 }) {
   return (
-    <details className="group mt-2 rounded-lg border border-border/40 bg-muted/10">
+    <details
+      className={cn(
+        "group rounded-lg bg-muted/10",
+        variant === "document"
+          ? "border-s-2 border-s-border/50"
+          : "mt-2 border border-border/40",
+      )}
+    >
       <summary className="flex min-h-8 cursor-pointer select-none list-none items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
         <ChevronDown className="h-3 w-3 shrink-0 transition-transform group-open:rotate-180" />
         <span className="shrink-0" aria-hidden>
@@ -381,10 +409,12 @@ function CardView({
   card,
   onOption,
   disabled,
+  variant = "chat",
 }: {
   card: AgentCard;
   onOption?: (prompt: string) => void;
   disabled?: boolean;
+  variant?: "chat" | "document";
 }) {
   const { t, locale } = useLocale();
 
@@ -397,7 +427,7 @@ function CardView({
         minute: "2-digit",
       }).format(card.nextOpenAt);
       return (
-        <Shell icon={<Clock className={ICON} />} title={t("agent.card.scenario")} tone="warn">
+        <Shell icon={<Clock className={ICON} />} title={t("agent.card.scenario")} tone="warn" variant={variant}>
           <p className="leading-relaxed">
             {card.reasonAr} {t("agent.card.scenario_body")} {opens}
           </p>
@@ -418,98 +448,19 @@ function CardView({
       return null;
 
     case "plan_levels":
-      return (
-        <Shell icon={<Target className={ICON} />} title={t("agent.card.plan")} tone="good">
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]" dir="ltr">
-            <div className="flex justify-between gap-2">
-              <dt>{t("agent.card.entry")}</dt>
-              <dd className="font-mono text-foreground/80">
-                {card.entry.toFixed(2)}
-                {card.entryZone
-                  ? ` (${card.entryZone.low.toFixed(2)}–${card.entryZone.high.toFixed(2)})`
-                  : ""}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-2">
-              <dt>{t("agent.card.stop")}</dt>
-              <dd className="font-mono text-foreground/80">{card.stopLoss.toFixed(2)}</dd>
-            </div>
-            <div className="flex justify-between gap-2">
-              <dt>{t("agent.card.targets")}</dt>
-              <dd className="font-mono text-foreground/80">
-                {card.targets.map((v) => v.toFixed(2)).join(" / ")}
-              </dd>
-            </div>
-            {/* Net of costs or not at all — a gross RR is a price nobody gets. */}
-            {card.netRr != null ? (
-              <div className="flex justify-between gap-2">
-                <dt>{t("agent.card.net_rr")}</dt>
-                <dd className="font-mono text-foreground/80">{card.netRr.toFixed(2)}</dd>
-              </div>
-            ) : null}
-          </dl>
-        </Shell>
-      );
+      return <PlanMetrics card={card} />;
 
     case "activation":
-      return (
-        <Shell icon={<Clock className={ICON} />} title={t("agent.card.activation")}>
-          <p>{card.triggerCondition ?? t("agent.card.activation_immediate")}</p>
-          {card.validityCandles ? (
-            <p className="mt-0.5 text-[11px]">
-              {t("agent.card.validity")}: {card.validityCandles}
-            </p>
-          ) : null}
-        </Shell>
-      );
+      return <ActivationRow card={card} />;
 
     case "invalidation":
-      return (
-        <Shell icon={<Ban className={ICON} />} title={t("agent.card.invalidation")} tone="warn">
-          {card.rule ? <p>{card.rule}</p> : null}
-          {card.level != null ? (
-            <p className="font-mono text-[11px] text-foreground/80" dir="ltr">
-              {card.level.toFixed(2)}
-            </p>
-          ) : null}
-        </Shell>
-      );
+      return <InvalidationBlock card={card} />;
 
     case "alternative_scenario":
-      return (
-        <Shell icon={<Compass className={ICON} />} title={t("agent.card.alternative")}>
-          <p className="leading-relaxed">{card.scenario}</p>
-        </Shell>
-      );
+      return <AlternativeBlock card={card} />;
 
     case "gate_checklist":
-      return (
-        <Shell
-          icon={<ListChecks className={ICON} />}
-          title={t("agent.card.gates")}
-          tone={card.allowed ? "neutral" : "danger"}
-        >
-          <ul className="space-y-0.5">
-            {card.verdicts.map((v) => (
-              <li key={v.id} className="flex items-start gap-1.5">
-                <span aria-hidden className="mt-[1px] shrink-0">
-                  {v.status === "pass" ? (
-                    <CheckCircle2 className="h-3 w-3 text-buy" />
-                  ) : v.status === "veto" ? (
-                    <Ban className="h-3 w-3 text-destructive" />
-                  ) : (
-                    <AlertTriangle className="h-3 w-3 text-warning" />
-                  )}
-                </span>
-                <span>
-                  {GATE_LABELS_AR[v.id] ?? v.id}
-                  {v.reasonAr ? ` — ${v.reasonAr}` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Shell>
-      );
+      return <ChecksChips card={card} />;
 
     // The visual-basis line: rendered on every recommendation, both states.
     // "No chart was reviewed" is information the operator must see, so this
@@ -520,6 +471,7 @@ function CardView({
           icon={<Eye className={ICON} />}
           title={t("agent.card.visual_review")}
           tone={card.state === "contradicted" ? "danger" : "neutral"}
+          variant={variant}
         >
           <p>
             {visualTransparencyLine(
@@ -532,21 +484,21 @@ function CardView({
 
     case "key_reasons":
       return (
-        <Shell icon={<Sparkles className={ICON} />} title={t("agent.card.reasons")}>
+        <Shell icon={<Sparkles className={ICON} />} title={t("agent.card.reasons")} variant={variant}>
           <Bullets items={card.reasons} />
         </Shell>
       );
 
     case "public_reasoning":
       return (
-        <Shell icon={<Route className={ICON} />} title={t("agent.card.reasoning")}>
+        <Shell icon={<Route className={ICON} />} title={t("agent.card.reasoning")} variant={variant}>
           <Bullets items={card.points} />
         </Shell>
       );
 
     case "decision_trace":
       return (
-        <Collapsible icon={<Route className="h-3 w-3" />} title={t("agent.card.trace")}>
+        <Collapsible icon={<Route className="h-3 w-3" />} title={t("agent.card.trace")} variant={variant}>
           {card.trace.hypotheses.map((h, i) => (
             <div key={i} className="mb-1.5 last:mb-0">
               <p className="font-medium text-foreground/85">{h.scenario}</p>
@@ -570,7 +522,7 @@ function CardView({
 
     case "evidence_dimensions":
       return (
-        <Shell icon={<BarChart3 className={ICON} />} title={t("agent.card.dimensions")}>
+        <Shell icon={<BarChart3 className={ICON} />} title={t("agent.card.dimensions")} variant={variant}>
           <ul className="space-y-1">
             {card.dimensions.map((d) => (
               <li key={d.key} className="flex items-start justify-between gap-2">
@@ -611,6 +563,7 @@ function CardView({
           icon={<AlertTriangle className={ICON} />}
           title={t("agent.card.risks")}
           tone="warn"
+          variant={variant}
         >
           <Bullets items={card.warnings} />
         </Shell>
@@ -622,6 +575,7 @@ function CardView({
           icon={<Newspaper className={ICON} />}
           title={t("agent.card.news")}
           tone={card.risk.level === "high" ? "danger" : card.risk.level === "low" ? "neutral" : "warn"}
+          variant={variant}
         >
           <p>{card.risk.reason}</p>
         </Shell>
@@ -629,7 +583,7 @@ function CardView({
 
     case "cost_evidence":
       return (
-        <Shell icon={<Coins className={ICON} />} title={t("agent.card.cost")}>
+        <Shell icon={<Coins className={ICON} />} title={t("agent.card.cost")} variant={variant}>
           <p dir="ltr" className="font-mono text-[11px] text-foreground/80">
             {card.spreadPips?.toFixed(1)} pips
             {card.session ? ` · ${card.session}` : ""}
@@ -646,7 +600,7 @@ function CardView({
 
     case "research_evidence":
       return (
-        <Collapsible icon={<FlaskConical className="h-3 w-3" />} title={t("agent.card.research")}>
+        <Collapsible icon={<FlaskConical className="h-3 w-3" />} title={t("agent.card.research")} variant={variant}>
           <p className="text-foreground/80">{card.summaryAr}</p>
           {card.skipped.length ? (
             <Bullets items={card.skipped.map((s) => `${s.system}: ${s.reason}`)} />
@@ -656,7 +610,7 @@ function CardView({
 
     case "evidence_timeline":
       return (
-        <Collapsible icon={<CalendarClock className="h-3 w-3" />} title={t("agent.card.timeline")}>
+        <Collapsible icon={<CalendarClock className="h-3 w-3" />} title={t("agent.card.timeline")} variant={variant}>
           <Bullets
             items={card.steps.map((s) =>
               // The reason is the point of the timeline: "skipped" alone says a
@@ -669,14 +623,14 @@ function CardView({
 
     case "candle_coverage":
       return (
-        <Collapsible icon={<Activity className="h-3 w-3" />} title={t("agent.card.coverage")}>
+        <Collapsible icon={<Activity className="h-3 w-3" />} title={t("agent.card.coverage")} variant={variant}>
           <p>{card.report.summaryAr}</p>
         </Collapsible>
       );
 
     case "tracked_recommendation":
       return (
-        <Shell icon={<Target className={ICON} />} title={t("agent.card.tracked")}>
+        <Shell icon={<Target className={ICON} />} title={t("agent.card.tracked")} variant={variant}>
           <p dir="ltr" className="font-mono text-[11px] text-foreground/80">
             {card.symbol} · {card.interval} · {card.direction} · {card.status}
           </p>
@@ -699,7 +653,7 @@ function CardView({
 
     case "skills_used":
       return (
-        <Collapsible icon={<Sparkles className="h-3 w-3" />} title={t("agent.card.skills")}>
+        <Collapsible icon={<Sparkles className="h-3 w-3" />} title={t("agent.card.skills")} variant={variant}>
           {card.loaded.length ? (
             <Bullets items={card.loaded.map((s) => `${s.name} v${s.version}`)} />
           ) : null}
@@ -848,7 +802,18 @@ export function AgentCards({
 
   const decisionCard = cards.find((c) => c.kind === "decision");
   const planCard = cards.find((c): c is PlanLevelsCard => c.kind === "plan_levels");
-  const gates = cards.find((c) => c.kind === "gate_checklist");
+  const gates = cards.find((c): c is GateChecklistCard => c.kind === "gate_checklist");
+  const activation = details.find((c): c is ActivationCard => c.kind === "activation");
+  const invalidation = details.find((c): c is InvalidationCard => c.kind === "invalidation");
+  const alternative = details.find(
+    (c): c is AlternativeScenarioCard => c.kind === "alternative_scenario",
+  );
+  const reportExtras = details.filter(
+    (c) =>
+      c.kind !== "activation" &&
+      c.kind !== "invalidation" &&
+      c.kind !== "alternative_scenario",
+  );
 
   // The gate that refused, resolved to the verdict itself so the hero can
   // print its reason and read the live price out of its evidence.
@@ -879,38 +844,32 @@ export function AgentCards({
       <Dialog.Root open={reportOpen} onOpenChange={setReportOpen}>
         <Dialog.Portal>
           <Dialog.Backdrop className="fixed inset-0 z-[120] bg-black/60 transition-opacity duration-250 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none" />
-          <Dialog.Popup
+          <RecommendationReport
             dir={dir}
-            data-testid="recommendation-report-modal"
-            className="fixed inset-x-3 top-[6vh] z-[121] mx-auto flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-background text-foreground shadow-2xl sm:inset-x-auto sm:top-[8vh]"
-          >
-            <LiquidMetalFrame className="shrink-0">
-              <div className="flex items-center gap-2 px-3 py-2.5">
-                <FileText className="h-4 w-4 shrink-0" aria-hidden />
-                <Dialog.Title className="min-w-0 flex-1 truncate text-[14px] font-semibold">
-                  {t("agent.report.title")}
-                </Dialog.Title>
-                <button
-                  type="button"
-                  className="metal-chip metal-chip-icon shrink-0"
-                  aria-label={t("agent.signal.close_report")}
-                  data-testid="recommendation-report-close"
-                  onClick={() => setReportOpen(false)}
-                >
-                  <X className="h-4 w-4" aria-hidden />
-                </button>
-              </div>
-            </LiquidMetalFrame>
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-1">
-              {[
-                ...(planCard ? [planCard] : []),
-                ...(gates ? [gates] : []),
-                ...details,
-              ].map((card) => (
-                <CardView key={card.kind} card={card} onOption={onOption} disabled={disabled} />
-              ))}
-            </div>
-          </Dialog.Popup>
+            title={t("agent.report.title")}
+            closeLabel={t("agent.signal.close_report")}
+            plan={planCard}
+            gates={gates}
+            activation={activation}
+            invalidation={invalidation}
+            alternative={alternative}
+            extras={
+              reportExtras.length ? (
+                <div className="flex flex-col gap-3 border-t border-border/40 pt-3 md:gap-4 md:pt-4">
+                  {reportExtras.map((card) => (
+                    <CardView
+                      key={card.kind}
+                      card={card}
+                      onOption={onOption}
+                      disabled={disabled}
+                      variant="document"
+                    />
+                  ))}
+                </div>
+              ) : null
+            }
+            onClose={() => setReportOpen(false)}
+          />
         </Dialog.Portal>
       </Dialog.Root>
 

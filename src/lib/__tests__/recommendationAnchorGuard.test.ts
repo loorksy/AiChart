@@ -96,5 +96,20 @@ describe("recommendation anchors come from stored creation time, never render-ti
       /LATERAL_BARS/,
       "a caller-computed right edge beyond the last bar clamps to the MOVING live bar — that was the thin expanding column",
     );
+    assert.match(
+      src,
+      /syncRightEdge/,
+      "Close must grow to lastBar already in history via setPoints, not a future time",
+    );
+    assert.match(
+      src,
+      /setPoints/,
+      "width updates must pin left at the print entry and move only the Close point",
+    );
+    assert.doesNotMatch(
+      src,
+      /lastBarTime.*\+.*barSec|LATERAL_BARS \*/,
+      "must not synthesize a future Close as entry + N bars",
+    );
   });
 });

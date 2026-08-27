@@ -616,6 +616,11 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           datafeed: createAiChartDatafeed(bootMarket, {
             onLatestCandle: (candle) => {
               latestCandleRef.current = candle;
+              try {
+                managerRef.current?.syncRightEdge(candle.time);
+              } catch {
+                /* widget mid-teardown */
+              }
             },
             // The tab was backgrounded long enough that candles are missing:
             // the datafeed already told TV to drop its bar cache; resetData()
@@ -784,7 +789,11 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     mgr.apply(
       combined,
       { recommendation: a.recommendation, targets: a.targets },
-      { symbol: a.symbol, interval: a.interval },
+      {
+        symbol: a.symbol,
+        interval: a.interval,
+        lastBarTime: latestCandleRef.current?.time,
+      },
       opts,
     );
   }, []);

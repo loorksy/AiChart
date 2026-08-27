@@ -16,13 +16,18 @@
  *    (LineToolRiskRewardLong/Short) — SINGLE-point creation at the entry,
  *    profit/stop as TICK levels via overrides (the library special-cases
  *    exactly `profitLevel`/`stopLevel` for these tools), body synthesized
- *    by the tool itself as a fixed INDEX span. No anchor in the future, no
- *    text option (the library throws on it for position tools).
+ *    by the tool itself as a fixed INDEX span. No FUTURE time anchor (that
+ *    is the thin expanding column / sliding left edge). The Close point is
+ *    then `setPoints`'d to the latest in-history bar so live candles stay
+ *    inside the R/R body until the plan is terminal — visual width only.
  *
  * The tests simulate the failing sequences: draw → several new bars pass →
- * redraw/force/reload paths run → the anchor must be byte-identical.
+ * redraw/force/reload paths run → the LEFT anchor must be byte-identical
+ * while the RIGHT/width follows lastBar.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import { TvDrawingManager } from "@/lib/chart/tv/tvDrawingAdapter";
 import { planTargetList } from "@/lib/chart/planTargets";
@@ -46,12 +51,18 @@ interface SingleCall {
   shape: string;
   options: Record<string, unknown>;
 }
+interface SetPointsCall {
+  id: string;
+  points: Array<{ time?: number; price?: number }>;
+}
 
 function fakeChart() {
   let n = 0;
   const multi: MultiCall[] = [];
   const single: SingleCall[] = [];
   const removed: string[] = [];
+  const setPointsCalls: SetPointsCall[] = [];
+  const shapes = new Map<string, Array<{ time?: number; price?: number }>>();
   const chart = {
     createMultipointShape: (
       points: ShapePoint[],
@@ -66,7 +77,12 @@ function fakeChart() {
         text: options.text,
       });
       n += 1;
-      return Promise.resolve(`shape-${n}` as EntityId);
+      const id = `shape-${n}` as EntityId;
+      shapes.set(String(id), points.map((p) => ({
+        time: (p as { time?: number }).time,
+        price: (p as { price?: number }).price,
+      })));
+      return Promise.resolve(id);
     },
     createShape: (point: ShapePoint, options: { shape: string }) => {
       single.push({
@@ -75,13 +91,32 @@ function fakeChart() {
         options: options as unknown as Record<string, unknown>,
       });
       n += 1;
-      return Promise.resolve(`shape-${n}` as EntityId);
+      const id = `shape-${n}` as EntityId;
+      shapes.set(String(id), [
+        {
+          time: (point as { time?: number }).time,
+          price: (point as { price?: number }).price,
+        },
+      ]);
+      return Promise.resolve(id);
     },
     removeEntity: (id: EntityId) => {
       removed.push(String(id));
+      shapes.delete(String(id));
     },
+    getShapeById: (id: EntityId) => ({
+      getPoints: () => [...(shapes.get(String(id)) ?? [])],
+      setPoints: (points: ShapePoint[]) => {
+        const mapped = points.map((p) => ({
+          time: (p as { time?: number }).time,
+          price: (p as { price?: number }).price,
+        }));
+        setPointsCalls.push({ id: String(id), points: mapped });
+        shapes.set(String(id), mapped);
+      },
+    }),
   } as unknown as IChartWidgetApi;
-  return { chart, multi, single, removed };
+  return { chart, multi, single, removed, setPointsCalls, shapes };
 }
 
 const CREATED_AT_MS = Date.UTC(2026, 7, 24, 18, 0, 0);
@@ -147,15 +182,17 @@ describe("tvDrawingAdapter — the native position tool, pinned at the plan's cr
   });
 
   it("supplies NO second time anchor — a future anchor is the thin-expanding-column bug", async () => {
-    const { chart, multi, single } = fakeChart();
+    const { chart, multi, single, setPointsCalls } = fakeChart();
     new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX);
     await flush();
 
     // This build clamps any time beyond the last bar to the MOVING last bar,
-    // so a caller-supplied right edge collapses onto the live candle and
-    // crawls right with every new bar. The tool must synthesize its own
-    // fixed INDEX-based body from the one entry point.
+    // so a caller-supplied FUTURE right edge collapses onto the live candle
+    // and can slide the LEFT with it. Without a lastBar already in history
+    // we must not invent a Close time: the tool synthesizes its own INDEX
+    // body from the one entry point (width then grows via setPoints later).
     assert.equal(positionCalls(single).length, 1, "single-point creation only");
+    assert.equal(setPointsCalls.length, 0, "no Close write until lastBar is known");
     assert.ok(
       !multi.some(
         (c) => c.shape === "long_position" || c.shape === "short_position",
@@ -509,6 +546,234 @@ describe("tvDrawingAdapter — the native position tool, pinned at the plan's cr
     assert.ok(
       hlines.some((c) => c.point.price === 4603.33),
       "TP1 stays a labeled line inside the extended zone",
+    );
+  });
+});
+
+describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor stays", () => {
+  const PRINT_MS = Date.UTC(2026, 7, 27, 22, 30, 0);
+  const LAST_BAR_MS = Date.UTC(2026, 7, 27, 23, 0, 0);
+  const LATER_BAR_MS = Date.UTC(2026, 7, 27, 23, 45, 0);
+  const SHORT = {
+    action: "sell",
+    entry: 4607.59,
+    stop_loss: 4612.76,
+    take_profit: 4591.48,
+    targets: [4591.48],
+    created_at: PRINT_MS,
+    anchor_time: PRINT_MS,
+  } as unknown as Recommendation;
+  const SHORT_CTX = { symbol: "XAUUSD", interval: "5m" as const };
+
+  function positionSetPoints(calls: SetPointsCall[]): SetPointsCall[] {
+    return calls.filter((c) => c.points.length >= 2);
+  }
+
+  it("left time is unchanged when lastBar advances; right follows lastBar", async () => {
+    const { chart, single, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    mgr.apply(
+      [],
+      { recommendation: SHORT },
+      { ...SHORT_CTX, lastBarTime: LAST_BAR_MS },
+    );
+    await flush();
+
+    const created = positionCalls(single)[0]!;
+    assert.equal(created.point.time, Math.round(PRINT_MS / 1000));
+    assert.equal(created.point.price, 4607.59);
+
+    const firstStretch = positionSetPoints(setPointsCalls)[0]!;
+    assert.equal(firstStretch.points[0]!.time, Math.round(PRINT_MS / 1000));
+    assert.equal(firstStretch.points[0]!.price, 4607.59);
+    assert.equal(firstStretch.points[1]!.time, Math.round(LAST_BAR_MS / 1000));
+    assert.equal(firstStretch.points[1]!.price, 4607.59);
+
+    const createsBefore = single.length;
+    const stretchesBefore = setPointsCalls.length;
+    mgr.syncRightEdge(LATER_BAR_MS);
+    await flush();
+
+    assert.equal(single.length, createsBefore, "advancing lastBar must not delete/recreate");
+    assert.equal(setPointsCalls.length, stretchesBefore + 1, "width-only setPoints");
+    const later = positionSetPoints(setPointsCalls).at(-1)!;
+    assert.equal(later.points[0]!.time, Math.round(PRINT_MS / 1000), "left stays on the print candle");
+    assert.equal(later.points[1]!.time, Math.round(LATER_BAR_MS / 1000), "right tracks lastBar");
+  });
+
+  it("same rec + same lastBar is a no-op (no recreate, no extra setPoints)", async () => {
+    const { chart, single, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    const ctx = { ...SHORT_CTX, lastBarTime: LAST_BAR_MS };
+    mgr.apply([], { recommendation: SHORT }, ctx);
+    await flush();
+    const creates = single.length;
+    const stretches = setPointsCalls.length;
+
+    mgr.apply([], { recommendation: SHORT }, ctx);
+    mgr.syncRightEdge(LAST_BAR_MS);
+    await flush();
+    assert.equal(single.length, creates);
+    assert.equal(setPointsCalls.length, stretches);
+  });
+
+  it("profitLevel still comes from the furthest TP; advancing bars does not change SL/TP prices", async () => {
+    const { chart, single, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    const rec = {
+      ...SHORT,
+      take_profit: 4591.48,
+      targets: [4591.48, 4580.1],
+    } as unknown as Recommendation;
+    mgr.apply(
+      [],
+      { recommendation: rec },
+      { ...SHORT_CTX, lastBarTime: LAST_BAR_MS },
+    );
+    await flush();
+    const first = positionCalls(single)[0]!;
+    const overrides = first.options.overrides as Record<string, number>;
+    assert.equal(
+      overrides.profitLevel,
+      Math.round((4607.59 - 4580.1) * 100),
+      "profit edge is still the furthest (lowest) short target",
+    );
+    assert.equal(overrides.stopLevel, Math.round((4612.76 - 4607.59) * 100));
+
+    mgr.syncRightEdge(LATER_BAR_MS);
+    await flush();
+    assert.equal(positionCalls(single).length, 1, "no recreate on width update");
+    const laterOverrides = positionCalls(single)[0]!.options.overrides as Record<
+      string,
+      number
+    >;
+    assert.deepEqual(laterOverrides, overrides, "SL/TP tick levels are unchanged");
+    const later = positionSetPoints(setPointsCalls).at(-1)!;
+    assert.equal(later.points[0]!.price, 4607.59);
+    assert.equal(later.points[1]!.price, 4607.59);
+  });
+
+  it("the Close time is lastBar already in history — never a future offset", async () => {
+    const { chart, setPointsCalls } = fakeChart();
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: SHORT },
+      { ...SHORT_CTX, lastBarTime: LAST_BAR_MS },
+    );
+    await flush();
+    const close = positionSetPoints(setPointsCalls)[0]!.points[1]!;
+    assert.equal(close.time, Math.round(LAST_BAR_MS / 1000));
+    assert.ok(
+      close.time! <= Math.round(LAST_BAR_MS / 1000),
+      "Close must not live in the future of lastBar",
+    );
+    const barSec = 5 * 60;
+    assert.notEqual(
+      close.time,
+      Math.round(PRINT_MS / 1000) + 24 * barSec,
+      "must not go back to created_at + N bars (the clamp-and-slide bug)",
+    );
+  });
+
+  it("a terminal plan freezes the right edge — further lastBar advances are ignored", async () => {
+    const { chart, single, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    mgr.apply(
+      [],
+      { recommendation: SHORT },
+      { ...SHORT_CTX, lastBarTime: LAST_BAR_MS },
+    );
+    await flush();
+    const frozenRight = positionSetPoints(setPointsCalls).at(-1)!.points[1]!.time;
+    const creates = single.length;
+    const stretches = setPointsCalls.length;
+
+    const closed = { ...SHORT, status: "tp_hit" } as unknown as Recommendation;
+    mgr.apply(
+      [],
+      { recommendation: closed },
+      { ...SHORT_CTX, lastBarTime: LAST_BAR_MS },
+    );
+    await flush();
+    mgr.syncRightEdge(LATER_BAR_MS);
+    await flush();
+
+    assert.equal(single.length, creates, "terminal + new bars must not recreate");
+    assert.equal(setPointsCalls.length, stretches, "frozen Close must not grow");
+    const last = positionSetPoints(setPointsCalls).at(-1)!;
+    assert.equal(last.points[0]!.time, Math.round(PRINT_MS / 1000));
+    assert.equal(last.points[1]!.time, frozenRight);
+  });
+
+  it("a forced redraw of a frozen plan restores the same left and frozen right", async () => {
+    const { chart, single, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    mgr.apply(
+      [],
+      { recommendation: SHORT },
+      { ...SHORT_CTX, lastBarTime: LAST_BAR_MS },
+    );
+    await flush();
+    const closed = { ...SHORT, status: "sl_hit" } as unknown as Recommendation;
+    mgr.apply(
+      [],
+      { recommendation: closed },
+      { ...SHORT_CTX, lastBarTime: LAST_BAR_MS },
+    );
+    await flush();
+    const frozen = positionSetPoints(setPointsCalls).at(-1)!;
+
+    mgr.apply(
+      [],
+      { recommendation: closed },
+      { ...SHORT_CTX, lastBarTime: LATER_BAR_MS },
+      { force: true },
+    );
+    await flush();
+
+    const restored = positionSetPoints(setPointsCalls).at(-1)!;
+    assert.equal(restored.points[0]!.time, frozen.points[0]!.time);
+    assert.equal(restored.points[1]!.time, frozen.points[1]!.time);
+    assert.notEqual(
+      restored.points[1]!.time,
+      Math.round(LATER_BAR_MS / 1000),
+      "force-redraw after SL must not pick up bars printed after close",
+    );
+    const tools = positionCalls(single);
+    assert.deepEqual(
+      tools.at(-1)!.options.overrides,
+      tools[0]!.options.overrides,
+    );
+  });
+});
+
+describe("tracking ignores drawing width — evaluateRecommendation / tracker never read it", () => {
+  it("evaluateRecommendation and the tracker do not import or mention position width", () => {
+    const files = [
+      "recommendationStatus.ts",
+      "recommendationTracker.ts",
+    ];
+    const recDir = join(import.meta.dirname, "../../../recommendations");
+    for (const name of files) {
+      const src = readFileSync(join(recDir, name), "utf8");
+      assert.doesNotMatch(
+        src,
+        /TvDrawingManager|tvDrawingAdapter|syncRightEdge|lastRightSec|positionFrozen|extendBars/,
+        `${name} must not read the drawing's visual width`,
+      );
+      assert.doesNotMatch(
+        src,
+        /long_position|short_position|profitLevel/,
+        `${name} grades OHLC, not the R/R box span`,
+      );
+    }
+    const followup = readFileSync(
+      join(import.meta.dirname, "../../../agent/recommendation/evaluateRecommendationStatus.ts"),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      followup,
+      /TvDrawingManager|tvDrawingAdapter|syncRightEdge|lastRightSec|extendBars/,
     );
   });
 });

@@ -171,6 +171,51 @@ function printAnchorSec(rec: Recommendation): number | null {
   );
 }
 
+/**
+ * Chart-payload statuses that mean the plan is finished. Visual width freezes
+ * here — tracking (`evaluateRecommendation`) is what actually grades TP/SL,
+ * and it never reads this drawing's bar span.
+ */
+const TERMINAL_CHART_STATUS = new Set<string>([
+  "tp_hit",
+  "tp1_hit",
+  "tp2_hit",
+  "tp3_hit",
+  "sl_hit",
+  "expired",
+  "cancelled",
+  "invalidated",
+  "closed",
+]);
+
+function isTerminalChartRecommendation(
+  rec: Recommendation | null | undefined,
+): boolean {
+  if (!rec) return false;
+  if (rec.status && TERMINAL_CHART_STATUS.has(rec.status)) return true;
+  const extra = rec as Recommendation & { outcome?: unknown };
+  return typeof extra.outcome === "string" && extra.outcome !== "" && extra.outcome !== "pending";
+}
+
+function tradeKeyOf(rec: Recommendation | null | undefined): string {
+  if (!rec) return "";
+  return [
+    rec.symbol ?? "",
+    rec.action,
+    rec.entry,
+    rec.stop_loss,
+    rec.take_profit,
+    rec.created_at,
+    rec.anchor_time,
+  ].join("|");
+}
+
+/** TV reports unix seconds; some callers pass ms. */
+function pointTimeSec(t: number | undefined): number | null {
+  if (t == null || !Number.isFinite(t) || t <= 0) return null;
+  return t > 1e12 ? Math.round(t / 1000) : Math.round(t);
+}
+
 /** Manages TradingView shapes for one chart — mirrors ChartDrawing[] onto it. */
 export class TvDrawingManager {
   private ids: EntityId[] = [];
@@ -185,6 +230,22 @@ export class TvDrawingManager {
    * there would be the bug all over again. Dies only with the widget.
    */
   private readonly fallbackAnchorSec = new Map<string, number>();
+  /**
+   * Bumps on every clear() so a createShape that resolves after a later
+   * redraw cannot stretch a removed entity (or the next trade's shape).
+   */
+  private applyGen = 0;
+  private positionId: EntityId | null = null;
+  private positionEntry: PricedPointLike | null = null;
+  /** Last Close time we wrote via setPoints (unix seconds). */
+  private lastRightSec: number | null = null;
+  /** Close time frozen when the plan became terminal — restored on recreate. */
+  private frozenRightSec: number | null = null;
+  private positionFrozen = false;
+  private pendingTerminal = false;
+  private lastTradeKey = "";
+  /** Latest in-history bar, unix seconds. Never a future time. */
+  private liveLastBarSec: number | null = null;
 
   constructor(private readonly chart: IChartWidgetApi) {}
 
@@ -218,6 +279,7 @@ export class TvDrawingManager {
   }
 
   clear(): void {
+    this.applyGen += 1;
     for (const id of this.ids) {
       try {
         this.chart.removeEntity(id);
@@ -227,6 +289,9 @@ export class TvDrawingManager {
     }
     this.ids = [];
     this.lastFingerprint = "";
+    this.positionId = null;
+    // Keep positionEntry / freeze / lastBar: a recreate of the SAME trade
+    // must restore the frozen right edge rather than jump to a new lastBar.
   }
 
   private track(p: Promise<EntityId>): void {
@@ -302,21 +367,19 @@ export class TvDrawingManager {
    * green profit zone, red stop zone, entry line and R/R stats label exactly
    * as the standard TradingView tool renders them.
    *
-   * Single-point creation, deliberately:
-   * - `long_position`/`short_position` are single-point tools in this build
-   *   (`CreateShapeOptions.shape`). Given only the entry anchor, the tool
-   *   synthesizes its own body: entry bar + max(3, ~15% of the visible
-   *   width) bars, INDEX-based — a fixed bar span that new candles simply
-   *   fill under (`_getClosePointIndex` in line-tool-risk-reward).
-   * - Supplying a second time anchor ourselves is what degenerated the old
-   *   hand-drawn rectangles into the "thin expanding column": a time beyond
-   *   the last bar has no bar to resolve to, so this build clamps it to the
-   *   MOVING last bar (`indexOf(t, nearest)` returns the newest index for
-   *   future times; the API conversion falls back to `closestIndexLeft`).
-   *   The right edge therefore collapsed onto the live candle at draw time
-   *   and crawled right with every new bar. No anchor may live in the
-   *   future — the entry anchor is the recommendation's persisted
-   *   created_at, a bar that exists by construction.
+   * Creation is still SINGLE-point (`CreateShapeOptions.shape`):
+   * - `long_position`/`short_position` synthesize a Close point as
+   *   entry index + max(3, ~15% of the visible width) (`_getClosePointIndex`).
+   *   That INDEX span is fixed, so once enough new candles print the live
+   *   price walks PAST the right edge — the box looks "thin" even though
+   *   the trade is still open.
+   * - After create, we `setPoints` the Close (point 1) to the latest bar
+   *   ALREADY IN HISTORY. Left stays the print-time entry (point 0). The
+   *   second time is `lastBar`, never a future offset: a time beyond the
+   *   last bar has no bar to resolve to, so this build clamps it to the
+   *   MOVING last bar and can slide the LEFT edge with it.
+   * - Horizontal growth is VISUAL ONLY. Tracking (`evaluateRecommendation`)
+   *   never reads this width; a candle past the box is not a failed plan.
    * - `profitLevel`/`stopLevel` are TICKS from the entry. The library
    *   special-cases exactly these two override keys for the RiskReward
    *   tools and reconstructs prices as entry ± level × minmov/pricescale —
@@ -338,27 +401,111 @@ export class TvDrawingManager {
     // A zero-tick level renders a degenerate zone — skip the tool and let the
     // agent's entry/stop/target lines carry the information instead.
     if (profitLevel <= 0 || stopLevel <= 0) return;
-    this.track(
-      this.chart.createShape(
-        { time: entry.time, price: entry.price } as ShapePoint,
-        {
-          shape: direction === "long" ? "long_position" : "short_position",
-          ...EDITABLE,
-          overrides: {
-            profitLevel,
-            stopLevel,
-            linewidth: 1,
-            fontsize: 11,
-            profitBackground: "#22c55e",
-            profitBackgroundTransparency: 82,
-            stopBackground: "#ef4444",
-            stopBackgroundTransparency: 82,
-            showPriceLabels: true,
-            compact: false,
-          },
+    const gen = this.applyGen;
+    const created = this.chart.createShape(
+      { time: entry.time, price: entry.price } as ShapePoint,
+      {
+        shape: direction === "long" ? "long_position" : "short_position",
+        ...EDITABLE,
+        overrides: {
+          profitLevel,
+          stopLevel,
+          linewidth: 1,
+          fontsize: 11,
+          profitBackground: "#22c55e",
+          profitBackgroundTransparency: 82,
+          stopBackground: "#ef4444",
+          stopBackgroundTransparency: 82,
+          showPriceLabels: true,
+          compact: false,
         },
-      ),
+      },
     );
+    this.track(created);
+    void created
+      .then((id) => {
+        if (gen !== this.applyGen) return;
+        this.positionId = id;
+        this.positionEntry = entry;
+        this.stretchPosition({ evenIfFrozen: this.positionFrozen });
+        if (this.pendingTerminal && !this.positionFrozen) this.freezePosition();
+      })
+      .catch(() => {});
+  }
+
+  /**
+   * Grow the native position's Close point to `lastBarTime` (ms or seconds of
+   * a bar already in history). Same rec + same lastBar is a no-op — never
+   * delete/recreate. A terminal plan ignores further advances.
+   */
+  syncRightEdge(lastBarTime: number): void {
+    if (!Number.isFinite(lastBarTime) || lastBarTime <= 0) return;
+    this.liveLastBarSec = toSec(lastBarTime);
+    this.stretchPosition();
+  }
+
+  private freezePosition(): void {
+    if (this.lastRightSec != null) this.frozenRightSec = this.lastRightSec;
+    else if (this.liveLastBarSec != null && this.positionEntry) {
+      this.frozenRightSec = Math.max(this.liveLastBarSec, this.positionEntry.time);
+    }
+    this.positionFrozen = true;
+  }
+
+  /**
+   * Write Close = lastBar (or the frozen right, on recreate) via setPoints.
+   * Left is always re-pinned to the print-time entry. The time we write is
+   * never past lastBar — a future Close is the clamp-and-slide bug.
+   */
+  private stretchPosition(opts?: { evenIfFrozen?: boolean }): void {
+    if (this.positionFrozen && !opts?.evenIfFrozen) return;
+    const entry = this.positionEntry;
+    const id = this.positionId;
+    if (!entry || id == null) return;
+    const targetRight = this.positionFrozen
+      ? this.frozenRightSec
+      : this.liveLastBarSec;
+    if (targetRight == null || targetRight <= entry.time) return;
+
+    try {
+      const shape = this.chart.getShapeById(id);
+      const pts = shape.getPoints?.() ?? [];
+      const nativeRight = pointTimeSec(pts[1]?.time);
+      // Only grow: if the tool's synthesized Close is still to the right of
+      // lastBar, leave the native body alone (and never write a future time).
+      if (
+        !this.positionFrozen &&
+        this.liveLastBarSec != null &&
+        nativeRight != null &&
+        this.liveLastBarSec <= nativeRight
+      ) {
+        return;
+      }
+      const right = this.positionFrozen
+        ? Math.max(entry.time, targetRight)
+        : Math.max(
+            entry.time,
+            Math.min(targetRight, this.liveLastBarSec ?? targetRight),
+          );
+      if (this.lastRightSec === right && nativeRight === right) return;
+      const next =
+        pts.length >= 2
+          ? pts.map((p, i) =>
+              i === 0
+                ? { time: entry.time, price: entry.price }
+                : i === 1
+                  ? { time: right, price: entry.price }
+                  : p,
+            )
+          : [
+              { time: entry.time, price: entry.price },
+              { time: right, price: entry.price },
+            ];
+      shape.setPoints(next as ShapePoint[]);
+      this.lastRightSec = right;
+    } catch {
+      /* shape not ready / already removed */
+    }
   }
 
   /**
@@ -523,14 +670,29 @@ export class TvDrawingManager {
   apply(
     drawings: ChartDrawing[],
     trade?: { recommendation?: Recommendation | null; targets?: number[] },
-    ctx?: { symbol?: string; interval?: string },
+    ctx?: { symbol?: string; interval?: string; lastBarTime?: number },
     opts?: { force?: boolean },
   ): void {
     const rec0 = trade?.recommendation;
+    if (ctx?.lastBarTime != null && ctx.lastBarTime > 0) {
+      this.liveLastBarSec = toSec(ctx.lastBarTime);
+    }
+    const nextKey = tradeKeyOf(rec0);
+    if (nextKey !== this.lastTradeKey) {
+      this.positionFrozen = false;
+      this.pendingTerminal = false;
+      this.frozenRightSec = null;
+      this.lastRightSec = null;
+      this.positionEntry = null;
+      this.lastTradeKey = nextKey;
+    }
+    const terminal = isTerminalChartRecommendation(rec0 ?? null);
     // Idempotence guard: the layout poll and unrelated re-renders re-deliver the
     // same payload every few seconds. Destroying and re-creating every shape for
     // an unchanged payload is what made agent drawings flicker and the position
     // tool jump — and it also snapped back any in-progress user adjustment.
+    // lastBar is deliberately NOT in the fingerprint: a new candle updates
+    // width via setPoints (syncRightEdge), never a delete/recreate.
     const fingerprint = JSON.stringify([
       drawings,
       rec0
@@ -545,7 +707,16 @@ export class TvDrawingManager {
       ctx?.symbol ?? "",
       ctx?.interval ?? "",
     ]);
-    if (!opts?.force && fingerprint === this.lastFingerprint) return;
+    if (!opts?.force && fingerprint === this.lastFingerprint) {
+      if (terminal && !this.positionFrozen) {
+        this.stretchPosition();
+        this.freezePosition();
+      } else if (!this.positionFrozen) {
+        this.stretchPosition();
+      }
+      return;
+    }
+    this.pendingTerminal = terminal;
     this.clear();
     this.lastFingerprint = fingerprint;
     const symbol = ctx?.symbol ?? "";
