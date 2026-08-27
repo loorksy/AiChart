@@ -13,6 +13,7 @@
  * grounding every number in real evidence, and deriving the execution state.
  */
 import type { TradeCandidate } from "./buildTradeCandidates";
+import { filterDistinctTargets } from "@/lib/recommendations/entrySemantics";
 import { levelOrderValid, roundToTick, type SymbolGeometryMeta } from "./scalpGeometry";
 
 export type PlanType = "immediate" | "anticipatory" | "conditional";
@@ -146,16 +147,26 @@ export function resolvePlanLevels(input: {
   evidenceLevels: EvidenceLevel[];
   tolerance: number;
   meta?: SymbolGeometryMeta | null;
+  atr?: number | null;
 }): ResolvedPlanLevels {
+  const distinct = (entry: number, targets: number[]) =>
+    filterDistinctTargets({
+      direction: input.direction,
+      entry,
+      targets,
+      atr: input.atr,
+    });
+
   if (input.selectedCandidate) {
     const c = input.selectedCandidate;
+    const targets = distinct(c.entry, c.targets);
     return {
       levels: {
         entryLow: Math.min(c.poi.low, c.entry),
         entryHigh: Math.max(c.poi.high, c.entry),
         preferredEntry: c.entry,
         stopLoss: c.stop_loss,
-        targets: c.targets,
+        targets: targets.length ? targets : c.targets,
       },
       source: "candidate",
     };
@@ -211,13 +222,15 @@ export function resolvePlanLevels(input: {
   }
 
   const round = (price: number) => roundToTick(price, input.meta);
+  const roundedEntry = round(preferredEntry);
+  const roundedTargets = distinct(roundedEntry, targets.map(round));
   return {
     levels: {
       entryLow: round(Math.min(entryLow, entryHigh)),
       entryHigh: round(Math.max(entryLow, entryHigh)),
-      preferredEntry: round(preferredEntry),
+      preferredEntry: roundedEntry,
       stopLoss: round(stopLoss),
-      targets: targets.map(round),
+      targets: roundedTargets.length ? roundedTargets : targets.map(round),
     },
     source: "evidence_levels",
   };

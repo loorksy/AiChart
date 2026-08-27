@@ -34,6 +34,7 @@ import { newId } from "@/lib/agent/activity";
 import { inboundTraceId } from "@/lib/traceCorrelation";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import type { Recommendation } from "@/lib/types";
+import { planTargetList } from "@/lib/chart/planTargets";
 
 export const maxDuration = 300;
 const ANALYSIS_COST = 4;
@@ -151,13 +152,18 @@ export async function POST(req: NextRequest) {
       canExecute: false,
     })));
     const recommendation = result.recommendation;
+    const tps = planTargetList({
+      targets: recommendation?.targets,
+      takeProfit: recommendation?.take_profit ?? recommendation?.targets?.[0] ?? null,
+    });
     const mapped: Recommendation | null = recommendation && (recommendation.action === "buy" || recommendation.action === "sell")
       ? ({
           symbol,
           action: recommendation.action,
           entry: recommendation.entry ?? null,
           stop_loss: recommendation.stop_loss ?? null,
-          take_profit: recommendation.take_profit ?? recommendation.targets?.[0] ?? null,
+          take_profit: recommendation.take_profit ?? tps[0] ?? null,
+          targets: tps,
           confidence: Math.round(result.confidence * 100),
           timeframe: interval,
           // The chart anchors the profit/loss zones at this instant. Persisted
@@ -192,7 +198,7 @@ export async function POST(req: NextRequest) {
             drawings: result.drawings ?? [],
             overlays: [],
             recommendation: mapped,
-            targets: recommendation?.targets ?? [],
+            targets: tps,
             dataSource,
           },
         });
@@ -211,7 +217,7 @@ export async function POST(req: NextRequest) {
       ...(mapped
         ? {}
         : { recommendation_reason: deriveRecommendationReason(result.decision, result.envelope) }),
-      targets: recommendation?.targets ?? [],
+      targets: tps,
       drawings: result.drawings ?? [],
       overlays: [],
       activityEvents: result.activityEvents,

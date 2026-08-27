@@ -25,6 +25,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TvDrawingManager } from "@/lib/chart/tv/tvDrawingAdapter";
+import { planTargetList } from "@/lib/chart/planTargets";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { Recommendation } from "@/lib/types";
 import type {
@@ -435,6 +436,68 @@ describe("tvDrawingAdapter — the native position tool, pinned at the plan's cr
       hlines.map((c) => ({ price: c.point.price, text: c.options.text })),
       [{ price: 4640, text: "هدف 1" }],
       "the nearer target stays visible as a numbered line",
+    );
+  });
+
+  it("a 3-target sell on rec.targets (empty trade.targets) spans entry → TP3", async () => {
+    // Production path: the chart payload used to send only take_profit = TP1
+    // while the full ladder lived on rec.targets. The adapter must read it.
+    const { chart, single } = fakeChart();
+    const sell = {
+      action: "sell",
+      entry: 4616.66,
+      stop_loss: 4618.88,
+      take_profit: 4603.33,
+      targets: [4603.33, 4593.8, 4593.71],
+      created_at: CREATED_AT_MS,
+    } as unknown as Recommendation;
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: sell, targets: [] },
+      { symbol: "XAUUSD", interval: "5m" },
+    );
+    await flush();
+
+    const overrides = positionCalls(single)[0]!.options.overrides as Record<
+      string,
+      number
+    >;
+    assert.equal(
+      overrides.profitLevel,
+      Math.round(Math.abs(4616.66 - 4593.71) * 100),
+      "profitLevel ticks must equal |entry − TP3|, not |entry − TP1|",
+    );
+    const hlines = single.filter((c) => c.shape === "horizontal_line");
+    assert.ok(
+      hlines.some((c) => c.point.price === 4603.33),
+      "TP1 stays a labeled line inside the extended zone",
+    );
+  });
+});
+
+describe("planTargetList — the producer ladder the adapter consumes", () => {
+  it("prefers the full targets array over take_profit = TP1", () => {
+    assert.deepEqual(
+      planTargetList({
+        targets: [4603.33, 4593.8, 4593.71],
+        takeProfit: 4603.33,
+      }),
+      [4603.33, 4593.8, 4593.71],
+    );
+  });
+
+  it("falls back to take_profit only when no ladder is present", () => {
+    assert.deepEqual(planTargetList({ takeProfit: 4603.33 }), [4603.33]);
+    assert.deepEqual(planTargetList({ targets: [], takeProfit: 4603.33 }), [4603.33]);
+  });
+
+  it("parses targets_json when the array field is empty", () => {
+    assert.deepEqual(
+      planTargetList({
+        targetsJson: "[4603.33,4593.8,4593.71]",
+        takeProfit: 4603.33,
+      }),
+      [4603.33, 4593.8, 4593.71],
     );
   });
 });

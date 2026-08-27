@@ -25,6 +25,7 @@ import { isReasoningModel, modelAcceptsVision } from "@/lib/modelCatalog";
 import { createLogger } from "@/lib/logger";
 import { ExternalTimeoutError } from "@/lib/externalFetch";
 import { sanitizePublicText } from "../activity";
+import { t } from "@/lib/i18n";
 import type { AgentRunContext } from "../types";
 import type {
   FinalDecisionInput,
@@ -42,8 +43,11 @@ import {
   normalizeActivationRule,
 } from "@/lib/recommendations/activationRule";
 import { entryTolerance } from "@/lib/agent/trading/buildTradeCandidates";
-import { applyStopSafetyBuffer } from "@/lib/recommendations/entrySemantics";
+import { applyStopSafetyBuffer, filterDistinctTargets, resolveEntryType } from "@/lib/recommendations/entrySemantics";
 import { roundToTick } from "../trading/scalpGeometry";
+import {
+  confirmationAlreadyPrinted,
+} from "../gates/revalidation";
 import {
   buildEvidenceLevels,
   deriveExecutionState,
@@ -815,6 +819,9 @@ Ask, in order:
 - The trigger must be REACHABLE and PLAUSIBLE from where price is NOW: a "wait for pullback to X" needs X on the correct side of the current price and within recent swing distance; a "close beyond Y" needs Y not yet closed beyond. The platform re-checks this against the live price and rejects contradictions — a condition already satisfied at issue time is not a condition, and a condition on the wrong side of price grades a different event than your sentence describes.
 - Example (correct): price 4330, sell idea, POI 4345–4350 above. Conditional sell — rejection_confirmed at 4348 with direction:"below": price must RISE into the zone, get rejected, close back under. If instead price were already at 4355, the same rule is WRONG (price is beyond the level); the honest plan is a close-below trigger or a different POI.
 - Example (wrong): price 4330, sell idea, activationRule candle_close_below 4340. Price is already below 4340 — the "condition" fires on the next candle. That is an immediate plan hiding behind a conditional label.
+- Example (wrong, production): sell entry 4616.66, activation "price reaches 4616.66 then rejects with a 5m close below", live price already 4606. The rejection has printed and price has left the level in the sell direction. That MUST be planType:"immediate" at current structure (or a fresh retest of the broken level) — never "wait for 4616.66" after the market has already gone. Cover the buy symmetrically: a buy entry the live price has already run through in the profit direction is immediate follow-through, not a pending wait.
+- BEFORE proposing any level: read the attached charts for support, resistance, and trendlines, and whether the activation you are about to write has already closed on those candles.
+- AFTER you have proposed levels: look again at the same live charts (browse view_timeframe on the timing/lead frame if you need a second look — it is already in your budget). Confirm the same three facts with the levels in mind: support, resistance, trendlines, and whether the activation has already printed. The platform recaptures the chart once drawings are placed and will convert a leftover wait whose trigger already printed into an immediate follow-through; do not make it do that work for you.
 
 ## Choosing the entry LEVEL
 - Enter at the EDGE of the POI/zone nearest the current price plus a spread margin — not the middle of the zone and not its far side. The middle "feels safer" but gives up half the zone's R for no evidence.
@@ -833,7 +840,7 @@ Ask, in order:
 - Geometry must hold: buy → stop < entry < targets; sell → targets < entry < stop.
 - A candidate carrying a weak-net-R warning is still a real option: take it and say the return is thin, or plan a better price instead. Do not silently ignore it.
 - SPAN CONTRACT (product rule): a plan spans a REAL swing of the analyzed timeframe — TP1 sits several ATR from the entry (roughly 30 candles of travel), never the first shelf a few points away. Candidates already respect this; when you propose your own levels, hold yourself to the same floor.
-- TARGETS: always at least TWO. A third target when the structure genuinely offers one beyond TP2 — never invented.
+- TARGETS: always at least TWO. A third target when the structure genuinely offers one beyond TP2 — never invented. Consecutive targets must be meaningfully spaced (several points on gold, or a fraction of ATR) — if TP3 would sit on top of TP2, omit TP3; if TP2 would sit on top of TP1, omit TP2. A 0.09-point gap is not a third target.
 - STOP: the structural invalidation level plus a real volatility buffer BEYOND it — never exactly ON the level (a stop at 4393.52 belongs at ≈4401.79 on a gold intraday plan). Candidates carry this buffer already (structuralStop vs stop_loss); when proposing levels, pick the evidence level past the invalidation, not the invalidation itself. Never tighten a stop to flatter the R ratio.
 
 ## Evidence, not gates
@@ -1607,6 +1614,7 @@ function applyModelDecision(
     evidenceLevels,
     tolerance,
     meta: { spread: input.market.spread },
+    atr: input.market.atr,
   });
 
   // Stop safety margin for MODEL-authored levels. The grounding check above
@@ -1681,6 +1689,68 @@ function applyModelDecision(
     );
   }
 
+  // Live price already through a confirmation/rejection wait in the trade's
+  // profit direction: convert to immediate follow-through. The 2026-08 card
+  // shipped a conditional sell at 4616.66 while live sat at 4606. Conflict
+  // coercion above may have just MADE it conditional — the printed move wins.
+  if (
+    resolved.levels &&
+    planType !== "immediate" &&
+    currentPrice > 0
+  ) {
+    const pendingType = resolveEntryType({
+      declared: selected?.entryType,
+      planType,
+      activationRule,
+    });
+    if (
+      confirmationAlreadyPrinted({
+        direction,
+        entry: resolved.levels.preferredEntry,
+        currentPrice,
+        entryType: pendingType,
+        atr: input.market.atr,
+      })
+    ) {
+      const writtenEntry = resolved.levels.preferredEntry;
+      const live = roundToTick(currentPrice, { spread: input.market.spread });
+      const nextTargets = filterDistinctTargets({
+        direction,
+        entry: live,
+        targets: resolved.levels.targets,
+        atr: input.market.atr,
+      });
+      if (nextTargets.length > 0) {
+        resolved.levels = {
+          ...resolved.levels,
+          preferredEntry: live,
+          entryLow: Math.min(resolved.levels.entryLow, live),
+          entryHigh: Math.max(resolved.levels.entryHigh, live),
+          targets: nextTargets,
+        };
+        planType = "immediate";
+        activationCondition = null;
+        activationRule = null;
+        riskWarnings.unshift(
+          t(input.locale === "en" ? "en" : "ar", "synth.activation_already_met", {
+            live: live.toFixed(2),
+            written: writtenEntry.toFixed(2),
+          }),
+        );
+      }
+    }
+  }
+
+  if (resolved.levels) {
+    const spaced = filterDistinctTargets({
+      direction,
+      entry: resolved.levels.preferredEntry,
+      targets: resolved.levels.targets,
+      atr: input.market.atr,
+    });
+    if (spaced.length) resolved.levels = { ...resolved.levels, targets: spaced };
+  }
+
   const executionState = deriveExecutionState({
     planType,
     levels: resolved.levels,
@@ -1752,7 +1822,9 @@ function applyModelDecision(
           low: resolved.levels.entryLow,
           high: resolved.levels.entryHigh,
         },
-        entryType: selected?.entryType,
+        // Immediate follow-through is a market fill. A leftover sell_limit /
+        // buy_stop from the candidate would re-arm G7 as a waiting plan.
+        entryType: planType === "immediate" ? "market" : selected?.entryType,
         stop_loss: resolved.levels.stopLoss,
         targets: resolved.levels.targets,
         take_profit: resolved.levels.targets[0],

@@ -7,6 +7,7 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartStudy } from "@/lib/chart/studies";
 import { computeRewardRisk } from "@/lib/rewardRisk";
 import { withStableCreatedAt } from "@/lib/recommendations/anchorTime";
+import { planTargetList } from "@/lib/chart/planTargets";
 import type { Recommendation } from "@/lib/types";
 import type { LiveReasoningEntry } from "@/lib/analysis/types";
 import type { MarketType } from "@/lib/markets/types";
@@ -83,7 +84,19 @@ export function useChartAnalysis({
     setDrawings((prev) => keepIfEqual(prev, snapshot.drawings ?? []));
     setOverlays((prev) => keepIfEqual(prev, snapshot.overlays ?? []));
     setStudies((prev) => keepIfEqual(prev, snapshot.studies ?? []));
-    setTargets((prev) => keepIfEqual(prev, (snapshot.targets ?? []).filter((target) => target > 0)));
+    setTargets((prev) =>
+      keepIfEqual(
+        prev,
+        planTargetList({
+          targets:
+            snapshot.targets && snapshot.targets.length > 0
+              ? snapshot.targets
+              : snapshot.recommendation?.targets,
+          takeProfit: snapshot.recommendation?.take_profit,
+          targetsJson: snapshot.recommendation?.targets_json,
+        }),
+      ),
+    );
     setLiveReasoningLog((prev) => keepIfEqual(prev, snapshot.liveReasoningLog ?? []));
     if (snapshot.recommendation !== undefined) {
       // withStableCreatedAt: the chart anchors the profit/loss zones at the
@@ -127,5 +140,6 @@ export function useChartAnalysis({
     setDrawings,
     setStudies,
     setRecommendation,
+    setTargets,
   };
 }

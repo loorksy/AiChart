@@ -1,6 +1,10 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { revalidatePlan, WAITING_MAX_ATR_DISTANCE } from "../revalidation";
+import {
+  applyFollowThroughToPlan,
+  revalidatePlan,
+  WAITING_MAX_ATR_DISTANCE,
+} from "../revalidation";
 
 /**
  * The live incident, as it was actually configured.
@@ -30,9 +34,11 @@ describe("live revalidation: re-price, do not refuse", () => {
   });
 
   it("leaves the SAME distance alone when the plan was written to wait", () => {
-    // A waiting plan gets the 4-ATR budget (35.60), so 21.30 is the ordinary
-    // pullback it was written to catch — nothing to re-price.
-    const waiting = { ...buy, entryType: "confirmation_close" };
+    // A limit_touch pullback gets the 4-ATR budget (35.60), so 21.30 is the
+    // ordinary retrace it was written to catch — nothing to re-price.
+    // confirmation_close at this geometry is a different fact (the close has
+    // already printed) and is pinned separately below.
+    const waiting = { ...buy, entryType: "limit_touch" };
     assert.equal(revalidatePlan({ ...waiting, currentPrice: 4650.2 }).status, "ok");
   });
 
@@ -61,7 +67,7 @@ describe("live revalidation: re-price, do not refuse", () => {
   });
 
   it("lets a waiting plan sit its full ATR budget away without re-pricing", () => {
-    const waiting = { ...buy, entryType: "confirmation_close" };
+    const waiting = { ...buy, entryType: "limit_touch" };
     const justInside = buy.effectiveEntry + buy.atr * WAITING_MAX_ATR_DISTANCE - 0.01;
     assert.equal(revalidatePlan({ ...waiting, currentPrice: justInside }).status, "ok");
   });
@@ -231,9 +237,18 @@ describe("a sell mirrors the buy exactly", () => {
   };
 
   it("leaves a drop inside the waiting budget alone", () => {
-    // 20.44 away, against a 4-ATR budget of 35.60: this is the pullback the
-    // plan was written to catch, not drift.
-    assert.equal(revalidatePlan({ ...sell, currentPrice: 4630.0 }).status, "ok");
+    // 20.44 away, against a 4-ATR budget of 35.60: this is the rally the
+    // LIMIT sell was written to catch, not a confirmation that already printed.
+    const limit = { ...sell, entryType: "limit_touch" };
+    assert.equal(revalidatePlan({ ...limit, currentPrice: 4630.0 }).status, "ok");
+  });
+
+  it("converts a confirmation_close sell already through its entry into an immediate re-price", () => {
+    // Same drop, but the fill is a confirming close — live 4630 is already
+    // below the 4650.44 entry, so the wait is over.
+    const verdict = revalidatePlan({ ...sell, currentPrice: 4630.0 });
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4630.0);
   });
 
   it("re-prices a drop that outran the budget while a target still stands", () => {
@@ -255,5 +270,91 @@ describe("a sell mirrors the buy exactly", () => {
   it("keeps an explicit RR floor working for callers that opt into one", () => {
     const verdict = revalidatePlan({ ...sell, currentPrice: 4650.0, minRr: 5 });
     assert.equal(verdict.status, "rr_degraded");
+  });
+});
+
+describe("conditional already printed — the 5m XAUUSD sell at 4616.66 / live 4606", () => {
+  // Production card: conditional SELL, entry 4616.66, rejection at that
+  // level, live ~4606 already through in the sell direction. G7 used to pass
+  // this as a 4-ATR wait. It must re-price as immediate follow-through.
+  const incident = {
+    direction: "sell" as const,
+    effectiveEntry: 4616.66,
+    stopLoss: 4618.88,
+    targets: [4603.33, 4593.8, 4593.71],
+    atr: 8.9,
+    entryType: "confirmation_close",
+    currentPrice: 4606.0,
+  };
+
+  it("re-anchors a confirmation sell whose live price is already below the entry", () => {
+    const verdict = revalidatePlan(incident);
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4606.0);
+    assert.match(verdict.reasonAr ?? "", /شرط التفعيل كان قد تحقق/);
+  });
+
+  it("mirrors for a confirmation buy already run through its entry", () => {
+    const verdict = revalidatePlan({
+      direction: "buy",
+      effectiveEntry: 4600.0,
+      stopLoss: 4594.0,
+      targets: [4620.0, 4635.0],
+      atr: 8.9,
+      entryType: "confirmation_close",
+      currentPrice: 4610.0,
+    });
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4610.0);
+  });
+
+  it("still lets a limit_touch rally-wait sit below a sell entry", () => {
+    assert.equal(
+      revalidatePlan({ ...incident, entryType: "limit_touch" }).status,
+      "ok",
+    );
+  });
+
+  it("lets a tight rejection wait a few points above live stay pending", () => {
+    // A fresh sell at 4635 while live sits at 4630 is a real rally-wait, not
+    // the 10-point "market already left" card. Fill-tolerance alone would
+    // have forced it immediate.
+    assert.equal(
+      revalidatePlan({
+        direction: "sell",
+        effectiveEntry: 4635,
+        stopLoss: 4641,
+        targets: [4610, 4600],
+        atr: 6,
+        entryType: "confirmation_close",
+        currentPrice: 4630,
+      }).status,
+      "ok",
+    );
+  });
+});
+
+describe("applyFollowThroughToPlan", () => {
+  it("rewrites the wait into an immediate market fill at the live price", () => {
+    const rec = applyFollowThroughToPlan(
+      {
+        entry: 4616.66,
+        entryType: "confirmation_close",
+        planType: "conditional" as const,
+        activationClass: "conditional" as const,
+        activationRule: { kind: "rejection_confirmed" },
+        triggerCondition: "wait",
+        executionState: "awaiting_activation",
+        status: "pending_entry",
+      },
+      4606,
+    );
+    assert.equal(rec.entry, 4606);
+    assert.equal(rec.entryType, "market");
+    assert.equal(rec.planType, "immediate");
+    assert.equal(rec.activationClass, "immediate");
+    assert.equal(rec.activationRule, undefined);
+    assert.equal(rec.executionState, "valid_now");
+    assert.equal(rec.status, "triggered");
   });
 });

@@ -15,6 +15,9 @@ import { describe, it } from "node:test";
 import {
   describeEntry,
   entryFillTolerance,
+  filterDistinctTargets,
+  minConsecutiveTargetSpacing,
+  resolveEntryType,
   resolveFill,
   rewardToRisk,
   validateEntryCoherence,
@@ -425,6 +428,52 @@ describe("reward:risk is measured from the fill", () => {
       nominal.toFixed(2),
       actual.toFixed(2),
       "the two must differ — which is why grading has to use the fill",
+    );
+  });
+});
+
+describe("consecutive targets must be meaningfully distinct", () => {
+  it("drops a gold TP3 that sits 0.09 from TP2", () => {
+    const spaced = filterDistinctTargets({
+      direction: "sell",
+      entry: 4616.66,
+      targets: [4603.33, 4593.8, 4593.71],
+      atr: 8.9,
+    });
+    assert.deepEqual(spaced, [4603.33, 4593.8]);
+  });
+
+  it("omits TP2 when it collapses onto TP1 and keeps a distant TP3 as the new TP2", () => {
+    const spaced = filterDistinctTargets({
+      direction: "sell",
+      entry: 4616.66,
+      targets: [4603.33, 4600.0, 4588.0],
+      atr: 8.9,
+    });
+    assert.deepEqual(spaced, [4603.33, 4588.0]);
+  });
+
+  it("uses at least several points on gold, or 0.15×ATR if that is larger", () => {
+    const atGold = minConsecutiveTargetSpacing({ price: 4606, atr: 8.9 });
+    assert.ok(atGold >= 5, `gold floor is several points; got ${atGold}`);
+    const wideAtr = minConsecutiveTargetSpacing({ price: 4606, atr: 50 });
+    assert.ok(wideAtr >= 7.5, `0.15×ATR=7.5 should win; got ${wideAtr}`);
+  });
+
+  it("an immediate plan with a leftover sell_limit is a market fill", () => {
+    assert.equal(
+      resolveEntryType({
+        declared: "sell_limit",
+        planType: "immediate",
+      }),
+      "market",
+    );
+    assert.equal(
+      resolveEntryType({
+        declared: "sell_limit",
+        planType: "conditional",
+      }),
+      "limit_touch",
     );
   });
 });

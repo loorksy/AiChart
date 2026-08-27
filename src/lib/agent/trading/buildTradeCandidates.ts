@@ -31,6 +31,7 @@ import {
   analyzePathToEntry,
   type PathToEntryAnalysis,
 } from "./pathToEntry";
+import { filterDistinctTargets } from "@/lib/recommendations/entrySemantics";
 
 export type TradeCandidate = {
   id: string;
@@ -652,13 +653,23 @@ function selectTargets(input: {
         null)
       : null;
 
+  const filtered = filterDistinctTargets({
+    direction: input.action,
+    entry: input.entry,
+    targets: [tp1, ...(tp2 != null ? [tp2] : []), ...(tp3 != null ? [tp3] : [])],
+    atr: input.atr,
+  });
+  const next1 = filtered[0] ?? tp1;
+  const next2 = filtered[1] ?? null;
+  const next3 = filtered[2] ?? null;
+
   return {
-    tp1,
-    tp2,
-    tp3,
+    tp1: next1,
+    tp2: next2,
+    tp3: next3,
     structuralCount: unique.length,
     tp1Projected,
-    tp2Projected,
+    tp2Projected: tp2Projected && next2 != null && next2 === tp2,
   };
 }
 

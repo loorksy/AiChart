@@ -19,7 +19,10 @@
  * Both produce a rewrite or a WAIT — never a quiet emission of the stale plan.
  */
 import { t } from "@/lib/i18n";
-import { rewardToRisk } from "@/lib/recommendations/entrySemantics";
+import {
+  entryFillTolerance,
+  rewardToRisk,
+} from "@/lib/recommendations/entrySemantics";
 
 /**
  * How far price may sit from a MARKET entry, in ATR multiples, and stay reachable.
@@ -67,6 +70,81 @@ const WAITING_ENTRY_TYPES = new Set([
 /** Unknown/absent is treated as market — no leniency by omission. */
 function isWaitingEntry(entryType: string | undefined): boolean {
   return Boolean(entryType && WAITING_ENTRY_TYPES.has(entryType));
+}
+
+/**
+ * Close/rejection/breakout fills whose confirmation is a candle event BEYOND
+ * the entry. A live quote already through that entry in the trade's profit
+ * direction means the wait is over — the move already printed.
+ *
+ * Distinct from `limit_touch` / `retest_zone`, whose whole job is to wait for
+ * price to retrace TO the entry from the profit side (a pullback buy, a rally
+ * into resistance). Those keep the 4-ATR waiting budget.
+ */
+export function confirmationAlreadyPrinted(input: {
+  direction: "buy" | "sell";
+  entry: number;
+  currentPrice: number;
+  entryType?: string;
+  atr?: number | null;
+}): boolean {
+  if (input.entryType !== "confirmation_close") return false;
+  if (!(input.entry > 0) || !(input.currentPrice > 0)) return false;
+  // Fill-tolerance (~1 gold point) is the touch band, not "the market left".
+  // A 5-point rally into a sell rejection is a real wait; the 4616.66 / 4606
+  // card was ~10 points / more than a gold-sane floor through. Require the
+  // larger of 0.5×ATR, the fill band, and several points on gold.
+  const fill = entryFillTolerance({ price: input.entry, atr: input.atr });
+  const atrFrac =
+    input.atr != null && Number.isFinite(input.atr) && input.atr > 0
+      ? input.atr * 0.5
+      : 0;
+  const pointsFloor = input.entry >= 100 ? 5 : 0;
+  const tol = Math.max(fill, atrFrac, pointsFloor);
+  return input.direction === "buy"
+    ? input.currentPrice > input.entry + tol
+    : input.currentPrice < input.entry - tol;
+}
+
+/** The fields a follow-through conversion rewrites on a stored/authored plan. */
+export interface FollowThroughPlan {
+  entry?: number;
+  entryType?: string;
+  planType?: "immediate" | "anticipatory" | "conditional";
+  activationClass?: "immediate" | "conditional";
+  activationRule?: unknown;
+  triggerCondition?: string;
+  executionState?: string;
+  status?: string;
+  entryZone?: { low: number; high: number };
+}
+
+/**
+ * Convert a pending plan whose activation already printed into an immediate
+ * market fill at the live price. The stop and targets stay — they are the
+ * structure; only the wait is withdrawn.
+ */
+export function applyFollowThroughToPlan<T extends FollowThroughPlan>(
+  rec: T,
+  livePrice: number,
+): T {
+  rec.entry = livePrice;
+  rec.entryType = "market";
+  rec.planType = "immediate";
+  rec.activationClass = "immediate";
+  rec.activationRule = undefined;
+  rec.triggerCondition = undefined;
+  rec.executionState = "valid_now";
+  rec.status = "triggered";
+  if (rec.entryZone) {
+    rec.entryZone = {
+      low: Math.min(rec.entryZone.low, livePrice),
+      high: Math.max(rec.entryZone.high, livePrice),
+    };
+  } else {
+    rec.entryZone = { low: livePrice, high: livePrice };
+  }
+  return rec;
 }
 
 function maxAtrDistanceFor(entryType: string | undefined): number {
@@ -232,7 +310,20 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
       ? input.currentPrice > input.effectiveEntry
       : input.currentPrice < input.effectiveEntry;
 
-  if (movedPast && distance > maxDistance) {
+  // A confirmation_close / rejection / breakout whose live price is already
+  // through the entry in the trade direction has HAD ITS WAIT SATISFIED —
+  // the 4-ATR pullback budget does not apply. Shipping it as "wait for 4616
+  // to reject" while price sits at 4606 was the 2026-08 XAUUSD card. Limit
+  // and retest fills still wait: their fill IS the retrace.
+  const activationPrinted = confirmationAlreadyPrinted({
+    direction: input.direction,
+    entry: input.effectiveEntry,
+    currentPrice: input.currentPrice,
+    entryType: input.entryType,
+    atr: input.atr,
+  });
+
+  if (movedPast && (distance > maxDistance || activationPrinted)) {
     // A re-anchored plan FILLS AT THE LIVE PRICE (the caller converts it to a
     // market entry), so it must be viable there. For market plans steps 1–2
     // already guaranteed this; for waiting plans they were measured from the
@@ -267,8 +358,9 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
       ...base,
       status: "reanchored",
       reanchoredEntry: input.currentPrice,
-      reasonAr:
-        liveRr != null && input.plannedRr != null
+      reasonAr: activationPrinted
+        ? t("ar", "gate.revalidation.activation_already_met", params)
+        : liveRr != null && input.plannedRr != null
           ? t("ar", "gate.revalidation.reanchored", {
               ...params,
               liveRr: liveRr.toFixed(2),

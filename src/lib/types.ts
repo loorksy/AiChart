@@ -95,6 +95,8 @@ export interface Recommendation {
   entry: number | null;
   stop_loss: number | null;
   take_profit: number | null;
+  /** Full TP ladder when the chart payload carries it (not just take_profit = TP1). */
+  targets?: number[];
   targets_json?: string | null;
   risk_json?: string | null;
   timeframe: string | null;

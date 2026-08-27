@@ -7,6 +7,7 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { Recommendation } from "@/lib/types";
 import { normalizeTimestamp } from "@/lib/chart/chartTimeAnchor";
 import { ticksPerPriceUnit } from "@/lib/chart/tv/tvSymbolTicks";
+import { planTargetList } from "@/lib/chart/planTargets";
 import { barDurationMs } from "@/lib/intervals";
 
 /** Milliseconds → TradingView time (seconds). */
@@ -512,7 +513,12 @@ export class TvDrawingManager {
       rec0
         ? [rec0.action, rec0.entry, rec0.stop_loss, rec0.take_profit, rec0.created_at]
         : null,
-      trade?.targets ?? [],
+      planTargetList({
+        targets: trade?.targets,
+        takeProfit: rec0?.take_profit,
+        targetsJson: rec0?.targets_json,
+      }),
+      rec0 && Array.isArray(rec0.targets) ? rec0.targets : [],
       ctx?.symbol ?? "",
       ctx?.interval ?? "",
     ]);
@@ -533,12 +539,12 @@ export class TvDrawingManager {
     }
     const rec = trade?.recommendation;
     if (rec && (rec.action === "buy" || rec.action === "sell")) {
-      const tps =
-        trade?.targets && trade.targets.length > 0
-          ? trade.targets.filter((x) => x > 0)
-          : rec.take_profit != null && rec.take_profit > 0
-            ? [rec.take_profit]
-            : [];
+      const tps = planTargetList({
+        targets:
+          trade?.targets && trade.targets.length > 0 ? trade.targets : rec.targets,
+        takeProfit: rec.take_profit,
+        targetsJson: rec.targets_json,
+      });
       const entry = rec.entry;
       const sl = rec.stop_loss;
       if (entry != null && entry > 0 && sl != null && sl > 0 && tps.length > 0) {

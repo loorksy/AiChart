@@ -141,8 +141,8 @@ export interface AgentRunContext {
    * they exist (candle counts, the detected trend, the news window, the gate
    * that refused) — never a scripted ticker and never raw chain-of-thought.
    * Built by thinkingNarration.ts; the transport scrubs internals before it
-   * leaves the process. Optional: surfaces without a live client (Telegram,
-   * MCP, cron) simply do not provide it.
+   * leaves the process. Optional: surfaces without a live client (MCP, cron)
+   * simply do not provide it. Telegram wires the same seam the web does.
    */
   emitThinking?: (text: string) => void;
   /** Cooperative cancellation from the client (AbortController). */

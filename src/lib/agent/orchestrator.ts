@@ -69,6 +69,7 @@ import type { GateChainResult, GateVerdict } from "./gates/types";
 import { newsProviderConfigured } from "./news/newsProvider";
 import { resolveEntryType, resolveInvalidationMode } from "@/lib/recommendations/entrySemantics";
 import type { EntryType } from "@/lib/recommendations/entrySemantics";
+import { applyFollowThroughToPlan } from "./gates/revalidation";
 import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
@@ -1361,7 +1362,8 @@ async function runUnifiedChartAgentInner(
   // The mechanical visual-basis verdict (Phase 8): `confirmed` requires a
   // TradingView client capture WITH drawings rendered — this run, this user.
   // Everything else, including every browserless run, is `not_checked`.
-  const visualReview = {
+  // `let`: a post-draw recapture may upgrade not_checked → confirmed.
+  let visualReview = {
     state: visual.visuallyVerified ? ("confirmed" as const) : ("not_checked" as const),
     timeframes: visual.snapshots.map((snapshot) => snapshot.timeframe),
   };
@@ -1801,9 +1803,9 @@ async function runUnifiedChartAgentInner(
         reanchoredEntry: entry,
         liveRr: reanchor.evidence!.liveRr,
       });
-      gateRec.entry = entry;
-      gateRec.entryType = "market";
-      gateRec.activationRule = undefined;
+      applyFollowThroughToPlan(gateRec, entry);
+      decision.planType = "immediate";
+      decision.executionState = "valid_now";
       gateEntryType = "market";
       // The operator is told in the plan's own voice, not only in the gate
       // list: the entry they read is not the entry the model wrote.
@@ -1975,6 +1977,72 @@ async function runUnifiedChartAgentInner(
     [] as AgentFinalResult["drawings"],
   );
   drawings = drawings ?? [];
+
+  // Post-draw visual review: persist the new overlays onto the layout so the
+  // platform capture tab renders them, then recapture the lead frame. The
+  // brain already reviewed the live chart BEFORE proposing levels; this is
+  // the AFTER pass — support, resistance, trendlines, and whether the
+  // activation has already printed — without a new LLM hop (browse budget
+  // was spent during synthesis; conversion of an already-printed wait is
+  // deterministic via G7 / follow-through above).
+  if (
+    drawings.length > 0 &&
+    ctx.userId != null &&
+    chartContext?.layoutId &&
+    (finalDecision.decision === "buy" || finalDecision.decision === "sell")
+  ) {
+    const rec = finalDecision.recommendation;
+    try {
+      const { saveChartLayout } = await import("@/lib/store");
+      await saveChartLayout(chartContext.layoutId, ctx.userId, {
+        symbol: market.symbol,
+        interval: market.interval,
+        state: {
+          drawings,
+          overlays: [],
+          recommendation: {
+            symbol: market.symbol,
+            action: rec.action,
+            entryType: rec.entryType,
+            entry: rec.entry ?? null,
+            stop_loss: rec.stop_loss ?? null,
+            take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
+            targets: rec.targets ?? [],
+            timeframe: market.interval,
+          },
+          targets: rec.targets ?? [],
+        },
+      });
+    } catch {
+      /* layout save is best-effort — the recapture still runs */
+    }
+    const postDraw = await collectVisualEvidence({
+      userId: ctx.userId,
+      symbol: market.symbol,
+      interval: market.interval,
+      timeframes: [market.interval],
+      maxImages: 1,
+      timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+      layoutId: chartContext.layoutId,
+      liveSession: input.liveSession === true,
+    }).catch(() => null);
+    if (postDraw?.snapshots.length) {
+      const seen = new Set(visualReview.timeframes);
+      for (const snap of postDraw.snapshots) {
+        if (!seen.has(snap.timeframe)) visualReview.timeframes.push(snap.timeframe);
+      }
+      if (postDraw.visuallyVerified) visualReview.state = "confirmed";
+      trackedCtx.emitActivity({
+        type: "analysis",
+        status: "completed",
+        message: t(locale, "orch.visual_post_draw"),
+        metadata: {
+          timeframes: postDraw.snapshots.map((s) => s.timeframe),
+          drawingsIncluded: postDraw.visuallyVerified,
+        },
+      });
+    }
+  }
 
   const debugDecisionFlow: AgentFinalResult["debugDecisionFlow"] =
     process.env.NODE_ENV === "development"

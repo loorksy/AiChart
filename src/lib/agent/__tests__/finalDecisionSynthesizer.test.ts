@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import {
   runFinalDecisionSynthesizer,
   shouldCoerceImmediateOnConflict,
@@ -188,8 +190,8 @@ describe("AI final decision authority", () => {
           direction: "buy",
           planType: "conditional",
           selectedTradeCandidateId: null,
-          activationCondition: "رفض صاعد من 1.095.",
-          activationRule: { kind: "rejection_confirmed", level: 1.095, direction: "above", timeframe: "5m" },
+          activationCondition: "لمس 1.095 من الطلب.",
+          activationRule: { kind: "price_touch", level: 1.095, timeframe: "5m" },
           proposedLevels: {
             entryLow: 1.095,
             entryHigh: 1.1,
@@ -283,5 +285,93 @@ describe("AI final decision authority", () => {
       ),
       JSON.stringify(out.result?.publicReasoningSummary),
     );
+  });
+
+  it("converts a conditional sell whose activation already printed into immediate follow-through", async () => {
+    // Production card: 5m XAUUSD SELL, entry 4616.66, rejection-wait,
+    // live ~4606 already through in the sell direction. Shipping that as
+    // pending_entry/conditional was the complaint — the wait is over.
+    const gold = {
+      ...market(),
+      symbol: "XAUUSD",
+      interval: "5m",
+      currentPrice: 4606,
+      atr: 8.9,
+      spread: 0.3,
+    };
+    const sell: TradeCandidate = {
+      ...candidate("sell-incident", "sell"),
+      entry: 4616.66,
+      entryType: "sell_limit",
+      stop_loss: 4618.88,
+      targets: [4603.33, 4593.8, 4593.71],
+      rr: 6,
+      netRr: 5.5,
+      netRrTp2: 10,
+      activationClass: "conditional",
+      poi: {
+        type: "supply",
+        low: 4614,
+        high: 4618,
+        score: { score: 80, grade: "A", reasons: [], warnings: [], isTradable: true },
+      },
+    };
+    const out = await runFinalDecisionSynthesizer(
+      ctx,
+      { ...input(evidence(sell), { market: gold }), locale: "en" },
+      {
+        configured: true,
+        callModel: async () =>
+          model({
+            direction: "sell",
+            planType: "conditional",
+            selectedTradeCandidateId: "sell-incident",
+            activationCondition:
+              "Price reaches 4616.66 then rejects: wick through and 5m close below it.",
+            activationRule: {
+              kind: "rejection_confirmed",
+              level: 4616.66,
+              direction: "below",
+              timeframe: "5m",
+            },
+            invalidationRule: "A 5m close above 4618.88 kills the idea.",
+            alternativeScenario: "A reclaim of 4616.66 flips the plan to a buy retest.",
+            summary: "XAUUSD 5m sell after the rejection at 4616.66.",
+          }),
+      },
+    );
+    assert.equal(out.result?.decision, "sell");
+    assert.equal(out.result?.planType, "immediate");
+    assert.equal(out.result?.executionState, "valid_now");
+    assert.notEqual(out.result?.recommendation.status, "pending_entry");
+    assert.equal(out.result?.recommendation.activationRule, undefined);
+    assert.equal(out.result?.recommendation.entryType, "market");
+    assert.ok(
+      Math.abs((out.result?.recommendation.entry ?? 0) - 4606) < 0.5,
+      `entry should re-price to live ~4606, got ${out.result?.recommendation.entry}`,
+    );
+    const tps = out.result?.recommendation.targets ?? [];
+    assert.ok(tps.length >= 1 && tps.length <= 2, `expected 1–2 spaced TPs, got ${tps.join(",")}`);
+    assert.ok(
+      !tps.some((p) => Math.abs(p - 4593.71) < 0.05),
+      `TP3 4593.71 must be omitted as a collapsed neighbour; got ${tps.join(",")}`,
+    );
+    const gaps = tps.slice(1).map((p, i) => Math.abs(p - tps[i]!));
+    assert.ok(
+      gaps.every((g) => g + 1e-9 >= 5),
+      `consecutive TPs must clear the gold floor of 5; gaps ${gaps.join(",")}`,
+    );
+  });
+
+  it("instructs a before-and-after visual review and the production follow-through example", () => {
+    const src = readFileSync(
+      path.join(import.meta.dirname, "..", "agents", "finalDecisionSynthesizer.ts"),
+      "utf8",
+    );
+    assert.match(src, /BEFORE proposing any level/);
+    assert.match(src, /AFTER you have proposed levels/);
+    assert.match(src, /4616\.66/);
+    assert.match(src, /4606/);
+    assert.match(src, /planType:"immediate"/);
   });
 });

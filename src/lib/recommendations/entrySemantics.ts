@@ -171,6 +171,11 @@ export function resolveEntryType(input: {
     return input.retestZone ? "retest_zone" : "confirmation_close";
   }
   if (input.retestZone) return "retest_zone";
+  // A wait that has been withdrawn (planType immediate, no remaining trigger)
+  // is a market fill — even if the candidate was authored as a limit/stop.
+  // Leaving `sell_limit` on an immediate follow-through re-armed G7 as a
+  // 4-ATR wait and shipped the 4616.66 / live-4606 card as conditional.
+  if (input.planType === "immediate" && !input.activationRule) return "market";
 
   const declared = (input.declared ?? "").toLowerCase();
   if (isEntryType(declared)) {
@@ -542,4 +547,59 @@ export function describeEntry(plan: Pick<EntryPlan, "direction" | "entryType" | 
     default:
       return `${side} معلّق: الدخول عند لمس السعر ${fmt(plan.entry)}.`;
   }
+}
+
+/**
+ * Minimum distance between consecutive take-profits, so TP2/TP3 are distinct
+ * levels rather than a 0.09-point duplicate of their neighbour.
+ *
+ * Aligns with `entryFillTolerance` (spread-scale touch band) plus a gold-sane
+ * floor of several points and 0.15×ATR. The 2026-08 production card printed
+ * TP2 4593.80 / TP3 4593.71 — visually and practically the same line.
+ */
+export function minConsecutiveTargetSpacing(input: {
+  price: number;
+  atr?: number | null;
+}): number {
+  const price = input.price;
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  const fill = entryFillTolerance(input);
+  const atrFrac =
+    input.atr != null && Number.isFinite(input.atr) && input.atr > 0
+      ? input.atr * 0.15
+      : 0;
+  // Several points on XAUUSD (~4600); smaller instruments keep the fill floor.
+  const pointsFloor = price >= 100 ? 5 : fill;
+  return Math.max(pointsFloor, atrFrac, fill);
+}
+
+/**
+ * Drop a target that would collapse onto its neighbour. Order is nearest-first
+ * in the trade direction: if TP2 sits inside the floor of TP1 it is omitted
+ * (TP3 may then become TP2 if it clears the floor from TP1); if TP3 sits
+ * inside the floor of TP2 it is omitted. Never invents a replacement level.
+ */
+export function filterDistinctTargets(input: {
+  direction: "buy" | "sell";
+  entry: number;
+  targets: number[];
+  atr?: number | null;
+}): number[] {
+  const spacing = minConsecutiveTargetSpacing({
+    price: input.entry,
+    atr: input.atr,
+  });
+  const side = input.direction === "buy" ? 1 : -1;
+  const ordered = [...input.targets]
+    .filter((t) => Number.isFinite(t) && t > 0)
+    .filter((t) => (side > 0 ? t > input.entry : t < input.entry))
+    .sort((a, b) => (side > 0 ? a - b : b - a));
+  const out: number[] = [];
+  for (const t of ordered) {
+    const prev = out[out.length - 1];
+    if (prev != null && Math.abs(t - prev) + 1e-9 < spacing) continue;
+    out.push(t);
+    if (out.length >= 3) break;
+  }
+  return out;
 }

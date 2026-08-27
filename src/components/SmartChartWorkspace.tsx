@@ -66,6 +66,7 @@ import {
 import type { AgentFinalResult } from "@/lib/agent/types";
 import { withStableCreatedAt } from "@/lib/recommendations/anchorTime";
 import type { Recommendation } from "@/lib/types";
+import { planTargetList } from "@/lib/chart/planTargets";
 import type { MarketType } from "@/lib/markets/types";
 
 const LS_SYMBOL = "aichart_last_symbol";
@@ -262,6 +263,7 @@ function SmartChartWorkspaceInner({
     setDrawings,
     setStudies,
     setRecommendation,
+    setTargets,
   } = useChartAnalysis({
     symbol,
     interval,
@@ -568,6 +570,15 @@ function SmartChartWorkspaceInner({
         // same plan is re-delivered), then persisted via the layout autosave —
         // without it the zones re-anchor to "now" on every redraw and reload,
         // sliding along with the latest candle.
+        //
+        // The full TP ladder MUST travel with the payload. Sending only
+        // take_profit (= TP1) made the native position tool's green zone stop
+        // at the first target while TP2/TP3 sat as labeled lines beyond it.
+        const tps = planTargetList({
+          targets: rec.targets,
+          takeProfit: rec.take_profit ?? rec.targets?.[0] ?? null,
+        });
+        setTargets(tps);
         setRecommendation((prev) =>
           withStableCreatedAt(
             {
@@ -576,7 +587,8 @@ function SmartChartWorkspaceInner({
               entryType: rec.entryType,
               entry: rec.entry ?? null,
               stop_loss: rec.stop_loss ?? null,
-              take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
+              take_profit: rec.take_profit ?? tps[0] ?? null,
+              targets: tps,
               confidence: Math.round(result.confidence * 100),
               timeframe: interval,
             } as Recommendation,
@@ -585,9 +597,10 @@ function SmartChartWorkspaceInner({
         );
       } else if (result.decision === "wait") {
         setRecommendation(null);
+        setTargets([]);
       }
     },
-    [setDrawings, setStudies, setRecommendation, symbol, interval],
+    [setDrawings, setStudies, setRecommendation, setTargets, symbol, interval],
   );
 
   // Analyze always uses the same chat agent path; there is no parallel engine.
