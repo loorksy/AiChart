@@ -11,6 +11,7 @@ import {
   clearAnalysisPresentation,
   liveChartApplyArgs,
   overlaysToDrawings,
+  persistLayoutNow,
   shouldPaintTradeOverlay,
 } from "@/lib/chart/drawings/clearAnalysisPresentation";
 import { keepExplicitUserDrawings, sanitizeAgentDrawings } from "@/lib/agent/drawings/drawingOwnership";
@@ -63,6 +64,61 @@ describe("clearAnalysisPresentation", () => {
     assert.equal(cleared.drawings[0], user);
     assert.deepEqual(cleared.overlays, []);
     assert.equal(cleared.drawingsCleared, true);
+  });
+
+  it("persistLayoutNow POSTs drawingsCleared:true immediately (no debounce)", async () => {
+    const user: ChartDrawing = {
+      type: "trend_line",
+      confidence: 100,
+      points: [{ price: 2600 }, { price: 2610 }],
+      meta: { owner: "user" },
+    };
+    const cleared = clearAnalysisPresentation([
+      user,
+      agentLine(2640, "دخول"),
+      agentLine(2630, "وقف خسارة"),
+      agentLine(2660, "هدف 1"),
+    ]);
+    const captured: Array<{
+      id?: string;
+      symbol?: string;
+      interval?: string;
+      state?: {
+        drawingsCleared?: boolean;
+        overlays?: unknown[];
+        drawings?: ChartDrawing[];
+      };
+    }> = [];
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      captured.push(JSON.parse(String(init?.body)) as (typeof captured)[number]);
+      return {
+        ok: true,
+        json: async () => ({ updated_at: "2026-08-28T03:00:00.000Z" }),
+      } as Response;
+    };
+    const result = await persistLayoutNow({
+      layoutId: "abcd1234",
+      symbol: "XAUUSD",
+      interval: "15m",
+      state: {
+        ...cleared,
+        recommendation: REC,
+        targets: [2660],
+      },
+      fetchImpl,
+    });
+    assert.equal(result?.updated_at, "2026-08-28T03:00:00.000Z");
+    assert.equal(captured.length, 1);
+    const posted = captured[0]!;
+    assert.equal(posted.id, "abcd1234");
+    assert.equal(posted.state?.drawingsCleared, true);
+    assert.deepEqual(posted.state?.overlays, []);
+    assert.equal(posted.state?.drawings?.length, 1);
+    assert.deepEqual(posted.state?.drawings?.[0]?.points, user.points);
+    assert.equal(
+      (posted.state?.drawings?.[0]?.meta as { owner?: string } | undefined)?.owner,
+      "user",
+    );
   });
 
   it("keepExplicitUserDrawings drops unstamped leftovers (legacy agent S/R)", () => {
@@ -167,11 +223,17 @@ describe("live workspace wires the suppress flag; rec pages do not", () => {
     );
     assert.match(
       src,
-      /clearAnalysisPresentation\(prev\)/,
+      /clearAnalysisPresentation\(snap\.drawings\)/,
       "clear must run through clearAnalysisPresentation so overlays + flag stay in lockstep",
     );
     assert.match(src, /setOverlays\(\[\]\)/);
     assert.match(src, /setDrawingsCleared\(true\)/);
+    assert.match(
+      src,
+      /persistLayoutNow/,
+      "clear must POST /api/chart/layout immediately, not wait for the 1200ms debounce",
+    );
+    assert.match(src, /persistLayoutImmediate/);
     assert.match(
       src,
       /paintTradeOverlay=\{!drawingsCleared\}/,
@@ -204,6 +266,12 @@ describe("live workspace wires the suppress flag; rec pages do not", () => {
     assert.match(
       src,
       /setDrawingsCleared\(snapshot\.drawingsCleared === true\)/,
+    );
+    const workspace = read("src/components/SmartChartWorkspace.tsx");
+    assert.match(
+      workspace,
+      /persistLayoutImmediate/,
+      "header clear must flush the cleared layout before the 4s poll",
     );
   });
 

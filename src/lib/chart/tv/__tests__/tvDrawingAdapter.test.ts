@@ -75,7 +75,7 @@ interface SetPropsCall {
   props: Record<string, unknown>;
 }
 
-function fakeChart() {
+function fakeChart(opts?: { gateCreates?: boolean }) {
   let n = 0;
   const multi: MultiCall[] = [];
   const single: SingleCall[] = [];
@@ -83,6 +83,14 @@ function fakeChart() {
   const setPointsCalls: SetPointsCall[] = [];
   const setPropsCalls: SetPropsCall[] = [];
   const shapes = new Map<string, Array<{ time?: number; price?: number }>>();
+  let releaseCreates: () => void = () => {};
+  const gate: Promise<void> = opts?.gateCreates
+    ? new Promise<void>((resolve) => {
+        releaseCreates = resolve;
+      })
+    : Promise.resolve();
+  const finish = (id: EntityId) =>
+    opts?.gateCreates ? gate.then(() => id) : Promise.resolve(id);
   const chart = {
     createMultipointShape: (
       points: ShapePoint[],
@@ -103,7 +111,7 @@ function fakeChart() {
         time: (p as { time?: number }).time,
         price: (p as { price?: number }).price,
       })));
-      return Promise.resolve(id);
+      return finish(id);
     },
     createShape: (point: ShapePoint, options: { shape: string }) => {
       single.push({
@@ -119,7 +127,7 @@ function fakeChart() {
           price: (point as { price?: number }).price,
         },
       ]);
-      return Promise.resolve(id);
+      return finish(id);
     },
     removeEntity: (id: EntityId) => {
       removed.push(String(id));
@@ -140,7 +148,7 @@ function fakeChart() {
       },
     }),
   } as unknown as IChartWidgetApi;
-  return { chart, multi, single, removed, setPointsCalls, setPropsCalls, shapes };
+  return { chart, multi, single, removed, setPointsCalls, setPropsCalls, shapes, releaseCreates };
 }
 
 const CREATED_AT_MS = Date.UTC(2026, 7, 24, 18, 0, 0);
@@ -960,6 +968,31 @@ describe("paintTradeOverlay — clear-drawings must not leave the P/L box", () =
     assert.equal(rrTools(multi).length, 0, "cleared live chart must not paint the P/L box");
     assert.equal(nativePositionCreates(single, multi), 0);
     assert.equal(single.length, 0, "no fallback entry/stop/TP horizontals either");
+  });
+
+  it("late create after clear is removeEntity'd — applyGen drops the orphan", async () => {
+    const { chart, removed, setPointsCalls, releaseCreates } = fakeChart({
+      gateCreates: true,
+    });
+    const mgr = new TvDrawingManager(chart);
+    mgr.apply([], { recommendation: REC, targets: [4660.02] }, CTX_LIVE);
+    // clear() bumps applyGen before the gated creates resolve
+    mgr.apply([], { recommendation: REC, targets: [4660.02] }, CTX_LIVE, {
+      paintTradeOverlay: false,
+    });
+    releaseCreates();
+    await flush();
+    await flush();
+    assert.ok(
+      removed.length > 0,
+      "a create that resolves after clear() must be removed, not left on the pane",
+    );
+    assert.equal(mgr.trackedIds().length, 0, "orphans must not be registered");
+    assert.equal(
+      setPointsCalls.length,
+      0,
+      "pinPosition must not run for a stale applyGen",
+    );
   });
 
   it("toggling paintTradeOverlay off removes an already-drawn box", async () => {

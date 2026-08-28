@@ -106,6 +106,9 @@ export function useChartAnalysis({
       ),
     );
     setLiveReasoningLog((prev) => keepIfEqual(prev, snapshot.liveReasoningLog ?? []));
+    // Honor a persisted clear. `=== true` is required: a missing flag must
+    // not be treated as "still painting", and a persisted `true` must win
+    // over the in-memory default so the 4s poll cannot put the box back.
     setDrawingsCleared(snapshot.drawingsCleared === true);
     if (snapshot.recommendation !== undefined) {
       // withStableCreatedAt: the chart anchors the profit/loss zones at the

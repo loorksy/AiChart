@@ -33,6 +33,47 @@ export function clearAnalysisPresentation(
   };
 }
 
+export interface PersistLayoutNowInput {
+  layoutId: string;
+  symbol: string;
+  interval: string;
+  state: AnalysisPresentation & {
+    studies?: unknown;
+    recommendation?: unknown;
+    targets?: unknown;
+    liveReasoningLog?: unknown;
+    dataSource?: unknown;
+  };
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * POST the layout immediately (no 1200ms autosave debounce). Used on clear so
+ * the 4s poll cannot rehydrate a pre-clear snapshot and paint the P/L box
+ * again. Returns the server cursor, or null on a failed/aborted save.
+ */
+export async function persistLayoutNow(
+  input: PersistLayoutNowInput,
+): Promise<{ updated_at?: string | null } | null> {
+  const fetchFn = input.fetchImpl ?? fetch;
+  try {
+    const res = await fetchFn("/api/chart/layout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: input.layoutId,
+        symbol: input.symbol,
+        interval: input.interval,
+        state: input.state,
+      }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { updated_at?: string | null };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Whether the live chart should paint the system trade overlay (P/L box and
  * fallback entry/stop/TP horizontals) from the layout recommendation.

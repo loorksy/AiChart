@@ -57,7 +57,10 @@ import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { normalizeInterval } from "@/lib/intervals";
 import { keepExplicitUserDrawings } from "@/lib/agent/drawings/drawingOwnership";
-import { clearAnalysisPresentation } from "@/lib/chart/drawings/clearAnalysisPresentation";
+import {
+  clearAnalysisPresentation,
+  persistLayoutNow,
+} from "@/lib/chart/drawings/clearAnalysisPresentation";
 import {
   debugBridgeEnabled,
   installAgentDebugBridge,
@@ -327,6 +330,63 @@ function SmartChartWorkspaceInner({
   // from a remote (MCP/agent) write. savePendingRef guards the race window.
   const layoutCursorRef = useRef<string | null>(null);
   const savePendingRef = useRef(false);
+  const layoutSnapshotRef = useRef({
+    drawings,
+    overlays,
+    studies,
+    recommendation,
+    targets,
+    liveReasoningLog,
+    dataSource,
+    drawingsCleared,
+  });
+  layoutSnapshotRef.current = {
+    drawings,
+    overlays,
+    studies,
+    recommendation,
+    targets,
+    liveReasoningLog,
+    dataSource,
+    drawingsCleared,
+  };
+
+  const persistLayoutImmediate = useCallback(
+    (state: ChartLayoutState) => {
+      if (guest || !layoutId || capture) return;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      // Raise the poll-skip flag *now* — not after the next render's
+      // debounce effect. Otherwise a 4s tick between setState and the
+      // effect can GET a pre-clear snapshot and paint the box again.
+      savePendingRef.current = true;
+      void persistLayoutNow({
+        layoutId,
+        symbol,
+        interval,
+        state: {
+          drawings: state.drawings ?? [],
+          overlays: state.overlays ?? [],
+          drawingsCleared: state.drawingsCleared === true,
+          studies: state.studies,
+          recommendation: state.recommendation,
+          targets: state.targets,
+          liveReasoningLog: state.liveReasoningLog,
+          dataSource: state.dataSource,
+        },
+      })
+        .then((d) => {
+          if (d?.updated_at) layoutCursorRef.current = d.updated_at;
+        })
+        .finally(() => {
+          savePendingRef.current = false;
+        });
+    },
+    [guest, layoutId, capture, symbol, interval],
+  );
+
   useEffect(() => {
     // A capture is a read-only render of someone's chart; writing its
     // transient symbol/interval back would corrupt the operator's saved layout.
@@ -334,7 +394,7 @@ function SmartChartWorkspaceInner({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     savePendingRef.current = true;
     saveTimerRef.current = setTimeout(() => {
-      const state: ChartLayoutState = {
+      persistLayoutImmediate({
         drawings,
         overlays,
         studies,
@@ -343,20 +403,7 @@ function SmartChartWorkspaceInner({
         liveReasoningLog,
         dataSource,
         drawingsCleared,
-      };
-      void fetch("/api/chart/layout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: layoutId, symbol, interval, state }),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d: { updated_at?: string | null } | null) => {
-          if (d?.updated_at) layoutCursorRef.current = d.updated_at;
-        })
-        .catch(() => {})
-        .finally(() => {
-          savePendingRef.current = false;
-        });
+      });
     }, 1200);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -365,9 +412,7 @@ function SmartChartWorkspaceInner({
     guest,
     layoutId,
     capture,
-    symbol,
-    interval,
-    dataSource,
+    persistLayoutImmediate,
     drawings,
     overlays,
     studies,
@@ -375,6 +420,7 @@ function SmartChartWorkspaceInner({
     targets,
     drawingsCleared,
     liveReasoningLog,
+    dataSource,
   ]);
 
   // Live refresh: an AI assistant (MCP) can draw on this chart server-side —
@@ -541,9 +587,19 @@ function SmartChartWorkspaceInner({
   }, []);
 
   const handleClearLayers = useCallback(() => {
+    persistLayoutImmediate({
+      drawings: [],
+      overlays: [],
+      studies: [],
+      recommendation: null,
+      targets: [],
+      liveReasoningLog: [],
+      dataSource: layoutSnapshotRef.current.dataSource,
+      drawingsCleared: true,
+    });
     clearLayers();
     stopLiveAnalysis();
-  }, [clearLayers, stopLiveAnalysis]);
+  }, [clearLayers, stopLiveAnalysis, persistLayoutImmediate]);
 
   // Apply the agent's drawings to the chart: keep user/manual drawings, replace
   // only the agent-owned set (one coherent set of drawings on the chart).
@@ -556,9 +612,23 @@ function SmartChartWorkspaceInner({
       if (result.clearAgentDrawings) {
         // Wipe analysis drawings AND level overlays, and stop painting the
         // system P/L box. The recommendation record stays in the DB/tracker.
-        setDrawings((prev) => clearAnalysisPresentation(prev).drawings);
+        // Persist synchronously — the 1200ms autosave debounce is too slow:
+        // the 4s layout poll would otherwise rehydrate a pre-clear snapshot.
+        const snap = layoutSnapshotRef.current;
+        const cleared = clearAnalysisPresentation(snap.drawings);
+        setDrawings(cleared.drawings);
         setOverlays([]);
         setDrawingsCleared(true);
+        persistLayoutImmediate({
+          drawings: cleared.drawings,
+          overlays: [],
+          studies: snap.studies,
+          recommendation: snap.recommendation,
+          targets: snap.targets,
+          liveReasoningLog: snap.liveReasoningLog,
+          dataSource: snap.dataSource,
+          drawingsCleared: true,
+        });
         return;
       }
       if (result.drawings?.length) {
@@ -623,6 +693,7 @@ function SmartChartWorkspaceInner({
       setRecommendation,
       setTargets,
       setDrawingsCleared,
+      persistLayoutImmediate,
       symbol,
       interval,
     ],

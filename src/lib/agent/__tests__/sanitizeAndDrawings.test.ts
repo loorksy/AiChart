@@ -57,6 +57,29 @@ describe("drawingOwnership", () => {
     assert.equal(cleared.length, 1);
   });
 
+  it("keepExplicitUserDrawings drops agent دخول/وقف/هدف lines that persist-clear must not restore", () => {
+    const entry = sanitizeAgentDrawings(
+      [{ type: "price_line", confidence: 70, label: "دخول", points: [{ price: 100 }] }],
+      { analysisId: "a1" },
+    )[0]!;
+    const stop = sanitizeAgentDrawings(
+      [{ type: "price_line", confidence: 70, label: "وقف خسارة", points: [{ price: 99 }] }],
+      { analysisId: "a1" },
+    )[0]!;
+    const target = sanitizeAgentDrawings(
+      [{ type: "price_line", confidence: 70, label: "هدف 1", points: [{ price: 102 }] }],
+      { analysisId: "a1" },
+    )[0]!;
+    const bos = sanitizeAgentDrawings(
+      [{ type: "price_line", confidence: 70, label: "هابط BOS", points: [{ price: 101 }] }],
+      { analysisId: "a1" },
+    )[0]!;
+    assert.deepEqual(
+      keepExplicitUserDrawings([userDrawing, entry, stop, target, bos]),
+      [userDrawing],
+    );
+  });
+
   it("keepExplicitUserDrawings drops unstamped leftovers that drawingOwner treats as user", () => {
     const leftover: ChartDrawing = {
       type: "price_line",

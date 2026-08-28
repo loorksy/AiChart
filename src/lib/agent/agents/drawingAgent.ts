@@ -50,24 +50,13 @@ export async function runDrawingAgent(
 
   const candles = input.market.currentTfCandles;
   const lastTime = candles.at(-1)?.time ?? Date.now();
-  const rec = input.finalDecision.recommendation;
   const raw: ChartDrawing[] = [];
 
-  if (plan.drawingIntent === "trade_setup") {
-    if (rec.entry != null) {
-      raw.push(priceLine("دخول", rec.entry, lastTime, "entry", "#3b82f6"));
-    }
-    if (rec.stop_loss != null) {
-      raw.push(
-        priceLine("وقف خسارة", rec.stop_loss, lastTime, "stop_loss", "#ef4444"),
-      );
-    }
-    (rec.targets ?? []).forEach((t, i) => {
-      if (t != null) {
-        raw.push(priceLine(`هدف ${i + 1}`, t, lastTime, "take_profit", "#22c55e"));
-      }
-    });
-  }
+  // Entry / stop / target horizontals are NOT agent drawings. TvDrawingManager
+  // apply() always paints the native long/short position plus those three
+  // labels via positionWithTargets(). Emitting them here stacked a second
+  // labeled layer on top of the P/L box. Zones, BOS, forecast, and geometry
+  // stay — they have no system equivalent.
 
   // Plan-selected zones (POI for a trade, or strong WAIT zones).
   for (const zone of plan.selectedZones) {

@@ -366,7 +366,20 @@ export class TvDrawingManager {
   }
 
   private track(p: Promise<EntityId>): void {
-    void p.then((id) => this.ids.push(id)).catch(() => {});
+    const gen = this.applyGen;
+    void p
+      .then((id) => {
+        if (gen !== this.applyGen) {
+          try {
+            this.chart.removeEntity(id);
+          } catch {
+            /* already gone / never attached */
+          }
+          return;
+        }
+        this.ids.push(id);
+      })
+      .catch(() => {});
   }
 
   private hline(
@@ -529,7 +542,14 @@ export class TvDrawingManager {
     if (this.pendingTerminal && !this.positionFrozen) this.freezePosition();
     void created
       .then((id) => {
-        if (gen !== this.applyGen) return;
+        if (gen !== this.applyGen) {
+          try {
+            this.chart.removeEntity(id);
+          } catch {
+            /* already gone — track() also drops a stale gen */
+          }
+          return;
+        }
         this.positionId = id;
         // createMultipointShape on this widget can drop times; setPoints is
         // what actually pins the left wall at the rec candle. Always write,
