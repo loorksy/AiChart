@@ -74,6 +74,76 @@ export function positionToolPoints(
   ];
 }
 
+/**
+ * Closed 5-vertex box in TradingView unix seconds. Used only when the native
+ * Long/Short Position tool drops Entry/Close times after pin — polyline has
+ * no extendLeft/Right, and every corner carries an explicit time so this
+ * widget cannot paint a pane-wide band. One path spans stop → furthest TP
+ * (both risk and profit) at the same left/right as the native tool.
+ */
+export function positionBoxVertices(
+  left: number,
+  right: number,
+  priceA: number,
+  priceB: number,
+): Array<{ time: number; price: number }> {
+  const l = Math.round(left);
+  const r = Math.round(right);
+  return [
+    { time: l, price: priceA },
+    { time: r, price: priceA },
+    { time: r, price: priceB },
+    { time: l, price: priceB },
+    { time: l, price: priceA },
+  ];
+}
+
+/** Epoch-ms or unix-sec → plausible TV seconds, or null (0 / missing / junk). */
+export function pointTimeSec(
+  t: number | null | undefined,
+  now: number = nowSec(),
+): number | null {
+  if (t == null || !Number.isFinite(t) || t <= 0) return null;
+  const sec = toSec(t);
+  return isPlausibleUnixSec(sec, now) ? sec : null;
+}
+
+/**
+ * True when getShapeById().getPoints() still has the rec left wall and the
+ * lastBar right wall after setPoints. False for 0 / missing / first-bar
+ * clamp (min time far left of the rec) / a future Close — that is the
+ * silent infinite-band failure we must not ship.
+ */
+export function positionPinHonored(
+  points: Array<{ time?: number | null; price?: number } | null | undefined> | null | undefined,
+  expected: {
+    left: number;
+    right: number;
+    nowSec?: number;
+    snapSec?: number;
+  },
+): boolean {
+  const now = expected.nowSec ?? nowSec();
+  const snap = Math.max(1, expected.snapSec ?? 1);
+  const times = (points ?? [])
+    .map((p) => pointTimeSec(p?.time, now))
+    .filter((t): t is number => t != null);
+  if (times.length < 2) return false;
+  const min = Math.min(...times);
+  const max = Math.max(...times);
+  if (!(max > min)) return false;
+  if (Math.abs(min - expected.left) > snap) return false;
+  if (Math.abs(max - expected.right) > snap) return false;
+  return true;
+}
+
+function extendFlagsStuckOn(
+  props: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!props) return false;
+  return props.extendLeft === true || props.extendRight === true;
+}
+
 
 type PricedPointLike = { time: number; price: number };
 
@@ -287,6 +357,12 @@ export class TvDrawingManager {
   private applyGen = 0;
   /** The one native Long/Short Position entity (risk + profit joined at entry). */
   private positionId: EntityId | null = null;
+  /**
+   * Pin-failure fallback: one closed polyline spanning stop → furthest TP at
+   * the same left/right as the native tool. Empty while native times stick.
+   */
+  private fallbackIds: EntityId[] = [];
+  private usingFallback = false;
   /** Guards against apply()+syncRightEdge both creating before promises resolve. */
   private boxCreateStarted = false;
   private pendingBox: {
@@ -307,6 +383,8 @@ export class TvDrawingManager {
   private lastTradeKey = "";
   /** Latest in-history bar, unix seconds. Never a future time. */
   private liveLastBarSec: number | null = null;
+  /** Interval length in seconds — bar-snap tolerance when reading getPoints. */
+  private barSec = 60;
 
   constructor(private readonly chart: IChartWidgetApi) {}
 
@@ -359,10 +437,21 @@ export class TvDrawingManager {
     this.ids = [];
     this.lastFingerprint = "";
     this.positionId = null;
+    this.fallbackIds = [];
+    this.usingFallback = false;
     this.boxCreateStarted = false;
     this.pendingBox = null;
     // Keep positionLeftSec / freeze / lastBar: a recreate of the SAME trade
     // must restore the frozen right edge rather than jump.
+  }
+
+  private forgetEntity(id: EntityId): void {
+    this.ids = this.ids.filter((x) => x !== id);
+    try {
+      this.chart.removeEntity(id);
+    } catch {
+      /* already gone */
+    }
   }
 
   private track(p: Promise<EntityId>): void {
@@ -449,24 +538,27 @@ export class TvDrawingManager {
   /**
    * One native Long/Short Position (risk-reward) tool for the trade plan.
    *
-   * History that failed on this widget (do not revive):
+   * History that failed on this widget (do not revive as the primary path):
    * 1. `createShape` with ONE point → the library synthesizes Close from the
    *    visible pane → a full-width horizontal price band.
    * 2. Two-point `rectangle` → this build ignores X when times are equal,
    *    missing, or extend flags leak → still a strip.
-   * 3. Two closed 5-vertex `polyline`s (`8b6705e1`) → polyline has no
-   *    extendLeft/Right properties, create can drop vertex times, and a
-   *    filled path with missing/equal times paints pane-wide. Two independent
-   *    fills also failed the product rule: profit and risk must be the SAME
-   *    drawing, joined at entry, not two boxes on the pane.
+   * 3. Two closed 5-vertex `polyline`s as the *primary* (`8b6705e1`) → two
+   *    independent fills, not the RR tool the user asked for.
    *
-   * What sticks time: TWO points on `createMultipointShape` — Entry
+   * What usually sticks: TWO points on `createMultipointShape` — Entry
    * `{time: leftSec, price: entry}` and Close `{time: rightSec, price: entry}`
    * (unix seconds, right > left, never a future Close — that clamp SLIDES
    * the left edge). After create, always `setPoints` both corners AND set
    * `stopLevel` / `profitLevel` (furthest TP, in ticks) / `extendLeft: false`
-   * / `extendRight: false`. Pin even if lastBar did not move during the
-   * create promise — create alone is not enough on this widget.
+   * / `extendRight: false`. Then READ getPoints(): this widget can drop
+   * times and ignore extend flags. If left is 0 / first-bar / missing, do
+   * not silently ship that band — fall back to one closed polyline that
+   * spans stop → furthest TP at the same unix-second corners.
+   *
+   * Right = last historical bar while live is grow-to-lastBar (by design,
+   * frozen on terminal). That is not extendLeft/Right. extendLeft: false on
+   * linetoolriskrewardlong is not even a real property on this widget.
    *
    * - Left = print/anchor candle (`anchor_time` / `triggeredAt`, else
    *   created_at, else a sticky lastBar fallback — never t=0).
@@ -504,6 +596,23 @@ export class TvDrawingManager {
     };
   }
 
+  private fallbackFill(color: string): Record<string, unknown> {
+    return {
+      backgroundColor: color,
+      color,
+      linecolor: color,
+      fillBackground: true,
+      filled: true,
+      transparency: 80,
+      linewidth: 1,
+      linestyle: 0,
+    };
+  }
+
+  private pinSnapSec(): number {
+    return Math.max(60, this.barSec);
+  }
+
   /**
    * Create the one native position tool once lastBar is known and the box has
    * positive width. Called from apply() and again from syncRightEdge when
@@ -512,7 +621,7 @@ export class TvDrawingManager {
   private tryCreatePositionBox(): void {
     const pending = this.pendingBox;
     if (!pending) return;
-    if (this.positionId != null) return;
+    if (this.positionId != null || this.usingFallback) return;
     if (this.boxCreateStarted) return;
     const rightSrc =
       this.positionFrozen && this.frozenRightSec != null
@@ -553,11 +662,17 @@ export class TvDrawingManager {
         this.positionId = id;
         // createMultipointShape on this widget can drop times; setPoints is
         // what actually pins the left wall at the rec candle. Always write,
-        // even when lastBar did not move during the promise.
-        this.pinPosition(id, edges.left, edges.right, pending);
+        // even when lastBar did not move during the promise. Then READ back.
+        if (!this.pinPosition(id, edges.left, edges.right, pending)) {
+          this.replaceNativeWithFiniteFallback(id, edges, pending, gen);
+          return;
+        }
         this.stretchPosition({ evenIfFrozen: this.positionFrozen });
       })
-      .catch(() => {});
+      .catch(() => {
+        if (gen !== this.applyGen) return;
+        this.createFiniteFallback(edges, pending, gen);
+      });
   }
 
   /**
@@ -587,13 +702,12 @@ export class TvDrawingManager {
    */
   private stretchPosition(opts?: { evenIfFrozen?: boolean }): void {
     if (this.positionFrozen && !opts?.evenIfFrozen) return;
-    if (this.positionId == null) {
-      this.tryCreatePositionBox();
-      return;
-    }
     const pending = this.pendingBox;
     const left = this.positionLeftSec;
-    if (!pending || left == null) return;
+    if (!pending || left == null) {
+      if (this.positionId == null && !this.usingFallback) this.tryCreatePositionBox();
+      return;
+    }
     const targetRight = this.positionFrozen
       ? this.frozenRightSec
       : this.liveLastBarSec;
@@ -602,16 +716,46 @@ export class TvDrawingManager {
       lastBarSec: targetRight,
     });
     if (!edges) return;
+
+    if (this.usingFallback) {
+      if (this.fallbackIds.length === 0) return;
+      if (this.lastRightSec === edges.right) return;
+      for (const id of this.fallbackIds) {
+        this.pinFallback(
+          id,
+          edges.left,
+          edges.right,
+          pending.stopLoss,
+          pending.takeProfit,
+        );
+      }
+      this.lastRightSec = edges.right;
+      return;
+    }
+
+    if (this.positionId == null) {
+      this.tryCreatePositionBox();
+      return;
+    }
     if (this.lastRightSec === edges.right) return;
-    this.pinPosition(this.positionId, edges.left, edges.right, pending);
+    if (!this.pinPosition(this.positionId, edges.left, edges.right, pending)) {
+      this.replaceNativeWithFiniteFallback(
+        this.positionId,
+        edges,
+        pending,
+        this.applyGen,
+      );
+      return;
+    }
     this.lastRightSec = edges.right;
   }
 
   /**
    * Force both unix-second corners AND stop/profit levels AND the no-extend
-   * flags. createMultipointShape overrides are not enough on this widget —
-   * leftover extendLeft/Right or dropped times are what painted the
-   * infinite strip. Always called after create, even if lastBar did not move.
+   * flags, then READ getPoints. createMultipointShape overrides are not
+   * enough on this widget — leftover extendLeft/Right or dropped times are
+   * what painted the infinite strip. Returns false when the widget did not
+   * keep the rec left / lastBar right (or still extends).
    */
   private pinPosition(
     id: EntityId,
@@ -623,21 +767,161 @@ export class TvDrawingManager {
       takeProfit: number;
       stopLoss: number;
     },
-  ): void {
+  ): boolean {
+    const expected = {
+      left: Math.round(left),
+      right: Math.round(right),
+      snapSec: this.pinSnapSec(),
+    };
     try {
       const shape = this.chart.getShapeById(id) as {
         setPoints: (points: ShapePoint[]) => void;
+        getPoints?: () => Array<{ time?: number; price?: number }>;
         setProperties?: (props: Record<string, unknown>) => void;
+        getProperties?: () => Record<string, unknown>;
       };
-      shape.setPoints(
-        positionToolPoints(left, right, pending.entry.price) as ShapePoint[],
-      );
-      shape.setProperties?.({
-        ...this.positionOverrides(pending),
-      });
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        shape.setPoints(
+          positionToolPoints(left, right, pending.entry.price) as ShapePoint[],
+        );
+        shape.setProperties?.({
+          ...this.positionOverrides(pending),
+        });
+        const points = shape.getPoints?.() ?? [];
+        if (
+          positionPinHonored(points, expected) &&
+          !extendFlagsStuckOn(shape.getProperties?.())
+        ) {
+          return true;
+        }
+      }
+      return false;
     } catch {
-      /* shape not ready / already removed */
+      return false;
     }
+  }
+
+  private pinFallback(
+    id: EntityId,
+    left: number,
+    right: number,
+    priceA: number,
+    priceB: number,
+  ): boolean {
+    const expected = {
+      left: Math.round(left),
+      right: Math.round(right),
+      snapSec: this.pinSnapSec(),
+    };
+    try {
+      const shape = this.chart.getShapeById(id) as {
+        setPoints: (points: ShapePoint[]) => void;
+        getPoints?: () => Array<{ time?: number; price?: number }>;
+        setProperties?: (props: Record<string, unknown>) => void;
+        getProperties?: () => Record<string, unknown>;
+      };
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        shape.setPoints(
+          positionBoxVertices(left, right, priceA, priceB) as ShapePoint[],
+        );
+        shape.setProperties?.({
+          fillBackground: true,
+          filled: true,
+        });
+        const points = shape.getPoints?.() ?? [];
+        if (
+          positionPinHonored(points, expected) &&
+          !extendFlagsStuckOn(shape.getProperties?.())
+        ) {
+          return true;
+        }
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Native long_position dropped times or kept extend flags. Remove it so
+   * we never leave an infinite band, then paint one closed polyline that
+   * does honor unix-second corners (stop → furthest TP, same left/right).
+   */
+  private replaceNativeWithFiniteFallback(
+    nativeId: EntityId,
+    edges: { left: number; right: number },
+    pending: {
+      direction: "long" | "short";
+      entry: PricedPointLike;
+      takeProfit: number;
+      stopLoss: number;
+      symbol: string;
+    },
+    gen: number,
+  ): void {
+    this.forgetEntity(nativeId);
+    this.positionId = null;
+    this.createFiniteFallback(edges, pending, gen);
+  }
+
+  private createFiniteFallback(
+    edges: { left: number; right: number },
+    pending: {
+      entry: PricedPointLike;
+      takeProfit: number;
+      stopLoss: number;
+    },
+    gen: number,
+  ): void {
+    if (gen !== this.applyGen) return;
+    this.usingFallback = true;
+    // One closed path for BOTH risk and profit — not two independent boxes.
+    // Vertices carry unix seconds on every corner; polyline cannot extend.
+    const created = this.chart.createMultipointShape(
+      positionBoxVertices(
+        edges.left,
+        edges.right,
+        pending.stopLoss,
+        pending.takeProfit,
+      ) as ShapePoint[],
+      {
+        shape: "polyline",
+        ...EDITABLE,
+        overrides: this.fallbackFill("rgba(148, 163, 184, 0.35)"),
+      },
+    );
+    this.track(created);
+    void created
+      .then((id) => {
+        if (gen !== this.applyGen) {
+          try {
+            this.chart.removeEntity(id);
+          } catch {
+            /* already gone */
+          }
+          return;
+        }
+        const ok = this.pinFallback(
+          id,
+          edges.left,
+          edges.right,
+          pending.stopLoss,
+          pending.takeProfit,
+        );
+        if (!ok) {
+          // Still cannot honor times — ship nothing rather than an infinite band.
+          this.forgetEntity(id);
+          this.fallbackIds = [];
+          this.usingFallback = false;
+          return;
+        }
+        this.fallbackIds = [id];
+        this.lastRightSec = null;
+        this.stretchPosition({ evenIfFrozen: this.positionFrozen });
+      })
+      .catch(() => {
+        this.usingFallback = false;
+      });
   }
 
   /**
@@ -821,6 +1105,8 @@ export class TvDrawingManager {
       this.lastRightSec = null;
       this.positionLeftSec = null;
       this.pendingBox = null;
+      this.usingFallback = false;
+      this.fallbackIds = [];
       this.lastTradeKey = nextKey;
     }
     const terminal = isTerminalChartRecommendation(rec0 ?? null);
@@ -862,6 +1148,7 @@ export class TvDrawingManager {
       60,
       Math.round((barDurationMs(ctx?.interval ?? "15m") || 900_000) / 1000),
     );
+    this.barSec = barSec;
     for (const d of drawings) {
       try {
         this.drawOne(d, symbol, barSec);

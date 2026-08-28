@@ -121,10 +121,20 @@ describe("recommendation anchors come from stored creation time, never render-ti
       /shape: "polyline",\s*\n\s*\.\.\.EDITABLE,\s*\n\s*overrides: this\.boxOverrides/,
       "two polylines still looked infinite and were two separate fills",
     );
-    assert.doesNotMatch(
+    assert.match(
       src,
       /positionBoxVertices/,
-      "the 5-vertex polyline fallback is the failed two-box approach",
+      "pin-failure fallback is one closed polyline with unix-second corners",
+    );
+    assert.match(
+      src,
+      /positionPinHonored/,
+      "after pin, getPoints must still show rec left and lastBar right",
+    );
+    assert.match(
+      src,
+      /createFiniteFallback|usingFallback/,
+      "dropped native times must fall back rather than ship an infinite band",
     );
     assert.doesNotMatch(
       src,

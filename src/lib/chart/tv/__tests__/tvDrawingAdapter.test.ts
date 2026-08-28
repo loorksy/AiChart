@@ -27,6 +27,11 @@
  * future Close), then `setPoints` + `stopLevel` / `profitLevel` (furthest
  * TP) / `extendLeft: false` / `extendRight: false` after create so time
  * actually sticks. Pin even if lastBar did not move during the promise.
+ * After pin, getPoints must still show those times; if the widget drops
+ * them (0 / first bar / missing), a single closed polyline spanning stop →
+ * furthest TP at the same unix-second corners is the fallback — never a
+ * silent infinite band. Right = lastBar is grow-to-lastBar by design, not
+ * extendLeft.
  *
  * The tests simulate the failing sequences: draw → several new bars pass →
  * redraw/force/reload paths run → the LEFT anchor must be byte-identical
@@ -40,6 +45,9 @@ import {
   TvDrawingManager,
   positionBoxEdges,
   positionToolPoints,
+  positionBoxVertices,
+  positionPinHonored,
+  pointTimeSec,
   isPlausibleUnixSec,
   MIN_PLAUSIBLE_UNIX_SEC,
 } from "@/lib/chart/tv/tvDrawingAdapter";
@@ -75,7 +83,11 @@ interface SetPropsCall {
   props: Record<string, unknown>;
 }
 
-function fakeChart(opts?: { gateCreates?: boolean }) {
+function fakeChart(opts?: {
+  gateCreates?: boolean;
+  /** Native long/short_position setPoints drops times the way this widget can. */
+  dropPositionTimes?: "missing" | "zero" | "firstBar";
+}) {
   let n = 0;
   const multi: MultiCall[] = [];
   const single: SingleCall[] = [];
@@ -83,6 +95,8 @@ function fakeChart(opts?: { gateCreates?: boolean }) {
   const setPointsCalls: SetPointsCall[] = [];
   const setPropsCalls: SetPropsCall[] = [];
   const shapes = new Map<string, Array<{ time?: number; price?: number }>>();
+  const shapeKind = new Map<string, string>();
+  const shapeProps = new Map<string, Record<string, unknown>>();
   let releaseCreates: () => void = () => {};
   const gate: Promise<void> = opts?.gateCreates
     ? new Promise<void>((resolve) => {
@@ -91,6 +105,23 @@ function fakeChart(opts?: { gateCreates?: boolean }) {
     : Promise.resolve();
   const finish = (id: EntityId) =>
     opts?.gateCreates ? gate.then(() => id) : Promise.resolve(id);
+  const isNativePosition = (kind: string | undefined) =>
+    kind === "long_position" || kind === "short_position";
+  const applyDrop = (
+    kind: string | undefined,
+    mapped: Array<{ time?: number; price?: number }>,
+  ) => {
+    if (!opts?.dropPositionTimes || !isNativePosition(kind)) return mapped;
+    if (opts.dropPositionTimes === "missing") {
+      return mapped.map((p) => ({ price: p.price }));
+    }
+    if (opts.dropPositionTimes === "zero") {
+      return mapped.map((p) => ({ time: 0, price: p.price }));
+    }
+    return mapped.map((p, i) =>
+      i === 0 ? { time: MIN_PLAUSIBLE_UNIX_SEC, price: p.price } : p,
+    );
+  };
   const chart = {
     createMultipointShape: (
       points: ShapePoint[],
@@ -107,6 +138,8 @@ function fakeChart(opts?: { gateCreates?: boolean }) {
       });
       n += 1;
       const id = `shape-${n}` as EntityId;
+      shapeKind.set(String(id), options.shape);
+      shapeProps.set(String(id), { ...(options.overrides ?? {}) });
       shapes.set(String(id), points.map((p) => ({
         time: (p as { time?: number }).time,
         price: (p as { price?: number }).price,
@@ -121,6 +154,7 @@ function fakeChart(opts?: { gateCreates?: boolean }) {
       });
       n += 1;
       const id = `shape-${n}` as EntityId;
+      shapeKind.set(String(id), options.shape);
       shapes.set(String(id), [
         {
           time: (point as { time?: number }).time,
@@ -132,23 +166,43 @@ function fakeChart(opts?: { gateCreates?: boolean }) {
     removeEntity: (id: EntityId) => {
       removed.push(String(id));
       shapes.delete(String(id));
+      shapeKind.delete(String(id));
+      shapeProps.delete(String(id));
     },
     getShapeById: (id: EntityId) => ({
       getPoints: () => [...(shapes.get(String(id)) ?? [])],
+      getProperties: () => ({ ...(shapeProps.get(String(id)) ?? {}) }),
       setPoints: (points: ShapePoint[]) => {
-        const mapped = points.map((p) => ({
-          time: (p as { time?: number }).time,
-          price: (p as { price?: number }).price,
-        }));
+        const mapped = applyDrop(
+          shapeKind.get(String(id)),
+          points.map((p) => ({
+            time: (p as { time?: number }).time,
+            price: (p as { price?: number }).price,
+          })),
+        );
         setPointsCalls.push({ id: String(id), points: mapped });
         shapes.set(String(id), mapped);
       },
       setProperties: (props: Record<string, unknown>) => {
         setPropsCalls.push({ id: String(id), props });
+        shapeProps.set(String(id), {
+          ...(shapeProps.get(String(id)) ?? {}),
+          ...props,
+        });
       },
     }),
   } as unknown as IChartWidgetApi;
-  return { chart, multi, single, removed, setPointsCalls, setPropsCalls, shapes, releaseCreates };
+  return {
+    chart,
+    multi,
+    single,
+    removed,
+    setPointsCalls,
+    setPropsCalls,
+    shapes,
+    shapeKind,
+    releaseCreates,
+  };
 }
 
 const CREATED_AT_MS = Date.UTC(2026, 7, 24, 18, 0, 0);
@@ -288,6 +342,71 @@ describe("positionBoxEdges — finite unix-second box, never a full-width band",
     assert.ok(last > left);
   });
 
+  it("positionBoxVertices is a closed 5-corner path at the same left/right", () => {
+    const pts = positionBoxVertices(left, last, 4642.93, 4660.02);
+    assert.equal(pts.length, 5);
+    assert.equal(pts[0]!.time, left);
+    assert.equal(pts[1]!.time, last);
+    assert.equal(pts[2]!.time, last);
+    assert.equal(pts[3]!.time, left);
+    assert.equal(pts[4]!.time, left);
+    assert.equal(pts[0]!.price, 4642.93);
+    assert.equal(pts[2]!.price, 4660.02);
+    assert.deepEqual(pts[0], pts[4], "path is closed");
+    assert.ok(last > left);
+  });
+
+  it("positionPinHonored requires rec left + lastBar right still on getPoints", () => {
+    const pts = [
+      { time: left, price: 1 },
+      { time: last, price: 1 },
+    ];
+    assert.equal(positionPinHonored(pts, { left, right: last, nowSec: now }), true);
+    assert.equal(
+      positionPinHonored([{ time: 0, price: 1 }, { time: last, price: 1 }], {
+        left,
+        right: last,
+        nowSec: now,
+      }),
+      false,
+      "left 0 is the first-bar/epoch clamp",
+    );
+    assert.equal(
+      positionPinHonored([{ price: 1 }, { price: 1 }], {
+        left,
+        right: last,
+        nowSec: now,
+      }),
+      false,
+      "missing times",
+    );
+    assert.equal(
+      positionPinHonored(
+        [
+          { time: MIN_PLAUSIBLE_UNIX_SEC, price: 1 },
+          { time: last, price: 1 },
+        ],
+        { left, right: last, nowSec: now, snapSec: 900 },
+      ),
+      false,
+      "first loaded bar is not the rec candle",
+    );
+    assert.equal(
+      positionPinHonored(
+        [
+          { time: left, price: 1 },
+          { time: last + 86_400 * 2, price: 1 },
+        ],
+        { left, right: last, nowSec: now },
+      ),
+      false,
+      "future Close",
+    );
+    assert.equal(pointTimeSec(0, now), null);
+    assert.equal(pointTimeSec(undefined, now), null);
+    assert.equal(pointTimeSec(left, now), left);
+  });
+
   it("priceDistanceTicks matches XAUUSD 2-decimal tick math", () => {
     assert.equal(priceDistanceTicks("XAUUSD", 4646.19, 4642.93), 326);
     assert.equal(priceDistanceTicks("XAUUSD", 4646.19, 4680.1), 3391);
@@ -360,6 +479,118 @@ describe("tvDrawingAdapter — one native RR tool, pinned at print time", () => 
     assert.equal(props!.props.extendRight, false);
     assert.equal(typeof props!.props.stopLevel, "number");
     assert.equal(typeof props!.props.profitLevel, "number");
+  });
+
+  it("after pin, getShapeById points still have rec left and lastBar right (no future Close)", async () => {
+    const { chart, shapes, shapeKind } = fakeChart();
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX_LIVE);
+    await flush();
+    const left = Math.round(CREATED_AT_MS / 1000);
+    const right = Math.round(LAST_BAR_MS / 1000);
+    let found = false;
+    for (const [id, pts] of shapes) {
+      if (shapeKind.get(id) !== "long_position") continue;
+      found = true;
+      assert.ok(positionPinHonored(pts, { left, right }));
+      assert.equal(pts[0]!.time, left, "left is the rec unix second");
+      assert.equal(pts[1]!.time, right, "right is lastBar");
+      assert.ok(right > left);
+      const live = chart.getShapeById(id as EntityId).getPoints();
+      assert.equal(live[0]!.time, left);
+      assert.equal(live[1]!.time, right);
+      assert.ok((live[1]!.time ?? 0) <= right, "Close is lastBar, not a future time");
+    }
+    assert.ok(found, "native long_position must remain on the chart when pin sticks");
+  });
+
+  it("when pin drops times (missing), native tool is removed and one finite polyline fallback is used", async () => {
+    const { chart, multi, single, removed, shapes, shapeKind } = fakeChart({
+      dropPositionTimes: "missing",
+    });
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX_LIVE);
+    await flush();
+    await flush();
+    assert.ok(removed.length >= 1, "native long_position that dropped times must be removed");
+    assert.equal(
+      [...shapeKind.values()].filter((k) => k === "long_position").length,
+      0,
+      "must not leave the infinite native band on the pane",
+    );
+    const polys = multi.filter((c) => c.shape === "polyline");
+    assert.equal(polys.length, 1, "one closed path for both risk and profit");
+    assert.equal(
+      multi.filter((c) => c.shape === "rectangle").length,
+      0,
+      "2-point rectangle still paints a full-width band",
+    );
+    assert.equal(
+      single.filter((c) => c.shape === "long_position" || c.shape === "short_position").length,
+      0,
+    );
+    const left = Math.round(CREATED_AT_MS / 1000);
+    const right = Math.round(LAST_BAR_MS / 1000);
+    const poly = polys[0]!;
+    assert.equal(poly.points.length, 5);
+    assert.ok(positionPinHonored(poly.points, { left, right }));
+    assert.equal(Math.min(...poly.points.map((p) => p.time)), left);
+    assert.equal(Math.max(...poly.points.map((p) => p.time)), right);
+    assert.ok(right > left);
+    let fallbackPts: Array<{ time?: number; price?: number }> | undefined;
+    for (const [id, pts] of shapes) {
+      if (shapeKind.get(id) === "polyline") fallbackPts = pts;
+    }
+    assert.ok(fallbackPts, "fallback remains on the chart");
+    assert.ok(positionPinHonored(fallbackPts, { left, right }));
+  });
+
+  it("when pin reports left = 0, fallback path is used", async () => {
+    const { chart, multi, shapeKind, removed } = fakeChart({ dropPositionTimes: "zero" });
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX_LIVE);
+    await flush();
+    await flush();
+    assert.ok(removed.length >= 1);
+    assert.equal([...shapeKind.values()].filter((k) => k === "long_position").length, 0);
+    const polys = multi.filter((c) => c.shape === "polyline");
+    assert.equal(polys.length, 1);
+    const left = Math.round(CREATED_AT_MS / 1000);
+    const right = Math.round(LAST_BAR_MS / 1000);
+    assert.ok(positionPinHonored(polys[0]!.points, { left, right }));
+  });
+
+  it("when pin clamps left to the first loaded bar, fallback path is used", async () => {
+    const { chart, multi, shapeKind, removed } = fakeChart({
+      dropPositionTimes: "firstBar",
+    });
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX_LIVE);
+    await flush();
+    await flush();
+    assert.ok(removed.length >= 1);
+    assert.equal([...shapeKind.values()].filter((k) => k === "long_position").length, 0);
+    const polys = multi.filter((c) => c.shape === "polyline");
+    assert.equal(polys.length, 1);
+    const left = Math.round(CREATED_AT_MS / 1000);
+    const right = Math.round(LAST_BAR_MS / 1000);
+    assert.notEqual(polys[0]!.points[0]!.time, MIN_PLAUSIBLE_UNIX_SEC);
+    assert.ok(positionPinHonored(polys[0]!.points, { left, right }));
+  });
+
+  it("fallback right edge still follows lastBar via setPoints; left stays on the rec", async () => {
+    const { chart, multi, setPointsCalls } = fakeChart({ dropPositionTimes: "missing" });
+    const mgr = new TvDrawingManager(chart);
+    mgr.apply([], { recommendation: REC }, CTX_LIVE);
+    await flush();
+    await flush();
+    const left = Math.round(CREATED_AT_MS / 1000);
+    const later = LAST_BAR_MS + 15 * 60 * 1000;
+    const creates = multi.length;
+    mgr.syncRightEdge(later);
+    await flush();
+    assert.equal(multi.length, creates, "width-only setPoints, no recreate");
+    const laterPins = setPointsCalls.filter((c) => c.points.length === 5);
+    const last = laterPins.at(-1);
+    assert.ok(last, "fallback must be setPoints-stretched");
+    assert.equal(Math.min(...last!.points.map((p) => p.time!)), left);
+    assert.equal(Math.max(...last!.points.map((p) => p.time!)), Math.round(later / 1000));
   });
 
   it("does not create the box until lastBar is known — no future Close guess", async () => {
