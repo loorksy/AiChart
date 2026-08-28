@@ -41,6 +41,40 @@ describe("profit card share wiring", () => {
     assert.doesNotMatch(model, /t\(\s*"ar"/);
   });
 
+  it("paints the share image in English LTR with green profit and red loss", () => {
+    const card = read("components/recommendations/ProfitCard.tsx");
+    const model = read("lib/recommendations/profitCard.ts");
+    const modal = read("components/recommendations/ShareProfitCardModal.tsx");
+    const capture = read("lib/recommendations/profitCardCapture.ts");
+    assert.match(card, /dir=["']ltr["']/);
+    assert.doesNotMatch(card, /[\u0600-\u06FF]/);
+    assert.doesNotMatch(model, /[\u0600-\u06FF]/);
+    assert.match(model, /Profit Card/);
+    assert.match(model, /Unrealized PnL/);
+    assert.match(model, /Realized PnL/);
+    assert.match(model, /Your Edge, Our Intelligence\./);
+    assert.match(modal, /profitCardLabels/);
+    assert.doesNotMatch(modal, /badge:\s*t\(/);
+    assert.doesNotMatch(modal, /profit_card\.badge/);
+    assert.match(card, /pnlAccentColor/);
+    assert.match(card, /data-pnl-tone/);
+    assert.match(model, /#20d68a/);
+    assert.match(model, /#f2555d/);
+    assert.match(capture, /pnlAccentColor/);
+    assert.doesNotMatch(capture, /pctColor = gain \? "#f0d078"/);
+  });
+
+  it("captures at the compact card size, not a 580px canvas", () => {
+    const card = read("components/recommendations/ProfitCard.tsx");
+    const model = read("lib/recommendations/profitCard.ts");
+    const capture = read("lib/recommendations/profitCardCapture.ts");
+    assert.match(model, /PROFIT_CARD_HEIGHT = 400/);
+    assert.match(capture, /PROFIT_CARD_CAPTURE_MIN_HEIGHT = PROFIT_CARD_HEIGHT/);
+    assert.doesNotMatch(card, /\b580\b/);
+    assert.doesNotMatch(capture, /CAPTURE_MIN_HEIGHT = 580/);
+    assert.doesNotMatch(model, /PROFIT_CARD_HEIGHT = 580/);
+  });
+
   it("captures via html-to-image and offers download plus Web Share", () => {
     const modal = read("components/recommendations/ShareProfitCardModal.tsx");
     const capture = read("lib/recommendations/profitCardCapture.ts");

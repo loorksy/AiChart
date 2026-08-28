@@ -1,17 +1,42 @@
 /**
- * Shareable profit-card projection — numbers only, no copy.
+ * Shareable profit-card projection.
  *
  * The React card and the PNG capture both read this model so a list row,
  * the report modal, and the detail page can never disagree about the %.
- * Labels live in the dictionaries; this file never calls `t()`.
+ * On-card copy is English only — the image people share is not localized.
+ * Modal chrome (download / share / sheet title) stays in i18n.
  */
 import { BRAND_DOMAIN, BRAND_URL } from "@/lib/brand";
-import { dirForLocale, type AppLocale, type Direction } from "@/lib/i18n";
+import type { AppLocale } from "@/lib/i18n";
 import { computeTradeMetricsSummary } from "./tradeMetricsSummary";
 import type { TrackedDirection, TrackedRecommendation } from "./types";
 
 /** Real Lonora face-mark (white on transparent) — dark-gold card, not a fake SVG. */
 export const PROFIT_CARD_LOGO_SRC = "/brand/aichart-mark-dark.png";
+
+/** Compact 4:5-ish share card — not a 9:16 phone strip. */
+export const PROFIT_CARD_WIDTH = 360;
+export const PROFIT_CARD_HEIGHT = 400;
+
+export const PROFIT_CARD_BG = "#0e1013";
+export const PROFIT_CARD_GAIN_COLOR = "#20d68a";
+export const PROFIT_CARD_LOSS_COLOR = "#f2555d";
+export const PROFIT_CARD_GAIN_GLOW = "rgba(32, 214, 138, 0.42)";
+export const PROFIT_CARD_LOSS_GLOW = "rgba(242, 85, 93, 0.40)";
+
+/** English face of the share image. Never Arabic, regardless of app locale. */
+export const PROFIT_CARD_COPY = {
+  badge: "Profit Card",
+  unrealized: "Unrealized PnL",
+  realized: "Realized PnL",
+  long: "Long",
+  short: "Short",
+  lastPrice: "Last Price",
+  hitPrice: "Hit Price",
+  entry: "Entry Price",
+  date: "Date",
+  tagline: "Your Edge, Our Intelligence.",
+} as const;
 
 /** Product clock: Riyadh is UTC+3 year-round. */
 export const PROFIT_CARD_TIME_ZONE = "Asia/Riyadh";
@@ -71,7 +96,8 @@ export interface ProfitCardModel {
   rMultiple: number | null;
   shareUrl: string;
   filename: string;
-  dir: Direction;
+  /** Share image is always English LTR, even when the app locale is Arabic. */
+  dir: "ltr";
 }
 
 /** Copy that the React card and the canvas fallback both paint. */
@@ -83,6 +109,27 @@ export interface ProfitCardLabels {
   entry: string;
   date: string;
   tagline: string;
+}
+
+export function pnlAccentColor(isLoss: boolean): string {
+  return isLoss ? PROFIT_CARD_LOSS_COLOR : PROFIT_CARD_GAIN_COLOR;
+}
+
+export function pnlAccentGlow(isLoss: boolean): string {
+  return isLoss ? PROFIT_CARD_LOSS_GLOW : PROFIT_CARD_GAIN_GLOW;
+}
+
+/** English labels for the share image — independent of `t()` / locale. */
+export function profitCardLabels(model: Pick<ProfitCardModel, "kind" | "side" | "markKind">): ProfitCardLabels {
+  return {
+    badge: PROFIT_CARD_COPY.badge,
+    pnlKind: model.kind === "realized" ? PROFIT_CARD_COPY.realized : PROFIT_CARD_COPY.unrealized,
+    side: model.side === "short" ? PROFIT_CARD_COPY.short : PROFIT_CARD_COPY.long,
+    mark: model.markKind === "hit" ? PROFIT_CARD_COPY.hitPrice : PROFIT_CARD_COPY.lastPrice,
+    entry: PROFIT_CARD_COPY.entry,
+    date: PROFIT_CARD_COPY.date,
+    tagline: PROFIT_CARD_COPY.tagline,
+  };
 }
 
 function finite(value: number | null | undefined): number | null {
@@ -234,7 +281,7 @@ export function buildProfitCardModel(
     rMultiple,
     shareUrl: PROFIT_CARD_SHARE_URL,
     filename: profitCardFilename({ symbol: rec.symbol, side, dateMs }),
-    dir: dirForLocale(options.locale),
+    dir: "ltr",
   };
 }
 

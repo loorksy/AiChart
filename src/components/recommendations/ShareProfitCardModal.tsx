@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import {
   buildProfitCardModel,
   canShareFiles,
+  profitCardLabels,
   type ProfitCardSource,
 } from "@/lib/recommendations/profitCard";
 import {
@@ -68,24 +69,7 @@ export function ShareProfitCardModal({
     [rec, locale, livePrice],
   );
 
-  const labels = useMemo(
-    () => ({
-      badge: t("profit_card.badge"),
-      pnlKind:
-        model.kind === "realized" ? t("profit_card.realized") : t("profit_card.unrealized"),
-      side: model.side === "short" ? t("profit_card.short") : t("profit_card.long"),
-      mark:
-        model.markKind === "hit"
-          ? t("profit_card.hit_price")
-          : model.markKind === "current"
-            ? t("rec.row.current_price")
-            : t("profit_card.last_price"),
-      entry: t("rec.row.entry"),
-      date: t("profit_card.date"),
-      tagline: t("profit_card.tagline"),
-    }),
-    [t, model.kind, model.side, model.markKind],
-  );
+  const labels = useMemo(() => profitCardLabels(model), [model]);
 
   const { handleProps, surfaceProps } = useSheetGesture({
     sheetRef,
@@ -323,12 +307,13 @@ export function ShareProfitCardModal({
                   ref={captureRef}
                   className="pointer-events-none fixed"
                   style={{
-                    // Real 360×580 box, slid off-screen. Not opacity 0,
+                    // Real 360×400 box, slid off-screen. Not opacity 0,
                     // not display none, not a far-off left with a 0×0 rect.
                     // html-to-image options.style resets transform on the clone.
                     left: 0,
                     top: 0,
                     width: PROFIT_CARD_CAPTURE_WIDTH,
+                    height: PROFIT_CARD_CAPTURE_MIN_HEIGHT,
                     minHeight: PROFIT_CARD_CAPTURE_MIN_HEIGHT,
                     zIndex: 1,
                     opacity: 1,

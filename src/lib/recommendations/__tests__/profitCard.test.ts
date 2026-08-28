@@ -7,14 +7,21 @@ import { describe, it } from "node:test";
 import { dirForLocale } from "@/lib/i18n";
 import { BRAND_URL } from "@/lib/brand";
 import {
+  PROFIT_CARD_COPY,
+  PROFIT_CARD_GAIN_COLOR,
+  PROFIT_CARD_HEIGHT,
   PROFIT_CARD_LOGO_SRC,
+  PROFIT_CARD_LOSS_COLOR,
   PROFIT_CARD_SHARE_URL,
+  PROFIT_CARD_WIDTH,
   buildProfitCardModel,
   formatCardDate,
   formatCardPrice,
   formatPnlPercent,
+  pnlAccentColor,
   pnlPercentFromEntry,
   profitCardFilename,
+  profitCardLabels,
   sideOf,
   type ProfitCardSource,
 } from "@/lib/recommendations/profitCard";
@@ -86,7 +93,7 @@ describe("buildProfitCardModel", () => {
     assert.equal(model.markPrice, 2652);
     assert.equal(model.pnlPct, 2);
     assert.equal(model.isLoss, false);
-    assert.equal(model.dir, "rtl");
+    assert.equal(model.dir, "ltr");
     assert.equal(model.rMultiple, null);
   });
 
@@ -150,10 +157,42 @@ describe("buildProfitCardModel", () => {
     assert.doesNotMatch(model.shareUrl, /ref|LNR21GOLD|lonora\.com/i);
   });
 
-  it("Arabic locale yields RTL; English yields LTR", () => {
-    assert.equal(buildProfitCardModel(rec(), { locale: "ar", now: T0 }).dir, "rtl");
-    assert.equal(buildProfitCardModel(rec(), { locale: "en", now: T0 }).dir, "ltr");
+  it("the share image is always LTR English, even when the app locale is Arabic", () => {
+    const ar = buildProfitCardModel(rec(), { locale: "ar", now: T0 });
+    const en = buildProfitCardModel(rec(), { locale: "en", now: T0 });
+    assert.equal(ar.dir, "ltr");
+    assert.equal(en.dir, "ltr");
     assert.equal(dirForLocale("ar"), "rtl");
+    const labels = profitCardLabels(ar);
+    assert.equal(labels.badge, PROFIT_CARD_COPY.badge);
+    assert.equal(labels.pnlKind, PROFIT_CARD_COPY.unrealized);
+    assert.equal(labels.side, PROFIT_CARD_COPY.long);
+    assert.equal(labels.mark, PROFIT_CARD_COPY.lastPrice);
+    assert.equal(labels.entry, PROFIT_CARD_COPY.entry);
+    assert.equal(labels.date, PROFIT_CARD_COPY.date);
+    assert.equal(labels.tagline, PROFIT_CARD_COPY.tagline);
+    for (const value of Object.values(labels)) {
+      assert.doesNotMatch(value, /[\u0600-\u06FF]/);
+    }
+    assert.deepEqual(labels, profitCardLabels(en));
+  });
+
+  it("realized / short / hit rows still speak English", () => {
+    const model = buildProfitCardModel(
+      rec({
+        direction: "sell",
+        outcome: "win_tp1",
+        triggeredAt: T0,
+        tp1HitAt: T0 + 120_000,
+        tp1HitPrice: 2580,
+      }),
+      { locale: "ar", now: T0 + 180_000 },
+    );
+    const labels = profitCardLabels(model);
+    assert.equal(labels.pnlKind, "Realized PnL");
+    assert.equal(labels.side, "Short");
+    assert.equal(labels.mark, "Hit Price");
+    assert.doesNotMatch(labels.pnlKind, /[\u0600-\u06FF]/);
   });
 });
 
@@ -186,3 +225,26 @@ describe("brand assets the card is allowed to use", () => {
     assert.equal(PROFIT_CARD_LOGO_SRC, "/brand/aichart-mark-dark.png");
   });
 });
+
+describe("pnlAccentColor", () => {
+  it("is green on a gain and red on a loss — never gold", () => {
+    assert.equal(pnlAccentColor(false), PROFIT_CARD_GAIN_COLOR);
+    assert.equal(pnlAccentColor(true), PROFIT_CARD_LOSS_COLOR);
+    assert.match(PROFIT_CARD_GAIN_COLOR, /^#20d68a$/i);
+    assert.match(PROFIT_CARD_LOSS_COLOR, /^#f2555d$/i);
+    assert.notEqual(PROFIT_CARD_GAIN_COLOR, PROFIT_CARD_LOSS_COLOR);
+    assert.doesNotMatch(PROFIT_CARD_GAIN_COLOR, /#f0d078|#e8c04a|#c9a227|#f3e6c4/i);
+    assert.doesNotMatch(PROFIT_CARD_LOSS_COLOR, /#f0d078|#e8c04a|#c9a227/i);
+  });
+});
+
+describe("compact card size", () => {
+  it("is 360 wide and shorter than the old 580 phone strip", () => {
+    assert.equal(PROFIT_CARD_WIDTH, 360);
+    assert.equal(PROFIT_CARD_HEIGHT, 400);
+    assert.ok(PROFIT_CARD_HEIGHT <= 460);
+    assert.ok(PROFIT_CARD_HEIGHT >= 360);
+    assert.notEqual(PROFIT_CARD_HEIGHT, 580);
+  });
+});
+

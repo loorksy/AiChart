@@ -1,23 +1,30 @@
 /**
- * The shareable Lonora profit card — dark gold, Bybit-style structure,
- * on-brand mark, real recommendation numbers. Rendered off-screen at a
- * fixed 360px width so html-to-image captures a consistent PNG.
+ * The shareable Lonora profit card — compact dark-gold Bybit-style layout,
+ * English LTR, green profit / red loss. Rendered at a fixed 360×400 so
+ * html-to-image captures a consistent PNG with no empty canvas.
  */
 "use client";
 
 import type { CSSProperties } from "react";
 import { BRAND_DOMAIN, BRAND_NAME } from "@/lib/brand";
 import {
+  PROFIT_CARD_BG,
+  PROFIT_CARD_HEIGHT,
   PROFIT_CARD_LOGO_SRC,
+  PROFIT_CARD_WIDTH,
   formatCardDate,
   formatCardPrice,
   formatPnlPercent,
+  pnlAccentColor,
+  pnlAccentGlow,
   type ProfitCardLabels,
   type ProfitCardModel,
 } from "@/lib/recommendations/profitCard";
 
-const W = 360;
-const H = 580;
+const W = PROFIT_CARD_WIDTH;
+const H = PROFIT_CARD_HEIGHT;
+const SANS = 'var(--font-inter), Inter, "Segoe UI", sans-serif';
+const MONO = "var(--font-jetbrains), ui-monospace, monospace";
 
 export function ProfitCard({
   model,
@@ -31,31 +38,28 @@ export function ProfitCard({
   logoSrc?: string;
 }) {
   const gain = !model.isLoss;
-  const pctColor = gain ? "#f0d078" : "#f07167";
-  const pctGlow = gain ? "rgba(240, 208, 120, 0.45)" : "rgba(240, 113, 103, 0.4)";
-  const barsFlip = model.dir === "rtl" ? "scaleX(-1)" : undefined;
+  const pctColor = pnlAccentColor(model.isLoss);
+  const pctGlow = pnlAccentGlow(model.isLoss);
 
   return (
     <article
       data-testid="profit-card"
-      dir={model.dir}
+      dir="ltr"
       style={{
         width: "100%",
         maxWidth: W,
-        minHeight: H,
-        height: "auto",
+        height: H,
         boxSizing: "border-box",
         position: "relative",
         overflow: "hidden",
-        padding: "22px 22px 20px",
+        padding: "16px 16px 14px",
         display: "flex",
         flexDirection: "column",
-        color: "#f3e6c4",
-        fontFamily: 'var(--font-cairo), Cairo, "Segoe UI", sans-serif',
-        background:
-          "radial-gradient(120% 80% at 80% -10%, rgba(212, 175, 55, 0.22), transparent 52%), linear-gradient(165deg, #14100b 0%, #0c0a07 48%, #120e09 100%)",
+        color: "#f4f1ea",
+        fontFamily: SANS,
+        background: `radial-gradient(110% 70% at 88% -8%, rgba(212, 175, 55, 0.18), transparent 48%), linear-gradient(165deg, #16181c 0%, ${PROFIT_CARD_BG} 46%, #0b0c0e 100%)`,
         border: "1px solid rgba(212, 175, 55, 0.28)",
-        borderRadius: 28,
+        borderRadius: 26,
       }}
     >
       <div
@@ -64,7 +68,7 @@ export function ProfitCard({
           position: "absolute",
           inset: 0,
           background:
-            "linear-gradient(180deg, rgba(212,175,55,0.08) 0%, transparent 28%, transparent 72%, rgba(0,0,0,0.35) 100%)",
+            "linear-gradient(180deg, rgba(212,175,55,0.07) 0%, transparent 26%, transparent 78%, rgba(0,0,0,0.28) 100%)",
           pointerEvents: "none",
         }}
       />
@@ -76,27 +80,27 @@ export function ProfitCard({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 12,
+          gap: 10,
+          flexShrink: 0,
         }}
       >
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           {/* eslint-disable-next-line @next/next/no-img-element -- capture target; next/image is unreliable for html-to-image */}
           <img
             src={logoSrc ?? PROFIT_CARD_LOGO_SRC}
             alt=""
-            width={36}
-            height={36}
+            width={28}
+            height={28}
             crossOrigin="anonymous"
             decoding="async"
-            style={{ width: 36, height: 36, objectFit: "contain" }}
+            style={{ width: 28, height: 28, objectFit: "contain", flexShrink: 0 }}
           />
           <span
             style={{
-              fontFamily: "var(--font-fraunces), Fraunces, Georgia, serif",
-              fontSize: 20,
+              fontSize: 17,
               fontWeight: 600,
-              letterSpacing: "0.04em",
-              color: "#f8e7a8",
+              letterSpacing: "-0.02em",
+              color: "#f8f5ef",
             }}
           >
             {BRAND_NAME}
@@ -105,112 +109,122 @@ export function ProfitCard({
         <span
           style={{
             flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
             borderRadius: 999,
             border: "1px solid rgba(212, 175, 55, 0.45)",
-            background: "rgba(212, 175, 55, 0.12)",
-            color: "#e8c04a",
-            fontSize: 11,
+            background: "rgba(212, 175, 55, 0.10)",
+            color: "#f0e2b0",
+            fontSize: 10,
             fontWeight: 700,
-            letterSpacing: "0.02em",
-            padding: "5px 10px",
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            padding: "4px 9px",
             whiteSpace: "nowrap",
           }}
         >
+          <Sparkle />
           {labels.badge}
         </span>
       </header>
 
-      <div style={{ position: "relative", zIndex: 1, marginTop: 28 }}>
+      <div style={{ position: "relative", zIndex: 1, marginTop: 14, flexShrink: 0 }}>
         <p
           style={{
             margin: 0,
-            fontSize: 13,
+            fontSize: 11,
             fontWeight: 600,
-            color: "#b5a178",
-            letterSpacing: "0.02em",
+            color: "#9a9386",
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
           }}
         >
           {labels.pnlKind}
         </p>
         <p
           style={{
-            margin: "6px 0 0",
+            margin: "5px 0 0",
             display: "flex",
-            alignItems: "baseline",
-            gap: 10,
+            alignItems: "center",
+            gap: 8,
             flexWrap: "wrap",
           }}
         >
           <span
             dir="ltr"
             style={{
-              fontFamily: "var(--font-jetbrains), ui-monospace, monospace",
-              fontSize: 18,
+              fontFamily: MONO,
+              fontSize: 16,
               fontWeight: 700,
               letterSpacing: "0.08em",
-              color: "#f3e6c4",
+              color: "#f8f5ef",
             }}
           >
             {model.symbol}
           </span>
           <span
             style={{
-              fontSize: 14,
+              display: "inline-flex",
+              alignItems: "center",
+              borderRadius: 999,
+              border: "1px solid rgba(212, 175, 55, 0.4)",
+              background: "rgba(212, 175, 55, 0.12)",
+              color: "#e8c04a",
+              fontSize: 11,
               fontWeight: 700,
-              color: gain ? "#e8c04a" : "#f07167",
+              letterSpacing: "0.02em",
+              padding: "2px 8px",
             }}
           >
             {labels.side}
           </span>
         </p>
-      </div>
 
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          marginTop: 18,
-          minHeight: 118,
-        }}
-      >
-        <p
-          dir="ltr"
-          data-testid="profit-card-pnl"
-          style={{
-            margin: 0,
-            fontFamily: "var(--font-jetbrains), ui-monospace, monospace",
-            fontSize: 56,
-            fontWeight: 800,
-            lineHeight: 1.05,
-            letterSpacing: "-0.03em",
-            color: pctColor,
-            textShadow: `0 0 28px ${pctGlow}`,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          {formatPnlPercent(model.pnlPct)}
-        </p>
-        <GoldBars style={{ position: "absolute", top: -8, insetInlineEnd: -18, transform: barsFlip }} />
+        <div style={{ position: "relative", marginTop: 8, minHeight: 56, paddingRight: 108 }}>
+          <p
+            dir="ltr"
+            data-testid="profit-card-pnl"
+            data-pnl-tone={gain ? "gain" : "loss"}
+            style={{
+              margin: 0,
+              fontFamily: MONO,
+              fontSize: 42,
+              fontWeight: 800,
+              lineHeight: 1.05,
+              letterSpacing: "-0.04em",
+              color: pctColor,
+              textShadow: `0 0 22px ${pctGlow}`,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {formatPnlPercent(model.pnlPct)}
+          </p>
+          <GoldGraphic gain={gain} style={{ position: "absolute", top: -18, right: -8 }} />
+        </div>
       </div>
 
       <dl
         style={{
           position: "relative",
           zIndex: 1,
-          margin: "22px 0 0",
-          padding: "14px 0",
-          borderTop: "1px solid rgba(212, 175, 55, 0.22)",
-          borderBottom: "1px solid rgba(212, 175, 55, 0.22)",
+          margin: "12px 0 0",
+          padding: "8px 12px",
+          borderRadius: 14,
+          background: "rgba(255, 255, 255, 0.035)",
+          border: "1px solid rgba(212, 175, 55, 0.14)",
           display: "grid",
-          gap: 10,
+          gap: 0,
+          flexShrink: 0,
         }}
       >
         <Row
+          icon="price"
           label={labels.mark}
           value={model.markPrice != null ? formatCardPrice(model.markPrice) : "—"}
         />
-        <Row label={labels.entry} value={formatCardPrice(model.entry)} />
-        <Row label={labels.date} value={formatCardDate(model.dateMs)} />
+        <Row icon="entry" label={labels.entry} value={formatCardPrice(model.entry)} />
+        <Row icon="date" label={labels.date} value={formatCardDate(model.dateMs)} last />
       </dl>
 
       <footer
@@ -218,11 +232,12 @@ export function ProfitCard({
           position: "relative",
           zIndex: 1,
           marginTop: "auto",
-          paddingTop: 16,
+          paddingTop: 12,
           display: "flex",
           alignItems: "flex-end",
           justifyContent: "space-between",
-          gap: 12,
+          gap: 10,
+          flexShrink: 0,
         }}
       >
         <div style={{ minWidth: 0 }}>
@@ -230,9 +245,9 @@ export function ProfitCard({
             <p
               style={{
                 margin: 0,
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: 700,
-                color: "#f8e7a8",
+                color: "#f0d078",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -243,9 +258,9 @@ export function ProfitCard({
           ) : null}
           <p
             style={{
-              margin: displayName ? "4px 0 0" : 0,
-              fontSize: 12,
-              color: "#b5a178",
+              margin: displayName ? "3px 0 0" : 0,
+              fontSize: 11,
+              color: "#9a9386",
             }}
           >
             {labels.tagline}
@@ -253,9 +268,9 @@ export function ProfitCard({
           <p
             dir="ltr"
             style={{
-              margin: "8px 0 0",
-              fontFamily: "var(--font-jetbrains), ui-monospace, monospace",
-              fontSize: 11,
+              margin: "6px 0 0",
+              fontFamily: MONO,
+              fontSize: 10,
               letterSpacing: "0.02em",
               color: "#c9a227",
             }}
@@ -269,26 +284,50 @@ export function ProfitCard({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+  icon,
+  last,
+}: {
+  label: string;
+  value: string;
+  icon: "price" | "entry" | "date";
+  last?: boolean;
+}) {
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "baseline",
+        alignItems: "center",
         justifyContent: "space-between",
-        gap: 12,
+        gap: 10,
+        padding: "7px 0",
+        borderBottom: last ? "none" : "1px solid rgba(212, 175, 55, 0.10)",
       }}
     >
-      <dt style={{ fontSize: 12, color: "#b5a178" }}>{label}</dt>
+      <dt
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 11,
+          color: "#9a9386",
+          margin: 0,
+        }}
+      >
+        <RowIcon kind={icon} />
+        {label}
+      </dt>
       <dd
         dir="ltr"
         style={{
           margin: 0,
-          fontFamily: "var(--font-jetbrains), ui-monospace, monospace",
-          fontSize: 14,
+          fontFamily: MONO,
+          fontSize: 13,
           fontWeight: 700,
           fontVariantNumeric: "tabular-nums",
-          color: "#f3e6c4",
+          color: "#f4f1ea",
         }}
       >
         {value}
@@ -297,26 +336,70 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Tasteful isometric bullion — decorative, RTL-mirrored by the parent. */
-function GoldBars({ style }: { style?: CSSProperties }) {
+function RowIcon({ kind }: { kind: "price" | "entry" | "date" }) {
+  const common = {
+    width: 12,
+    height: 12,
+    viewBox: "0 0 12 12",
+    fill: "none",
+    "aria-hidden": true as const,
+    style: { flexShrink: 0, opacity: 0.75 },
+  };
+  if (kind === "price") {
+    return (
+      <svg {...common}>
+        <path d="M1.5 8.5 L4 5.5 L6 7 L10.5 2.5" stroke="#c9a227" strokeWidth="1.3" strokeLinejoin="round" />
+        <circle cx="10.5" cy="2.5" r="1" fill="#c9a227" />
+      </svg>
+    );
+  }
+  if (kind === "entry") {
+    return (
+      <svg {...common}>
+        <circle cx="6" cy="6" r="4" stroke="#c9a227" strokeWidth="1.3" />
+        <circle cx="6" cy="6" r="1.4" fill="#c9a227" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <rect x="1.5" y="2.5" width="9" height="8" rx="1.2" stroke="#c9a227" strokeWidth="1.3" />
+      <path d="M1.5 5h9M4 1.5v2M8 1.5v2" stroke="#c9a227" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+function Sparkle() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden>
+      <path d="M5 0 L6 3.8 L10 5 L6 6.2 L5 10 L4 6.2 L0 5 L4 3.8 Z" fill="#e8c04a" />
+    </svg>
+  );
+}
+
+/** Compact bullion + sparkline — sits beside the %, does not stretch the card. */
+function GoldGraphic({ gain, style }: { gain: boolean; style?: CSSProperties }) {
+  const spark = gain
+    ? "M8 62 C 22 58, 30 44, 44 40 S 64 28, 80 16 S 100 8, 112 6"
+    : "M8 14 C 22 18, 30 32, 44 38 S 64 50, 80 58 S 100 70, 112 74";
   return (
     <svg
-      width="168"
-      height="132"
-      viewBox="0 0 168 132"
+      width="116"
+      height="92"
+      viewBox="0 0 116 92"
       fill="none"
       aria-hidden
-      style={{ pointerEvents: "none", opacity: 0.92, ...style }}
+      style={{ pointerEvents: "none", opacity: 0.95, ...style }}
     >
-      <path d="M28 94 L78 78 L148 92 L98 112 Z" fill="#8a6a1a" />
-      <path d="M28 94 L28 108 L98 126 L98 112 Z" fill="#6e5414" />
-      <path d="M148 92 L148 106 L98 126 L98 112 Z" fill="#c4a035" />
-      <path d="M38 72 L88 56 L150 70 L100 88 Z" fill="#d4b44a" />
-      <path d="M38 72 L38 84 L100 100 L100 88 Z" fill="#a07e22" />
-      <path d="M150 70 L150 82 L100 100 L100 88 Z" fill="#f0d078" />
-      <path d="M22 52 L72 36 L138 50 L88 68 Z" fill="#f3dc8a" />
-      <path d="M22 52 L22 64 L88 80 L88 68 Z" fill="#b8922c" />
-      <path d="M138 50 L138 62 L88 80 L88 68 Z" fill="#fff3c0" />
+      <path d={spark} stroke="rgba(232, 192, 74, 0.55)" strokeWidth="1.6" fill="none" />
+      <circle cx="112" cy={gain ? 6 : 74} r="2.4" fill="#f0d078" />
+      <ellipse cx="64" cy="84" rx="34" ry="6" fill="rgba(201, 162, 39, 0.18)" />
+      <path d="M28 64 L62 52 L102 62 L68 76 Z" fill="#8a6a1a" />
+      <path d="M28 64 L28 74 L68 86 L68 76 Z" fill="#6e5414" />
+      <path d="M102 62 L102 72 L68 86 L68 76 Z" fill="#c4a035" />
+      <path d="M22 46 L56 34 L98 44 L64 58 Z" fill="#e0c056" />
+      <path d="M22 46 L22 56 L64 68 L64 58 Z" fill="#a07e22" />
+      <path d="M98 44 L98 54 L64 68 L64 58 Z" fill="#f3dc8a" />
     </svg>
   );
 }
@@ -325,16 +408,16 @@ function GoldBars({ style }: { style?: CSSProperties }) {
 function BrandUrlQr() {
   return (
     <svg
-      width="72"
-      height="72"
+      width="56"
+      height="56"
       viewBox="0 0 33 33"
       shapeRendering="crispEdges"
       aria-hidden
       style={{
         flexShrink: 0,
-        borderRadius: 8,
+        borderRadius: 7,
         background: "#f6edd4",
-        boxShadow: "0 0 0 3px rgba(212,175,55,0.25)",
+        boxShadow: "0 0 0 2px rgba(212,175,55,0.22)",
       }}
     >
       <rect width="33" height="33" fill="#f6edd4" />

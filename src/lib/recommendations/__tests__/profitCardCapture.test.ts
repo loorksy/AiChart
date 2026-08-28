@@ -9,6 +9,9 @@ import {
   MIN_CAPTURE_BYTES,
   MIN_PAINTED_PIXELS,
   MIN_UNINSPECTED_CAPTURE_BYTES,
+  PROFIT_CARD_CAPTURE_BG,
+  PROFIT_CARD_CAPTURE_MIN_HEIGHT,
+  PROFIT_CARD_CAPTURE_WIDTH,
   blobPassesSizeGate,
   captureHtmlToPngBlob,
   countPaintedRgba,
@@ -66,18 +69,19 @@ function box(
 
 describe("countPaintedRgba", () => {
   it("treats the capture background fill as empty", () => {
-    const data = rgba(Array.from({ length: 64 }, () => [12, 10, 7, 255]));
+    const data = rgba(Array.from({ length: 64 }, () => [14, 16, 19, 255]));
     assert.equal(countPaintedRgba(data), 0);
   });
 
-  it("counts gold PnL pixels as painted", () => {
+  it("counts green PnL and cream type as painted", () => {
     const data = rgba([
-      [12, 10, 7],
-      [240, 208, 120],
-      [243, 230, 196],
+      [14, 16, 19],
+      [32, 214, 138],
+      [242, 85, 93],
+      [244, 241, 234],
       [0, 0, 0, 0],
     ]);
-    assert.equal(countPaintedRgba(data), 2);
+    assert.equal(countPaintedRgba(data), 3);
   });
 });
 
@@ -106,7 +110,7 @@ describe("isUsablePngBlob", () => {
     assert.equal(await isUsablePngBlob(maybeBlank, async () => null), false);
   });
 
-  it("accepts a blob whose sampled pixels include gold/cream paint", async () => {
+  it("accepts a painted blob whose sampled pixels include green or cream", async () => {
     const painted = new Blob([new Uint8Array(3_000)], { type: "image/png" });
     assert.equal(await isUsablePngBlob(painted, async () => 80), true);
   });
@@ -118,22 +122,32 @@ describe("nodeHasCaptureBox", () => {
     assert.equal(nodeHasCaptureBox(box({ width: 0, height: 0, clientWidth: 0, clientHeight: 0 })), false);
   });
 
-  it("accepts a 360×580 box even when translated off-screen", () => {
+  it("accepts a compact 360×400 box even when translated off-screen", () => {
     assert.equal(
       nodeHasCaptureBox(
         box({
           clientWidth: 360,
-          clientHeight: 580,
+          clientHeight: 400,
           offsetWidth: 360,
-          offsetHeight: 580,
+          offsetHeight: 400,
           scrollWidth: 360,
-          scrollHeight: 580,
+          scrollHeight: 400,
           width: 360,
-          height: 580,
+          height: 400,
         }),
       ),
       true,
     );
+  });
+});
+
+describe("compact capture canvas", () => {
+  it("matches the 360×400 card and is not a 580px black strip", () => {
+    assert.equal(PROFIT_CARD_CAPTURE_WIDTH, 360);
+    assert.equal(PROFIT_CARD_CAPTURE_MIN_HEIGHT, 400);
+    assert.equal(PROFIT_CARD_CAPTURE_BG, "#0e1013");
+    assert.notEqual(PROFIT_CARD_CAPTURE_MIN_HEIGHT, 580);
+    assert.ok(PROFIT_CARD_CAPTURE_MIN_HEIGHT <= 460);
   });
 });
 

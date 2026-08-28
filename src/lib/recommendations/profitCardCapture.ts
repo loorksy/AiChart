@@ -9,24 +9,29 @@
  */
 import { BRAND_DOMAIN, BRAND_NAME } from "@/lib/brand";
 import {
+  PROFIT_CARD_BG,
+  PROFIT_CARD_HEIGHT,
   PROFIT_CARD_LOGO_SRC,
+  PROFIT_CARD_WIDTH,
   formatCardDate,
   formatCardPrice,
   formatPnlPercent,
+  pnlAccentColor,
+  pnlAccentGlow,
   type ProfitCardLabels,
   type ProfitCardModel,
 } from "@/lib/recommendations/profitCard";
 
-export const PROFIT_CARD_CAPTURE_BG = "#0c0a07";
-export const PROFIT_CARD_CAPTURE_WIDTH = 360;
-export const PROFIT_CARD_CAPTURE_MIN_HEIGHT = 580;
-/** A 720×1160 solid fill compresses to a few KB; a painted card does not. */
+export const PROFIT_CARD_CAPTURE_BG = PROFIT_CARD_BG;
+export const PROFIT_CARD_CAPTURE_WIDTH = PROFIT_CARD_WIDTH;
+export const PROFIT_CARD_CAPTURE_MIN_HEIGHT = PROFIT_CARD_HEIGHT;
+/** A 720×800 solid fill compresses to a few KB; a painted card does not. */
 export const MIN_CAPTURE_BYTES = 2_000;
 /** When we cannot sample pixels, demand a blob too large to be a blank fill. */
 export const MIN_UNINSPECTED_CAPTURE_BYTES = 12_000;
 export const MIN_PAINTED_PIXELS = 24;
 
-const BG = { r: 12, g: 10, b: 7 };
+const BG = { r: 14, g: 16, b: 19 };
 
 export type CaptureInspect = (blob: Blob) => Promise<number | null>;
 
@@ -78,7 +83,7 @@ export async function inspectCapturePixels(blob: Blob): Promise<number | null> {
 }
 
 /**
- * Reject empty blobs and the solid `#0c0a07` rectangle html-to-image emits
+ * Reject empty blobs and the solid `#0e1013` rectangle html-to-image emits
  * when foreignObject rendering paints nothing.
  */
 export async function isUsablePngBlob(
@@ -258,6 +263,7 @@ function loadHtmlImage(src: string): Promise<HTMLImageElement | null> {
 /**
  * Draw the card from the model when html-to-image yields a black/empty PNG.
  * Uses the live document's fonts, so it does not depend on SVG foreignObject.
+ * Always LTR English — the share image does not follow app locale.
  */
 export async function renderProfitCardFallbackPng(
   model: ProfitCardModel,
@@ -277,86 +283,89 @@ export async function renderProfitCardFallbackPng(
   if (!ctx) throw new Error("profit-card fallback has no canvas");
   ctx.scale(scale, scale);
 
-  const rtl = model.dir === "rtl";
-  const pad = 22;
-  const startX = rtl ? W - pad : pad;
-  const endX = rtl ? pad : W - pad;
-  const gain = !model.isLoss;
-  const pctColor = gain ? "#f0d078" : "#f07167";
-  const body = "#f3e6c4";
-  const muted = "#b5a178";
+  const pad = 16;
+  const startX = pad;
+  const endX = W - pad;
+  const pctColor = pnlAccentColor(model.isLoss);
+  const body = "#f4f1ea";
+  const muted = "#9a9386";
   const gold = "#e8c04a";
+  const sans = "Inter, 'Segoe UI', sans-serif";
+  const mono = "ui-monospace, 'JetBrains Mono', monospace";
 
-  const bg = ctx.createLinearGradient(0, 0, W * 0.2, H);
-  bg.addColorStop(0, "#14100b");
-  bg.addColorStop(0.48, PROFIT_CARD_CAPTURE_BG);
-  bg.addColorStop(1, "#120e09");
+  const bg = ctx.createLinearGradient(0, 0, W * 0.15, H);
+  bg.addColorStop(0, "#16181c");
+  bg.addColorStop(0.46, PROFIT_CARD_CAPTURE_BG);
+  bg.addColorStop(1, "#0b0c0e");
   ctx.fillStyle = bg;
-  roundRect(ctx, 0, 0, W, H, 28);
+  roundRect(ctx, 0, 0, W, H, 26);
   ctx.fill();
 
-  const wash = ctx.createRadialGradient(W * 0.8, 0, 8, W * 0.8, 0, W);
-  wash.addColorStop(0, "rgba(212, 175, 55, 0.22)");
-  wash.addColorStop(0.55, "rgba(212, 175, 55, 0)");
+  const wash = ctx.createRadialGradient(W * 0.88, 0, 8, W * 0.88, 0, W * 0.7);
+  wash.addColorStop(0, "rgba(212, 175, 55, 0.18)");
+  wash.addColorStop(0.5, "rgba(212, 175, 55, 0)");
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, W, H);
 
   ctx.strokeStyle = "rgba(212, 175, 55, 0.28)";
   ctx.lineWidth = 1;
-  roundRect(ctx, 0.5, 0.5, W - 1, H - 1, 28);
+  roundRect(ctx, 0.5, 0.5, W - 1, H - 1, 26);
   ctx.stroke();
 
-  ctx.direction = rtl ? "rtl" : "ltr";
-  ctx.textAlign = rtl ? "right" : "left";
+  ctx.direction = "ltr";
+  ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
 
   const logoSrc = (await loadProfitCardLogoDataUrl()) ?? PROFIT_CARD_LOGO_SRC;
   const logo = await loadHtmlImage(logoSrc);
   if (logo) {
-    const lx = rtl ? W - pad - 36 : pad;
-    ctx.drawImage(logo, lx, 22, 36, 36);
+    ctx.drawImage(logo, pad, 16, 28, 28);
   }
 
-  ctx.fillStyle = "#f8e7a8";
-  ctx.font = '600 20px Fraunces, Georgia, serif';
-  const nameX = rtl ? startX - 46 : startX + 46;
-  ctx.fillText(BRAND_NAME, nameX, 46);
+  ctx.fillStyle = "#f8f5ef";
+  ctx.font = `600 17px ${sans}`;
+  ctx.fillText(BRAND_NAME, startX + 36, 36);
 
-  ctx.font = "700 11px Cairo, 'Segoe UI', sans-serif";
-  const badgeW = Math.min(140, ctx.measureText(labels.badge).width + 20);
-  const badgeX = rtl ? pad : W - pad - badgeW;
+  ctx.font = `700 10px ${sans}`;
+  const badgeW = Math.min(130, ctx.measureText(labels.badge).width + 22);
+  const badgeX = W - pad - badgeW;
   ctx.strokeStyle = "rgba(212, 175, 55, 0.45)";
+  ctx.fillStyle = "rgba(212, 175, 55, 0.10)";
+  roundRect(ctx, badgeX, 18, badgeW, 22, 11);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f0e2b0";
+  ctx.textAlign = "center";
+  ctx.fillText(labels.badge.toUpperCase(), badgeX + badgeW / 2, 33);
+  ctx.textAlign = "left";
+
+  ctx.fillStyle = muted;
+  ctx.font = `600 11px ${sans}`;
+  ctx.fillText(labels.pnlKind.toUpperCase(), startX, 68);
+
+  ctx.fillStyle = body;
+  ctx.font = `700 16px ${mono}`;
+  ctx.fillText(model.symbol, startX, 90);
+  const symbolW = ctx.measureText(model.symbol).width;
+
+  ctx.font = `700 11px ${sans}`;
+  const sideW = ctx.measureText(labels.side).width + 16;
+  const sideX = startX + symbolW + 10;
+  ctx.strokeStyle = "rgba(212, 175, 55, 0.4)";
   ctx.fillStyle = "rgba(212, 175, 55, 0.12)";
-  roundRect(ctx, badgeX, 26, badgeW, 24, 12);
+  roundRect(ctx, sideX, 76, sideW, 18, 9);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = gold;
   ctx.textAlign = "center";
-  ctx.fillText(labels.badge, badgeX + badgeW / 2, 42);
-  ctx.textAlign = rtl ? "right" : "left";
-
-  ctx.fillStyle = muted;
-  ctx.font = "600 13px Cairo, 'Segoe UI', sans-serif";
-  ctx.fillText(labels.pnlKind, startX, 96);
-
-  ctx.fillStyle = body;
-  ctx.font = "700 18px ui-monospace, 'JetBrains Mono', monospace";
-  ctx.direction = "ltr";
-  ctx.textAlign = rtl ? "right" : "left";
-  ctx.fillText(model.symbol, startX, 124);
-  const symbolW = ctx.measureText(model.symbol).width;
-  ctx.direction = rtl ? "rtl" : "ltr";
-  ctx.fillStyle = gain ? gold : "#f07167";
-  ctx.font = "700 14px Cairo, 'Segoe UI', sans-serif";
-  const sideX = rtl ? startX - symbolW - 10 : startX + symbolW + 10;
-  ctx.fillText(labels.side, sideX, 124);
+  ctx.fillText(labels.side, sideX + sideW / 2, 89);
+  ctx.textAlign = "left";
 
   ctx.fillStyle = pctColor;
-  ctx.font = "800 52px ui-monospace, 'JetBrains Mono', monospace";
-  ctx.direction = "ltr";
-  ctx.shadowColor = gain ? "rgba(240, 208, 120, 0.45)" : "rgba(240, 113, 103, 0.4)";
-  ctx.shadowBlur = 18;
-  ctx.fillText(formatPnlPercent(model.pnlPct), startX, 196);
+  ctx.font = `800 42px ${mono}`;
+  ctx.shadowColor = pnlAccentGlow(model.isLoss);
+  ctx.shadowBlur = 16;
+  ctx.fillText(formatPnlPercent(model.pnlPct), startX, 142);
   ctx.shadowBlur = 0;
 
   const rows: Array<[string, string]> = [
@@ -364,47 +373,48 @@ export async function renderProfitCardFallbackPng(
     [labels.entry, formatCardPrice(model.entry)],
     [labels.date, formatCardDate(model.dateMs)],
   ];
-  ctx.strokeStyle = "rgba(212, 175, 55, 0.22)";
-  ctx.beginPath();
-  ctx.moveTo(pad, 236);
-  ctx.lineTo(W - pad, 236);
-  ctx.stroke();
-  let y = 262;
-  for (const [label, value] of rows) {
-    ctx.fillStyle = muted;
-    ctx.font = "12px Cairo, 'Segoe UI', sans-serif";
-    ctx.direction = rtl ? "rtl" : "ltr";
-    ctx.textAlign = rtl ? "right" : "left";
-    ctx.fillText(label, startX, y);
-    ctx.fillStyle = body;
-    ctx.font = "700 14px ui-monospace, 'JetBrains Mono', monospace";
-    ctx.direction = "ltr";
-    ctx.textAlign = rtl ? "left" : "right";
-    ctx.fillText(value, endX, y);
-    y += 28;
-  }
-  ctx.strokeStyle = "rgba(212, 175, 55, 0.22)";
-  ctx.beginPath();
-  ctx.moveTo(pad, y - 10);
-  ctx.lineTo(W - pad, y - 10);
+  const boxY = 162;
+  const boxH = 92;
+  ctx.fillStyle = "rgba(255, 255, 255, 0.035)";
+  ctx.strokeStyle = "rgba(212, 175, 55, 0.14)";
+  roundRect(ctx, pad, boxY, W - pad * 2, boxH, 14);
+  ctx.fill();
   ctx.stroke();
 
-  ctx.direction = rtl ? "rtl" : "ltr";
-  ctx.textAlign = rtl ? "right" : "left";
-  let footY = H - 72;
+  let y = boxY + 24;
+  rows.forEach(([label, value], i) => {
+    if (i > 0) {
+      ctx.strokeStyle = "rgba(212, 175, 55, 0.10)";
+      ctx.beginPath();
+      ctx.moveTo(pad + 12, y - 14);
+      ctx.lineTo(W - pad - 12, y - 14);
+      ctx.stroke();
+    }
+    ctx.fillStyle = muted;
+    ctx.font = `11px ${sans}`;
+    ctx.textAlign = "left";
+    ctx.fillText(label, startX + 12, y);
+    ctx.fillStyle = body;
+    ctx.font = `700 13px ${mono}`;
+    ctx.textAlign = "right";
+    ctx.fillText(value, endX - 12, y);
+    y += 28;
+  });
+  ctx.textAlign = "left";
+
+  let footY = displayName ? H - 70 : H - 54;
   if (displayName) {
-    ctx.fillStyle = "#f8e7a8";
-    ctx.font = "700 14px Cairo, 'Segoe UI', sans-serif";
+    ctx.fillStyle = "#f0d078";
+    ctx.font = `700 13px ${sans}`;
     ctx.fillText(displayName, startX, footY);
-    footY += 20;
+    footY += 16;
   }
   ctx.fillStyle = muted;
-  ctx.font = "12px Cairo, 'Segoe UI', sans-serif";
+  ctx.font = `11px ${sans}`;
   ctx.fillText(labels.tagline, startX, footY);
   ctx.fillStyle = "#c9a227";
-  ctx.font = "11px ui-monospace, 'JetBrains Mono', monospace";
-  ctx.direction = "ltr";
-  ctx.fillText(BRAND_DOMAIN, startX, footY + 18);
+  ctx.font = `10px ${mono}`;
+  ctx.fillText(BRAND_DOMAIN, startX, footY + 16);
 
   const blob = await canvasToPngBlob(canvas);
   if (!(await isUsablePngBlob(blob))) {
