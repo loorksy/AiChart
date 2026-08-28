@@ -6,7 +6,6 @@ import type {
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { Recommendation } from "@/lib/types";
 import { normalizeTimestamp } from "@/lib/chart/chartTimeAnchor";
-import { ticksPerPriceUnit } from "@/lib/chart/tv/tvSymbolTicks";
 import { planTargetList } from "@/lib/chart/planTargets";
 import { barDurationMs } from "@/lib/intervals";
 import { createdAtMs } from "@/lib/recommendations/anchorTime";
@@ -18,6 +17,44 @@ function toSec(ms: number): number {
 
 function nowSec(): number {
   return Math.round(Date.now() / 1000);
+}
+
+/**
+ * Real post-2001 unix seconds. Rejects 0, epoch-1970, and bar-index lookalikes
+ * that TradingView would clamp to the FIRST loaded bar — that clamp is what
+ * painted the P/L fill as a full-width band across the whole visible pane.
+ */
+export const MIN_PLAUSIBLE_UNIX_SEC = 1_000_000_000;
+
+export function isPlausibleUnixSec(
+  t: number,
+  now: number = nowSec(),
+): boolean {
+  return Number.isFinite(t) && t >= MIN_PLAUSIBLE_UNIX_SEC && t < now + 86_400;
+}
+
+/**
+ * Finite time-bounded P/L box. Left is the print/anchor second when it is a
+ * real chart time; missing/zero/epoch falls back to lastBar (a thin column at
+ * the live candle) — never t=0. Right is lastBar already in history. No
+ * future Close (that clamp-and-slide walked the left edge). Returns null
+ * until the box has positive width (right > left) with both times finite.
+ */
+export function positionBoxEdges(input: {
+  leftSec: number | null | undefined;
+  lastBarSec: number | null | undefined;
+  nowSec?: number;
+}): { left: number; right: number } | null {
+  const now = input.nowSec ?? nowSec();
+  const last = input.lastBarSec;
+  if (last == null || !isPlausibleUnixSec(last, now)) return null;
+  const left =
+    input.leftSec != null && isPlausibleUnixSec(input.leftSec, now)
+      ? input.leftSec
+      : last;
+  if (left > last) return null;
+  if (!(last > left)) return null;
+  return { left, right: last };
 }
 
 
@@ -145,7 +182,7 @@ function furthestTarget(
 }
 
 /** Recommendation creation time in TV seconds, or null when the payload
- *  carries no parseable `created_at`. */
+ *  carries no parseable `created_at` (or the parsed value is epoch/junk). */
 function createdAtSec(rec: Recommendation): number | null {
   return parseTimeSec(rec.created_at);
 }
@@ -153,7 +190,9 @@ function createdAtSec(rec: Recommendation): number | null {
 /** Epoch ms/ISO/seconds → TradingView seconds, or null. */
 function parseTimeSec(raw: unknown): number | null {
   const ms = createdAtMs(raw);
-  return ms != null ? toSec(ms) : null;
+  if (ms == null) return null;
+  const sec = toSec(ms);
+  return isPlausibleUnixSec(sec) ? sec : null;
 }
 
 /**
@@ -210,12 +249,6 @@ function tradeKeyOf(rec: Recommendation | null | undefined): string {
   ].join("|");
 }
 
-/** TV reports unix seconds; some callers pass ms. */
-function pointTimeSec(t: number | undefined): number | null {
-  if (t == null || !Number.isFinite(t) || t <= 0) return null;
-  return t > 1e12 ? Math.round(t / 1000) : Math.round(t);
-}
-
 /** Manages TradingView shapes for one chart — mirrors ChartDrawing[] onto it. */
 export class TvDrawingManager {
   private ids: EntityId[] = [];
@@ -235,8 +268,17 @@ export class TvDrawingManager {
    * redraw cannot stretch a removed entity (or the next trade's shape).
    */
   private applyGen = 0;
-  private positionId: EntityId | null = null;
-  private positionEntry: PricedPointLike | null = null;
+  private profitId: EntityId | null = null;
+  private riskId: EntityId | null = null;
+  /** Guards against apply()+syncRightEdge both creating before promises resolve. */
+  private boxCreateStarted = false;
+  private pendingBox: {
+    entry: PricedPointLike;
+    takeProfit: number;
+    stopLoss: number;
+  } | null = null;
+  /** Sticky left edge (print/anchor), unix seconds. Never rewritten to lastBar. */
+  private positionLeftSec: number | null = null;
   /** Last Close time we wrote via setPoints (unix seconds). */
   private lastRightSec: number | null = null;
   /** Close time frozen when the plan became terminal — restored on recreate. */
@@ -264,9 +306,17 @@ export class TvDrawingManager {
     const key = [rec.symbol ?? "", rec.action, rec.entry, rec.stop_loss, rec.take_profit].join("|");
     const cached = this.fallbackAnchorSec.get(key);
     if (cached != null) return cached;
+    // Prefer lastBar (in history) over wall-clock "now" — now can sit slightly
+    // past the last bar, which would refuse the box until a candle that never
+    // comes. lastBar is also what keeps a missing/zero anchor off t=0.
     const step = Math.max(60, barSec);
     const now = nowSec();
-    const anchor = now - (now % step);
+    const seed =
+      this.liveLastBarSec != null && isPlausibleUnixSec(this.liveLastBarSec)
+        ? this.liveLastBarSec
+        : now - (now % step);
+    const anchor = isPlausibleUnixSec(seed) ? seed : null;
+    if (anchor == null) return now;
     if (this.fallbackAnchorSec.size >= 16) this.fallbackAnchorSec.clear();
     this.fallbackAnchorSec.set(key, anchor);
     return anchor;
@@ -289,9 +339,12 @@ export class TvDrawingManager {
     }
     this.ids = [];
     this.lastFingerprint = "";
-    this.positionId = null;
-    // Keep positionEntry / freeze / lastBar: a recreate of the SAME trade
-    // must restore the frozen right edge rather than jump to a new lastBar.
+    this.profitId = null;
+    this.riskId = null;
+    this.boxCreateStarted = false;
+    this.pendingBox = null;
+    // Keep positionLeftSec / freeze / lastBar: a recreate of the SAME trade
+    // must restore the frozen right edge rather than jump.
   }
 
   private track(p: Promise<EntityId>): void {
@@ -363,80 +416,113 @@ export class TvDrawingManager {
   }
 
   /**
-   * TradingView's NATIVE Risk/Reward position tool for one trade plan —
-   * green profit zone, red stop zone, entry line and R/R stats label exactly
-   * as the standard TradingView tool renders them.
+   * Time-bounded profit + risk rectangles for one trade plan.
    *
-   * Creation is still SINGLE-point (`CreateShapeOptions.shape`):
-   * - `long_position`/`short_position` synthesize a Close point as
-   *   entry index + max(3, ~15% of the visible width) (`_getClosePointIndex`).
-   *   That INDEX span is fixed, so once enough new candles print the live
-   *   price walks PAST the right edge — the box looks "thin" even though
-   *   the trade is still open.
-   * - After create, we `setPoints` the Close (point 1) to the latest bar
-   *   ALREADY IN HISTORY. Left stays the print-time entry (point 0). The
-   *   second time is `lastBar`, never a future offset: a time beyond the
-   *   last bar has no bar to resolve to, so this build clamps it to the
-   *   MOVING last bar and can slide the LEFT edge with it.
-   * - Horizontal growth is VISUAL ONLY. Tracking (`evaluateRecommendation`)
-   *   never reads this width; a candle past the box is not a failed plan.
-   * - `profitLevel`/`stopLevel` are TICKS from the entry. The library
-   *   special-cases exactly these two override keys for the RiskReward
-   *   tools and reconstructs prices as entry ± level × minmov/pricescale —
-   *   the same symbol info the datafeed reports, shared via tvSymbolTicks.
-   * - `text` must NOT be set: the tool generates its own stats label and
-   *   the library THROWS ("Value is undefined") on caller-supplied text —
-   *   a rejection `track()`'s catch would swallow silently, drawing nothing.
+   * Native `long_position`/`short_position` on this widget build fill the
+   * pane as infinite price bands: single-point create synthesizes a Close
+   * from visible width (`_getClosePointIndex`), and a left time that fails
+   * to resolve (0 / epoch / before loaded history) clamps to the FIRST bar
+   * so setPoints(lastBar) paints a strip across the whole chart. Rectangles
+   * take two unix-second anchors and cannot extend past them.
+   *
+   * - Left = print/anchor candle (`anchor_time` / `triggeredAt`, else
+   *   created_at, else a sticky lastBar fallback — never t=0).
+   * - Right = last historical bar while live; frozen on terminal.
+   * - Never a future Close: TV clamps times past lastBar to the MOVING last
+   *   bar and can slide the left edge with it.
+   * - Horizontal growth is VISUAL ONLY. Tracking never reads this width.
    */
   private position(
-    direction: "long" | "short",
+    _direction: "long" | "short",
     entry: PricedPointLike,
     takeProfit: number,
     stopLoss: number,
-    symbol: string,
+    _symbol: string,
   ): void {
-    const base = ticksPerPriceUnit(symbol);
-    const profitLevel = Math.round(Math.abs(takeProfit - entry.price) * base);
-    const stopLevel = Math.round(Math.abs(stopLoss - entry.price) * base);
-    // A zero-tick level renders a degenerate zone — skip the tool and let the
-    // agent's entry/stop/target lines carry the information instead.
-    if (profitLevel <= 0 || stopLevel <= 0) return;
+    if (!(entry.price > 0) || !(takeProfit > 0) || !(stopLoss > 0)) return;
+    if (takeProfit === entry.price || stopLoss === entry.price) return;
+    this.pendingBox = { entry, takeProfit, stopLoss };
+    this.tryCreatePositionBox();
+  }
+
+  private boxOverrides(color: string): Record<string, unknown> {
+    return {
+      backgroundColor: color,
+      color,
+      linecolor: color,
+      fillBackground: true,
+      transparency: 80,
+      linewidth: 1,
+      extendLeft: false,
+      extendRight: false,
+    };
+  }
+
+  /**
+   * Create the two rectangles once lastBar is known and the box has positive
+   * width. Called from apply() and again from syncRightEdge when the first
+   * in-history bar arrives after a rec that landed first.
+   */
+  private tryCreatePositionBox(): void {
+    const pending = this.pendingBox;
+    if (!pending) return;
+    if (this.profitId != null && this.riskId != null) return;
+    if (this.boxCreateStarted) return;
+    const rightSrc =
+      this.positionFrozen && this.frozenRightSec != null
+        ? this.frozenRightSec
+        : this.liveLastBarSec;
+    const edges = positionBoxEdges({
+      leftSec: this.positionLeftSec ?? pending.entry.time,
+      lastBarSec: rightSrc,
+    });
+    if (!edges) return;
+    this.boxCreateStarted = true;
+    this.positionLeftSec = edges.left;
+    this.lastRightSec = edges.right;
     const gen = this.applyGen;
-    const created = this.chart.createShape(
-      { time: entry.time, price: entry.price } as ShapePoint,
+    const profit = this.chart.createMultipointShape(
+      [
+        { time: edges.left, price: pending.entry.price },
+        { time: edges.right, price: pending.takeProfit },
+      ] as ShapePoint[],
       {
-        shape: direction === "long" ? "long_position" : "short_position",
+        shape: "rectangle",
         ...EDITABLE,
-        overrides: {
-          profitLevel,
-          stopLevel,
-          linewidth: 1,
-          fontsize: 11,
-          profitBackground: "#22c55e",
-          profitBackgroundTransparency: 82,
-          stopBackground: "#ef4444",
-          stopBackgroundTransparency: 82,
-          showPriceLabels: true,
-          compact: false,
-        },
+        overrides: this.boxOverrides("#22c55e"),
       },
     );
-    this.track(created);
-    void created
-      .then((id) => {
+    const risk = this.chart.createMultipointShape(
+      [
+        { time: edges.left, price: pending.entry.price },
+        { time: edges.right, price: pending.stopLoss },
+      ] as ShapePoint[],
+      {
+        shape: "rectangle",
+        ...EDITABLE,
+        overrides: this.boxOverrides("#ef4444"),
+      },
+    );
+    this.track(profit);
+    this.track(risk);
+    if (this.pendingTerminal && !this.positionFrozen) this.freezePosition();
+    void Promise.all([profit, risk])
+      .then(([p, r]) => {
         if (gen !== this.applyGen) return;
-        this.positionId = id;
-        this.positionEntry = entry;
+        this.profitId = p;
+        this.riskId = r;
+        // A lastBar that arrived while createShape was in flight still needs
+        // to stretch — the create used the lastBar we knew at kickoff.
         this.stretchPosition({ evenIfFrozen: this.positionFrozen });
-        if (this.pendingTerminal && !this.positionFrozen) this.freezePosition();
       })
       .catch(() => {});
   }
 
   /**
-   * Grow the native position's Close point to `lastBarTime` (ms or seconds of
-   * a bar already in history). Same rec + same lastBar is a no-op — never
-   * delete/recreate. A terminal plan ignores further advances.
+   * Grow the box's right edge to `lastBarTime` (ms or seconds of a bar
+   * already in history). Same rec + same lastBar is a no-op — never
+   * delete/recreate. A terminal plan ignores further advances. If the rec
+   * arrived before any lastBar, this is also what first creates the box.
    */
   syncRightEdge(lastBarTime: number): void {
     if (!Number.isFinite(lastBarTime) || lastBarTime <= 0) return;
@@ -446,72 +532,74 @@ export class TvDrawingManager {
 
   private freezePosition(): void {
     if (this.lastRightSec != null) this.frozenRightSec = this.lastRightSec;
-    else if (this.liveLastBarSec != null && this.positionEntry) {
-      this.frozenRightSec = Math.max(this.liveLastBarSec, this.positionEntry.time);
+    else if (this.liveLastBarSec != null && this.positionLeftSec != null) {
+      this.frozenRightSec = Math.max(this.liveLastBarSec, this.positionLeftSec);
     }
     this.positionFrozen = true;
   }
 
   /**
-   * Write Close = lastBar (or the frozen right, on recreate) via setPoints.
-   * Left is always re-pinned to the print-time entry. The time we write is
+   * Write right = lastBar (or the frozen right, on recreate) via setPoints.
+   * Left is always re-pinned to the print-time edge. The time we write is
    * never past lastBar — a future Close is the clamp-and-slide bug.
    */
   private stretchPosition(opts?: { evenIfFrozen?: boolean }): void {
     if (this.positionFrozen && !opts?.evenIfFrozen) return;
-    const entry = this.positionEntry;
-    const id = this.positionId;
-    if (!entry || id == null) return;
+    if (this.profitId == null || this.riskId == null) {
+      this.tryCreatePositionBox();
+      return;
+    }
+    const pending = this.pendingBox;
+    const left = this.positionLeftSec;
+    if (!pending || left == null) return;
     const targetRight = this.positionFrozen
       ? this.frozenRightSec
       : this.liveLastBarSec;
-    if (targetRight == null || targetRight <= entry.time) return;
+    const edges = positionBoxEdges({
+      leftSec: left,
+      lastBarSec: targetRight,
+    });
+    if (!edges) return;
+    if (this.lastRightSec === edges.right) return;
+    this.writeBoxPoints(
+      this.profitId,
+      edges.left,
+      edges.right,
+      pending.entry.price,
+      pending.takeProfit,
+    );
+    this.writeBoxPoints(
+      this.riskId,
+      edges.left,
+      edges.right,
+      pending.entry.price,
+      pending.stopLoss,
+    );
+    this.lastRightSec = edges.right;
+  }
 
+  private writeBoxPoints(
+    id: EntityId,
+    left: number,
+    right: number,
+    priceA: number,
+    priceB: number,
+  ): void {
     try {
       const shape = this.chart.getShapeById(id);
-      const pts = shape.getPoints?.() ?? [];
-      const nativeRight = pointTimeSec(pts[1]?.time);
-      // Only grow: if the tool's synthesized Close is still to the right of
-      // lastBar, leave the native body alone (and never write a future time).
-      if (
-        !this.positionFrozen &&
-        this.liveLastBarSec != null &&
-        nativeRight != null &&
-        this.liveLastBarSec <= nativeRight
-      ) {
-        return;
-      }
-      const right = this.positionFrozen
-        ? Math.max(entry.time, targetRight)
-        : Math.max(
-            entry.time,
-            Math.min(targetRight, this.liveLastBarSec ?? targetRight),
-          );
-      if (this.lastRightSec === right && nativeRight === right) return;
-      const next =
-        pts.length >= 2
-          ? pts.map((p, i) =>
-              i === 0
-                ? { time: entry.time, price: entry.price }
-                : i === 1
-                  ? { time: right, price: entry.price }
-                  : p,
-            )
-          : [
-              { time: entry.time, price: entry.price },
-              { time: right, price: entry.price },
-            ];
-      shape.setPoints(next as ShapePoint[]);
-      this.lastRightSec = right;
+      shape.setPoints([
+        { time: left, price: priceA },
+        { time: right, price: priceB },
+      ] as ShapePoint[]);
     } catch {
       /* shape not ready / already removed */
     }
   }
 
   /**
-   * The native tool spanning entry → the FURTHEST target, with every other
-   * target kept visible as a numbered line inside the extended profit zone
-   * (numbered by its original order in the plan, so TP1/TP2 read as issued).
+   * Rectangles spanning entry → the FURTHEST target (profit) and entry →
+   * stop (risk), with every target kept visible as a numbered line (numbered
+   * by its original order in the plan, so TP1/TP2 read as issued).
    */
   private positionWithTargets(
     direction: "long" | "short",
@@ -523,11 +611,14 @@ export class TvDrawingManager {
     const edge = furthestTarget(direction, targets);
     if (edge == null) return;
     this.position(direction, entry, edge, stopLoss, symbol);
+    this.hline(entry.price, "#3b82f6", "دخول");
+    this.hline(stopLoss, "#ef4444", "وقف خسارة", true);
     targets.forEach((price, i) => {
-      // The edge is the tool's own profit line — a duplicate labeled line
-      // would sit exactly on top of it.
-      if (price === edge) return;
-      this.hline(price, "#3b82f6", targetLabel(i + 1));
+      this.hline(
+        price,
+        price === edge ? "#22c55e" : "#3b82f6",
+        targetLabel(i + 1),
+      );
     });
   }
 
@@ -556,7 +647,7 @@ export class TvDrawingManager {
         this.positionWithTargets(direction, entry, metaTargets, sl, symbol);
       } else {
         const tp = (d.meta?.takeProfit as number) ?? pts[1]?.price;
-        if (tp) this.position(direction, entry, tp, sl, symbol);
+        if (tp) this.positionWithTargets(direction, entry, [tp], sl, symbol);
       }
       return;
     }
@@ -683,7 +774,8 @@ export class TvDrawingManager {
       this.pendingTerminal = false;
       this.frozenRightSec = null;
       this.lastRightSec = null;
-      this.positionEntry = null;
+      this.positionLeftSec = null;
+      this.pendingBox = null;
       this.lastTradeKey = nextKey;
     }
     const terminal = isTerminalChartRecommendation(rec0 ?? null);
@@ -742,13 +834,15 @@ export class TvDrawingManager {
       const entry = rec.entry;
       const sl = rec.stop_loss;
       if (entry != null && entry > 0 && sl != null && sl > 0 && tps.length > 0) {
-        // Native TV position tool: entry/target/stop with automatic R/R stats.
-        // Anchored at the printing candle when `anchor_time` is present (a
-        // leftover wait converted to immediate), else the persisted creation
-        // time (sticky bar-quantized fallback for legacy payloads without one)
-        // so re-applies reproduce the exact same shape instead of drifting to
-        // wall-clock "now" on every redraw. The profit zone reaches the
-        // FURTHEST target; the nearer TPs render as numbered lines inside it.
+        // Time-bounded rectangles: entry/target/stop fills whose LEFT is the
+        // printing candle when `anchor_time` is present (a leftover wait
+        // converted to immediate), else the persisted creation time (sticky
+        // lastBar fallback for legacy payloads without one) so re-applies
+        // reproduce the exact same shape instead of drifting to wall-clock
+        // "now" — and never t=0, which painted a full-width pane band.
+        // The profit zone reaches the FURTHEST target; nearer TPs render as
+        // numbered lines inside it. Native long/short_position is NOT used:
+        // this widget version fills those as infinite price bands.
         this.positionWithTargets(
           rec.action === "buy" ? "long" : "short",
           { time: this.anchorSec(rec, barSec), price: entry },

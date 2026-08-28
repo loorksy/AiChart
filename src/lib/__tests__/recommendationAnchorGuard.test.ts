@@ -84,12 +84,22 @@ describe("recommendation anchors come from stored creation time, never render-ti
     );
   });
 
-  it("the trade plan renders through the NATIVE position tool with no future time anchor", () => {
+  it("the trade plan renders as time-bounded rectangles with no future time anchor", () => {
     const src = read("lib/chart/tv/tvDrawingAdapter.ts");
     assert.match(
       src,
+      /positionBoxEdges/,
+      "P/L fills must go through positionBoxEdges so left/right are finite unix seconds",
+    );
+    assert.match(
+      src,
+      /shape: "rectangle"/,
+      "the risk/reward zones must be time-bounded rectangles — native long/short_position fills the pane as a price band on this widget",
+    );
+    assert.doesNotMatch(
+      src,
       /shape: direction === "long" \? "long_position" : "short_position"/,
-      "the risk/reward zones must be TradingView's RiskReward tool, not hand-drawn rectangles",
+      "native position tools painted the endless full-width band in the screenshot",
     );
     assert.doesNotMatch(
       src,
@@ -99,7 +109,7 @@ describe("recommendation anchors come from stored creation time, never render-ti
     assert.match(
       src,
       /syncRightEdge/,
-      "Close must grow to lastBar already in history via setPoints, not a future time",
+      "right edge must grow to lastBar already in history via setPoints, not a future time",
     );
     assert.match(
       src,
@@ -110,6 +120,11 @@ describe("recommendation anchors come from stored creation time, never render-ti
       src,
       /lastBarTime.*\+.*barSec|LATERAL_BARS \*/,
       "must not synthesize a future Close as entry + N bars",
+    );
+    assert.match(
+      src,
+      /MIN_PLAUSIBLE_UNIX_SEC/,
+      "zero/epoch/bar-index anchors must be rejected so the box never starts at t=0",
     );
   });
 });
