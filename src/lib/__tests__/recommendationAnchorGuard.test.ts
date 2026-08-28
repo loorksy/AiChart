@@ -84,7 +84,7 @@ describe("recommendation anchors come from stored creation time, never render-ti
     );
   });
 
-  it("the trade plan renders as a time-bounded polyline with no future time anchor", () => {
+  it("the trade plan renders as one native Long/Short Position with no future time anchor", () => {
     const src = read("lib/chart/tv/tvDrawingAdapter.ts");
     assert.match(
       src,
@@ -93,13 +93,23 @@ describe("recommendation anchors come from stored creation time, never render-ti
     );
     assert.match(
       src,
-      /positionBoxVertices/,
-      "P/L fills must be a closed 5-vertex polyline with unix seconds on every corner",
+      /positionToolPoints/,
+      "the RR tool must be created with Entry + Close unix-second corners",
     );
     assert.match(
       src,
-      /shape: "polyline"/,
-      "the risk/reward zones must be a closed polyline — rectangle still painted a full-width band on this widget",
+      /shape: pending\.direction === "long" \? "long_position" : "short_position"/,
+      "profit and risk must be ONE native Long/Short Position tool, not two boxes",
+    );
+    assert.match(
+      src,
+      /stopLevel:/,
+      "stopLevel must be set on the same shape as profitLevel",
+    );
+    assert.match(
+      src,
+      /profitLevel:/,
+      "profitLevel (furthest TP) must be set on the same shape",
     );
     assert.doesNotMatch(
       src,
@@ -108,8 +118,13 @@ describe("recommendation anchors come from stored creation time, never render-ti
     );
     assert.doesNotMatch(
       src,
-      /shape: direction === "long" \? "long_position" : "short_position"/,
-      "native position tools painted the endless full-width band in the screenshot",
+      /shape: "polyline",\s*\n\s*\.\.\.EDITABLE,\s*\n\s*overrides: this\.boxOverrides/,
+      "two polylines still looked infinite and were two separate fills",
+    );
+    assert.doesNotMatch(
+      src,
+      /positionBoxVertices/,
+      "the 5-vertex polyline fallback is the failed two-box approach",
     );
     assert.doesNotMatch(
       src,
@@ -128,7 +143,7 @@ describe("recommendation anchors come from stored creation time, never render-ti
     );
     assert.match(
       src,
-      /pinBox/,
+      /pinPosition/,
       "createMultipointShape drops times on this widget — setPoints after create pins the walls",
     );
     assert.doesNotMatch(
@@ -140,6 +155,11 @@ describe("recommendation anchors come from stored creation time, never render-ti
       src,
       /MIN_PLAUSIBLE_UNIX_SEC/,
       "zero/epoch/bar-index anchors must be rejected so the box never starts at t=0",
+    );
+    assert.doesNotMatch(
+      src,
+      /createShape\(\s*\{[^}]*\}\s*,\s*\{[^}]*shape:\s*"long_position"/,
+      "single-point createShape synthesizes Close from pane width — use two-point createMultipointShape",
     );
   });
 });
