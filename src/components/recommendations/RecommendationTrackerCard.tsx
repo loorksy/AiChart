@@ -20,6 +20,7 @@ import type {
   TrackedRecommendation,
   TrackedRecommendationStatus,
 } from "@/lib/recommendations/types";
+import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
 import { cn } from "@/lib/utils";
 
 type ExecutionState = NonNullable<TrackedRecommendation["executionState"]>;
@@ -137,8 +138,11 @@ function CopyPrice({ value }: { value: number }) {
  */
 export function RecommendationTrackerCard({
   rec,
+  showShare = true,
 }: {
   rec: TrackedRecommendation;
+  /** False when a parent already exposes the same control (full report header). */
+  showShare?: boolean;
 }) {
   const { t, dir, locale } = useLocale();
 
@@ -257,6 +261,11 @@ export function RecommendationTrackerCard({
                 {t("rec.detail.plan_type")}: {t(`rec.plan_type.${rec.planType}`)}
               </span>
             )}
+            {showShare ? (
+              <span className="ms-auto">
+                <ShareProfitButton rec={rec} />
+              </span>
+            ) : null}
           </div>
 
           {/* Narrow container: verdict and pill share a row. Wide container

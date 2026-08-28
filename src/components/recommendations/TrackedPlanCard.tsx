@@ -33,6 +33,7 @@ import {
 } from "@/lib/recommendations/tradeMetricsSummary";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import { RecommendationTimeline } from "@/components/recommendations/RecommendationTimeline";
+import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
 import { cn } from "@/lib/utils";
 
 /** Grade chip tones: result colour (win/loss/neutral), never direction. */
@@ -101,11 +102,12 @@ export function TrackedPlanCard({
   ];
 
   return (
+    <div className="relative">
     <Link
       href={`/recommendations/${rec.id}`}
       dir={dir}
       data-testid="tracked-plan-card"
-      className="group block rounded-xl border border-border bg-card p-3 transition-colors hover:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group block rounded-xl border border-border bg-card p-3 pe-12 transition-colors hover:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {/* Header: verdict, symbol, interval, grade chip, R. */}
       <div className="flex flex-wrap items-center gap-2">
@@ -222,5 +224,9 @@ export function TrackedPlanCard({
         </span>
       </div>
     </Link>
+    <div className="absolute top-1.5 end-1.5 z-10">
+      <ShareProfitButton rec={rec} livePrice={livePrice} />
+    </div>
+    </div>
   );
 }

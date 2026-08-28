@@ -58,6 +58,7 @@ import type { GateVerdict } from "@/lib/agent/gates/types";
 import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency";
 import type { AgentDecision, AgentFinalResult } from "@/lib/agent/types";
 import { isPlainTalkResult } from "@/lib/agent/turnPresentation";
+import { trackedRecommendationFromResult } from "@/lib/recommendations/fromAgentResult";
 import { cn } from "@/lib/utils";
 import { AgentEvidenceCard, AgentFaultCard } from "../AgentEnvelopeStatus";
 import { AgentThinkingTraceDone } from "../AgentThinkingTrace";
@@ -779,6 +780,15 @@ export function AgentCards({
   const cards = useMemo(() => deriveCards(result), [result]);
   const [reportOpen, setReportOpen] = useState(false);
   const { t, dir } = useLocale();
+  const shareRec = useMemo(() => {
+    const tracked = trackedRecommendationFromResult(result);
+    if (!tracked) return null;
+    return {
+      ...tracked,
+      symbol: tracked.symbol || symbol || tracked.symbol,
+      interval: tracked.interval || interval || tracked.interval,
+    };
+  }, [result, symbol, interval]);
 
   // Presentation contract (turnPresentation.ts): a conversational or
   // specialist turn is a SENTENCE. It renders none of the analysis chrome —
@@ -823,6 +833,11 @@ export function AgentCards({
         gates.verdicts.find((v) => v.status === "veto"))
       : undefined;
 
+  const shareLivePrice =
+    typeof blocker?.evidence?.currentPrice === "number"
+      ? (blocker.evidence.currentPrice as number)
+      : undefined;
+
   return (
     <div data-testid="agent-cards">
       {lead.map((card) => (
@@ -853,6 +868,8 @@ export function AgentCards({
             activation={activation}
             invalidation={invalidation}
             alternative={alternative}
+            rec={shareRec}
+            livePrice={shareLivePrice}
             extras={
               reportExtras.length ? (
                 <div className="flex flex-col gap-3 border-t border-border/40 pt-3 md:gap-4 md:pt-4">

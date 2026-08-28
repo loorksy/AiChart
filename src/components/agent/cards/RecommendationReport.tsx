@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
+import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
+import type { ProfitCardSource } from "@/lib/recommendations/profitCard";
 import {
   invalidationDisplay,
   isPlaceholderGateLabel,
@@ -285,6 +287,8 @@ export function RecommendationReport({
   invalidation,
   alternative,
   extras,
+  rec,
+  livePrice,
   onClose,
 }: {
   dir: string;
@@ -296,6 +300,8 @@ export function RecommendationReport({
   invalidation?: InvalidationCard;
   alternative?: AlternativeScenarioCard;
   extras: ReactNode;
+  rec?: ProfitCardSource | null;
+  livePrice?: number | null;
   onClose: () => void;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -346,6 +352,7 @@ export function RecommendationReport({
         <Dialog.Title className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
           {title}
         </Dialog.Title>
+        {rec ? <ShareProfitButton rec={rec} livePrice={livePrice} /> : null}
         <Dialog.Close
           className="sr-only md:hidden"
           aria-label={closeLabel}
