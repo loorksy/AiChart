@@ -15,9 +15,11 @@
  *    resolve (0 / epoch / before loaded history) clamped to the FIRST bar,
  *    and the Close grew to lastBar — so the fill covered all visible
  *    history. This widget version also ignores X on those tools.
- * 4. The box is now two rectangles whose LEFT is the print/anchor candle
- *    and whose RIGHT is lastBar already in history. No future Close. The
- *    native position tool is not used for the fill.
+ * 4. Two-point `rectangle` still painted a full-width band on this widget
+ *    (mobile createShape drops times / equal times / extend flags leak).
+ *    The box is now a closed 5-point polyline with unix seconds on every
+ *    vertex, re-pinned via setPoints after create so the left wall sits on
+ *    the rec candle and the right wall on lastBar.
  *
  * The tests simulate the failing sequences: draw → several new bars pass →
  * redraw/force/reload paths run → the LEFT anchor must be byte-identical
@@ -30,6 +32,7 @@ import { describe, it } from "node:test";
 import {
   TvDrawingManager,
   positionBoxEdges,
+  positionBoxVertices,
   isPlausibleUnixSec,
   MIN_PLAUSIBLE_UNIX_SEC,
 } from "@/lib/chart/tv/tvDrawingAdapter";
@@ -139,8 +142,8 @@ const REC = {
 const CTX = { symbol: "XAUUSD", interval: "15m" };
 const CTX_LIVE = { ...CTX, lastBarTime: LAST_BAR_MS };
 
-function plRects(multi: MultiCall[]): MultiCall[] {
-  return multi.filter((c) => c.shape === "rectangle");
+function plBoxes(multi: MultiCall[]): MultiCall[] {
+  return multi.filter((c) => c.shape === "polyline");
 }
 
 function nativePositionCalls(single: SingleCall[], multi: MultiCall[]): number {
@@ -157,24 +160,32 @@ function rectByPrice(rects: MultiCall[], price: number): MultiCall | undefined {
 }
 
 function assertFiniteBox(
-  rect: MultiCall,
+  box: MultiCall,
   leftSec: number,
   rightSec: number,
   label: string,
 ): void {
-  assert.equal(rect.points.length, 2, `${label}: two time anchors`);
-  const times = rect.points.map((p) => p.time);
+  assert.equal(box.shape, "polyline", `${label}: closed polyline, not rectangle`);
+  assert.ok(box.points.length >= 4, `${label}: 4+ corners (left wall + right wall)`);
+  const times = box.points.map((p) => p.time);
   assert.equal(times[0], leftSec, `${label}: left is the print/anchor`);
   assert.equal(times[1], rightSec, `${label}: right is lastBar`);
-  assert.ok(Number.isFinite(times[0]!), `${label}: left is finite`);
-  assert.ok(Number.isFinite(times[1]!), `${label}: right is finite`);
-  assert.ok(times[1]! > times[0]!, `${label}: width is finite (right > left)`);
   assert.ok(
-    times[0]! >= MIN_PLAUSIBLE_UNIX_SEC,
-    `${label}: left is not t=0 / epoch`,
+    times.every((t) => t === leftSec || t === rightSec),
+    `${label}: every vertex is left or right — no t=0 / no extra times`,
   );
-  assert.equal(rect.overrides?.extendLeft, false, `${label}: must not extend left`);
-  assert.equal(rect.overrides?.extendRight, false, `${label}: must not extend right`);
+  for (const t of times) {
+    assert.ok(Number.isFinite(t!), `${label}: time is finite`);
+    assert.ok(t! >= MIN_PLAUSIBLE_UNIX_SEC, `${label}: not t=0 / epoch / bar-index`);
+    assert.ok(t! < 1e12, `${label}: unix seconds, not milliseconds`);
+  }
+  assert.ok(times.includes(leftSec) && times.includes(rightSec), `${label}: both walls present`);
+  assert.ok(rightSec > leftSec, `${label}: width is finite (right > left)`);
+  assert.notEqual(leftSec, 0, `${label}: left is not 0`);
+  assert.equal(box.overrides?.extendLeft, false, `${label}: must not extend left`);
+  assert.equal(box.overrides?.extendRight, false, `${label}: must not extend right`);
+  assert.equal(box.overrides?.filled, true, `${label}: filled`);
+  assert.equal(box.overrides?.fillBackground, true, `${label}: fillBackground`);
 }
 
 describe("positionBoxEdges — finite unix-second box, never a full-width band", () => {
@@ -242,10 +253,26 @@ describe("positionBoxEdges — finite unix-second box, never a full-width band",
     assert.equal(isPlausibleUnixSec(MIN_PLAUSIBLE_UNIX_SEC - 1, now), false);
     assert.equal(isPlausibleUnixSec(left, now), true);
   });
+
+  it("positionBoxVertices is a closed 5-corner box with unix seconds on every vertex", () => {
+    const verts = positionBoxVertices(left, last, 4600, 4580);
+    assert.equal(verts.length, 5);
+    assert.deepEqual(verts[0], { time: left, price: 4600 });
+    assert.deepEqual(verts[1], { time: last, price: 4600 });
+    assert.deepEqual(verts[2], { time: last, price: 4580 });
+    assert.deepEqual(verts[3], { time: left, price: 4580 });
+    assert.deepEqual(verts[4], verts[0], "closed path — last vertex repeats the left wall");
+    for (const v of verts) {
+      assert.ok(v.time >= MIN_PLAUSIBLE_UNIX_SEC);
+      assert.ok(v.time < 1e12, "seconds, not milliseconds");
+      assert.ok(v.time === left || v.time === last);
+    }
+    assert.ok(last > left);
+  });
 });
 
-describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time", () => {
-  it("draws TWO rectangles for a buy — never native long_position/short_position", async () => {
+describe("tvDrawingAdapter — time-bounded P/L polyline, pinned at print time", () => {
+  it("draws TWO closed polylines for a buy — never rectangle or native position", async () => {
     const { chart, multi, single } = fakeChart();
     new TvDrawingManager(chart).apply(
       [],
@@ -254,20 +281,56 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
     );
     await flush();
 
-    const rects = plRects(multi);
-    assert.equal(rects.length, 2, "profit + risk rectangles");
+    const boxes = plBoxes(multi);
+    assert.equal(boxes.length, 2, "profit + risk polylines");
+    assert.equal(
+      multi.filter((c) => c.shape === "rectangle").length,
+      0,
+      "2-point rectangle still paints a full-width band on this widget",
+    );
     assert.equal(
       nativePositionCalls(single, multi),
       0,
       "native position tools paint as infinite price bands on this widget",
     );
+    for (const b of boxes) {
+      assertFiniteBox(
+        b,
+        Math.round(CREATED_AT_MS / 1000),
+        Math.round(LAST_BAR_MS / 1000),
+        "buy polyline",
+      );
+    }
+  });
+
+  it("setPoints after create re-pins all five unix-second corners", async () => {
+    const { chart, setPointsCalls } = fakeChart();
+    new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX_LIVE);
+    await flush();
+    const pins = setPointsCalls.filter((c) => c.points.length >= 4);
+    assert.ok(pins.length >= 2, "profit + risk must be setPoints-pinned (create drops times)");
+    const left = Math.round(CREATED_AT_MS / 1000);
+    const right = Math.round(LAST_BAR_MS / 1000);
+    for (const pin of pins) {
+      const times = pin.points.map((p) => p.time);
+      assert.equal(times[0], left, "left wall is the rec candle");
+      assert.equal(times[1], right, "right wall is lastBar");
+      assert.ok(times.every((t) => t === left || t === right));
+      assert.ok(
+        times.every(
+          (t) => t != null && t >= MIN_PLAUSIBLE_UNIX_SEC && t < 1e12,
+        ),
+        "every corner is unix seconds, not 0 / epoch / ms",
+      );
+      assert.ok(right > left);
+    }
   });
 
   it("does not create the box until lastBar is known — no future Close guess", async () => {
     const { chart, multi, setPointsCalls } = fakeChart();
     new TvDrawingManager(chart).apply([], { recommendation: REC }, CTX);
     await flush();
-    assert.equal(plRects(multi).length, 0, "no box without lastBar");
+    assert.equal(plBoxes(multi).length, 0, "no box without lastBar");
     assert.equal(setPointsCalls.length, 0);
   });
 
@@ -276,10 +339,10 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
     const mgr = new TvDrawingManager(chart);
     mgr.apply([], { recommendation: REC }, CTX);
     await flush();
-    assert.equal(plRects(multi).length, 0);
+    assert.equal(plBoxes(multi).length, 0);
     mgr.syncRightEdge(LAST_BAR_MS);
     await flush();
-    const rects = plRects(multi);
+    const rects = plBoxes(multi);
     assert.equal(rects.length, 2);
     const left = Math.round(CREATED_AT_MS / 1000);
     const right = Math.round(LAST_BAR_MS / 1000);
@@ -295,7 +358,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
 
     const left = Math.round(CREATED_AT_MS / 1000);
     const right = Math.round(LAST_BAR_MS / 1000);
-    const rects = plRects(multi);
+    const rects = plBoxes(multi);
     assert.equal(rects.length, 2);
     for (const r of rects) {
       assertFiniteBox(r, left, right, "buy box");
@@ -313,7 +376,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
       CTX_LIVE,
     );
     await flush();
-    const rects = plRects(multi);
+    const rects = plBoxes(multi);
     const profit = rectByPrice(rects, 4680.1);
     const risk = rectByPrice(rects, 4642.93);
     assert.ok(profit, "profit edge is the most distant TP, not TP1");
@@ -336,7 +399,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
       CTX_LIVE,
     );
     await flush();
-    const profit = rectByPrice(plRects(multi), 4622.5);
+    const profit = rectByPrice(plBoxes(multi), 4622.5);
     assert.ok(profit, "for a sell the furthest target is the LOWEST price");
   });
 
@@ -366,7 +429,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
       CTX_LIVE,
     );
     await flush();
-    const profit = rectByPrice(plRects(multi), 4660.02);
+    const profit = rectByPrice(plBoxes(multi), 4660.02);
     assert.ok(profit);
   });
 
@@ -391,11 +454,11 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
     const mgr = new TvDrawingManager(chart);
     mgr.apply([], { recommendation: REC }, CTX_LIVE);
     await flush();
-    const first = plRects(multi).map((r) => r.points);
+    const first = plBoxes(multi).map((r) => r.points);
 
     mgr.apply([], { recommendation: REC }, CTX_LIVE, { force: true });
     await flush();
-    const second = plRects(multi).slice(-2).map((r) => r.points);
+    const second = plBoxes(multi).slice(-2).map((r) => r.points);
     assert.deepEqual(second, first, "same entry/stop/tp anchors");
   });
 
@@ -422,7 +485,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
       );
       await flush();
       // First apply: fallback left = lastBar → zero width → no box yet.
-      assert.equal(plRects(multi).length, 0);
+      assert.equal(plBoxes(multi).length, 0);
 
       clock += BAR_SEC * 5 * 1000;
       const changedDrawings: ChartDrawing[] = [
@@ -438,7 +501,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
         lastBarTime: laterLast,
       });
       await flush();
-      const rects = plRects(multi);
+      const rects = plBoxes(multi);
       assert.equal(rects.length, 2);
       const left = Math.round(firstLast / 1000);
       const right = Math.round(laterLast / 1000);
@@ -453,7 +516,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
         lastBarTime: laterStill,
       }, { force: true });
       await flush();
-      const restored = plRects(multi).slice(-2);
+      const restored = plBoxes(multi).slice(-2);
       for (const r of restored) {
         assert.equal(r.points[0]!.time, left, "forced redraw keeps the first fallback left");
         assert.notEqual(r.points[0]!.time, 0);
@@ -470,13 +533,13 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
       const first = fakeChart();
       new TvDrawingManager(first.chart).apply([], { recommendation: REC }, CTX_LIVE);
       await flush();
-      const before = plRects(first.multi)[0]!.points;
+      const before = plBoxes(first.multi)[0]!.points;
 
       Date.now = () => CREATED_AT_MS + 6 * 60 * 60 * 1000;
       const second = fakeChart();
       new TvDrawingManager(second.chart).apply([], { recommendation: REC }, CTX_LIVE);
       await flush();
-      const after = plRects(second.multi)[0]!.points;
+      const after = plBoxes(second.multi)[0]!.points;
       assert.deepEqual(after, before, "reload must reuse the persisted anchor byte-for-byte");
     } finally {
       Date.now = realNow;
@@ -494,7 +557,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
     new TvDrawingManager(chart).apply([drawing], undefined, CTX_LIVE);
     await flush();
     assert.equal(nativePositionCalls(single, multi), 0);
-    const rects = plRects(multi);
+    const rects = plBoxes(multi);
     assert.equal(rects.length, 2);
     const left = Math.round(CREATED_AT_MS / 1000);
     const right = Math.round(LAST_BAR_MS / 1000);
@@ -513,7 +576,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
     };
     new TvDrawingManager(chart).apply([drawing], undefined, CTX_LIVE);
     await flush();
-    assert.ok(rectByPrice(plRects(multi), 4622.5));
+    assert.ok(rectByPrice(plBoxes(multi), 4622.5));
     const hlines = single.filter((c) => c.shape === "horizontal_line");
     assert.ok(hlines.some((c) => c.point.price === 4640 && c.options.text === "هدف 1"));
   });
@@ -538,14 +601,14 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
       const mgr = new TvDrawingManager(first.chart);
       mgr.apply([], { recommendation: rec }, ctx);
       await flush();
-      const firstLeft = plRects(first.multi)[0]!.points[0]!.time;
+      const firstLeft = plBoxes(first.multi)[0]!.points[0]!.time;
       assert.equal(firstLeft, Math.round(PRINT_MS / 1000));
       assert.notEqual(firstLeft, Math.round(ISSUE_MS / 1000));
 
       Date.now = () => ISSUE_MS + 10 * 5 * 60_000;
       mgr.apply([], { recommendation: rec }, ctx, { force: true });
       await flush();
-      const later = plRects(first.multi).at(-1)!.points[0]!.time;
+      const later = plBoxes(first.multi).at(-1)!.points[0]!.time;
       assert.equal(later, firstLeft, "advancing 10 bars must not move the print-time anchor");
     } finally {
       Date.now = realNow;
@@ -569,7 +632,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
     );
     await flush();
     assert.ok(
-      rectByPrice(plRects(multi), 4593.71),
+      rectByPrice(plBoxes(multi), 4593.71),
       "profit edge must be TP3, not TP1",
     );
     const hlines = single.filter((c) => c.shape === "horizontal_line");
@@ -588,7 +651,7 @@ describe("tvDrawingAdapter — time-bounded P/L rectangles, pinned at print time
     } as unknown as Recommendation;
     new TvDrawingManager(chart).apply([], { recommendation: rec }, CTX_LIVE);
     await flush();
-    const rects = plRects(multi);
+    const rects = plBoxes(multi);
     assert.equal(rects.length, 2);
     for (const r of rects) {
       assert.notEqual(r.points[0]!.time, 0);
@@ -614,7 +677,7 @@ describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor s
   const SHORT_CTX = { symbol: "XAUUSD", interval: "5m" as const };
 
   function positionSetPoints(calls: SetPointsCall[]): SetPointsCall[] {
-    return calls.filter((c) => c.points.length >= 2);
+    return calls.filter((c) => c.points.length >= 4);
   }
 
   it("left time is unchanged when lastBar advances; right follows lastBar", async () => {
@@ -629,7 +692,7 @@ describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor s
 
     const left = Math.round(PRINT_MS / 1000);
     const firstRight = Math.round(LAST_BAR_MS_W / 1000);
-    for (const r of plRects(multi)) {
+    for (const r of plBoxes(multi)) {
       assertFiniteBox(r, left, firstRight, "initial short");
       assert.equal(r.points[0]!.price, 4607.59);
     }
@@ -677,13 +740,13 @@ describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor s
       { ...SHORT_CTX, lastBarTime: LAST_BAR_MS_W },
     );
     await flush();
-    const first = plRects(multi);
+    const first = plBoxes(multi);
     assert.ok(rectByPrice(first, 4580.1), "profit edge is still the furthest (lowest) short target");
     assert.ok(rectByPrice(first, 4612.76));
 
     mgr.syncRightEdge(LATER_BAR_MS);
     await flush();
-    assert.equal(plRects(multi).length, 2, "no recreate on width update");
+    assert.equal(plBoxes(multi).length, 2, "no recreate on width update");
     const later = positionSetPoints(setPointsCalls).at(-1)!;
     assert.ok(
       later.points.some((p) => p.price === 4607.59) ||
@@ -700,7 +763,7 @@ describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor s
       { ...SHORT_CTX, lastBarTime: LAST_BAR_MS_W },
     );
     await flush();
-    const close = plRects(multi)[0]!.points[1]!;
+    const close = plBoxes(multi)[0]!.points[1]!;
     assert.equal(close.time, Math.round(LAST_BAR_MS_W / 1000));
     const barSec = 5 * 60;
     assert.notEqual(
@@ -719,7 +782,7 @@ describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor s
       { ...SHORT_CTX, lastBarTime: LAST_BAR_MS_W },
     );
     await flush();
-    const frozenRight = plRects(multi)[0]!.points[1]!.time;
+    const frozenRight = plBoxes(multi)[0]!.points[1]!.time;
     const creates = multi.length;
     const stretches = setPointsCalls.length;
 
@@ -758,7 +821,7 @@ describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor s
       { ...SHORT_CTX, lastBarTime: LAST_BAR_MS_W },
     );
     await flush();
-    const frozen = plRects(multi)[0]!;
+    const frozen = plBoxes(multi)[0]!;
 
     mgr.apply(
       [],
@@ -768,7 +831,7 @@ describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor s
     );
     await flush();
 
-    const restored = plRects(multi).slice(-2)[0]!;
+    const restored = plBoxes(multi).slice(-2)[0]!;
     assert.equal(restored.points[0]!.time, frozen.points[0]!.time);
     assert.equal(restored.points[1]!.time, frozen.points[1]!.time);
     assert.notEqual(

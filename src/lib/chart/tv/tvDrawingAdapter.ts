@@ -57,6 +57,30 @@ export function positionBoxEdges(input: {
   return { left, right: last };
 }
 
+/**
+ * Closed 5-vertex P/L box in TradingView unix seconds. Every corner carries
+ * an explicit time — this widget treats a rectangle (or a 2-point shape with
+ * equal/missing times) as a full-width price band, which is the live-chart
+ * "box still extending to infinity" bug. Order is left→right along entry,
+ * then the far price, then back, then close. `setPoints` must receive all 5.
+ */
+export function positionBoxVertices(
+  left: number,
+  right: number,
+  priceA: number,
+  priceB: number,
+): Array<{ time: number; price: number }> {
+  const l = Math.round(left);
+  const r = Math.round(right);
+  return [
+    { time: l, price: priceA },
+    { time: r, price: priceA },
+    { time: r, price: priceB },
+    { time: l, price: priceB },
+    { time: l, price: priceA },
+  ];
+}
+
 
 type PricedPointLike = { time: number; price: number };
 
@@ -416,14 +440,16 @@ export class TvDrawingManager {
   }
 
   /**
-   * Time-bounded profit + risk rectangles for one trade plan.
+   * Time-bounded profit + risk boxes for one trade plan.
    *
-   * Native `long_position`/`short_position` on this widget build fill the
-   * pane as infinite price bands: single-point create synthesizes a Close
-   * from visible width (`_getClosePointIndex`), and a left time that fails
-   * to resolve (0 / epoch / before loaded history) clamps to the FIRST bar
-   * so setPoints(lastBar) paints a strip across the whole chart. Rectangles
-   * take two unix-second anchors and cannot extend past them.
+   * Native `long_position`/`short_position` on this widget fill the pane as
+   * infinite price bands (single-point create synthesizes a Close from
+   * visible width). Two-point `rectangle` was the next attempt: this build
+   * still ignores X when times are equal/missing or when extend flags leak,
+   * so the fill painted as a full-width strip with no left wall at the rec
+   * candle. The box is a closed 5-point polyline with unix seconds on every
+   * vertex, then re-pinned via setPoints after create (create alone is not
+   * enough on mobile).
    *
    * - Left = print/anchor candle (`anchor_time` / `triggeredAt`, else
    *   created_at, else a sticky lastBar fallback — never t=0).
@@ -451,17 +477,19 @@ export class TvDrawingManager {
       color,
       linecolor: color,
       fillBackground: true,
+      filled: true,
       transparency: 80,
       linewidth: 1,
+      linestyle: 0,
       extendLeft: false,
       extendRight: false,
     };
   }
 
   /**
-   * Create the two rectangles once lastBar is known and the box has positive
-   * width. Called from apply() and again from syncRightEdge when the first
-   * in-history bar arrives after a rec that landed first.
+   * Create the two closed polylines once lastBar is known and the box has
+   * positive width. Called from apply() and again from syncRightEdge when
+   * the first in-history bar arrives after a rec that landed first.
    */
   private tryCreatePositionBox(): void {
     const pending = this.pendingBox;
@@ -481,24 +509,31 @@ export class TvDrawingManager {
     this.positionLeftSec = edges.left;
     this.lastRightSec = edges.right;
     const gen = this.applyGen;
+    // Closed polyline, not rectangle: this widget still paints a 2-point
+    // rectangle as a full-width price band (equal/missing times, or extend
+    // flags that createShape never applied). Unix seconds on every vertex.
     const profit = this.chart.createMultipointShape(
-      [
-        { time: edges.left, price: pending.entry.price },
-        { time: edges.right, price: pending.takeProfit },
-      ] as ShapePoint[],
+      positionBoxVertices(
+        edges.left,
+        edges.right,
+        pending.entry.price,
+        pending.takeProfit,
+      ) as ShapePoint[],
       {
-        shape: "rectangle",
+        shape: "polyline",
         ...EDITABLE,
         overrides: this.boxOverrides("#22c55e"),
       },
     );
     const risk = this.chart.createMultipointShape(
-      [
-        { time: edges.left, price: pending.entry.price },
-        { time: edges.right, price: pending.stopLoss },
-      ] as ShapePoint[],
+      positionBoxVertices(
+        edges.left,
+        edges.right,
+        pending.entry.price,
+        pending.stopLoss,
+      ) as ShapePoint[],
       {
-        shape: "rectangle",
+        shape: "polyline",
         ...EDITABLE,
         overrides: this.boxOverrides("#ef4444"),
       },
@@ -511,8 +546,11 @@ export class TvDrawingManager {
         if (gen !== this.applyGen) return;
         this.profitId = p;
         this.riskId = r;
-        // A lastBar that arrived while createShape was in flight still needs
-        // to stretch — the create used the lastBar we knew at kickoff.
+        // createMultipointShape on this widget can drop times; setPoints is
+        // what actually pins the left wall at the rec candle. Always write,
+        // even when lastBar did not move during the promise.
+        this.pinBox(p, edges.left, edges.right, pending.entry.price, pending.takeProfit);
+        this.pinBox(r, edges.left, edges.right, pending.entry.price, pending.stopLoss);
         this.stretchPosition({ evenIfFrozen: this.positionFrozen });
       })
       .catch(() => {});
@@ -587,17 +625,44 @@ export class TvDrawingManager {
   ): void {
     try {
       const shape = this.chart.getShapeById(id);
-      shape.setPoints([
-        { time: left, price: priceA },
-        { time: right, price: priceB },
-      ] as ShapePoint[]);
+      shape.setPoints(
+        positionBoxVertices(left, right, priceA, priceB) as ShapePoint[],
+      );
     } catch {
       /* shape not ready / already removed */
     }
   }
 
   /**
-   * Rectangles spanning entry → the FURTHEST target (profit) and entry →
+   * Force the 5 unix-second corners AND the no-extend fill flags. createShape
+   * overrides are not enough on the mobile widget — leftover extendLeft/Right
+   * or dropped times are what painted the infinite strip.
+   */
+  private pinBox(
+    id: EntityId,
+    left: number,
+    right: number,
+    priceA: number,
+    priceB: number,
+  ): void {
+    this.writeBoxPoints(id, left, right, priceA, priceB);
+    try {
+      const shape = this.chart.getShapeById(id) as {
+        setProperties?: (props: Record<string, unknown>) => void;
+      };
+      shape.setProperties?.({
+        extendLeft: false,
+        extendRight: false,
+        fillBackground: true,
+        filled: true,
+      });
+    } catch {
+      /* shape not ready / already removed */
+    }
+  }
+
+  /**
+   * Closed polylines spanning entry → the FURTHEST target (profit) and entry →
    * stop (risk), with every target kept visible as a numbered line (numbered
    * by its original order in the plan, so TP1/TP2 read as issued).
    */
@@ -834,15 +899,15 @@ export class TvDrawingManager {
       const entry = rec.entry;
       const sl = rec.stop_loss;
       if (entry != null && entry > 0 && sl != null && sl > 0 && tps.length > 0) {
-        // Time-bounded rectangles: entry/target/stop fills whose LEFT is the
-        // printing candle when `anchor_time` is present (a leftover wait
-        // converted to immediate), else the persisted creation time (sticky
-        // lastBar fallback for legacy payloads without one) so re-applies
-        // reproduce the exact same shape instead of drifting to wall-clock
-        // "now" — and never t=0, which painted a full-width pane band.
-        // The profit zone reaches the FURTHEST target; nearer TPs render as
-        // numbered lines inside it. Native long/short_position is NOT used:
-        // this widget version fills those as infinite price bands.
+        // Time-bounded closed polylines: entry/target/stop fills whose LEFT
+        // is the printing candle when `anchor_time` is present (a leftover
+        // wait converted to immediate), else the persisted creation time
+        // (sticky lastBar fallback for legacy payloads without one) so
+        // re-applies reproduce the exact same shape instead of drifting to
+        // wall-clock "now" — and never t=0. Native long/short_position AND
+        // two-point rectangle both painted a full-width pane band on this
+        // widget. The profit zone reaches the FURTHEST target; nearer TPs
+        // render as numbered lines inside it.
         this.positionWithTargets(
           rec.action === "buy" ? "long" : "short",
           { time: this.anchorSec(rec, barSec), price: entry },

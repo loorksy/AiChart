@@ -84,7 +84,7 @@ describe("recommendation anchors come from stored creation time, never render-ti
     );
   });
 
-  it("the trade plan renders as time-bounded rectangles with no future time anchor", () => {
+  it("the trade plan renders as a time-bounded polyline with no future time anchor", () => {
     const src = read("lib/chart/tv/tvDrawingAdapter.ts");
     assert.match(
       src,
@@ -93,8 +93,18 @@ describe("recommendation anchors come from stored creation time, never render-ti
     );
     assert.match(
       src,
-      /shape: "rectangle"/,
-      "the risk/reward zones must be time-bounded rectangles — native long/short_position fills the pane as a price band on this widget",
+      /positionBoxVertices/,
+      "P/L fills must be a closed 5-vertex polyline with unix seconds on every corner",
+    );
+    assert.match(
+      src,
+      /shape: "polyline"/,
+      "the risk/reward zones must be a closed polyline — rectangle still painted a full-width band on this widget",
+    );
+    assert.doesNotMatch(
+      src,
+      /shape: "rectangle",\s*\n\s*\.\.\.EDITABLE,\s*\n\s*overrides: this\.boxOverrides/,
+      "P/L must not use rectangle: this widget ignores rectangle time and extends the fill",
     );
     assert.doesNotMatch(
       src,
@@ -115,6 +125,11 @@ describe("recommendation anchors come from stored creation time, never render-ti
       src,
       /setPoints/,
       "width updates must pin left at the print entry and move only the Close point",
+    );
+    assert.match(
+      src,
+      /pinBox/,
+      "createMultipointShape drops times on this widget — setPoints after create pins the walls",
     );
     assert.doesNotMatch(
       src,
