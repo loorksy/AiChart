@@ -12,6 +12,7 @@ import {
   formatCardDate,
   formatCardPrice,
   formatPnlPercent,
+  type ProfitCardLabels,
   type ProfitCardModel,
 } from "@/lib/recommendations/profitCard";
 
@@ -22,18 +23,12 @@ export function ProfitCard({
   model,
   displayName,
   labels,
+  logoSrc,
 }: {
   model: ProfitCardModel;
   displayName?: string | null;
-  labels: {
-    badge: string;
-    pnlKind: string;
-    side: string;
-    mark: string;
-    entry: string;
-    date: string;
-    tagline: string;
-  };
+  labels: ProfitCardLabels;
+  logoSrc?: string;
 }) {
   const gain = !model.isLoss;
   const pctColor = gain ? "#f0d078" : "#f07167";
@@ -87,10 +82,12 @@ export function ProfitCard({
         <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
           {/* eslint-disable-next-line @next/next/no-img-element -- capture target; next/image is unreliable for html-to-image */}
           <img
-            src={PROFIT_CARD_LOGO_SRC}
+            src={logoSrc ?? PROFIT_CARD_LOGO_SRC}
             alt=""
             width={36}
             height={36}
+            crossOrigin="anonymous"
+            decoding="async"
             style={{ width: 36, height: 36, objectFit: "contain" }}
           />
           <span

@@ -1,6 +1,7 @@
 /**
- * Bottom sheet (phone) / centred dialog (desktop) that shows the profit card
- * immediately and captures a PNG in the background for download / Web Share.
+ * Bottom sheet (phone) / centred dialog (desktop) that shows the live React
+ * profit card immediately. PNG capture runs in the background for download /
+ * Web Share only — the visible card is never swapped for a snapshot.
  */
 "use client";
 
@@ -16,23 +17,18 @@ import {
   canShareFiles,
   type ProfitCardSource,
 } from "@/lib/recommendations/profitCard";
+import {
+  captureProfitCardPng,
+  isUsablePngBlob,
+  loadProfitCardLogoDataUrl,
+  PROFIT_CARD_CAPTURE_MIN_HEIGHT,
+  PROFIT_CARD_CAPTURE_WIDTH,
+} from "@/lib/recommendations/profitCardCapture";
 import { ProfitCard } from "@/components/recommendations/ProfitCard";
-import { SkeletonBlock } from "@/components/ui/skeleton";
 
-async function capturePng(node: HTMLElement): Promise<Blob> {
-  const { toBlob } = await import("html-to-image");
-  const blob = await toBlob(node, {
-    pixelRatio: 2,
-    cacheBust: false,
-    backgroundColor: "#0c0a07",
-    style: { opacity: "1", transform: "none" },
-  });
-  if (!blob) throw new Error("capture returned empty");
-  return blob;
-}
-
-function downloadBlob(blob: Blob, filename: string) {
+function downloadBlob(blob: Blob, filename: string, retainUrl: (url: string) => void) {
   const url = URL.createObjectURL(blob);
+  retainUrl(url);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
@@ -40,7 +36,6 @@ function downloadBlob(blob: Blob, filename: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 4_000);
 }
 
 export function ShareProfitCardModal({
@@ -60,9 +55,11 @@ export function ShareProfitCardModal({
   const sheetRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
+  const liveRef = useRef<HTMLDivElement>(null);
   const blobRef = useRef<Blob | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [slow, setSlow] = useState(false);
+  const objectUrlsRef = useRef<string[]>([]);
+  const capturePromiseRef = useRef<Promise<Blob | null> | null>(null);
+  const [logoSrc, setLogoSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -97,84 +94,100 @@ export function ShareProfitCardModal({
     enabledQuery: "(max-width: 767px)",
   });
 
+  const retainObjectUrl = useCallback((url: string) => {
+    objectUrlsRef.current.push(url);
+  }, []);
+
   useEffect(() => {
     if (!open) {
       blobRef.current = null;
-      setSlow(false);
+      capturePromiseRef.current = null;
       setFailed(false);
       setCopied(false);
-      setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+      objectUrlsRef.current = [];
       return;
     }
 
     let cancelled = false;
-    const slowTimer = window.setTimeout(() => {
-      if (!cancelled && !blobRef.current) setSlow(true);
-    }, 280);
+    void loadProfitCardLogoDataUrl().then((src) => {
+      if (!cancelled && src) setLogoSrc(src);
+    });
 
-    let tries = 0;
-    const run = async () => {
-      const node = captureRef.current;
-      if (!node) {
-        if (tries++ < 30 && !cancelled) requestAnimationFrame(() => void run());
-        else if (!cancelled) setFailed(true);
-        return;
+    const run = async (): Promise<Blob | null> => {
+      let tries = 0;
+      while (!captureRef.current && tries++ < 30 && !cancelled) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
-      const imgs = node.querySelectorAll("img");
-      await Promise.all(
-        [...imgs].map((img) => {
-          if (img.complete) return Promise.resolve();
-          return img.decode().catch(() => undefined);
-        }),
-      );
-      // Two frames: layout + paint of the offscreen card before snapshot.
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      if (cancelled) return null;
       try {
-        const blob = await capturePng(node);
-        if (cancelled) return;
-        blobRef.current = blob;
-        const url = URL.createObjectURL(blob);
-        setPreviewUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return url;
+        const blob = await captureProfitCardPng({
+          offscreen: captureRef.current,
+          visible: liveRef.current,
+          model,
+          labels,
+          displayName,
         });
+        if (cancelled) return blob;
+        if (!(await isUsablePngBlob(blob))) {
+          setFailed(true);
+          return null;
+        }
+        blobRef.current = blob;
         setFailed(false);
+        return blob;
       } catch {
         if (!cancelled) setFailed(true);
-      } finally {
-        if (!cancelled) setSlow(false);
+        return null;
       }
     };
 
-    void run();
+    capturePromiseRef.current = run();
     return () => {
       cancelled = true;
-      window.clearTimeout(slowTimer);
     };
-  }, [open, model.filename, model.pnlPct, model.markPrice, model.kind, displayName, locale]);
+  }, [open, model, labels, displayName]);
+
+  useEffect(() => {
+    return () => {
+      for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+      objectUrlsRef.current = [];
+    };
+  }, []);
 
   const waitForBlob = useCallback(async (): Promise<Blob | null> => {
-    if (blobRef.current) return blobRef.current;
-    const node = captureRef.current;
-    if (!node) return null;
+    if (blobRef.current && (await isUsablePngBlob(blobRef.current))) return blobRef.current;
+    const pending = await capturePromiseRef.current;
+    if (pending && (await isUsablePngBlob(pending))) {
+      blobRef.current = pending;
+      return pending;
+    }
     try {
-      const blob = await capturePng(node);
+      const blob = await captureProfitCardPng({
+        offscreen: captureRef.current,
+        visible: liveRef.current,
+        model,
+        labels,
+        displayName,
+      });
+      if (!(await isUsablePngBlob(blob))) {
+        setFailed(true);
+        return null;
+      }
       blobRef.current = blob;
+      setFailed(false);
       return blob;
     } catch {
       setFailed(true);
       return null;
     }
-  }, []);
+  }, [model, labels, displayName]);
 
   const onDownload = useCallback(async () => {
     const blob = await waitForBlob();
     if (!blob) return;
-    downloadBlob(blob, model.filename);
-  }, [waitForBlob, model.filename]);
+    downloadBlob(blob, model.filename, retainObjectUrl);
+  }, [waitForBlob, model.filename, retainObjectUrl]);
 
   const onShare = useCallback(async () => {
     const blob = await waitForBlob();
@@ -265,27 +278,14 @@ export function ShareProfitCardModal({
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4"
           >
             <div className="relative mx-auto w-full max-w-[360px]">
-              {previewUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- blob PNG preview
-                <img
-                  src={previewUrl}
-                  alt={t("profit_card.share_title")}
-                  className="block w-full rounded-[28px] shadow-lg"
-                  data-testid="profit-card-preview-image"
+              <div ref={liveRef} data-testid="profit-card-live-preview">
+                <ProfitCard
+                  model={model}
+                  displayName={displayName}
+                  labels={labels}
+                  logoSrc={logoSrc ?? undefined}
                 />
-              ) : (
-                <div data-testid="profit-card-live-preview">
-                  <ProfitCard model={model} displayName={displayName} labels={labels} />
-                </div>
-              )}
-              {slow && !previewUrl ? (
-                <div
-                  className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-background/40"
-                  data-testid="profit-card-skeleton"
-                >
-                  <SkeletonBlock className="h-24 w-2/3" />
-                </div>
-              ) : null}
+              </div>
             </div>
             {failed ? (
               <p className="mt-3 text-center text-[12px] text-muted-foreground">
@@ -322,9 +322,26 @@ export function ShareProfitCardModal({
                   data-testid="profit-card-capture"
                   ref={captureRef}
                   className="pointer-events-none fixed"
-                  style={{ left: -480, top: 0, width: 360, zIndex: -1 }}
+                  style={{
+                    // Real 360×580 box, slid off-screen. Not opacity 0,
+                    // not display none, not a far-off left with a 0×0 rect.
+                    // html-to-image options.style resets transform on the clone.
+                    left: 0,
+                    top: 0,
+                    width: PROFIT_CARD_CAPTURE_WIDTH,
+                    minHeight: PROFIT_CARD_CAPTURE_MIN_HEIGHT,
+                    zIndex: 1,
+                    opacity: 1,
+                    transform: "translateX(-100vw)",
+                    filter: "none",
+                  }}
                 >
-                  <ProfitCard model={model} displayName={displayName} labels={labels} />
+                  <ProfitCard
+                    model={model}
+                    displayName={displayName}
+                    labels={labels}
+                    logoSrc={logoSrc ?? undefined}
+                  />
                 </div>,
                 document.body,
               )

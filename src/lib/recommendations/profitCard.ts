@@ -74,6 +74,17 @@ export interface ProfitCardModel {
   dir: Direction;
 }
 
+/** Copy that the React card and the canvas fallback both paint. */
+export interface ProfitCardLabels {
+  badge: string;
+  pnlKind: string;
+  side: string;
+  mark: string;
+  entry: string;
+  date: string;
+  tagline: string;
+}
+
 function finite(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

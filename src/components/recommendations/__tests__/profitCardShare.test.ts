@@ -2,6 +2,9 @@
  * The share control is wired into every recommendation surface the trader
  * actually sees: the list card, the tracker card, the full report, and the
  * chat report modal. A missing import here is a missing icon in production.
+ *
+ * The modal must keep the live React card on screen. Swapping it for the
+ * html-to-image PNG is what turned the Arabic share sheet into a black void.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -40,10 +43,68 @@ describe("profit card share wiring", () => {
 
   it("captures via html-to-image and offers download plus Web Share", () => {
     const modal = read("components/recommendations/ShareProfitCardModal.tsx");
-    assert.match(modal, /html-to-image/);
-    assert.match(modal, /toBlob/);
+    const capture = read("lib/recommendations/profitCardCapture.ts");
+    assert.match(capture, /html-to-image/);
+    assert.match(capture, /toBlob/);
+    assert.match(capture, /toPng/);
+    assert.match(capture, /pixelRatio:\s*2/);
+    assert.match(capture, /skipFonts:\s*true/);
+    assert.match(capture, /renderProfitCardFallbackPng/);
+    assert.match(modal, /captureProfitCardPng/);
     assert.match(modal, /navigator\.share/);
     assert.match(modal, /download/);
     assert.match(modal, /useSheetGesture/);
+  });
+
+  it("always shows the live React card and never swaps it for a captured PNG", () => {
+    const modal = read("components/recommendations/ShareProfitCardModal.tsx");
+    assert.match(modal, /data-testid="profit-card-live-preview"/);
+    assert.match(modal, /<ProfitCard/);
+    assert.doesNotMatch(modal, /profit-card-preview-image/);
+    assert.doesNotMatch(modal, /setPreviewUrl/);
+    assert.doesNotMatch(modal, /previewUrl/);
+    assert.doesNotMatch(modal, /profit-card-skeleton/);
+    const live = modal.indexOf('data-testid="profit-card-live-preview"');
+    const liveCard = modal.indexOf("<ProfitCard", live);
+    const capture = modal.indexOf('data-testid="profit-card-capture"');
+    assert.ok(live >= 0 && liveCard > live && liveCard < capture, "visible slot must render ProfitCard");
+    const previewBranch = modal.slice(modal.indexOf("relative mx-auto"), capture);
+    assert.doesNotMatch(previewBranch, /previewUrl \?/);
+    assert.doesNotMatch(previewBranch, /<img\b/);
+  });
+
+  it("does not revoke object URLs while the modal is open", () => {
+    const modal = read("components/recommendations/ShareProfitCardModal.tsx");
+    assert.match(modal, /revokeObjectURL/);
+    assert.doesNotMatch(modal, /setTimeout\(\s*\(?\s*\)\s*=>\s*URL\.revokeObjectURL/);
+    assert.match(modal, /if \(!open\) \{[\s\S]*revokeObjectURL/);
+    const downloadFn = modal.slice(
+      modal.indexOf("function downloadBlob"),
+      modal.indexOf("export function ShareProfitCardModal"),
+    );
+    assert.doesNotMatch(downloadFn, /revokeObjectURL/);
+  });
+
+  it("refuses an empty or black blob as the download and falls back to a painted card", () => {
+    const modal = read("components/recommendations/ShareProfitCardModal.tsx");
+    const capture = read("lib/recommendations/profitCardCapture.ts");
+    assert.match(modal, /isUsablePngBlob/);
+    assert.match(modal, /waitForBlob/);
+    assert.match(capture, /isUsablePngBlob/);
+    assert.match(capture, /countPaintedRgba/);
+    assert.match(capture, /renderProfitCardFallbackPng/);
+    assert.match(capture, /document\.fonts/);
+    assert.match(capture, /embedLogoDataUrls/);
+    assert.match(capture, /loadProfitCardLogoDataUrl/);
+    assert.doesNotMatch(modal, /left:\s*-9999/);
+    assert.doesNotMatch(modal, /opacity:\s*["']0["']/);
+    assert.doesNotMatch(modal, /display:\s*["']none["']/);
+    const captureAt = modal.indexOf('data-testid="profit-card-capture"');
+    assert.ok(captureAt > 0);
+    const captureStyle = modal.slice(captureAt, modal.indexOf("document.body", captureAt));
+    assert.match(captureStyle, /width:\s*PROFIT_CARD_CAPTURE_WIDTH/);
+    assert.match(captureStyle, /minHeight:\s*PROFIT_CARD_CAPTURE_MIN_HEIGHT/);
+    assert.match(captureStyle, /opacity:\s*1/);
+    assert.match(captureStyle, /transform:\s*"translateX\(-100vw\)"/);
   });
 });
