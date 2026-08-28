@@ -23,6 +23,8 @@ import type {
   TrackedRecommendationStatus,
 } from "@/lib/recommendations/types";
 import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
+import { ShareRecommendationButton } from "@/components/recommendations/ShareRecommendationButton";
+import { isRealizedOutcome } from "@/lib/recommendations/profitCard";
 import { cn } from "@/lib/utils";
 
 type ExecutionState = NonNullable<TrackedRecommendation["executionState"]>;
@@ -259,8 +261,11 @@ export function RecommendationTrackerCard({
               </span>
             )}
             {showShare ? (
-              <span className="ms-auto">
-                <ShareProfitButton rec={rec} />
+              <span className="ms-auto inline-flex items-center gap-0.5">
+                <ShareRecommendationButton rec={rec} />
+                {isRealizedOutcome(rec.outcome) ? (
+                  <ShareProfitButton rec={rec} variant="result" />
+                ) : null}
               </span>
             ) : null}
           </div>

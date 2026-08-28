@@ -189,19 +189,28 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
-function captureOptions(node: HTMLElement) {
+export type HtmlCaptureSize = {
+  width: number;
+  minHeight: number;
+  backgroundColor?: string;
+};
+
+function captureOptions(node: HTMLElement, size?: HtmlCaptureSize) {
+  const width = size?.width ?? PROFIT_CARD_CAPTURE_WIDTH;
+  const minHeight = size?.minHeight ?? PROFIT_CARD_CAPTURE_MIN_HEIGHT;
+  const backgroundColor = size?.backgroundColor ?? PROFIT_CARD_CAPTURE_BG;
   const height = Math.max(
     node.scrollHeight,
     node.offsetHeight,
     node.clientHeight,
-    PROFIT_CARD_CAPTURE_MIN_HEIGHT,
+    minHeight,
   );
   return {
     pixelRatio: 2,
     cacheBust: false,
     skipFonts: true,
-    backgroundColor: PROFIT_CARD_CAPTURE_BG,
-    width: PROFIT_CARD_CAPTURE_WIDTH,
+    backgroundColor,
+    width,
     height,
     style: {
       opacity: "1",
@@ -214,10 +223,13 @@ function captureOptions(node: HTMLElement) {
   };
 }
 
-export async function captureHtmlToPngBlob(node: HTMLElement): Promise<Blob | null> {
+export async function captureHtmlToPngBlob(
+  node: HTMLElement,
+  size?: HtmlCaptureSize,
+): Promise<Blob | null> {
   if (!nodeHasCaptureBox(node)) return null;
   const { toBlob, toPng } = await import("html-to-image");
-  const opts = captureOptions(node);
+  const opts = captureOptions(node, size);
   try {
     const blob = await toBlob(node, opts);
     if (await isUsablePngBlob(blob)) return blob;

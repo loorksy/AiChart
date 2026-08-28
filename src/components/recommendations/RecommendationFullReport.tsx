@@ -28,6 +28,8 @@ import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency
 import { cn } from "@/lib/utils";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
+import { ShareRecommendationButton } from "@/components/recommendations/ShareRecommendationButton";
+import { isRealizedOutcome } from "@/lib/recommendations/profitCard";
 import type { ActiveRecommendationView } from "@/app/api/recommendations/active/route";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import type { DimensionGrade, EvidenceDimension } from "@/lib/agent/evidenceDimensions";
@@ -220,7 +222,10 @@ export function RecommendationFullReport({ rec }: { rec: FullReportRecommendatio
             {t("rec.detail.revision")} #{rec.revisionNo}
           </span>
         ) : null}
-        <ShareProfitButton rec={rec} />
+        <ShareRecommendationButton rec={rec} />
+        {isRealizedOutcome(rec.outcome) ? (
+          <ShareProfitButton rec={rec} variant="result" />
+        ) : null}
       </div>
 
       <div className="mt-3">

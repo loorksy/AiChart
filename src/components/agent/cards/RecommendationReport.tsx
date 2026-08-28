@@ -26,7 +26,9 @@ import {
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
-import type { ProfitCardSource } from "@/lib/recommendations/profitCard";
+import { ShareRecommendationButton } from "@/components/recommendations/ShareRecommendationButton";
+import { isRealizedOutcome } from "@/lib/recommendations/profitCard";
+import type { RecommendationCardSource } from "@/lib/recommendations/recommendationCard";
 import {
   invalidationDisplay,
   isPlaceholderGateLabel,
@@ -300,7 +302,7 @@ export function RecommendationReport({
   invalidation?: InvalidationCard;
   alternative?: AlternativeScenarioCard;
   extras: ReactNode;
-  rec?: ProfitCardSource | null;
+  rec?: RecommendationCardSource | null;
   livePrice?: number | null;
   onClose: () => void;
 }) {
@@ -352,7 +354,10 @@ export function RecommendationReport({
         <Dialog.Title className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
           {title}
         </Dialog.Title>
-        {rec ? <ShareProfitButton rec={rec} livePrice={livePrice} /> : null}
+        {rec ? <ShareRecommendationButton rec={rec} livePrice={livePrice} /> : null}
+        {rec && isRealizedOutcome(rec.outcome) ? (
+          <ShareProfitButton rec={rec} livePrice={livePrice} variant="result" />
+        ) : null}
         <Dialog.Close
           className="sr-only md:hidden"
           aria-label={closeLabel}

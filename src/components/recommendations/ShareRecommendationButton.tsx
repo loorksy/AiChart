@@ -1,45 +1,34 @@
 /**
- * Share icon that opens the profit-card sheet immediately.
+ * Share icon that opens the recommendation-card sheet immediately.
  * Safe inside a Link: preventDefault + stopPropagation, 44px hit target.
  */
 "use client";
 
 import { useState } from "react";
-import { Share2, Receipt } from "lucide-react";
+import { Share2 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import { useMe } from "@/hooks/useMe";
-import { displayNameForUser } from "@/lib/displayName";
 import { cn } from "@/lib/utils";
-import type { ProfitCardSource } from "@/lib/recommendations/profitCard";
-import { ShareProfitCardModal } from "@/components/recommendations/ShareProfitCardModal";
+import type { RecommendationCardSource } from "@/lib/recommendations/recommendationCard";
+import { ShareRecommendationCardModal } from "@/components/recommendations/ShareRecommendationCardModal";
 
-export function ShareProfitButton({
+export function ShareRecommendationButton({
   rec,
   livePrice,
   className,
-  variant = "icon",
 }: {
-  rec: ProfitCardSource;
+  rec: RecommendationCardSource;
   livePrice?: number | null;
   className?: string;
-  /** "result" is the labeled PnL action next to a recommendation share. */
-  variant?: "icon" | "result";
 }) {
   const [open, setOpen] = useState(false);
   const { t } = useLocale();
-  const { data } = useMe();
-  const displayName = data?.user
-    ? displayNameForUser(data.user)
-    : (data?.displayName ?? null);
-  const result = variant === "result";
-  const Icon = result ? Receipt : Share2;
 
   return (
     <>
       <button
         type="button"
-        data-testid={result ? "share-profit-card-result" : "share-profit-card"}
-        aria-label={result ? t("profit_card.share_result") : t("profit_card.share")}
+        data-testid="share-recommendation-card"
+        aria-label={t("rec_card.share")}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -54,14 +43,13 @@ export function ShareProfitButton({
           className,
         )}
       >
-        <Icon className="h-4 w-4" aria-hidden />
+        <Share2 className="h-4 w-4" aria-hidden />
       </button>
-      <ShareProfitCardModal
+      <ShareRecommendationCardModal
         open={open}
         onClose={() => setOpen(false)}
         rec={rec}
         livePrice={livePrice}
-        displayName={displayName}
       />
     </>
   );
