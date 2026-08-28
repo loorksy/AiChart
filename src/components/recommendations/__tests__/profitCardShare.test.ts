@@ -28,6 +28,9 @@ describe("profit card share wiring", () => {
     for (const [name, src] of Object.entries(files)) {
       assert.match(src, /ShareProfitButton/, `${name} is missing ShareProfitButton`);
     }
+    assert.match(files.tracker, /displayROf/);
+    assert.doesNotMatch(files.tracker, /netRr \?\? rec\.rr/);
+    assert.match(files.full, /RecommendationTrackerCard/);
   });
 
   it("uses the real Lonora face-mark and never a fake 3-circle logo or invented referral", () => {
@@ -56,6 +59,10 @@ describe("profit card share wiring", () => {
     assert.match(modal, /profitCardLabels/);
     assert.doesNotMatch(modal, /badge:\s*t\(/);
     assert.doesNotMatch(modal, /profit_card\.badge/);
+    assert.match(card, /formatSignedR/);
+    assert.doesNotMatch(card, /formatPnlPercent/);
+    assert.match(capture, /formatSignedR/);
+    assert.doesNotMatch(capture, /formatPnlPercent/);
     assert.match(card, /pnlAccentColor/);
     assert.match(card, /data-pnl-tone/);
     assert.match(model, /#20d68a/);

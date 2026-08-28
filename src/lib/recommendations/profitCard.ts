@@ -2,14 +2,19 @@
  * Shareable profit-card projection.
  *
  * The React card and the PNG capture both read this model so a list row,
- * the report modal, and the detail page can never disagree about the %.
+ * the report modal, and the detail page can never disagree about the R.
+ * The hero number is the same signed R the recommendation report prints
+ * (furthest TP actually hit, honest zone print, live R while open).
  * On-card copy is English only — the image people share is not localized.
  * Modal chrome (download / share / sheet title) stays in i18n.
  */
 import { BRAND_DOMAIN, BRAND_URL } from "@/lib/brand";
 import type { AppLocale } from "@/lib/i18n";
-import { computeTradeMetricsSummary } from "./tradeMetricsSummary";
+import { bankedTargetPriceOf } from "./tradeMetrics";
+import { computeTradeMetricsSummary, displayROf } from "./tradeMetricsSummary";
 import type { TrackedDirection, TrackedRecommendation } from "./types";
+
+export { formatSignedR } from "./tradeMetrics";
 
 /** Real Lonora face-mark (white on transparent) — dark-gold card, not a fake SVG. */
 export const PROFIT_CARD_LOGO_SRC = "/brand/aichart-mark-dark.png";
@@ -87,13 +92,13 @@ export interface ProfitCardModel {
   symbol: string;
   side: ProfitCardSide;
   kind: ProfitCardKind;
-  pnlPct: number;
+  /** Signed R the report prints. Hero number. Null only when unmeasurable. */
+  rMultiple: number | null;
   isLoss: boolean;
   markPrice: number | null;
   markKind: ProfitCardMarkKind;
   entry: number;
   dateMs: number;
-  rMultiple: number | null;
   shareUrl: string;
   filename: string;
   /** Share image is always English LTR, even when the app locale is Arabic. */
@@ -211,9 +216,7 @@ export function profitCardFilename(input: {
 function hitPriceOf(rec: ProfitCardSource): number | null {
   const n =
     rec.outcome === "win_tp3" ? 3 : rec.outcome === "win_tp2" ? 2 : rec.outcome === "win_tp1" ? 1 : 0;
-  if (n === 1) return finite(rec.tp1HitPrice) ?? finite(rec.targets[0]);
-  if (n === 2) return finite(rec.tp2HitPrice) ?? finite(rec.targets[1]);
-  if (n === 3) return finite(rec.tp3HitPrice) ?? finite(rec.targets[2]);
+  if (n === 1 || n === 2 || n === 3) return bankedTargetPriceOf(rec, n);
   if (rec.outcome === "loss") return finite(rec.exitPrice) ?? finite(rec.stopLoss);
   return finite(rec.exitPrice);
 }
@@ -263,22 +266,20 @@ export function buildProfitCardModel(
   const summary = computeTradeMetricsSummary(rec, now);
   const entry = finite(rec.effectiveEntry) ?? rec.entry;
   const mark = resolveMark(rec, options.livePrice);
-  const pnlPct = mark.price != null ? pnlPercentFromEntry(rec.direction, entry, mark.price) : 0;
+  const rMultiple = displayROf(rec, mark.price);
   const side = sideOf(rec.direction);
   const dateMs = resolveDateMs(rec, summary.terminal, now);
-  const rMultiple = summary.terminal ? summary.realizedR : null;
 
   return {
     symbol: rec.symbol || "XAUUSD",
     side,
     kind: summary.terminal ? "realized" : "unrealized",
-    pnlPct,
-    isLoss: pnlPct < 0,
+    rMultiple,
+    isLoss: rMultiple != null ? rMultiple < 0 : false,
     markPrice: mark.price,
     markKind: mark.kind,
     entry,
     dateMs,
-    rMultiple,
     shareUrl: PROFIT_CARD_SHARE_URL,
     filename: profitCardFilename({ symbol: rec.symbol, side, dateMs }),
     dir: "ltr",

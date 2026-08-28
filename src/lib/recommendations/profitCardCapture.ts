@@ -15,7 +15,7 @@ import {
   PROFIT_CARD_WIDTH,
   formatCardDate,
   formatCardPrice,
-  formatPnlPercent,
+  formatSignedR,
   pnlAccentColor,
   pnlAccentGlow,
   type ProfitCardLabels,
@@ -365,7 +365,7 @@ export async function renderProfitCardFallbackPng(
   ctx.font = `800 42px ${mono}`;
   ctx.shadowColor = pnlAccentGlow(model.isLoss);
   ctx.shadowBlur = 16;
-  ctx.fillText(formatPnlPercent(model.pnlPct), startX, 142);
+  ctx.fillText(formatSignedR(model.rMultiple) ?? "—", startX, 142);
   ctx.shadowBlur = 0;
 
   const rows: Array<[string, string]> = [

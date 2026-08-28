@@ -14,7 +14,7 @@ import {
   PROFIT_CARD_WIDTH,
   formatCardDate,
   formatCardPrice,
-  formatPnlPercent,
+  formatSignedR,
   pnlAccentColor,
   pnlAccentGlow,
   type ProfitCardLabels,
@@ -198,7 +198,7 @@ export function ProfitCard({
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {formatPnlPercent(model.pnlPct)}
+            {formatSignedR(model.rMultiple) ?? "—"}
           </p>
           <GoldGraphic gain={gain} style={{ position: "absolute", top: -18, right: -8 }} />
         </div>
@@ -377,7 +377,7 @@ function Sparkle() {
   );
 }
 
-/** Compact bullion + sparkline — sits beside the %, does not stretch the card. */
+/** Compact bullion + sparkline — sits beside the R, does not stretch the card. */
 function GoldGraphic({ gain, style }: { gain: boolean; style?: CSSProperties }) {
   const spark = gain
     ? "M8 62 C 22 58, 30 44, 44 40 S 64 28, 80 16 S 100 8, 112 6"

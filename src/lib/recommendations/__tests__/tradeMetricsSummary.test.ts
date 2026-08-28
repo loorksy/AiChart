@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   computeTradeMetricsSummary,
+  displayROf,
   liveRSoFar,
   progressTowardNextTarget,
 } from "@/lib/recommendations/tradeMetricsSummary";
@@ -87,6 +88,22 @@ describe("computeTradeMetricsSummary", () => {
     assert.equal(s.grade, "active");
     assert.equal(s.realizedR, null); // nothing realized while the trade lives
     assert.equal(s.timeInTradeMs, 30 * M);
+  });
+});
+
+describe("displayROf", () => {
+  it("is the furthest banked target on a closed win and live R while open", () => {
+    const closed = rec({
+      status: "tp2_hit",
+      outcome: "win_tp2",
+      triggeredAt: T0,
+      tp1HitAt: T0 + M,
+      tp2HitAt: T0 + 2 * M,
+    });
+    assert.equal(displayROf(closed), 2);
+    const live = rec({ status: "triggered", outcome: "pending", triggeredAt: T0 });
+    assert.equal(displayROf(live, 101), 0.5);
+    assert.equal(displayROf(live, 101), liveRSoFar(live, 101));
   });
 });
 

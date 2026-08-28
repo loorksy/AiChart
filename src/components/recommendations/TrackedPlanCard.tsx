@@ -25,10 +25,10 @@ import {
 import { useLocale } from "@/hooks/useLocale";
 import { formatDurationMs } from "@/lib/display/duration";
 import { buildRecommendationTimeline } from "@/lib/recommendations/timeline";
-import type { RecommendationGrade } from "@/lib/recommendations/tradeMetrics";
+import { formatSignedR, type RecommendationGrade } from "@/lib/recommendations/tradeMetrics";
 import {
   computeTradeMetricsSummary,
-  liveRSoFar,
+  displayROf,
   progressTowardNextTarget,
 } from "@/lib/recommendations/tradeMetricsSummary";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
@@ -55,11 +55,6 @@ const GRADE_TONES: Record<RecommendationGrade, string> = {
   pending_entry: "border-warning/40 bg-warning/10 text-warning",
 };
 
-function fmtR(value: number | null | undefined): string | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  return `${value > 0 ? "+" : ""}${value.toFixed(2)}R`;
-}
-
 export function TrackedPlanCard({
   rec,
   livePrice,
@@ -81,9 +76,8 @@ export function TrackedPlanCard({
   const grade = summary.grade;
   const live = rec.outcome === "pending" && Boolean(rec.triggeredAt);
 
-  const rSoFar = live ? liveRSoFar(rec, livePrice) : null;
   const progress = live ? progressTowardNextTarget(rec, livePrice) : null;
-  const shownR = summary.terminal ? summary.realizedR : rSoFar;
+  const shownR = displayROf(rec, livePrice);
   const inTradeFor = live ? formatDurationMs(now - (rec.triggeredAt ?? now), locale === "ar" ? "ar" : "en") : null;
 
   const entry = rec.effectiveEntry ?? rec.entry;
@@ -147,7 +141,7 @@ export function TrackedPlanCard({
             dir="ltr"
             title={summary.terminal ? t("rec.summary.realized_r") : t("rec.card.r_so_far")}
           >
-            {fmtR(shownR)}
+            {formatSignedR(shownR)}
           </span>
         ) : null}
       </div>
