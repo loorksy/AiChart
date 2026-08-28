@@ -786,9 +786,10 @@ export class TvDrawingManager {
     drawings: ChartDrawing[],
     trade?: { recommendation?: Recommendation | null; targets?: number[] },
     ctx?: { symbol?: string; interval?: string; lastBarTime?: number },
-    opts?: { force?: boolean },
+    opts?: { force?: boolean; paintTradeOverlay?: boolean },
   ): void {
-    const rec0 = trade?.recommendation;
+    const paintTradeOverlay = opts?.paintTradeOverlay !== false;
+    const rec0 = paintTradeOverlay ? trade?.recommendation : null;
     if (ctx?.lastBarTime != null && ctx.lastBarTime > 0) {
       this.liveLastBarSec = toSec(ctx.lastBarTime);
     }
@@ -822,6 +823,7 @@ export class TvDrawingManager {
       rec0 && Array.isArray(rec0.targets) ? rec0.targets : [],
       ctx?.symbol ?? "",
       ctx?.interval ?? "",
+      paintTradeOverlay,
     ]);
     if (!opts?.force && fingerprint === this.lastFingerprint) {
       if (terminal && !this.positionFrozen) {
@@ -847,7 +849,7 @@ export class TvDrawingManager {
         /* skip un-renderable drawing */
       }
     }
-    const rec = trade?.recommendation;
+    const rec = paintTradeOverlay ? trade?.recommendation : null;
     if (rec && (rec.action === "buy" || rec.action === "sell")) {
       const tps = planTargetList({
         targets:

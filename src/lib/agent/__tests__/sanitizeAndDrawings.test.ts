@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { sanitizeActivityMessage } from "@/lib/agent/activity";
 import {
   clearAgentDrawings,
+  keepExplicitUserDrawings,
   sanitizeAgentDrawings,
   drawingOwner,
 } from "@/lib/agent/drawings/drawingOwnership";
@@ -54,6 +55,16 @@ describe("drawingOwnership", () => {
     );
     const cleared = clearAgentDrawings([...a1, ...a2], "a1");
     assert.equal(cleared.length, 1);
+  });
+
+  it("keepExplicitUserDrawings drops unstamped leftovers that drawingOwner treats as user", () => {
+    const leftover: ChartDrawing = {
+      type: "price_line",
+      confidence: 80,
+      points: [{ time: 1, price: 11 }],
+    };
+    assert.equal(drawingOwner(leftover), "user");
+    assert.deepEqual(keepExplicitUserDrawings([userDrawing, leftover]), [userDrawing]);
   });
 
   it("sanitizeAgentDrawings drops invalid prices and stamps ownership", () => {

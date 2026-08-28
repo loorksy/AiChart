@@ -40,6 +40,7 @@ export function EmbedLiveChart(props: {
   recommendation?: Recommendation | null;
   targets?: number[];
   invalidToken?: boolean;
+  paintTradeOverlay?: boolean;
 }) {
   const [symbol, setSymbol] = useState(props.symbol);
   const [interval, setInterval] = useState(props.interval);
@@ -96,6 +97,7 @@ export function EmbedLiveChart(props: {
         recommendation={recommendation}
         targets={targets}
         studies={studies}
+        paintTradeOverlay={props.paintTradeOverlay}
         className="h-full w-full bg-transparent"
       />
     </div>

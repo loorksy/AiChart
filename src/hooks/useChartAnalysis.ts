@@ -19,6 +19,12 @@ export interface ChartHydrateSnapshot {
   recommendation?: Recommendation | null;
   targets?: number[];
   liveReasoningLog?: LiveReasoningEntry[];
+  /**
+   * Live workspace: operator asked to clear analysis drawings. The rec can
+   * still exist in the tracker/DB; the chart must not paint it until a new
+   * analysis issues drawings/a plan.
+   */
+  drawingsCleared?: boolean;
 }
 
 /** Return the previous reference when the next value is structurally identical. */
@@ -54,6 +60,7 @@ export function useChartAnalysis({
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [targets, setTargets] = useState<number[]>([]);
   const [liveReasoningLog, setLiveReasoningLog] = useState<LiveReasoningEntry[]>([]);
+  const [drawingsCleared, setDrawingsCleared] = useState(false);
   const [, setHighlightDrawingIndex] = useState<number | null>(null);
   // Interval is deliberately NOT part of the reset key: drawings are anchored by
   // absolute time+price, so a recommendation drawn on 15m must survive a switch
@@ -74,6 +81,7 @@ export function useChartAnalysis({
     setTargets([]);
     setLiveReasoningLog([]);
     setHighlightDrawingIndex(null);
+    setDrawingsCleared(true);
   }, []);
 
   const hydrateFromSnapshot = useCallback((snapshot: ChartHydrateSnapshot) => {
@@ -98,6 +106,7 @@ export function useChartAnalysis({
       ),
     );
     setLiveReasoningLog((prev) => keepIfEqual(prev, snapshot.liveReasoningLog ?? []));
+    setDrawingsCleared(snapshot.drawingsCleared === true);
     if (snapshot.recommendation !== undefined) {
       // withStableCreatedAt: the chart anchors the profit/loss zones at the
       // recommendation's created_at. A hydrated payload keeps its persisted
@@ -130,6 +139,7 @@ export function useChartAnalysis({
     studies,
     recommendation,
     targets,
+    drawingsCleared,
     liveAnalysis: false,
     riskReward,
     liveReasoningLog,
@@ -139,7 +149,9 @@ export function useChartAnalysis({
     hydrateFromSnapshot,
     setDrawings,
     setStudies,
+    setOverlays,
     setRecommendation,
     setTargets,
+    setDrawingsCleared,
   };
 }

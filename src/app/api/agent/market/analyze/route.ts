@@ -201,6 +201,7 @@ export async function POST(req: NextRequest) {
             recommendation: mapped,
             targets: tps,
             dataSource,
+            drawingsCleared: false,
           },
         });
         appliedToChart = true;

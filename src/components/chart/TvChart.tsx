@@ -36,6 +36,7 @@ import type { ChatImagePayload } from "@/lib/chatImage";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { Recommendation } from "@/lib/types";
+import { liveChartApplyArgs } from "@/lib/chart/drawings/clearAnalysisPresentation";
 import { barDurationSec } from "@/lib/intervals";
 import { CHART_CAPTURE_CANDLES } from "@/lib/chart/captureWindow";
 import {
@@ -177,6 +178,14 @@ interface Props {
   targets?: number[];
   overlays?: ChartOverlay[];
   drawings?: ChartDrawing[];
+  /**
+   * Live workspace: after "clear drawings", stop painting the system P/L box
+   * even if a recommendation is still in layout state / the tracker.
+   * Report/detail charts leave this unset (default: paint).
+   */
+  paintTradeOverlay?: boolean;
+  /** Layout flag persisted with the live chart; same effect as paintTradeOverlay=false. */
+  drawingsCleared?: boolean;
   /** Agent-enabled indicators (RSI/EMA/…) mirrored as native TV studies. */
   studies?: ChartStudy[];
   /** Platform actions embedded in the TV header toolbar. */
@@ -199,27 +208,6 @@ interface Props {
   onIntervalChange?: (interval: string) => void;
 }
 
-function overlaysToDrawings(overlays: ChartOverlay[] | undefined): ChartDrawing[] {
-  const colorFor: Record<string, string> = {
-    entry: "#22c55e",
-    stop_loss: "#ef4444",
-    take_profit: "#3b82f6",
-    support: "#22c55e",
-    resistance: "#ef4444",
-  };
-  return (overlays ?? [])
-    .filter((o) => o.price > 0)
-    .map((o) => ({
-      type: "price_line" as const,
-      confidence: 80,
-      label: o.label,
-      color: colorFor[o.type] ?? "#94a3b8",
-      anchorMode: "time_price" as const,
-      points: [{ price: o.price }],
-      price: o.price,
-    }));
-}
-
 const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   {
     symbol,
@@ -230,6 +218,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     targets = [],
     overlays,
     drawings,
+    paintTradeOverlay,
+    drawingsCleared,
     studies,
     headerActions,
     dataSource = "oanda",
@@ -775,26 +765,53 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     overlays?: ChartOverlay[];
     recommendation?: Recommendation | null;
     targets: number[];
+    paintTradeOverlay?: boolean;
+    drawingsCleared?: boolean;
     symbol: string;
     interval: string;
-  }>({ drawings, overlays, recommendation, targets, symbol, interval });
-  drawArgsRef.current = { drawings, overlays, recommendation, targets, symbol, interval };
+  }>({
+    drawings,
+    overlays,
+    recommendation,
+    targets,
+    paintTradeOverlay,
+    drawingsCleared,
+    symbol,
+    interval,
+  });
+  drawArgsRef.current = {
+    drawings,
+    overlays,
+    recommendation,
+    targets,
+    paintTradeOverlay,
+    drawingsCleared,
+    symbol,
+    interval,
+  };
   const pendingReapplyRef = useRef(false);
 
   const applyDrawings = useCallback((opts?: { force?: boolean }) => {
     const mgr = managerRef.current;
     if (!mgr || !readyRef.current) return;
     const a = drawArgsRef.current;
-    const combined = [...overlaysToDrawings(a.overlays), ...(a.drawings ?? [])];
+    const payload = liveChartApplyArgs({
+      overlays: a.overlays,
+      drawings: a.drawings,
+      recommendation: a.recommendation,
+      targets: a.targets,
+      paintTradeOverlay: a.paintTradeOverlay,
+      drawingsCleared: a.drawingsCleared,
+    });
     mgr.apply(
-      combined,
-      { recommendation: a.recommendation, targets: a.targets },
+      payload.drawings,
+      payload.trade,
       {
         symbol: a.symbol,
         interval: a.interval,
         lastBarTime: latestCandleRef.current?.time,
       },
-      opts,
+      { ...opts, paintTradeOverlay: payload.opts.paintTradeOverlay },
     );
   }, []);
   applyDrawingsRef.current = applyDrawings;
@@ -803,7 +820,16 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   useEffect(() => {
     if (!ready) return;
     applyDrawings();
-  }, [ready, drawings, overlays, recommendation, targets, applyDrawings]);
+  }, [
+    ready,
+    drawings,
+    overlays,
+    recommendation,
+    targets,
+    paintTradeOverlay,
+    drawingsCleared,
+    applyDrawings,
+  ]);
 
   // Agent indicators → native TV studies. The manager diffs by fingerprint, so
   // the 4s layout poll re-delivering the same list is a no-op (no flicker).

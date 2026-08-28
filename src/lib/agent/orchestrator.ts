@@ -2033,6 +2033,7 @@ async function runUnifiedChartAgentInner(
             timeframe: market.interval,
           },
           targets: rec.targets ?? [],
+          drawingsCleared: false,
         },
       });
     } catch {

@@ -80,9 +80,11 @@ const postSchema = z.object({
 type LayoutState = Record<string, unknown> & {
   drawings?: ChartDrawing[];
   studies?: ChartStudy[];
+  overlays?: unknown[];
   recommendation?: unknown;
   targets?: number[];
   dataSource?: string;
+  drawingsCleared?: boolean;
 };
 
 function parseState(raw: string | null): LayoutState {
@@ -172,8 +174,12 @@ export async function POST(req: NextRequest) {
       state.drawings = [];
       state.overlays = [];
       state.studies = [];
+      // Layout copy only — the tracked recommendation row in the DB is not
+      // deleted. The live chart stops painting the P/L box until a new
+      // analysis writes drawings/a plan back onto this layout.
       state.recommendation = null;
       state.targets = [];
+      state.drawingsCleared = true;
     } else {
       let processed: ChartDrawing[] = [];
       if (body.drawings?.length) {
@@ -230,6 +236,9 @@ export async function POST(req: NextRequest) {
           : null;
       }
       if (body.targets !== undefined) state.targets = body.targets;
+      if (body.drawings?.length || body.recommendation) {
+        state.drawingsCleared = false;
+      }
     }
     await saveChartLayout(layout.id, userId, {
       symbol,

@@ -48,6 +48,24 @@ export function clearAgentDrawings(
 }
 
 /**
+ * True only when meta.owner is explicitly "user". Unstamped leftovers default
+ * to "user" in drawingOwner() — those are almost always legacy agent
+ * analysis drawings sitting in layout state, and a "clear all drawings"
+ * must drop them. Manual TV drawings live on the widget, not this array,
+ * and are stamped owner="user" when they do appear here.
+ */
+export function isExplicitUserDrawing(d: ChartDrawing): boolean {
+  return (d.meta as { owner?: DrawingOwner } | undefined)?.owner === "user";
+}
+
+/** Keep explicitly stamped user drawings; drop agent, system, and unstamped. */
+export function keepExplicitUserDrawings(
+  drawings: ChartDrawing[],
+): ChartDrawing[] {
+  return drawings.filter(isExplicitUserDrawing);
+}
+
+/**
  * Validate + sanitize agent drawings before persist/render: drop invalid
  * types/points, require finite positive prices, keep prices within sane candle
  * bounds, cap the count, and stamp ownership.

@@ -946,3 +946,48 @@ describe("planTargetList — the producer ladder the adapter consumes", () => {
     );
   });
 });
+
+describe("paintTradeOverlay — clear-drawings must not leave the P/L box", () => {
+  it("skips the native position tool when paintTradeOverlay is false", async () => {
+    const { chart, multi, single } = fakeChart();
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: REC, targets: [4660.02] },
+      CTX_LIVE,
+      { paintTradeOverlay: false },
+    );
+    await flush();
+    assert.equal(rrTools(multi).length, 0, "cleared live chart must not paint the P/L box");
+    assert.equal(nativePositionCreates(single, multi), 0);
+    assert.equal(single.length, 0, "no fallback entry/stop/TP horizontals either");
+  });
+
+  it("toggling paintTradeOverlay off removes an already-drawn box", async () => {
+    const { chart, multi, removed } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    mgr.apply([], { recommendation: REC, targets: [4660.02] }, CTX_LIVE);
+    await flush();
+    assert.equal(rrTools(multi).length, 1);
+    mgr.apply([], { recommendation: REC, targets: [4660.02] }, CTX_LIVE, {
+      paintTradeOverlay: false,
+    });
+    await flush();
+    assert.ok(removed.length > 0, "must destroy the existing position tool");
+    assert.equal(
+      rrTools(multi).length,
+      1,
+      "no second create after suppress — only the original apply drew one",
+    );
+  });
+
+  it("default apply still paints the box so the report/detail chart is unchanged", async () => {
+    const { chart, multi } = fakeChart();
+    new TvDrawingManager(chart).apply(
+      [],
+      { recommendation: REC, targets: [4660.02] },
+      CTX_LIVE,
+    );
+    await flush();
+    assert.equal(rrTools(multi).length, 1);
+  });
+});

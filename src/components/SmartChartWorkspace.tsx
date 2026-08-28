@@ -56,7 +56,8 @@ import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAna
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { normalizeInterval } from "@/lib/intervals";
-import { clearAgentDrawings } from "@/lib/agent/drawings/drawingOwnership";
+import { keepExplicitUserDrawings } from "@/lib/agent/drawings/drawingOwnership";
+import { clearAnalysisPresentation } from "@/lib/chart/drawings/clearAnalysisPresentation";
 import {
   debugBridgeEnabled,
   installAgentDebugBridge,
@@ -252,6 +253,7 @@ function SmartChartWorkspaceInner({
     studies,
     recommendation,
     targets,
+    drawingsCleared,
     riskReward,
     liveAnalysis,
     analyzeError,
@@ -262,8 +264,10 @@ function SmartChartWorkspaceInner({
     hydrateFromSnapshot,
     setDrawings,
     setStudies,
+    setOverlays,
     setRecommendation,
     setTargets,
+    setDrawingsCleared,
   } = useChartAnalysis({
     symbol,
     interval,
@@ -338,6 +342,7 @@ function SmartChartWorkspaceInner({
         targets,
         liveReasoningLog,
         dataSource,
+        drawingsCleared,
       };
       void fetch("/api/chart/layout", {
         method: "POST",
@@ -368,6 +373,7 @@ function SmartChartWorkspaceInner({
     studies,
     recommendation,
     targets,
+    drawingsCleared,
     liveReasoningLog,
   ]);
 
@@ -548,11 +554,19 @@ function SmartChartWorkspaceInner({
       // many paths — applying it wiped agent overlays. Clear only on an
       // explicit clear flag; otherwise replace agent layers only when new ones arrive.
       if (result.clearAgentDrawings) {
-        setDrawings((prev) => clearAgentDrawings(prev));
-      } else if (result.drawings?.length) {
+        // Wipe analysis drawings AND level overlays, and stop painting the
+        // system P/L box. The recommendation record stays in the DB/tracker.
+        setDrawings((prev) => clearAnalysisPresentation(prev).drawings);
+        setOverlays([]);
+        setDrawingsCleared(true);
+        return;
+      }
+      if (result.drawings?.length) {
         setDrawings((prev) =>
-          [...clearAgentDrawings(prev), ...(result.drawings ?? [])],
+          [...keepExplicitUserDrawings(prev), ...(result.drawings ?? [])],
         );
+        setOverlays([]);
+        setDrawingsCleared(false);
       }
       // Indicators from the SSE path: merge by id so "add MACD" keeps the RSI
       // the agent enabled earlier instead of replacing the whole set.
@@ -579,6 +593,7 @@ function SmartChartWorkspaceInner({
           takeProfit: rec.take_profit ?? rec.targets?.[0] ?? null,
         });
         setTargets(tps);
+        setDrawingsCleared(false);
         setRecommendation((prev) =>
           withStableCreatedAt(
             {
@@ -601,7 +616,16 @@ function SmartChartWorkspaceInner({
         setTargets([]);
       }
     },
-    [setDrawings, setStudies, setRecommendation, setTargets, symbol, interval],
+    [
+      setDrawings,
+      setStudies,
+      setOverlays,
+      setRecommendation,
+      setTargets,
+      setDrawingsCleared,
+      symbol,
+      interval,
+    ],
   );
 
   // Analyze always uses the same chat agent path; there is no parallel engine.
@@ -616,7 +640,9 @@ function SmartChartWorkspaceInner({
   }, [guest, router]);
 
   const hasLayers =
-    drawings.length > 0 || overlays.length > 0 || recommendation != null;
+    drawings.length > 0 ||
+    overlays.length > 0 ||
+    (recommendation != null && !drawingsCleared);
 
   // Platform actions as TradingView header buttons (library chrome — not overlays).
   // MT status / equity / close-chart live in the page top bar; do not re-draw them.
@@ -901,6 +927,8 @@ function SmartChartWorkspaceInner({
                 targets={targets}
                 overlays={overlays}
                 drawings={drawings}
+                drawingsCleared={drawingsCleared}
+                paintTradeOverlay={!drawingsCleared}
                 studies={studies}
                 headerActions={headerActions}
                 dataSource={dataSource}

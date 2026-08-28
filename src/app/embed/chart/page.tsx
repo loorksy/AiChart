@@ -27,14 +27,27 @@ function parseLayoutState(raw: string | null): {
   studies: ChartStudy[];
   recommendation: Recommendation | null;
   targets: number[];
+  drawingsCleared: boolean;
 } {
   if (!raw) {
-    return { drawings: [], studies: [], recommendation: null, targets: [] };
+    return {
+      drawings: [],
+      studies: [],
+      recommendation: null,
+      targets: [],
+      drawingsCleared: false,
+    };
   }
   try {
     const v = JSON.parse(raw) as Record<string, unknown>;
     if (!v || typeof v !== "object") {
-      return { drawings: [], studies: [], recommendation: null, targets: [] };
+      return {
+        drawings: [],
+        studies: [],
+        recommendation: null,
+        targets: [],
+        drawingsCleared: false,
+      };
     }
     return {
       drawings: Array.isArray(v.drawings) ? (v.drawings as ChartDrawing[]) : [],
@@ -46,9 +59,16 @@ function parseLayoutState(raw: string | null): {
       targets: Array.isArray(v.targets)
         ? v.targets.filter((n): n is number => typeof n === "number")
         : [],
+      drawingsCleared: v.drawingsCleared === true,
     };
   } catch {
-    return { drawings: [], studies: [], recommendation: null, targets: [] };
+    return {
+      drawings: [],
+      studies: [],
+      recommendation: null,
+      targets: [],
+      drawingsCleared: false,
+    };
   }
 }
 
@@ -82,6 +102,7 @@ export default async function EmbedChartPage({
   let studies: ChartStudy[] = [];
   let recommendation: Recommendation | null = null;
   let targets: number[] = [];
+  let drawingsCleared = false;
 
   if (claims) {
     symbol = coerceToGold(claims.symbol);
@@ -97,6 +118,7 @@ export default async function EmbedChartPage({
     studies = visuals.studies;
     recommendation = visuals.recommendation;
     targets = visuals.targets;
+    drawingsCleared = visuals.drawingsCleared;
   }
 
   return (
@@ -109,6 +131,7 @@ export default async function EmbedChartPage({
       studies={studies}
       recommendation={recommendation}
       targets={targets}
+      paintTradeOverlay={!drawingsCleared}
     />
   );
 }
