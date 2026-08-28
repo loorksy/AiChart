@@ -18,10 +18,14 @@ import {
   GOLD_FILL_TOLERANCE_CAP,
   GOLD_FILL_TOLERANCE_FLOOR,
   filterDistinctTargets,
+  honestTargetHitPrice,
   minConsecutiveTargetSpacing,
   resolveEntryType,
   resolveFill,
+  resolveTargetHit,
   rewardToRisk,
+  targetHitTolerance,
+  targetZoneReached,
   validateEntryCoherence,
 } from "../entrySemantics";
 import { evaluateRecommendation } from "../recommendationStatus";
@@ -518,5 +522,88 @@ describe("consecutive targets must be meaningfully distinct", () => {
       }),
       "limit_touch",
     );
+  });
+});
+
+describe("targetHitTolerance cannot drift from entryFillTolerance", () => {
+  it("is the same 10–15 gold band, point for point", () => {
+    for (const atr of [null, 4, 50, 200] as const) {
+      assert.equal(
+        targetHitTolerance({ price: 4596, atr }),
+        entryFillTolerance({ price: 4596, atr }),
+      );
+    }
+    assert.equal(targetHitTolerance({ price: 4596 }), GOLD_FILL_TOLERANCE_FLOOR);
+    assert.equal(targetHitTolerance({ price: 4596, atr: 200 }), GOLD_FILL_TOLERANCE_CAP);
+  });
+
+  it("sell zone geometry: low within 10 of TP is a hit; 20 away is not", () => {
+    assert.equal(
+      targetZoneReached({
+        direction: "sell",
+        candle: { high: 4598, low: 4596.15 },
+        target: 4591.48,
+        tolerance: 10,
+      }),
+      true,
+    );
+    assert.equal(
+      targetZoneReached({
+        direction: "sell",
+        candle: { high: 4613, low: 4611.48 },
+        target: 4591.48,
+        tolerance: 10,
+      }),
+      false,
+    );
+  });
+
+  it("honest sell print is the actual low when the labeled TP was never printed", () => {
+    assert.equal(
+      honestTargetHitPrice({
+        direction: "sell",
+        candle: { high: 4600, low: 4596.15 },
+        target: 4591.48,
+      }),
+      4596.15,
+    );
+  });
+
+  it("resolveTargetHit: screenshot sell + buy mirror + through + miss", () => {
+    const sellBand = resolveTargetHit({
+      direction: "sell",
+      target: 4591.48,
+      candle: { high: 4598, low: 4596.15 },
+      tolerance: 10,
+    });
+    assert.equal(sellBand.reached, true);
+    assert.equal(sellBand.hitPrice, 4596.15);
+
+    const buyBand = resolveTargetHit({
+      direction: "buy",
+      target: 2650,
+      candle: { high: 2640, low: 2634 },
+      tolerance: 10,
+    });
+    assert.equal(buyBand.reached, true);
+    assert.equal(buyBand.hitPrice, 2640);
+
+    const through = resolveTargetHit({
+      direction: "sell",
+      target: 4591.48,
+      candle: { high: 4596, low: 4588 },
+      tolerance: 10,
+    });
+    assert.equal(through.reached, true);
+    assert.equal(through.hitPrice, 4591.48, "the market printed the line — record it, not the overshoot");
+
+    const miss = resolveTargetHit({
+      direction: "sell",
+      target: 4591.48,
+      candle: { high: 4613, low: 4611.48 },
+      tolerance: 10,
+    });
+    assert.equal(miss.reached, false);
+    assert.equal(miss.hitPrice, undefined);
   });
 });

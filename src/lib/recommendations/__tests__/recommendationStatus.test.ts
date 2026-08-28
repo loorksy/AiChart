@@ -205,3 +205,184 @@ describe("the weekend sweep, with creation-anchored expiry", () => {
     assert.equal(r.outcome, "expired");
   });
 });
+
+describe("target zone — 10–15 points counts as touching every TP", () => {
+  const GOLD_TOL = 10;
+  const ENTRY = 4607.59;
+  const SL = 4616.36;
+  const TP1 = 4591.48;
+  const TP2 = 4570;
+  const TP3 = 4550;
+
+  function goldSell(over: Partial<EvaluateInput["recommendation"]> = {}): EvaluateInput["recommendation"] {
+    return rec({
+      direction: "sell",
+      entryType: "market",
+      entry: ENTRY,
+      stopLoss: SL,
+      targets: [TP1, TP2, TP3],
+      status: "triggered",
+      triggeredAt: T,
+      invalidationMode: "touch",
+      ...over,
+    });
+  }
+
+  it("screenshot: sell TP1 4591.48, candle low 4596.15 → tp1_hit at the honest 4596.15", () => {
+    const r = evaluateRecommendation({
+      recommendation: goldSell(),
+      candles: [candle(1, 4600, 4602, 4596.15, 4596.15)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(r.status, "tp1_hit");
+    assert.ok(r.tp1HitAt, "TP1 must be timestamped");
+    assert.equal(r.tp2HitAt, undefined, "TP2 is still below this print");
+    assert.equal(r.tp1HitPrice, 4596.15, "never claim the labeled 4591.48 — it was not printed");
+  });
+
+  it("buy mirror: high 10 pts below TP1 hits; 20 pts below does not", () => {
+    const buy = rec({
+      direction: "buy",
+      entryType: "market",
+      entry: 2620,
+      stopLoss: 2600,
+      targets: [2650, 2670, 2690],
+      status: "triggered",
+      triggeredAt: T,
+    });
+    const hit = evaluateRecommendation({
+      recommendation: buy,
+      candles: [candle(1, 2635, 2640, 2634, 2638)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(hit.status, "tp1_hit");
+    assert.equal(hit.tp1HitPrice, 2640);
+
+    const miss = evaluateRecommendation({
+      recommendation: buy,
+      candles: [candle(1, 2628, 2630, 2625, 2629)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(miss.status, "triggered");
+    assert.equal(miss.tp1HitAt, undefined);
+  });
+
+  it("sell 20 pts above TP1 is NOT a hit", () => {
+    const r = evaluateRecommendation({
+      recommendation: goldSell(),
+      candles: [candle(1, 4612, 4614, 4611.48, 4612)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(r.status, "triggered");
+    assert.equal(r.tp1HitAt, undefined);
+  });
+
+  it("an exact touch still hits, at the labeled TP", () => {
+    const r = evaluateRecommendation({
+      recommendation: goldSell(),
+      candles: [candle(1, 4595, 4596, 4591.48, 4592)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(r.status, "tp1_hit");
+    assert.equal(r.tp1HitPrice, TP1);
+  });
+
+  it("TP2 is not hit until TP1's zone is hit; TP2 then needs its own zone", () => {
+    const first = evaluateRecommendation({
+      recommendation: goldSell(),
+      candles: [candle(1, 4600, 4602, 4596.15, 4596.15)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(first.status, "tp1_hit");
+    assert.equal(first.tp2HitAt, undefined);
+
+    const second = evaluateRecommendation({
+      recommendation: goldSell({
+        status: "tp1_hit",
+        tp1HitAt: T + MIN,
+        tp1HitPrice: 4596.15,
+      }),
+      candles: [
+        candle(1, 4600, 4602, 4596.15, 4596.15),
+        candle(2, 4596, 4597, 4575, 4576),
+      ],
+      targetTolerance: GOLD_TOL,
+      now: T + 2 * MIN,
+    });
+    assert.equal(second.status, "tp2_hit");
+    assert.ok(second.tp1HitAt);
+    assert.ok(second.tp2HitAt);
+    assert.equal(second.tp3HitAt, undefined, "TP3 4550+10=4560; low 4575 is still outside");
+  });
+
+  it("the stop is NOT hit merely by being 10 pts away", () => {
+    const r = evaluateRecommendation({
+      recommendation: goldSell(),
+      candles: [candle(1, 4608, 4606.36, 4605, 4605.5)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(r.status, "triggered", "high 4606.36 is 10 pts below SL 4616.36 — not a stop");
+    assert.equal(r.slHitAt, undefined);
+    assert.equal(r.tp1HitAt, undefined);
+  });
+
+  it("touch-mode invalidation still dies on an exact wick through the stop", () => {
+    const r = evaluateRecommendation({
+      recommendation: goldSell({ invalidationMode: "touch" }),
+      candles: [candle(1, 4608, 4616.36, 4605, 4608)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(r.status, "sl_hit");
+    assert.equal(r.outcome, "loss");
+  });
+
+  it("close-mode invalidation still requires a CLOSE beyond the stop, not a wick", () => {
+    const wick = evaluateRecommendation({
+      recommendation: goldSell({ invalidationMode: "close", planType: "conditional" }),
+      candles: [candle(1, 4608, 4620, 4605, 4610)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(wick.status, "triggered", "wick through 4616.36 with close 4610 is a rejection");
+    assert.equal(wick.slHitAt, undefined);
+
+    const closed = evaluateRecommendation({
+      recommendation: goldSell({ invalidationMode: "close", planType: "conditional" }),
+      candles: [candle(1, 4608, 4620, 4605, 4617)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(closed.status, "sl_hit");
+    assert.equal(closed.outcome, "loss");
+  });
+
+  it("only TP1 exists → terminal win_tp1 once the zone is reached", () => {
+    const r = evaluateRecommendation({
+      recommendation: goldSell({ targets: [TP1] }),
+      candles: [candle(1, 4600, 4602, 4596.15, 4596.15)],
+      targetTolerance: GOLD_TOL,
+      now: T + MIN,
+    });
+    assert.equal(r.status, "tp1_hit");
+    assert.equal(r.outcome, "win_tp1");
+    assert.equal(r.tp1HitPrice, 4596.15);
+  });
+
+  it("omitted tolerance keeps exact-touch grading (replay pins)", () => {
+    const r = evaluateRecommendation({
+      recommendation: goldSell(),
+      candles: [candle(1, 4600, 4602, 4596.15, 4596.15)],
+      now: T + MIN,
+    });
+    assert.equal(r.status, "triggered");
+    assert.equal(r.tp1HitAt, undefined);
+  });
+});

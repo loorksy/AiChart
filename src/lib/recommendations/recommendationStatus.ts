@@ -17,12 +17,19 @@
  *   TP had already been reached earlier, the trade closes at that banked TP.
  * - Reaching a TP then later hitting SL/expiry closes the trade as a partial win
  *   at the highest TP reached (win_tp{n}); SL/expiry before any TP is a loss/expiry.
+ * - Every take-profit has a TARGET ZONE equal to the entry-fill band
+ *   (`targetHitTolerance` ≡ `entryFillTolerance`: gold floor 10, cap 15).
+ *   Sell: `low <= target + tol`. Buy: `high >= target - tol`. The honest hit
+ *   price is the nearest traded extreme that entered the zone, never the
+ *   labeled line if price never printed it. The stop does NOT use this band.
+ * - Sequential TPs still sequential: TP2 cannot count unless TP1 already hit.
  * - Terminal records (outcome !== "pending") are never re-evaluated.
  */
 import {
   normalizeStoredEntryType,
   resolveFill,
   resolveInvalidationMode,
+  resolveTargetHit,
   type InvalidationMode,
 } from "./entrySemantics";
 import type {
@@ -68,6 +75,9 @@ export interface EvaluateInput {
     | "tp1HitAt"
     | "tp2HitAt"
     | "tp3HitAt"
+    | "tp1HitPrice"
+    | "tp2HitPrice"
+    | "tp3HitPrice"
     | "activationRule"
   >;
   candles: TrackerCandle[];
@@ -82,12 +92,24 @@ export interface EvaluateInput {
   /** Bar duration of `activationCandles` in ms — converts open time → close time. */
   activationBarMs?: number;
   /**
-   * Price-unit band for touch fills (see entrySemantics.entryFillTolerance).
-   * A candle that comes within this margin of a `limit_touch` entry fills the
-   * plan at the nearest traded price. Omitted = exact-touch grading, which is
-   * the pre-tolerance behaviour and what replay tests pin.
+   * Price-unit band for touch fills AND take-profit hits (see
+   * entrySemantics.entryFillTolerance — the same 10–15 gold helper). A candle
+   * that comes within this margin of a `limit_touch` entry fills the plan at
+   * the nearest traded price; a candle that comes within this margin of TP1/
+   * TP2/TP3 counts that target as reached, also at the nearest traded price.
+   * Omitted = exact-touch grading, which is the pre-tolerance behaviour and
+   * what replay tests pin. The stop does not use this band.
    */
   entryTolerance?: number;
+  /**
+   * Price-unit band for every take-profit (TP1, TP2, TP3, …). Same helper as
+   * the entry band (`targetHitTolerance` ≡ `entryFillTolerance`) so the two
+   * cannot drift. Sell: hit when `low <= target + tol`. Buy: hit when
+   * `high >= target - tol`. The stop does NOT use this — invalidation stays
+   * exact (close | touch). Omitted falls back to `entryTolerance`, then to
+   * exact-touch (replay tests).
+   */
+  targetTolerance?: number;
   now?: number;
 }
 
@@ -106,6 +128,13 @@ export interface EvaluateResult {
   tp1HitAt?: number;
   tp2HitAt?: number;
   tp3HitAt?: number;
+  /**
+   * Honest TP prints: the nearest traded extreme that entered each zone,
+   * not the labeled line if price never printed it. Absent until that TP hits.
+   */
+  tp1HitPrice?: number;
+  tp2HitPrice?: number;
+  tp3HitPrice?: number;
   slHitAt?: number;
   expiredAt?: number;
   changed: boolean;
@@ -133,8 +162,13 @@ const STATUS_BY_TP: Record<1 | 2 | 3, TrackedRecommendationStatus> = {
   3: "tp3_hit",
 };
 
-function tpReached(dir: TrackedDirection, candle: TrackerCandle, target: number): boolean {
-  return dir === "buy" ? candle.high >= target : candle.low <= target;
+function tpReached(
+  dir: TrackedDirection,
+  candle: TrackerCandle,
+  target: number,
+  tolerance: number,
+): boolean {
+  return resolveTargetHit({ direction: dir, candle, target, tolerance }).reached;
 }
 /**
  * Did this candle terminate the trade at the stop, under the plan's own
@@ -154,9 +188,6 @@ function slReached(
   }
   return dir === "buy" ? candle.low <= sl : candle.high >= sl;
 }
-function entryTouched(dir: TrackedDirection, candle: TrackerCandle, entry: number): boolean {
-  return dir === "buy" ? candle.low <= entry : candle.high >= entry;
-}
 
 export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
   const r = input.recommendation;
@@ -172,6 +203,9 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     tp1HitAt: r.tp1HitAt,
     tp2HitAt: r.tp2HitAt,
     tp3HitAt: r.tp3HitAt,
+    tp1HitPrice: r.tp1HitPrice ?? undefined,
+    tp2HitPrice: r.tp2HitPrice ?? undefined,
+    tp3HitPrice: r.tp3HitPrice ?? undefined,
     changed: false,
   };
 
@@ -197,6 +231,15 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
   const candles = input.candles
     .filter((c) => c.time > r.createdCandleTime)
     .sort((a, b) => a.time - b.time);
+  // One band for every TP. Falls back to the entry band so a caller that
+  // already passes `entryTolerance` (tracker, chat, Telegram) grades targets
+  // the same way without a second argument that could drift.
+  const targetTol =
+    input.targetTolerance != null && Number.isFinite(input.targetTolerance)
+      ? Math.max(0, input.targetTolerance)
+      : input.entryTolerance != null && Number.isFinite(input.entryTolerance)
+        ? Math.max(0, input.entryTolerance)
+        : 0;
 
   let triggered = base.triggered;
   /** The price the plan is graded on — the fill, never the nominal level. */
@@ -210,6 +253,11 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     1: r.tp1HitAt,
     2: r.tp2HitAt,
     3: r.tp3HitAt,
+  };
+  const tpPrice: Record<1 | 2 | 3, number | undefined> = {
+    1: r.tp1HitPrice ?? undefined,
+    2: r.tp2HitPrice ?? undefined,
+    3: r.tp3HitPrice ?? undefined,
   };
   let slHitAt: number | undefined;
   let ambiguous = false;
@@ -252,6 +300,9 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     tp1HitAt: tpAt[1],
     tp2HitAt: tpAt[2],
     tp3HitAt: tpAt[3],
+    tp1HitPrice: tpPrice[1],
+    tp2HitPrice: tpPrice[2],
+    tp3HitPrice: tpPrice[3],
     slHitAt,
     changed: true,
     activationEvidence,
@@ -308,7 +359,7 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
         // has happened WITHOUT it — waiting longer is hoping the market gives
         // the same opportunity twice. Terminal now, announced as missed.
         const tp1 = targets[0];
-        if (tp1 != null && tpReached(dir, candle, tp1)) {
+        if (tp1 != null && tpReached(dir, candle, tp1, targetTol)) {
           return {
             ...finalize("expired", "expired"),
             expiredAt: candle.time,
@@ -335,22 +386,43 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     }
 
     const sl = slReached(dir, candle, r.stopLoss, invalidationMode);
-    // Which NEW targets does this candle reach (beyond highestTp)?
+    // Which NEW targets does this candle reach? Sequential: TP2 cannot count
+    // unless TP1 is already (or simultaneously) in its own zone. A break
+    // stops the ladder so a far TP whose zone happens to overlap cannot skip.
     let newHigh: 0 | 1 | 2 | 3 = highestTp;
     for (let i = highestTp; i < targets.length; i++) {
       const t = targets[i];
-      if (t != null && tpReached(dir, candle, t)) newHigh = (i + 1) as 1 | 2 | 3;
+      if (t != null && tpReached(dir, candle, t, targetTol)) {
+        newHigh = (i + 1) as 1 | 2 | 3;
+      } else {
+        break;
+      }
     }
     const reachedNewTp = newHigh > highestTp;
+
+    const bankNewTargets = (from: number, to: number): void => {
+      for (let i = from; i <= to; i++) {
+        const idx = i as 1 | 2 | 3;
+        const labeled = targets[i - 1];
+        if (!tpAt[idx]) tpAt[idx] = candle.time;
+        if (tpPrice[idx] == null && labeled != null) {
+          tpPrice[idx] =
+            resolveTargetHit({
+              direction: dir,
+              candle,
+              target: labeled,
+              tolerance: targetTol,
+            }).hitPrice ?? labeled;
+        }
+      }
+    };
 
     if (sl && reachedNewTp) {
       if (invalidationMode === "close") {
         // NOT ambiguous: the close is definitionally the candle's LAST event,
         // so every intrabar TP touch preceded the stop-confirming close. Bank
         // the touches, then the close terminates the trade at the best TP.
-        for (let i = highestTp + 1; i <= newHigh; i++) {
-          if (!tpAt[i as 1 | 2 | 3]) tpAt[i as 1 | 2 | 3] = candle.time;
-        }
+        bankNewTargets(highestTp + 1, newHigh);
         highestTp = newHigh;
         slHitAt = candle.time;
         return finalize(STATUS_BY_TP[highestTp as 1 | 2 | 3], WIN_BY_TP[highestTp as 1 | 2 | 3]);
@@ -375,12 +447,10 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     }
 
     if (reachedNewTp) {
-      for (let i = highestTp + 1; i <= newHigh; i++) {
-        if (!tpAt[i as 1 | 2 | 3]) tpAt[i as 1 | 2 | 3] = candle.time;
-      }
+      bankNewTargets(highestTp + 1, newHigh);
       highestTp = newHigh;
-      if (highestTp === 3) {
-        return finalize("tp3_hit", "win_tp3");
+      if (highestTp === 3 || highestTp === targets.length) {
+        return finalize(STATUS_BY_TP[highestTp as 1 | 2 | 3], WIN_BY_TP[highestTp as 1 | 2 | 3]);
       }
     }
   }
@@ -414,6 +484,9 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     tp1HitAt: tpAt[1],
     tp2HitAt: tpAt[2],
     tp3HitAt: tpAt[3],
+    tp1HitPrice: tpPrice[1],
+    tp2HitPrice: tpPrice[2],
+    tp3HitPrice: tpPrice[3],
     slHitAt,
     changed,
     activationEvidence,

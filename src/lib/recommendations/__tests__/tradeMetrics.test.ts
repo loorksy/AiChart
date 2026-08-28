@@ -89,6 +89,36 @@ describe("computeTradeMetrics", () => {
     assert.equal(m.timeInTradeMs, 2 * M);
   });
 
+  it("zone-only TP1 exit uses the honest print, not the labeled line", () => {
+    const candles = [
+      candle(0, 4607.59, 4609, 4606, 4607),
+      candle(1, 4607, 4608, 4596.15, 4597),
+      candle(2, 4597, 4598, 4616.4, 4616.5),
+    ];
+    const m = computeTradeMetrics({
+      recommendation: {
+        direction: "sell",
+        entryType: "market",
+        entry: 4607.59,
+        stopLoss: 4616.36,
+        invalidationMode: "touch",
+        targets: [4591.48, 4570],
+        outcome: "win_tp1",
+        createdAt: T0 - 5 * M,
+        expiresAt: T0 + 100 * M,
+        triggeredAt: T0,
+        tp1HitAt: T0 + 1 * M,
+        tp1HitPrice: 4596.15,
+        slHitAt: T0 + 2 * M,
+      },
+      candles,
+      now: T0 + 50 * M,
+    });
+    assert.equal(m.exitReason, "stop_after_target");
+    assert.equal(m.exitPrice, 4596.15);
+    assert.equal(m.realizedR, 1.3);
+  });
+
   it("full win at TP3 caps the favorable excursion at the exit", () => {
     const candles = [
       candle(0, 100, 101, 99.8, 100.5),
@@ -308,5 +338,19 @@ describe("realizedROf — legacy derivation", () => {
   it("refuses to invent an R for unmeasured expiries", () => {
     assert.equal(realizedROf({ ...base, outcome: "expired" }), null);
     assert.equal(realizedROf({ ...base, outcome: "cancelled" }), null);
+  });
+
+  it("a zone-only TP1 banks the honest print, not the labeled line", () => {
+    assert.equal(
+      realizedROf({
+        direction: "sell",
+        entry: 4607.59,
+        stopLoss: 4616.36,
+        targets: [4591.48],
+        outcome: "win_tp1",
+        tp1HitPrice: 4596.15,
+      }),
+      1.3, // (4607.59-4596.15)/|4607.59-4616.36| = 11.44/8.77 ≈ 1.304 → 1.30
+    );
   });
 });

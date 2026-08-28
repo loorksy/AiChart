@@ -358,6 +358,9 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     tp1HitAt: targetTimestamp(outcomes, 1),
     tp2HitAt: targetTimestamp(outcomes, 2),
     tp3HitAt: targetTimestamp(outcomes, 3),
+    tp1HitPrice: numberValue(risk.tp1HitPrice),
+    tp2HitPrice: numberValue(risk.tp2HitPrice),
+    tp3HitPrice: numberValue(risk.tp3HitPrice),
     slHitAt: latestTimestamp(outcomes, "SL"),
     invalidatedAt: latestTimestamp(outcomes, "Invalidated"),
     cancelledAt: latestTimestamp(outcomes, "Cancelled"),
@@ -542,6 +545,10 @@ export interface TrackedStatusPatch {
   tp1HitAt?: number;
   tp2HitAt?: number;
   tp3HitAt?: number;
+  /** Honest TP prints — nearest traded extreme that entered the zone. */
+  tp1HitPrice?: number;
+  tp2HitPrice?: number;
+  tp3HitPrice?: number;
   slHitAt?: number;
   invalidatedAt?: number;
   cancelledAt?: number;
@@ -598,8 +605,14 @@ async function ensureTriggered(
   return recommendation;
 }
 
-function plannedR(recommendation: CanonicalRecommendation, targetIndex: 1 | 2 | 3): number | undefined {
-  const target = recommendation.targets[targetIndex - 1];
+function plannedR(
+  recommendation: CanonicalRecommendation,
+  targetIndex: 1 | 2 | 3,
+  honestPrice?: number,
+): number | undefined {
+  const labeled = recommendation.targets[targetIndex - 1];
+  const target =
+    honestPrice != null && Number.isFinite(honestPrice) ? honestPrice : labeled;
   if (target == null || recommendation.entry == null || recommendation.stopLoss == null) return undefined;
   // Graded from the honest fill when one was persisted — the nominal level is
   // exactly the number entrySemantics.ts exists to keep out of R math.
@@ -619,6 +632,8 @@ async function appendTrackerOutcome(
   targetIndex?: 1 | 2 | 3,
   /** The sweep's measurement, when it accompanies a terminal write. */
   metrics?: TradeMetrics,
+  /** Nearest traded extreme that entered the TP zone; labeled line otherwise. */
+  honestPrice?: number,
 ): Promise<void> {
   // The realized R and excursions land on the ROW THAT CLOSED the trade, so
   // the append-only outcome ledger carries the measurement its own dedupe key
@@ -633,9 +648,13 @@ async function appendTrackerOutcome(
     type,
     occurredAt,
     targetIndex,
-    price: targetIndex ? recommendation.targets[targetIndex - 1] : recommendation.stopLoss,
+    price: targetIndex
+      ? (honestPrice != null && Number.isFinite(honestPrice)
+          ? honestPrice
+          : recommendation.targets[targetIndex - 1])
+      : recommendation.stopLoss,
     rMultiple: targetIndex
-      ? plannedR(recommendation, targetIndex)
+      ? plannedR(recommendation, targetIndex, honestPrice)
       : type === "SL"
         ? (terminalR ?? -1)
         : terminalR,
@@ -678,7 +697,14 @@ export async function updateTrackedRecommendation(
     recommendation = { ...recommendation, executionState: patch.executionState };
   }
   if (patch.tp1HitAt) {
-    await appendTrackerOutcome(recommendation, "TP1", patch.tp1HitAt, 1);
+    await appendTrackerOutcome(
+      recommendation,
+      "TP1",
+      patch.tp1HitAt,
+      1,
+      undefined,
+      patch.tp1HitPrice,
+    );
     if (recommendation.status === "triggered") {
       recommendation = await move(
         recommendation,
@@ -689,7 +715,14 @@ export async function updateTrackedRecommendation(
     }
   }
   if (patch.tp2HitAt) {
-    await appendTrackerOutcome(recommendation, "TP2", patch.tp2HitAt, 2);
+    await appendTrackerOutcome(
+      recommendation,
+      "TP2",
+      patch.tp2HitAt,
+      2,
+      undefined,
+      patch.tp2HitPrice,
+    );
     if (recommendation.status === "triggered") {
       recommendation = await move(
         recommendation,
@@ -701,7 +734,7 @@ export async function updateTrackedRecommendation(
   }
   if (patch.tp3HitAt || patch.status === "tp3_hit") {
     const at = patch.tp3HitAt ?? now;
-    await appendTrackerOutcome(recommendation, "TP3", at, 3, patch.metrics);
+    await appendTrackerOutcome(recommendation, "TP3", at, 3, patch.metrics, patch.tp3HitPrice);
     if (recommendation.status === "triggered") {
       recommendation = await move(
         recommendation,
@@ -785,13 +818,25 @@ export async function updateTrackedRecommendation(
     patch.effectiveEntry != null ||
     patch.metrics != null ||
     patch.missedWithoutFill != null ||
-    patch.supersededAt != null
+    patch.supersededAt != null ||
+    patch.tp1HitPrice != null ||
+    patch.tp2HitPrice != null ||
+    patch.tp3HitPrice != null
   ) {
     const nextRisk = {
       ...recommendation.risk,
       ...(patch.lastCheckedAt != null ? { lastCheckedAt: patch.lastCheckedAt } : {}),
       ...(patch.effectiveEntry != null && Number.isFinite(patch.effectiveEntry)
         ? { effectiveEntry: patch.effectiveEntry }
+        : {}),
+      ...(patch.tp1HitPrice != null && Number.isFinite(patch.tp1HitPrice)
+        ? { tp1HitPrice: patch.tp1HitPrice }
+        : {}),
+      ...(patch.tp2HitPrice != null && Number.isFinite(patch.tp2HitPrice)
+        ? { tp2HitPrice: patch.tp2HitPrice }
+        : {}),
+      ...(patch.tp3HitPrice != null && Number.isFinite(patch.tp3HitPrice)
+        ? { tp3HitPrice: patch.tp3HitPrice }
         : {}),
       // The measurement rides the same blob effectiveEntry lives in. Written
       // whole (already monotone-merged by the tracker); null members are kept

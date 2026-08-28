@@ -60,7 +60,7 @@ describe("i18n core", () => {
     assert.equal(t("en", "stats.win_rate"), "Win rate");
     assert.equal(t("ar", "rec.step.entered"), "الدخول");
     assert.equal(t("en", "rec.entry.market"), "Market Entry");
-    assert.equal(t("ar", "rec.tip.tp1"), "بعد وصول TP1، حرّك وقف الخسارة إلى نقطة الدخول لحماية الصفقة.");
+    assert.equal(t("ar", "rec.tip.tp1"), "بعد وصول TP1 (على الذهب تُحتسب منطقة 10–15 نقطة لمساً)، حرّك وقف الخسارة إلى نقطة الدخول لحماية الصفقة.");
     assert.equal(t("en", "stats.filter.7d"), "7 days");
   });
 

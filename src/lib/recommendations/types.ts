@@ -115,6 +115,13 @@ export interface TrackedRecommendation {
   tp1HitAt?: number;
   tp2HitAt?: number;
   tp3HitAt?: number;
+  /**
+   * Honest TP prints (nearest traded extreme that entered the zone). Absent
+   * on rows written before the target-zone band; those grade the labeled line.
+   */
+  tp1HitPrice?: number;
+  tp2HitPrice?: number;
+  tp3HitPrice?: number;
   slHitAt?: number;
   invalidatedAt?: number;
   cancelledAt?: number;

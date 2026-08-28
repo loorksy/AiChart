@@ -41,7 +41,7 @@ function rec(over: Partial<ActiveRecommendation> = {}): ActiveRecommendation {
     direction: "buy",
     entry: 100,
     stopLoss: 99,
-    targets: [102],
+    targets: [200],
     status: "pending_entry",
     triggerCondition: "touch 100",
     invalidationLevel: 99,
@@ -121,7 +121,7 @@ describe("evaluateRecommendationStatus", () => {
 
   it("marks target hits after entry trigger", () => {
     const status = evaluateRecommendationStatus({
-      recommendation: rec(),
+      recommendation: rec({ targets: [102] }),
       market: market([candle(1, 101, 102.1, 99.8, 101.5)]),
     });
     assert.equal(status.status, "tp1_hit");
@@ -196,6 +196,27 @@ describe("evaluateRecommendationStatus", () => {
       market: market([candle(0, 101, 101.2, 100.5, 101)]),
     });
     assert.equal(status.status, "expired");
+  });
+
+  it("gold screenshot: sell TP1 4591.48, live low 4596.15 is a zone hit via evaluateRecommendation", () => {
+    const status = evaluateRecommendationStatus({
+      recommendation: rec({
+        symbol: "XAUUSD",
+        direction: "sell",
+        entry: 4607.59,
+        stopLoss: 4616.36,
+        targets: [4591.48, 4575, 4560],
+        status: "triggered",
+        entryType: "market",
+        invalidationMode: "touch",
+        triggeredAt: T,
+      }),
+      market: market([candle(1, 4600, 4602, 4596.15, 4596.15)]),
+    });
+    assert.equal(status.status, "tp1_hit");
+    assert.equal(status.hitTarget, 1);
+    assert.match(status.reason, /4596\.15/);
+    assert.match(status.reason, /اعتُبر الهدف ملموساً/);
   });
 });
 

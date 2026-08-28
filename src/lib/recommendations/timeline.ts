@@ -70,6 +70,9 @@ type TimelineSource = Pick<
   | "tp1HitAt"
   | "tp2HitAt"
   | "tp3HitAt"
+  | "tp1HitPrice"
+  | "tp2HitPrice"
+  | "tp3HitPrice"
   | "slHitAt"
   | "invalidatedAt"
   | "cancelledAt"
@@ -120,9 +123,9 @@ export function buildRecommendationTimeline(
   }
 
   const tps: Array<[TimelineEventType, number | null, number | null]> = [
-    ["tp1_hit", finite(rec.tp1HitAt), finite(rec.targets[0])],
-    ["tp2_hit", finite(rec.tp2HitAt), finite(rec.targets[1])],
-    ["tp3_hit", finite(rec.tp3HitAt), finite(rec.targets[2])],
+    ["tp1_hit", finite(rec.tp1HitAt), finite(rec.tp1HitPrice) ?? finite(rec.targets[0])],
+    ["tp2_hit", finite(rec.tp2HitAt), finite(rec.tp2HitPrice) ?? finite(rec.targets[1])],
+    ["tp3_hit", finite(rec.tp3HitAt), finite(rec.tp3HitPrice) ?? finite(rec.targets[2])],
   ];
   for (const [type, at, target] of tps) {
     if (at != null) {
