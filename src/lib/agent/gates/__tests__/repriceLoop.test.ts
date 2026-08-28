@@ -294,14 +294,13 @@ describe("stale-scenario reprice: the refusal becomes a repriced, actionable pla
       retryAnswer: decisionJson({
         direction: "sell",
         planType: "conditional",
-        activationCondition: "Rejection at 4635 confirmed by a 15m close back below it.",
+        activationCondition: "A 15m close below 4610 confirms the breakdown.",
         activationRule: {
-          kind: "rejection_confirmed",
-          level: 4635,
-          direction: "below",
+          kind: "candle_close_below",
+          level: 4610,
           timeframe: "15m",
         },
-        proposedLevels: { preferredEntry: 4635, stopLoss: 4641, targets: [4610, 4600] },
+        proposedLevels: { preferredEntry: 4610, stopLoss: 4618, targets: [4600, 4595] },
       }),
     });
 
@@ -316,7 +315,7 @@ describe("stale-scenario reprice: the refusal becomes a repriced, actionable pla
     assert.equal(run.outcome.chain.allowed, true, "a waiting retry passes the same chain");
     assert.equal(run.outcome.decision.decision, "sell");
     assert.equal(run.outcome.decision.planType, "conditional");
-    assert.equal(run.outcome.decision.recommendation?.entry, 4635);
+    assert.equal(run.outcome.decision.recommendation?.entry, 4610);
     assert.equal(
       run.outcome.decision.executionState,
       "awaiting_activation",

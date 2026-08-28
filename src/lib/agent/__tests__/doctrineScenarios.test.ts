@@ -170,7 +170,10 @@ describe("doctrine scenarios", () => {
   it("forming pattern → anticipatory plan carrying its own risk label", async () => {
     const tc = candidate({ setupType: "range_boundary" });
     const out = await decide(
-      { risk: makeRisk({ selectedCandidate: tc, candidatesResult: { candidates: [tc], best: tc, rejectedReasons: [], hasReversalEvidence: false } }) },
+      {
+        market: market({ currentPrice: 3996 }),
+        risk: makeRisk({ selectedCandidate: tc, candidatesResult: { candidates: [tc], best: tc, rejectedReasons: [], hasReversalEvidence: false } }),
+      },
       answer({
         planType: "anticipatory",
         selectedTradeCandidateId: "tc-0",

@@ -25,3 +25,16 @@ export function symbolPriceScale(symbol: string): number {
 export function ticksPerPriceUnit(symbol: string): number {
   return symbolPriceScale(symbol) / SYMBOL_MINMOV;
 }
+
+/**
+ * Tick distance the native Long/Short Position tool stores as `stopLevel` /
+ * `profitLevel`. Same arithmetic the library uses to reconstruct prices:
+ * `entry ± level × minmov / pricescale`.
+ */
+export function priceDistanceTicks(
+  symbol: string,
+  from: number,
+  to: number,
+): number {
+  return Math.max(1, Math.round(Math.abs(to - from) * ticksPerPriceUnit(symbol)));
+}

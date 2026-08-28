@@ -40,7 +40,7 @@ import {
   evaluateRecommendation,
   type TrackerCandle,
 } from "./recommendationStatus";
-import { entryFillTolerance } from "./entrySemantics";
+import { entryFillTolerance, targetHitTolerance } from "./entrySemantics";
 import { activationRuleTimeframe } from "./activationRule";
 import { computeTradeMetrics, mergeTradeMetrics } from "./tradeMetrics";
 import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
@@ -169,6 +169,10 @@ export async function trackOneRecommendation(
   // deterministic. See entrySemantics.entryFillTolerance for the clamps.
   const atr = approximateAtr(candles);
   const entryTolerance = entryFillTolerance({ price: rec.entry, atr });
+  // Same helper as the entry band — one implementation so fill and TP-zone
+  // cannot drift. Passed explicitly so evaluateRecommendation does not have
+  // to infer the target band from the fill band.
+  const targetTolerance = targetHitTolerance({ price: rec.entry, atr });
 
   const result = evaluateRecommendation({
     recommendation: {
@@ -196,6 +200,9 @@ export async function trackOneRecommendation(
       tp1HitAt: rec.tp1HitAt,
       tp2HitAt: rec.tp2HitAt,
       tp3HitAt: rec.tp3HitAt,
+      tp1HitPrice: rec.tp1HitPrice,
+      tp2HitPrice: rec.tp2HitPrice,
+      tp3HitPrice: rec.tp3HitPrice,
       // The seam that once dropped the whole conditional contract: the rule is
       // loaded from the store above and MUST reach the evaluator, or every
       // plan degrades to a bare entry touch.
@@ -205,6 +212,7 @@ export async function trackOneRecommendation(
     activationCandles,
     activationBarMs,
     entryTolerance,
+    targetTolerance,
   });
 
   // Post-fill measurement (tradeMetrics.ts): MFE/MAE, realized R, exit,
@@ -231,6 +239,9 @@ export async function trackOneRecommendation(
         tp1HitAt: result.tp1HitAt,
         tp2HitAt: result.tp2HitAt,
         tp3HitAt: result.tp3HitAt,
+        tp1HitPrice: result.tp1HitPrice,
+        tp2HitPrice: result.tp2HitPrice,
+        tp3HitPrice: result.tp3HitPrice,
         slHitAt: result.slHitAt,
         invalidatedAt: rec.invalidatedAt,
         cancelledAt: rec.cancelledAt,
@@ -269,6 +280,9 @@ export async function trackOneRecommendation(
     tp1HitAt: result.tp1HitAt,
     tp2HitAt: result.tp2HitAt,
     tp3HitAt: result.tp3HitAt,
+    tp1HitPrice: result.tp1HitPrice,
+    tp2HitPrice: result.tp2HitPrice,
+    tp3HitPrice: result.tp3HitPrice,
     slHitAt: result.slHitAt,
     expiredAt: result.expiredAt,
     executionState: nextExecutionState,

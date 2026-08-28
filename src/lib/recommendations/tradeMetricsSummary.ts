@@ -14,6 +14,7 @@ import {
   exitTimeOf,
   gradeRecommendation,
   realizedROf,
+  type RealizableRecommendation,
   type RecommendationGrade,
 } from "./tradeMetrics";
 import type { TrackedRecommendation } from "./types";
@@ -45,6 +46,7 @@ export interface TradeMetricsSummary {
 type SummarySource = Pick<
   TrackedRecommendation,
   | "outcome"
+  | "direction"
   | "entry"
   | "effectiveEntry"
   | "stopLoss"
@@ -53,7 +55,12 @@ type SummarySource = Pick<
   | "expiresAt"
   | "triggeredAt"
   | "slHitAt"
+  | "tp1HitAt"
+  | "tp2HitAt"
   | "tp3HitAt"
+  | "tp1HitPrice"
+  | "tp2HitPrice"
+  | "tp3HitPrice"
   | "invalidatedAt"
   | "cancelledAt"
   | "expiredAt"
@@ -103,14 +110,28 @@ export function computeTradeMetricsSummary(
 }
 
 /**
+ * The trade-result R both the report and the share card print: furthest
+ * banked target (or stop) once the record is terminal, live R so far while
+ * the position is still open. Null when unfilled or unmeasurable.
+ */
+export function displayROf(
+  rec: RealizableRecommendation &
+    Pick<TrackedRecommendation, "direction" | "triggeredAt" | "outcome">,
+  livePrice?: number | null,
+): number | null {
+  if (rec.outcome !== "pending") return realizedROf(rec);
+  return liveRSoFar(rec, livePrice);
+}
+
+/**
  * The R the position is showing RIGHT NOW at `price` — the live "R so far"
  * on an in-trade card. Null when the plan has not filled or risk is degenerate.
  */
 export function liveRSoFar(
   rec: Pick<
     TrackedRecommendation,
-    "direction" | "entry" | "effectiveEntry" | "stopLoss" | "triggeredAt" | "outcome"
-  >,
+    "direction" | "entry" | "stopLoss" | "triggeredAt" | "outcome"
+  > & { effectiveEntry?: number | null },
   price: number | null | undefined,
 ): number | null {
   if (rec.outcome !== "pending" || !rec.triggeredAt) return null;

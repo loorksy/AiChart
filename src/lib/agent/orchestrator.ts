@@ -67,8 +67,9 @@ import { gateLineAr, refusalSummaryAr, runGateChain } from "./gates/chain";
 import { repriceStaleScenario } from "./gates/repriceLoop";
 import type { GateChainResult, GateVerdict } from "./gates/types";
 import { newsProviderConfigured } from "./news/newsProvider";
-import { resolveEntryType, resolveInvalidationMode } from "@/lib/recommendations/entrySemantics";
+import { resolveEntryType, resolveInvalidationMode, entryFillTolerance } from "@/lib/recommendations/entrySemantics";
 import type { EntryType } from "@/lib/recommendations/entrySemantics";
+import { applyFollowThroughToPlan, findPrintAnchorMs } from "./gates/revalidation";
 import { getForexLiveQuote } from "@/lib/markets/forexPrice";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
@@ -116,7 +117,7 @@ import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { resolveValidity } from "./trading/tradePlan";
 import { recommendationClockAnchor } from "./recommendationExpiry";
 import { spanStyleForInterval } from "./trading/scalpGeometry";
-import { collectVisualEvidence, visualCoverageNote } from "./visualEvidence";
+import { collectVisualEvidence, visualCoverageNote, visualReviewFromEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { recordDecisionForParity } from "./parityLog";
 import { serializeCostEvidence } from "./marketContext/costEvidence";
@@ -158,6 +159,11 @@ import {
   narrateStructure,
   narrateWeighing,
 } from "./thinkingNarration";
+import {
+  createLiveThinkingSink,
+  emitNarrationFallback,
+} from "./liveThinking";
+import { applyVisualReviewDimension } from "./evidenceDimensions";
 import {
   getTradingSessionInfo,
   tradingSessionPromptBlock,
@@ -1037,12 +1043,15 @@ async function runUnifiedChartAgentInner(
   // Cancelled right after market data: never start the fleet for nobody.
   if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
 
-  // Live thinking trace: one sentence per REAL step, composed from the values
-  // that step just produced (thinkingNarration.ts). No value → no line.
-  const think = (line: string | null) => {
-    if (line) ctx.emitThinking?.(line);
+  // Live thinking: stream the model's own reasoning channel as the primary
+  // trace. Canned narration is collected as FALLBACK only — emitted if the
+  // model produced zero thinking for the whole run.
+  const thinking = createLiveThinkingSink((line) => ctx.emitThinking?.(line));
+  const narrationFallback: Array<string | null> = [];
+  const rememberNarration = (line: string | null) => {
+    if (line) narrationFallback.push(line);
   };
-  think(
+  rememberNarration(
     narrateMarketRead({
       locale,
       interval: market.interval,
@@ -1153,7 +1162,7 @@ async function runUnifiedChartAgentInner(
     const resistancesAbove = structure.resistance
       .map((level) => level.price)
       .filter((p) => Number.isFinite(p) && p > market.currentPrice!);
-    think(
+    rememberNarration(
       narrateStructure({
         locale,
         interval: market.interval,
@@ -1166,7 +1175,7 @@ async function runUnifiedChartAgentInner(
     );
   }
   if (mtf) {
-    think(
+    rememberNarration(
       narrateHigherTimeframe({
         locale,
         higherInterval: market.higherInterval,
@@ -1174,7 +1183,7 @@ async function runUnifiedChartAgentInner(
       }),
     );
   }
-  think(narrateNews({ locale, level: news?.newsRisk ?? "unknown" }));
+  rememberNarration(narrateNews({ locale, level: news?.newsRisk ?? "unknown" }));
 
   // Deterministic chart geometry — computed ONCE, BEFORE the candidate engine,
   // so forming-pattern boundaries become real entry zones rather than prompt
@@ -1361,10 +1370,8 @@ async function runUnifiedChartAgentInner(
   // The mechanical visual-basis verdict (Phase 8): `confirmed` requires a
   // TradingView client capture WITH drawings rendered — this run, this user.
   // Everything else, including every browserless run, is `not_checked`.
-  const visualReview = {
-    state: visual.visuallyVerified ? ("confirmed" as const) : ("not_checked" as const),
-    timeframes: visual.snapshots.map((snapshot) => snapshot.timeframe),
-  };
+  // `let`: a post-draw recapture may upgrade not_checked → confirmed.
+  let visualReview = visualReviewFromEvidence(visual);
   if (visual.snapshots.length) {
     trackedCtx.emitActivity({
       type: "analysis",
@@ -1405,7 +1412,7 @@ async function runUnifiedChartAgentInner(
     });
   }
 
-  think(narrateWeighing({ locale, candidateCount: candidates.length }));
+  rememberNarration(narrateWeighing({ locale, candidateCount: candidates.length }));
 
   const decisionStartedAt = performance.now();
   ctx.emitStage?.({ stage: "final_decision", status: "running" });
@@ -1506,6 +1513,10 @@ async function runUnifiedChartAgentInner(
         },
         {
           ...input.synthesizerDeps,
+          onThinkingDelta: (text) => {
+            input.synthesizerDeps?.onThinkingDelta?.(text);
+            thinking.ingestDelta(text);
+          },
           onProgress: (p) => {
             synthProgress.current = p;
           },
@@ -1759,6 +1770,7 @@ async function runUnifiedChartAgentInner(
         // not an acceptance threshold (systemPrompt.ts). Introducing one here
         // would silently change what the platform refuses.
       },
+      freezeEntry: gateRec.anchorTime != null,
       // A FRESH quote on purpose. The analysis takes tens of seconds and gold
       // does not stand still; a plan revalidated against the price the run
       // STARTED with has been validated against the past.
@@ -1801,9 +1813,21 @@ async function runUnifiedChartAgentInner(
         reanchoredEntry: entry,
         liveRr: reanchor.evidence!.liveRr,
       });
-      gateRec.entry = entry;
-      gateRec.entryType = "market";
-      gateRec.activationRule = undefined;
+      const written = gateRec.entry;
+      const direction = decision.decision === "buy" ? "buy" : "sell";
+      const anchorTime = findPrintAnchorMs({
+        direction,
+        entry: typeof written === "number" ? written : entry,
+        candles: market.currentTfCandles,
+        tolerance: entryFillTolerance({
+          price: typeof written === "number" ? written : entry,
+          atr: market.atr,
+        }),
+      });
+      applyFollowThroughToPlan(gateRec, entry, { anchorTime });
+      if (anchorTime != null) gateRec.anchorTime = anchorTime;
+      decision.planType = "immediate";
+      decision.executionState = "valid_now";
       gateEntryType = "market";
       // The operator is told in the plan's own voice, not only in the gate
       // list: the entry they read is not the entry the model wrote.
@@ -1849,7 +1873,7 @@ async function runUnifiedChartAgentInner(
       });
     }
 
-    think(
+    rememberNarration(
       narrateGateOutcome({
         locale,
         verdicts: chain.verdicts,
@@ -1975,6 +1999,81 @@ async function runUnifiedChartAgentInner(
     [] as AgentFinalResult["drawings"],
   );
   drawings = drawings ?? [];
+
+  // Post-draw visual review: persist the new overlays onto the layout so the
+  // platform capture tab renders them, then recapture the lead frame. The
+  // brain already reviewed the live chart BEFORE proposing levels; this is
+  // the AFTER pass — support, resistance, trendlines, and whether the
+  // activation has already printed — without a new LLM hop (browse budget
+  // was spent during synthesis; conversion of an already-printed wait is
+  // deterministic via G7 / follow-through above).
+  if (
+    drawings.length > 0 &&
+    ctx.userId != null &&
+    chartContext?.layoutId &&
+    (finalDecision.decision === "buy" || finalDecision.decision === "sell")
+  ) {
+    const rec = finalDecision.recommendation;
+    try {
+      const { saveChartLayout } = await import("@/lib/store");
+      await saveChartLayout(chartContext.layoutId, ctx.userId, {
+        symbol: market.symbol,
+        interval: market.interval,
+        state: {
+          drawings,
+          overlays: [],
+          recommendation: {
+            symbol: market.symbol,
+            action: rec.action,
+            entryType: rec.entryType,
+            entry: rec.entry ?? null,
+            stop_loss: rec.stop_loss ?? null,
+            take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
+            targets: rec.targets ?? [],
+            timeframe: market.interval,
+          },
+          targets: rec.targets ?? [],
+          drawingsCleared: false,
+        },
+      });
+    } catch {
+      /* layout save is best-effort — the recapture still runs */
+    }
+    const postDraw = await collectVisualEvidence({
+      userId: ctx.userId,
+      symbol: market.symbol,
+      interval: market.interval,
+      timeframes: [market.interval],
+      maxImages: 1,
+      timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+      layoutId: chartContext.layoutId,
+      liveSession: input.liveSession === true,
+    }).catch(() => null);
+    if (postDraw?.snapshots.length) {
+      const extra = visualReviewFromEvidence(postDraw);
+      const seen = new Set(visualReview.timeframes);
+      for (const tf of extra.timeframes) {
+        if (!seen.has(tf)) visualReview.timeframes.push(tf);
+      }
+      if (extra.state === "confirmed") visualReview.state = "confirmed";
+      trackedCtx.emitActivity({
+        type: "analysis",
+        status: "completed",
+        message: t(locale, "orch.visual_post_draw"),
+        metadata: {
+          timeframes: postDraw.snapshots.map((s) => s.timeframe),
+          drawingsIncluded: postDraw.visuallyVerified,
+        },
+      });
+    }
+  }
+
+  // One writer: the evidence card's visual_review row matches visualReview
+  // (and therefore the transparency line and the thinking "reviewed N frames").
+  finalDecision.evidenceDimensions = applyVisualReviewDimension(
+    finalDecision.evidenceDimensions ?? [],
+    visualReview,
+  );
 
   const debugDecisionFlow: AgentFinalResult["debugDecisionFlow"] =
     process.env.NODE_ENV === "development"
@@ -2286,6 +2385,13 @@ async function runUnifiedChartAgentInner(
     levels,
     locale,
   });
+
+  thinking.flush();
+  emitNarrationFallback(
+    (line) => ctx.emitThinking?.(line),
+    narrationFallback,
+    thinking.emittedCount(),
+  );
 
   return {
     decision: finalDecision.decision,

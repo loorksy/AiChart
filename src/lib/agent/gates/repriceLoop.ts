@@ -81,6 +81,7 @@ export function staleScenarioFeedback(input: {
       .join(", ")}), but ${happened}.`,
     `This is INFORMATION about which scenario played out while you were analyzing — not a reason to stand aside. Re-read the market as it is NOW and issue a fresh, actionable decision:`,
     `- If the move confirmed your read and structure supports continuation: an IMMEDIATE entry at the current price, or a retest entry at the level just broken, with stop and targets from the evidence menu around the CURRENT price.`,
+    `- If the previous plan was CONDITIONAL and the live price has already gone through its entry in the trade's profit direction (a sell sitting below a waited-for entry, a buy sitting above one): that wait is over. Issue IMMEDIATE follow-through at current structure — never re-emit "wait for a level the market already left".`,
     `- Otherwise: a NEW conditional plan whose trigger and levels sit correctly relative to the live price.`,
     `- If the evidence after this move genuinely favors the opposite side, say so and plan that side — the direction is yours.`,
     `Do NOT re-emit the previous levels: any stop or trigger the live price has already passed will be refused again.`,

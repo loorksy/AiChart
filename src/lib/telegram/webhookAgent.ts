@@ -64,9 +64,10 @@ import {
   type InlineButton,
 } from "@/lib/telegram";
 import { TelegramLiveTurn } from "@/lib/telegram/liveReply";
+import { sanitizeThinkingLine } from "@/lib/agent/thinkingNarration";
 import {
-  stageLabel,
   TelegramProgressReporter,
+  renderToolsTrace,
 } from "@/lib/telegram/liveProgress";
 import {
   escapeTelegramHtml,
@@ -233,14 +234,18 @@ export function resetTelegramDedupe(): void {
 }
 
 /** Like OpenClaw's "Open Report" — a link on a recommendation, not a standing menu. */
-function reportLinkButtons(
+export function recommendationReportUrl(
+  recommendationId: number | string,
+): string {
+  return `${getPublicAppUrl()}/recommendations/${recommendationId}`;
+}
+
+export function reportLinkButtons(
   locale: AppLocale,
   recommendationId?: number | string | null,
 ): InlineButton[][] {
-  const url = recommendationId
-    ? `${getPublicAppUrl()}/recommendations/${recommendationId}`
-    : `${getPublicAppUrl()}/chat`;
-  return [[{ text: t(locale, "tg.open_report"), url }]];
+  if (recommendationId == null || String(recommendationId).trim() === "") return [];
+  return [[{ text: t(locale, "tg.open_report"), url: recommendationReportUrl(recommendationId) }]];
 }
 
 /**
@@ -447,23 +452,21 @@ async function handleLanguageCallback(
 /**
  * The "Called N tools" block from the owner's screenshots, Telegram-native.
  *
- * `<blockquote expandable>` collapses to its first line — "used N checks"
- * — and expands on tap to the per-stage checklist with the same ✓/✗ marks
- * the live bubble showed. Rendered from the stages the reporter actually
- * observed, never from a list someone maintains by hand.
+ * Delegates to `renderToolsTrace` so the final collapsed checklist is the
+ * same ordered ✅ + thinking-notes rendering the live bubble showed.
  */
 export function renderToolsBlock(
-  stages: readonly { stage: string; status: "running" | "done" | "failed" }[],
+  stages: readonly { stage: string; status: "running" | "done" | "failed"; notes?: readonly string[] }[],
   locale: AppLocale,
 ): string {
-  const finished = stages.filter((row) => row.status !== "running");
-  if (!finished.length) return "";
-  const lines = finished.map(
-    (row) => `${row.status === "failed" ? "✗" : "✓"} ${stageLabel(row.stage, locale)}`,
+  return renderToolsTrace(
+    stages.map((row) => ({
+      stage: row.stage,
+      status: row.status,
+      notes: [...(row.notes ?? [])],
+    })),
+    locale,
   );
-  return `<blockquote expandable>🛠 ${t(locale, "tg.tools_used", {
-    count: String(finished.length),
-  })}\n${lines.join("\n")}</blockquote>`;
 }
 
 async function deliverReply(input: {
@@ -935,6 +938,10 @@ export async function runTelegramAgentTurn(input: {
           }
         },
         emitStage: (event) => reporter.onStage(event),
+        emitThinking: (text) => {
+          const clean = sanitizeThinkingLine(text);
+          if (clean) reporter.onThinking(clean);
+        },
         sessionId,
         session,
       },
@@ -997,19 +1004,18 @@ export async function runTelegramAgentTurn(input: {
           // Present only when the server says this user can execute this
           // plan right now — a human tap opens the volume menu.
           ...(await executionButtonRow(userId, result.recommendationId, locale)),
-          [
-            // "Refresh status" re-asks the deterministic status question
-            // through the same one-shot option tokens every agent-authored
-            // chip uses — a tap, not a typed sentence.
-            ...rememberInlineOptions(message.chatId, [
-              {
-                id: "status_refresh",
-                label: t(locale, "tg.refresh_status"),
-                prompt: t(locale, "tg.refresh_status_prompt"),
-              },
-            ]).flat(),
-            ...reportLinkButtons(locale, result.recommendationId).flat(),
-          ],
+          // "Refresh status" re-asks the deterministic status question
+          // through the same one-shot option tokens every agent-authored
+          // chip uses — a tap, not a typed sentence.
+          ...rememberInlineOptions(message.chatId, [
+            {
+              id: "status_refresh",
+              label: t(locale, "tg.refresh_status"),
+              prompt: t(locale, "tg.refresh_status_prompt"),
+            },
+          ]),
+          // Full-width deep link to the platform's recommendation page.
+          ...reportLinkButtons(locale, result.recommendationId),
         ]
       : undefined;
 
@@ -1033,12 +1039,15 @@ export async function runTelegramAgentTurn(input: {
       if (photo.ok) {
         const cards = deriveCards(result);
         // The lead card is the caption (Telegram caps captions at 1024);
-        // the folded details follow as their own message, buttons on the end.
-        const caption = splitTelegramMessage(
+        // overflow of the lead — and the folded details — follow as their
+        // own message, buttons on the end.
+        const leadChunks = splitTelegramMessage(
           renderTelegramLead(cards, locale),
           TELEGRAM_CAPTION_LIMIT,
-        )[0]!;
+        );
+        const caption = leadChunks[0]!;
         const details = [
+          leadChunks.slice(1).join("\n\n"),
           renderTelegramDetails(cards, locale),
           renderToolsBlock(reporter.snapshot(), locale),
         ]

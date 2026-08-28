@@ -460,6 +460,10 @@ export async function callOpenAICompatStream(
           delivered = true;
           handlers.onTextDelta?.(t);
         },
+        onThinkingDelta: (t: string) => {
+          delivered = true;
+          handlers.onThinkingDelta?.(t);
+        },
       }
     : undefined;
 
@@ -606,8 +610,14 @@ async function streamOnce(
         text += delta.content;
         handlers?.onTextDelta?.(delta.content);
       }
-      if (delta?.reasoning_content) {
-        reasoning += delta.reasoning_content;
+      const reasoningDelta =
+        delta?.reasoning_content ||
+        (typeof (delta as { reasoning?: string | null }).reasoning === "string"
+          ? (delta as { reasoning?: string }).reasoning
+          : null);
+      if (reasoningDelta) {
+        reasoning += reasoningDelta;
+        handlers?.onThinkingDelta?.(reasoningDelta);
       }
       for (const tc of delta?.tool_calls ?? []) {
         const idx = tc.index ?? 0;

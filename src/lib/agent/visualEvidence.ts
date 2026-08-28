@@ -227,13 +227,35 @@ export interface VisualEvidenceResult {
   /** Views we asked for and did not get — reported, never implied away. */
   missing: { timeframe: string; reason: string }[];
   /**
-   * True ONLY when at least one snapshot came from TradingView's client
-   * capture WITH the drawings actually rendered — the sole basis on which
-   * `visual_confirmation` may ever read `confirmed`. Everything else is
-   * `not_checked`, including every browserless run.
+   * True when at least one chart image was captured and shown to the model.
+   * That is the sole basis on which every operator surface may say "reviewed".
+   * Drawings-in-frame is a quality note, never a veto that flips a real
+   * review into "not checked".
    */
   visuallyVerified: boolean;
   elapsedMs: number;
+}
+
+/**
+ * One source of truth for every operator surface: thinking line, Telegram
+ * visual line, web `visual.line.*`, and the evidence-card `visual_review`
+ * row. Captured frames → confirmed with those timeframes. No frames →
+ * not_checked. Never mixed.
+ */
+export function visualReviewFromEvidence(
+  result: Pick<VisualEvidenceResult, "snapshots">,
+): { state: "confirmed" | "not_checked"; timeframes: string[] } {
+  const timeframes: string[] = [];
+  const seen = new Set<string>();
+  for (const snapshot of result.snapshots) {
+    const tf = snapshot.timeframe?.trim();
+    if (!tf || seen.has(tf)) continue;
+    seen.add(tf);
+    timeframes.push(tf);
+  }
+  return timeframes.length > 0
+    ? { state: "confirmed", timeframes }
+    : { state: "not_checked", timeframes: [] };
 }
 
 /**
@@ -354,14 +376,10 @@ export async function collectVisualEvidence(input: {
           ?.image_base64,
         numericContext: snapshot.numeric_context,
       }));
-    // The only path to "confirmed": TradingView's own client capture with
-    // the drawings actually in the frame. drawings_included is measured at
-    // capture time, never assumed.
-    const visuallyVerified = result.snapshots.some(
-      (snapshot) =>
-        snapshot.image_source === "tradingview_capture" &&
-        snapshot.drawings_included === true,
-    );
+    // Reviewed = the model was shown at least one chart image this run.
+    // Requiring drawings_included here is what made the thinking line say
+    // "reviewed 3 frames" while the evidence card said "not reviewed".
+    const visuallyVerified = snapshots.length > 0;
 
     // Info, not debug: production logs hide debug, and an analysis whose eyes
     // failed silently is exactly the incident this line exists to explain.

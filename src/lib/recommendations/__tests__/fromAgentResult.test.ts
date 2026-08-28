@@ -189,6 +189,27 @@ describe("trackedRecommendationFromResult", () => {
     assert.equal(tracked!.planType, "immediate");
     assert.ok(tracked!.expiresAt > tracked!.createdAt);
   });
+
+  it("stores an immediate follow-through as triggered market, even with leftover sell_limit", () => {
+    const tracked = trackedRecommendationFromResult(
+      baseResult({
+        recommendation: {
+          action: "sell",
+          entry: 4606,
+          entryType: "sell_limit",
+          planType: "immediate",
+          executionState: "valid_now",
+          stop_loss: 4618.88,
+          targets: [4603.33, 4593.8],
+          activationClass: "immediate",
+        },
+      }),
+    );
+    assert.ok(tracked);
+    assert.equal(tracked!.status, "triggered");
+    assert.equal(tracked!.entryType, "market");
+    assert.notEqual(tracked!.status, "pending_entry");
+  });
 });
 
 describe("recommendationClockAnchor", () => {

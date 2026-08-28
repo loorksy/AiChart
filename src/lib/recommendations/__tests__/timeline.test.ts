@@ -185,4 +185,22 @@ describe("buildRecommendationTimeline", () => {
       ["issued", "activated", "tp1_hit", "tp2_hit", "tp3_hit"],
     );
   });
+
+  it("a zone-only TP1 records the honest print, not the labeled line", () => {
+    const events = buildRecommendationTimeline(
+      rec({
+        direction: "sell",
+        entry: 4607.59,
+        stopLoss: 4616.36,
+        targets: [4591.48, 4570],
+        status: "tp1_hit",
+        outcome: "pending",
+        triggeredAt: T0 + M,
+        tp1HitAt: T0 + 10 * M,
+        tp1HitPrice: 4596.15,
+      }),
+    );
+    const tp1 = events.find((e) => e.type === "tp1_hit")!;
+    assert.equal(tp1.price, 4596.15);
+  });
 });

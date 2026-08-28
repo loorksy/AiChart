@@ -25,14 +25,15 @@ import {
 import { useLocale } from "@/hooks/useLocale";
 import { formatDurationMs } from "@/lib/display/duration";
 import { buildRecommendationTimeline } from "@/lib/recommendations/timeline";
-import type { RecommendationGrade } from "@/lib/recommendations/tradeMetrics";
+import { formatSignedR, type RecommendationGrade } from "@/lib/recommendations/tradeMetrics";
 import {
   computeTradeMetricsSummary,
-  liveRSoFar,
+  displayROf,
   progressTowardNextTarget,
 } from "@/lib/recommendations/tradeMetricsSummary";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import { RecommendationTimeline } from "@/components/recommendations/RecommendationTimeline";
+import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
 import { cn } from "@/lib/utils";
 
 /** Grade chip tones: result colour (win/loss/neutral), never direction. */
@@ -53,11 +54,6 @@ const GRADE_TONES: Record<RecommendationGrade, string> = {
   active: "border-info/40 bg-info/10 text-info",
   pending_entry: "border-warning/40 bg-warning/10 text-warning",
 };
-
-function fmtR(value: number | null | undefined): string | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  return `${value > 0 ? "+" : ""}${value.toFixed(2)}R`;
-}
 
 export function TrackedPlanCard({
   rec,
@@ -80,9 +76,8 @@ export function TrackedPlanCard({
   const grade = summary.grade;
   const live = rec.outcome === "pending" && Boolean(rec.triggeredAt);
 
-  const rSoFar = live ? liveRSoFar(rec, livePrice) : null;
   const progress = live ? progressTowardNextTarget(rec, livePrice) : null;
-  const shownR = summary.terminal ? summary.realizedR : rSoFar;
+  const shownR = displayROf(rec, livePrice);
   const inTradeFor = live ? formatDurationMs(now - (rec.triggeredAt ?? now), locale === "ar" ? "ar" : "en") : null;
 
   const entry = rec.effectiveEntry ?? rec.entry;
@@ -101,11 +96,12 @@ export function TrackedPlanCard({
   ];
 
   return (
+    <div className="relative">
     <Link
       href={`/recommendations/${rec.id}`}
       dir={dir}
       data-testid="tracked-plan-card"
-      className="group block rounded-xl border border-border bg-card p-3 transition-colors hover:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group block rounded-xl border border-border bg-card p-3 pe-12 transition-colors hover:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {/* Header: verdict, symbol, interval, grade chip, R. */}
       <div className="flex flex-wrap items-center gap-2">
@@ -145,7 +141,7 @@ export function TrackedPlanCard({
             dir="ltr"
             title={summary.terminal ? t("rec.summary.realized_r") : t("rec.card.r_so_far")}
           >
-            {fmtR(shownR)}
+            {formatSignedR(shownR)}
           </span>
         ) : null}
       </div>
@@ -222,5 +218,9 @@ export function TrackedPlanCard({
         </span>
       </div>
     </Link>
+    <div className="absolute top-1.5 end-1.5 z-10">
+      <ShareProfitButton rec={rec} livePrice={livePrice} />
+    </div>
+    </div>
   );
 }

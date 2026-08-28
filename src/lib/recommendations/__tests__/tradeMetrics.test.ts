@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   computeTradeMetrics,
+  formatSignedR,
   gradeRecommendation,
   mergeTradeMetrics,
   realizedROf,
@@ -87,6 +88,36 @@ describe("computeTradeMetrics", () => {
     assert.equal(m.maeR, -1);
     assert.equal(m.timeToActivationMs, 5 * M);
     assert.equal(m.timeInTradeMs, 2 * M);
+  });
+
+  it("zone-only TP1 exit uses the honest print, not the labeled line", () => {
+    const candles = [
+      candle(0, 4607.59, 4609, 4606, 4607),
+      candle(1, 4607, 4608, 4596.15, 4597),
+      candle(2, 4597, 4598, 4616.4, 4616.5),
+    ];
+    const m = computeTradeMetrics({
+      recommendation: {
+        direction: "sell",
+        entryType: "market",
+        entry: 4607.59,
+        stopLoss: 4616.36,
+        invalidationMode: "touch",
+        targets: [4591.48, 4570],
+        outcome: "win_tp1",
+        createdAt: T0 - 5 * M,
+        expiresAt: T0 + 100 * M,
+        triggeredAt: T0,
+        tp1HitAt: T0 + 1 * M,
+        tp1HitPrice: 4596.15,
+        slHitAt: T0 + 2 * M,
+      },
+      candles,
+      now: T0 + 50 * M,
+    });
+    assert.equal(m.exitReason, "stop_after_target");
+    assert.equal(m.exitPrice, 4596.15);
+    assert.equal(m.realizedR, 1.3);
   });
 
   it("full win at TP3 caps the favorable excursion at the exit", () => {
@@ -308,5 +339,58 @@ describe("realizedROf — legacy derivation", () => {
   it("refuses to invent an R for unmeasured expiries", () => {
     assert.equal(realizedROf({ ...base, outcome: "expired" }), null);
     assert.equal(realizedROf({ ...base, outcome: "cancelled" }), null);
+  });
+
+  it("a zone-only TP1 banks the honest print, not the labeled line", () => {
+    assert.equal(
+      realizedROf({
+        direction: "sell",
+        entry: 4607.59,
+        stopLoss: 4616.36,
+        targets: [4591.48],
+        outcome: "win_tp1",
+        tp1HitPrice: 4596.15,
+      }),
+      1.3, // (4607.59-4596.15)/|4607.59-4616.36| = 11.44/8.77 ≈ 1.304 → 1.30
+    );
+  });
+
+  it("TP2 hit grades TP2's R even when a stale TP1 measurement is persisted", () => {
+    assert.equal(
+      realizedROf({
+        direction: "sell",
+        entry: 4601.99,
+        stopLoss: 4605.2,
+        targets: [4583.76, 4569.29],
+        outcome: "win_tp2",
+        tp1HitPrice: 4583.76,
+        tp2HitPrice: 4578.42,
+        realizedR: 5.68,
+      }),
+      7.34, // (4601.99-4578.42)/(4605.2-4601.99) = 23.57/3.21
+    );
+  });
+
+  it("TP1-only is the TP1 R (~5.7) and TP2 labeled is ~10.2", () => {
+    const base = {
+      direction: "sell" as const,
+      entry: 4601.99,
+      stopLoss: 4605.2,
+      targets: [4583.76, 4569.29],
+    };
+    assert.equal(realizedROf({ ...base, outcome: "win_tp1", tp1HitPrice: 4583.76 }), 5.68);
+    assert.equal(realizedROf({ ...base, outcome: "win_tp2", tp2HitPrice: 4569.29 }), 10.19);
+  });
+});
+
+describe("formatSignedR", () => {
+  it("prints the report's trade-result face: +5.7R / -1.0R", () => {
+    assert.equal(formatSignedR(5.68), "+5.7R");
+    assert.equal(formatSignedR(10.19), "+10.2R");
+    assert.equal(formatSignedR(-1), "-1.0R");
+    assert.equal(formatSignedR(0), "0.0R");
+    assert.equal(formatSignedR(null), null);
+    assert.doesNotMatch(formatSignedR(5.68) ?? "", /[\u0660-\u0669]/);
+    assert.doesNotMatch(formatSignedR(5.68) ?? "", /%/);
   });
 });

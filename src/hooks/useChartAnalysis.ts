@@ -7,6 +7,7 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartStudy } from "@/lib/chart/studies";
 import { computeRewardRisk } from "@/lib/rewardRisk";
 import { withStableCreatedAt } from "@/lib/recommendations/anchorTime";
+import { planTargetList } from "@/lib/chart/planTargets";
 import type { Recommendation } from "@/lib/types";
 import type { LiveReasoningEntry } from "@/lib/analysis/types";
 import type { MarketType } from "@/lib/markets/types";
@@ -18,6 +19,12 @@ export interface ChartHydrateSnapshot {
   recommendation?: Recommendation | null;
   targets?: number[];
   liveReasoningLog?: LiveReasoningEntry[];
+  /**
+   * Live workspace: operator asked to clear analysis drawings. The rec can
+   * still exist in the tracker/DB; the chart must not paint it until a new
+   * analysis issues drawings/a plan.
+   */
+  drawingsCleared?: boolean;
 }
 
 /** Return the previous reference when the next value is structurally identical. */
@@ -53,6 +60,7 @@ export function useChartAnalysis({
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [targets, setTargets] = useState<number[]>([]);
   const [liveReasoningLog, setLiveReasoningLog] = useState<LiveReasoningEntry[]>([]);
+  const [drawingsCleared, setDrawingsCleared] = useState(false);
   const [, setHighlightDrawingIndex] = useState<number | null>(null);
   // Interval is deliberately NOT part of the reset key: drawings are anchored by
   // absolute time+price, so a recommendation drawn on 15m must survive a switch
@@ -73,6 +81,7 @@ export function useChartAnalysis({
     setTargets([]);
     setLiveReasoningLog([]);
     setHighlightDrawingIndex(null);
+    setDrawingsCleared(true);
   }, []);
 
   const hydrateFromSnapshot = useCallback((snapshot: ChartHydrateSnapshot) => {
@@ -83,8 +92,24 @@ export function useChartAnalysis({
     setDrawings((prev) => keepIfEqual(prev, snapshot.drawings ?? []));
     setOverlays((prev) => keepIfEqual(prev, snapshot.overlays ?? []));
     setStudies((prev) => keepIfEqual(prev, snapshot.studies ?? []));
-    setTargets((prev) => keepIfEqual(prev, (snapshot.targets ?? []).filter((target) => target > 0)));
+    setTargets((prev) =>
+      keepIfEqual(
+        prev,
+        planTargetList({
+          targets:
+            snapshot.targets && snapshot.targets.length > 0
+              ? snapshot.targets
+              : snapshot.recommendation?.targets,
+          takeProfit: snapshot.recommendation?.take_profit,
+          targetsJson: snapshot.recommendation?.targets_json,
+        }),
+      ),
+    );
     setLiveReasoningLog((prev) => keepIfEqual(prev, snapshot.liveReasoningLog ?? []));
+    // Honor a persisted clear. `=== true` is required: a missing flag must
+    // not be treated as "still painting", and a persisted `true` must win
+    // over the in-memory default so the 4s poll cannot put the box back.
+    setDrawingsCleared(snapshot.drawingsCleared === true);
     if (snapshot.recommendation !== undefined) {
       // withStableCreatedAt: the chart anchors the profit/loss zones at the
       // recommendation's created_at. A hydrated payload keeps its persisted
@@ -117,6 +142,7 @@ export function useChartAnalysis({
     studies,
     recommendation,
     targets,
+    drawingsCleared,
     liveAnalysis: false,
     riskReward,
     liveReasoningLog,
@@ -126,6 +152,9 @@ export function useChartAnalysis({
     hydrateFromSnapshot,
     setDrawings,
     setStudies,
+    setOverlays,
     setRecommendation,
+    setTargets,
+    setDrawingsCleared,
   };
 }

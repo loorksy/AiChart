@@ -1,6 +1,11 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { revalidatePlan, WAITING_MAX_ATR_DISTANCE } from "../revalidation";
+import {
+  applyFollowThroughToPlan,
+  findPrintAnchorMs,
+  revalidatePlan,
+  WAITING_MAX_ATR_DISTANCE,
+} from "../revalidation";
 
 /**
  * The live incident, as it was actually configured.
@@ -29,11 +34,12 @@ describe("live revalidation: re-price, do not refuse", () => {
     assert.equal(verdict.reanchoredEntry, 4650.2);
   });
 
-  it("leaves the SAME distance alone when the plan was written to wait", () => {
-    // A waiting plan gets the 4-ATR budget (35.60), so 21.30 is the ordinary
-    // pullback it was written to catch — nothing to re-price.
-    const waiting = { ...buy, entryType: "confirmation_close" };
-    assert.equal(revalidatePlan({ ...waiting, currentPrice: 4650.2 }).status, "ok");
+  it("leaves a genuine wait on the WAITING side of the entry", () => {
+    // Buy still BELOW entry by more than the 10–15 point band: the dip has
+    // not arrived. The 4-ATR budget still applies. Live ABOVE a buy entry is
+    // the through-print case (pinned below) — that is no longer a wait.
+    const waiting = { ...buy, entryType: "limit_touch" };
+    assert.equal(revalidatePlan({ ...waiting, currentPrice: 4605.0 }).status, "ok");
   });
 
   it("keeps the structural stop when it re-prices — the idea did not move", () => {
@@ -60,9 +66,10 @@ describe("live revalidation: re-price, do not refuse", () => {
     assert.equal(verdict.reanchoredEntry, undefined);
   });
 
-  it("lets a waiting plan sit its full ATR budget away without re-pricing", () => {
-    const waiting = { ...buy, entryType: "confirmation_close" };
-    const justInside = buy.effectiveEntry + buy.atr * WAITING_MAX_ATR_DISTANCE - 0.01;
+  it("lets a waiting plan sit its full ATR budget away on the waiting side", () => {
+    const waiting = { ...buy, entryType: "limit_touch" };
+    // Waiting side for a buy is BELOW the entry. 4 ATR down is a real dip-wait.
+    const justInside = buy.effectiveEntry - buy.atr * WAITING_MAX_ATR_DISTANCE + 0.01;
     assert.equal(revalidatePlan({ ...waiting, currentPrice: justInside }).status, "ok");
   });
 });
@@ -173,17 +180,17 @@ describe("waiting plans: the stop is the FILL's geometry, not the approach path"
     assert.equal(verdict.status, "ok");
   });
 
-  it("lets a pullback buy keep a target behind the LIVE price — it fills below", () => {
-    // Buy the dip at 4600, ride back to 4610. Market now 4613: the target is
-    // behind the live price and in front of the ENTRY — a legitimate waiting
-    // plan, not a move already spent.
+  it("lets an explicit retest keep a target behind the LIVE price — it fills on the return", () => {
+    // Buy the retest at 4600, ride back to 4610. Market now 4613: without an
+    // explicit retest tag this is a leftover wait (through) and would convert.
+    // Tagged retest_zone is the exceptional thesis the brief allows.
     const verdict = revalidatePlan({
       direction: "buy",
       effectiveEntry: 4600.0,
       stopLoss: 4594.0,
       targets: [4610.0],
       atr: 8.9,
-      entryType: "limit_touch",
+      entryType: "retest_zone",
       currentPrice: 4613.0,
     });
     assert.equal(verdict.status, "ok");
@@ -230,17 +237,29 @@ describe("a sell mirrors the buy exactly", () => {
     entryType: "confirmation_close",
   };
 
-  it("leaves a drop inside the waiting budget alone", () => {
-    // 20.44 away, against a 4-ATR budget of 35.60: this is the pullback the
-    // plan was written to catch, not drift.
-    assert.equal(revalidatePlan({ ...sell, currentPrice: 4630.0 }).status, "ok");
+  it("converts a leftover limit_touch whose live price already went through", () => {
+    // Doctrine: do not wait for a return to a level the market already left
+    // unless the plan is an explicit retest. Live 4630 is below the 4650.44
+    // sell — the wait is over; keep the written entry (the print).
+    const limit = { ...sell, entryType: "limit_touch" };
+    const verdict = revalidatePlan({ ...limit, currentPrice: 4630.0 });
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4650.44);
+  });
+
+  it("converts a confirmation_close sell already through its entry and keeps the written fill", () => {
+    // Same drop: live 4630 is already below the 4650.44 entry. Through by
+    // more than 0 — keep the zone, do not chase to live.
+    const verdict = revalidatePlan({ ...sell, currentPrice: 4630.0 });
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4650.44);
   });
 
   it("re-prices a drop that outran the budget while a target still stands", () => {
     const far = { ...sell, targets: [4638.1, 4600.0] };
     const verdict = revalidatePlan({ ...far, currentPrice: 4610.0 });
     assert.equal(verdict.status, "reanchored");
-    assert.equal(verdict.reanchoredEntry, 4610.0);
+    assert.equal(verdict.reanchoredEntry, 4650.44);
   });
 
   it("prefers targets_passed over re-pricing when the drop cleared them all", () => {
@@ -253,7 +272,177 @@ describe("a sell mirrors the buy exactly", () => {
   });
 
   it("keeps an explicit RR floor working for callers that opt into one", () => {
-    const verdict = revalidatePlan({ ...sell, currentPrice: 4650.0, minRr: 5 });
+    const verdict = revalidatePlan({
+      ...sell,
+      entryType: "market",
+      currentPrice: 4650.0,
+      minRr: 5,
+    });
     assert.equal(verdict.status, "rr_degraded");
+  });
+});
+
+describe("conditional already printed — leftover waits convert without overshoot", () => {
+  // Production card #1 (previous round): 4616.66 / live 4606.
+  // Production card #2 (this brief): 4605.39 / live 4601.89 — 3.5 points
+  // through, which the 5-point / 0.5×ATR floor MISSED.
+  const incident = {
+    direction: "sell" as const,
+    effectiveEntry: 4616.66,
+    stopLoss: 4618.88,
+    targets: [4603.33, 4593.8, 4593.71],
+    atr: 8.9,
+    entryType: "confirmation_close",
+    currentPrice: 4606.0,
+  };
+
+  it("converts a confirmation sell already below the entry and keeps the written fill", () => {
+    const verdict = revalidatePlan(incident);
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4616.66);
+    assert.match(verdict.reasonAr ?? "", /شرط التفعيل كان قد تحقق/);
+  });
+
+  it("mirrors for a confirmation buy already run through its entry", () => {
+    const verdict = revalidatePlan({
+      direction: "buy",
+      effectiveEntry: 4600.0,
+      stopLoss: 4594.0,
+      targets: [4620.0, 4635.0],
+      atr: 8.9,
+      entryType: "confirmation_close",
+      currentPrice: 4610.0,
+    });
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4600.0);
+  });
+
+  it("also converts a leftover limit_touch sell already through — no retest assumed", () => {
+    const verdict = revalidatePlan({ ...incident, entryType: "limit_touch" });
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4616.66);
+  });
+
+  it("the 4605.39 / live 4601.89 screenshot is immediate, not a wait", () => {
+    const verdict = revalidatePlan({
+      direction: "sell",
+      effectiveEntry: 4605.39,
+      stopLoss: 4606.86,
+      targets: [4596.89, 4591.06],
+      atr: 8.9,
+      entryType: "confirmation_close",
+      currentPrice: 4601.89,
+    });
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4605.39);
+  });
+
+  it("sell 4610 / live 4620 (10 pts above) counts as approach fill", () => {
+    const verdict = revalidatePlan({
+      direction: "sell",
+      effectiveEntry: 4610,
+      stopLoss: 4628,
+      targets: [4590, 4580],
+      atr: 8.9,
+      entryType: "limit_touch",
+      currentPrice: 4620,
+    });
+    assert.equal(verdict.status, "reanchored");
+    assert.equal(verdict.reanchoredEntry, 4620);
+  });
+
+  it("sell 4610 / live 4630 (20 pts above) is still waiting", () => {
+    assert.equal(
+      revalidatePlan({
+        direction: "sell",
+        effectiveEntry: 4610,
+        stopLoss: 4645,
+        targets: [4590, 4580],
+        atr: 8.9,
+        entryType: "limit_touch",
+        currentPrice: 4630,
+      }).status,
+      "ok",
+    );
+  });
+
+  it("a close-based wait 10 pts on the waiting side still waits for the close", () => {
+    assert.equal(
+      revalidatePlan({
+        direction: "sell",
+        effectiveEntry: 4610,
+        stopLoss: 4628,
+        targets: [4590, 4580],
+        atr: 8.9,
+        entryType: "confirmation_close",
+        activationRule: { kind: "candle_close_below", level: 4610, timeframe: "5m" },
+        currentPrice: 4620,
+      }).status,
+      "ok",
+    );
+  });
+
+  it("an explicit retest thesis is NOT converted when live is through", () => {
+    assert.equal(
+      revalidatePlan({
+        ...incident,
+        entryType: "retest_zone",
+      }).status,
+      "ok",
+    );
+  });
+});
+
+describe("applyFollowThroughToPlan", () => {
+  it("rewrites the wait into an immediate market fill at the live price", () => {
+    const rec = applyFollowThroughToPlan(
+      {
+        entry: 4616.66,
+        entryType: "confirmation_close",
+        planType: "conditional" as const,
+        activationClass: "conditional" as const,
+        activationRule: { kind: "rejection_confirmed" },
+        triggerCondition: "wait",
+        executionState: "awaiting_activation",
+        status: "pending_entry",
+      },
+      4606,
+    );
+    assert.equal(rec.entry, 4606);
+    assert.equal(rec.entryType, "market");
+    assert.equal(rec.planType, "immediate");
+    assert.equal(rec.activationClass, "immediate");
+    assert.equal(rec.activationRule, undefined);
+    assert.equal(rec.executionState, "valid_now");
+    assert.equal(rec.status, "triggered");
+  });
+
+  it("stamps the printing-candle time when given", () => {
+    const rec = applyFollowThroughToPlan(
+      { entry: 4605.39, planType: "conditional" as const, anchorTime: undefined as number | undefined },
+      4605.39,
+      { anchorTime: Date.UTC(2026, 7, 27, 17, 25, 0) },
+    );
+    assert.equal(rec.anchorTime, Date.UTC(2026, 7, 27, 17, 25, 0));
+    assert.equal(rec.entry, 4605.39);
+  });
+});
+
+describe("findPrintAnchorMs", () => {
+  it("returns the first candle that tagged the entry, not the latest bar", () => {
+    const T0 = Date.UTC(2026, 7, 27, 17, 20, 0);
+    const bar = 5 * 60_000;
+    const candles = [
+      { time: T0, high: 4608, low: 4604.5, open: 4607, close: 4605 }, // print
+      { time: T0 + bar, high: 4604, low: 4600, open: 4605, close: 4601 },
+      { time: T0 + 10 * bar, high: 4603, low: 4601, open: 4602, close: 4601.89 },
+    ];
+    const ms = findPrintAnchorMs({
+      direction: "sell",
+      entry: 4605.39,
+      candles,
+      tolerance: 10,
+    });
+    assert.equal(ms, T0);
   });
 });

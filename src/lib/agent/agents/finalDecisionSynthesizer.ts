@@ -14,7 +14,7 @@
  */
 import { z } from "zod";
 import {
-  callLLM,
+  callLLMStream,
   isLLMConfiguredAsync,
   resolveActiveSelection,
   withCacheBreakpoint,
@@ -25,6 +25,7 @@ import { isReasoningModel, modelAcceptsVision } from "@/lib/modelCatalog";
 import { createLogger } from "@/lib/logger";
 import { ExternalTimeoutError } from "@/lib/externalFetch";
 import { sanitizePublicText } from "../activity";
+import { t } from "@/lib/i18n";
 import type { AgentRunContext } from "../types";
 import type {
   FinalDecisionInput,
@@ -35,6 +36,7 @@ import {
   buildRecommendationConfidence,
 } from "../confidenceSemantics";
 import { buildEvidenceDimensions } from "../evidenceDimensions";
+import { PATTERN_IDENTIFICATION_DOCTRINE } from "../patternDoctrine";
 import {
   activationRuleSchema,
   describeActivationRule,
@@ -42,8 +44,12 @@ import {
   normalizeActivationRule,
 } from "@/lib/recommendations/activationRule";
 import { entryTolerance } from "@/lib/agent/trading/buildTradeCandidates";
-import { applyStopSafetyBuffer } from "@/lib/recommendations/entrySemantics";
+import { applyStopSafetyBuffer, entryFillTolerance, filterDistinctTargets, resolveEntryType } from "@/lib/recommendations/entrySemantics";
 import { roundToTick } from "../trading/scalpGeometry";
+import {
+  entryPrintState,
+  findPrintAnchorMs,
+} from "../gates/revalidation";
 import {
   buildEvidenceLevels,
   deriveExecutionState,
@@ -204,8 +210,9 @@ async function callModelWithBlocks(
   ctx: AgentRunContext,
   /** What is left of the browse window; keeps a round inside it. */
   budgetMs?: number,
+  onThinkingDelta?: (text: string) => void,
 ): Promise<string> {
-  const res = await callLLM(
+  const res = await callLLMStream(
     {
       system,
       messages: [
@@ -220,6 +227,7 @@ async function callModelWithBlocks(
       ],
       maxTokens: await decisionMaxTokens(),
     },
+    { onThinkingDelta },
     // Bounded like any other decision call. Without this the browse round
     // inherited the global 120s LLM timeout — longer than the 95s stage that
     // contains it — and the loop's own 25s window could not stop it, because
@@ -240,23 +248,38 @@ async function callModelWithBlocks(
  * A PRESENTATIONAL cap that truncates instead of rejecting.
  *
  * These limits exist to bound what the card shows, not to police the model's
- * thinking — and `toDecisionTrace` below already slices the same lists to the
- * same sizes before rendering. Expressing them as `.max(n)` made zod reject
- * the ENTIRE decision when the model returned a seventh reason, so a complete,
- * correct trade plan was thrown away over a list length nobody would have
- * noticed. Live on 2026-08-24: attempt 1 died on `keyReasons`/`riskWarnings`
- * (>6) plus `opposing` (>4), attempt 2 on `publicReasoningSummary` (>5), and
- * the operator was told the model "does not match the expected contract" —
- * twice, after ~119s of perfectly good generation.
+ * thinking — and `sanitizeDecisionTrace` / `applyModelDecision` already slice
+ * the same lists and strings to the same sizes before rendering. Expressing
+ * them as `.max(n)` made zod reject the ENTIRE decision when the model
+ * returned a seventh reason or a slightly-too-long Arabic paragraph, so a
+ * complete, correct trade plan was thrown away over a length nobody would
+ * have noticed.
  *
- * Verbosity is not a contract violation. Take the first n and move on.
+ * Live on 2026-08-24: attempt 1 died on `keyReasons`/`riskWarnings` (>6) plus
+ * `opposing` (>4), attempt 2 on `publicReasoningSummary` (>5). Live again on
+ * 2026-08-27 (608da3bf, Claude Fable 5, 167.7s): attempt 1 died on
+ * `decisionTrace.planTypeBecause` (>400 characters), attempt 2 on `summary`
+ * (>900) — the entry-doctrine block made Fable write longer Arabic rationale,
+ * and the plan itself was complete (candidate, activationRule, all three
+ * layers). The operator was told the model "does not match the expected
+ * contract" after two full generations.
+ *
+ * Verbosity is not a contract violation. Take the first n / the prefix the
+ * card would have shown anyway, and move on.
  *
  * Deliberately NOT used for `targets`: a take-profit is a TRADING LEVEL, and
  * silently dropping one would change the plan the operator acts on. Levels
- * stay strict and still reject.
+ * stay strict and still reject. Direction, planType, and honesty gates stay
+ * strict too — a missing side or a `wait` is still a real mismatch.
  */
 function capped<T extends z.ZodTypeAny>(item: T, n: number) {
   return z.array(item).transform((xs) => xs.slice(0, n));
+}
+
+/** String analogue of `capped`: keep the prefix the card already slices to. */
+function cappedText(max: number, min = 0) {
+  const base = min > 0 ? z.string().min(min) : z.string();
+  return base.transform((value) => (value.length <= max ? value : value.slice(0, max)));
 }
 
 const PlanLevelsSchema = z.object({
@@ -270,14 +293,14 @@ const PlanLevelsSchema = z.object({
 const DecisionTraceSchema = z.object({
   hypotheses: capped(
     z.object({
-      scenario: z.string().max(240),
-      supporting: capped(z.string().max(160), 4),
-      opposing: capped(z.string().max(160), 4),
+      scenario: cappedText(240),
+      supporting: capped(cappedText(160), 4),
+      opposing: capped(cappedText(160), 4),
     }),
     3,
   ),
-  chosenBecause: z.string().max(400),
-  planTypeBecause: z.string().max(400),
+  chosenBecause: cappedText(400),
+  planTypeBecause: cappedText(400),
 });
 
 const FinalDecisionModelSchemaStrict = z.object({
@@ -296,7 +319,7 @@ const FinalDecisionModelSchemaStrict = z.object({
       timing: z.string().max(16).nullable().optional(),
     })
     .optional(),
-  activationCondition: z.string().max(400).nullable().optional(),
+  activationCondition: cappedText(400).nullable().optional(),
   /**
    * The machine-checkable form of `activationCondition`. Emitted by the model
    * rather than parsed out of its sentence: deriving a rule from free text
@@ -304,11 +327,11 @@ const FinalDecisionModelSchemaStrict = z.object({
    * plan ends up filling on something it never asked for.
    */
   activationRule: activationRuleSchema.nullable().optional(),
-  invalidationRule: z.string().max(400),
-  alternativeScenario: z.string().max(400),
+  invalidationRule: cappedText(400),
+  alternativeScenario: cappedText(400),
   validityCandles: z.number().int().min(1).max(96),
   confidence: z.number().min(0).max(1),
-  summary: z.string().min(10).max(900),
+  summary: cappedText(900, 10),
   keyReasons: capped(z.string(), 6),
   riskWarnings: capped(z.string(), 6),
   publicReasoningSummary: capped(z.string(), 5),
@@ -409,6 +432,105 @@ const FinalDecisionModelSchemaStrict = z.object({
  * anticipatory plan still cannot exist without a machine-checkable
  * activationRule. Nothing here invents or edits a price.
  */
+
+function coerceFiniteNumber(value: unknown): unknown {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) return n;
+  }
+  return value;
+}
+
+function coercePriceList(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map(coerceFiniteNumber);
+}
+
+/**
+ * Models (Fable 5 especially) keep sending the geometry under names the
+ * prompt's example does not use: `entry`/`stop` instead of
+ * `preferredEntry`/`stopLoss`. The shape printer (aaf588c5) made that
+ * visible — sibling keys `entry:number,stop:number,targets:array` — but the
+ * retry still asked the model to rename fields it believed it had already
+ * sent. Live on 2026-08-27 19:26: `entry` + `stopLoss` + `targets` died as
+ * `preferredEntry received undefined`. The prices were there; the names
+ * were not. Remap aliases, then coerce numeric strings. Never invent a
+ * missing price.
+ */
+function aliasProposedLevels(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const p = { ...(raw as Record<string, unknown>) };
+  if (p.preferredEntry == null) {
+    p.preferredEntry = p.entry ?? p.entryPrice ?? p.preferred_entry;
+  }
+  if (p.stopLoss == null) {
+    p.stopLoss = p.stop ?? p.stop_loss ?? p.sl;
+  }
+  if (!Array.isArray(p.targets) || p.targets.length === 0) {
+    const alt = p.takeProfit ?? p.take_profit ?? p.tp ?? p.tps;
+    if (Array.isArray(alt)) p.targets = alt;
+    else if (alt != null) p.targets = [alt];
+  }
+  p.entryLow = coerceFiniteNumber(p.entryLow);
+  p.entryHigh = coerceFiniteNumber(p.entryHigh);
+  p.preferredEntry = coerceFiniteNumber(p.preferredEntry);
+  p.stopLoss = coerceFiniteNumber(p.stopLoss);
+  p.targets = coercePriceList(p.targets);
+  return p;
+}
+
+function coerceActivationRule(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const rule = { ...(raw as Record<string, unknown>) };
+  if (rule.kind === "composite" && Array.isArray(rule.rules)) {
+    rule.rules = rule.rules.map(coerceActivationRule);
+    return rule;
+  }
+  rule.level = coerceFiniteNumber(rule.level);
+  if (rule.tolerance != null) rule.tolerance = coerceFiniteNumber(rule.tolerance);
+  if (rule.closes != null) rule.closes = coerceFiniteNumber(rule.closes);
+  if (rule.retestZone && typeof rule.retestZone === "object" && !Array.isArray(rule.retestZone)) {
+    const zone = { ...(rule.retestZone as Record<string, unknown>) };
+    zone.low = coerceFiniteNumber(zone.low);
+    zone.high = coerceFiniteNumber(zone.high);
+    rule.retestZone = zone;
+  }
+  return rule;
+}
+
+/**
+ * Recoverable shape repairs that run BEFORE the unread-field drop and the
+ * strict parse. Honesty gates stay intact: a missing direction, a `wait`,
+ * invented prices, or a non-immediate plan with no activationRule still
+ * fail. What this catches is a complete plan written under the wrong key,
+ * as a numeric string, or with a long Arabic paragraph the card was going
+ * to slice anyway.
+ */
+function repairRecoverableDecisionShape(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+  if (o.proposedLevels != null) o.proposedLevels = aliasProposedLevels(o.proposedLevels);
+  if (o.activationRule != null) o.activationRule = coerceActivationRule(o.activationRule);
+  o.confidence = coerceFiniteNumber(o.confidence);
+  o.validityCandles = coerceFiniteNumber(o.validityCandles);
+  if (o.drawingAdvice == null) {
+    // Prompt default is shouldDraw=true; omitting the object used to kill
+    // otherwise-complete plans (live 2026-08-25, drawingAdvice undefined
+    // on attempt 2 after a Too-big chosenBecause on attempt 1).
+    o.drawingAdvice = { shouldDraw: true, reason: "levels" };
+  }
+  return dropUnreadPlanFields(o);
+}
+
+/**
+ * See the block above: unread sketches beside a chosen candidate, and an
+ * activationRule on an immediate plan, are dropped rather than allowed to
+ * fail the run. Called after alias/coercion so a complete `entry`/`stop`
+ * sketch is recognised as complete.
+ */
 function dropUnreadPlanFields(raw: unknown): unknown {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
   const o = { ...(raw as Record<string, unknown>) };
@@ -434,7 +556,7 @@ function dropUnreadPlanFields(raw: unknown): unknown {
 }
 
 const FinalDecisionModelSchema = z.preprocess(
-  dropUnreadPlanFields,
+  repairRecoverableDecisionShape,
   FinalDecisionModelSchemaStrict,
 );
 
@@ -706,6 +828,11 @@ export interface SynthesizerDeps {
     timeframe: string,
     count: number,
   ) => Promise<BrowseCandle[] | null>;
+  /**
+   * Live provider thinking/reasoning deltas. The orchestrator sinks these
+   * into the operator-facing thinking trace. Optional: tests omit it.
+   */
+  onThinkingDelta?: (text: string) => void;
 }
 
 interface BrowseAnswer {
@@ -815,6 +942,34 @@ Ask, in order:
 - The trigger must be REACHABLE and PLAUSIBLE from where price is NOW: a "wait for pullback to X" needs X on the correct side of the current price and within recent swing distance; a "close beyond Y" needs Y not yet closed beyond. The platform re-checks this against the live price and rejects contradictions — a condition already satisfied at issue time is not a condition, and a condition on the wrong side of price grades a different event than your sentence describes.
 - Example (correct): price 4330, sell idea, POI 4345–4350 above. Conditional sell — rejection_confirmed at 4348 with direction:"below": price must RISE into the zone, get rejected, close back under. If instead price were already at 4355, the same rule is WRONG (price is beyond the level); the honest plan is a close-below trigger or a different POI.
 - Example (wrong): price 4330, sell idea, activationRule candle_close_below 4340. Price is already below 4340 — the "condition" fires on the next candle. That is an immediate plan hiding behind a conditional label.
+- Example (wrong, production): sell entry 4616.66, activation "price reaches 4616.66 then rejects with a 5m close below", live price already 4606. The rejection has printed and price has left the level in the sell direction. That MUST be planType:"immediate" at current structure (or a fresh retest of the broken level) — never "wait for 4616.66" after the market has already gone. Cover the buy symmetrically: a buy entry the live price has already run through in the profit direction is immediate follow-through, not a pending wait.
+- BEFORE proposing any level: read the attached charts for support, resistance, and trendlines, and whether the activation you are about to write has already closed on those candles.
+- AFTER you have proposed levels: look again at the same live charts (browse view_timeframe on the timing/lead frame if you need a second look — it is already in your budget). Confirm the same three facts with the levels in mind: support, resistance, trendlines, and whether the activation has already printed. The platform recaptures the chart once drawings are placed and will convert a leftover wait whose trigger already printed into an immediate follow-through; do not make it do that work for you.
+
+## Entry doctrine — apply LITERALLY to every recommendation
+This block is durable operating law.
+
+1. **Draw the entry at the MOMENT the condition printed, not from the latest moving candle.** When the condition is already true, the position-tool / zone TIME ANCHOR is the confirming candle's timestamp (the wick/price that printed the fill), never wall-clock "now" at issue time. A leftover wait converted to immediate MUST sit on that historical bar. Pending plans keep created_at. Counterexample (production, 5m XAUUSD SELL): entry 4605.39, live 4601.89 — the box must start at the bar that first tagged 4605.39 (~20:20–20:30), NOT at a later candle around 20:45–21:00.
+
+2. **No conditional after the condition already printed.** Convert conditional → immediate. Do not wait for another touch of the same zone.
+   - Sell: live < entry (already below) → immediate follow-through. Never "wait to touch 4605.39 again".
+   - Buy: live > entry → immediate.
+   - Touch tolerance 10–15 gold points on the WAITING side (sell still ABOVE entry, buy still BELOW): live within 10–15 points of the zone without exact touch counts as filled; activate and note the gap.
+   - Production counterexample: sell 4605.39 vs live 4601.89 (~3.5 points through) MUST be planType:"immediate". A 5-point / 0.5×ATR overshoot requirement is FORBIDDEN — that is what missed this card.
+
+3. **Do not assume price will return to retest the same zone** except exceptional cases you MUST name: weak S/R that may flip, gaps, strong news, abnormal liquidity/slippage. Default: one touch, maybe one more attempt, then the move. A leftover wait for a level the market already left is forbidden unless you explicitly tag a retest thesis with one of those reasons — and the plan must say so.
+
+4. **A trendline may BE the actual entry**, not the horizontal. Price may tag the trendline (sloped support/resistance) and reverse without tagging the horizontal. If a trendline is the trigger, the activation rule / entry zone is the trendline tag — say so in activationCondition. The horizontal remains a reference. Applies to buy and sell.
+
+5. **Correction after a trendline break:** price breaks the line, retests it, continues. You MUST state whether entry is from the BREAK or from the RETEST, according to the strategy.
+
+When they apply, NAME these strategies in the recommendation (summary / keyReasons / planTypeBecause):
+- A. False breakout: do not enter on the pierce; wait for a close beyond. If it already closed back inside, that is the false-break play — immediate in the rejection direction.
+- B. Retest after a real break.
+- C. Rejection candles at the zone — pin bar / engulfing. Mention if present; they strengthen the call.
+- D. Supply/demand confluence with the entry. Mention if present.
+- E. Gaps: entry may be the gap open, not the drawn zone.
+- F. News: state whether the plan is valid only before or only after the event.
 
 ## Choosing the entry LEVEL
 - Enter at the EDGE of the POI/zone nearest the current price plus a spread margin — not the middle of the zone and not its far side. The middle "feels safer" but gives up half the zone's R for no evidence.
@@ -827,13 +982,15 @@ Ask, in order:
 - Say which timeframe LEADS this decision, which provides CONTEXT, and which times the ENTRY, in timeframeRoles. When the timeframes disagree, that assignment IS the resolution — never let disagreement remove the direction.
 - Your coverage is stated explicitly in the evidence, naming every frame requested and every frame that did not arrive. Trust that line over the attachments: never describe price action on a view it says you were not shown, and when it reports no chart at all, say you read numbers alone.
 
+${PATTERN_IDENTIFICATION_DOCTRINE}
+
 ## Levels
 - Prefer a same-direction tradeCandidate: set selectedTradeCandidateId and leave proposedLevels null. Its geometry is already validated.
 - If no candidate fits your plan (e.g. you want a better price), set selectedTradeCandidateId null and fill proposedLevels using ONLY prices that appear in evidenceLevels. Any price not on that menu is rejected and your plan loses its numbers — so quote the menu, never a number you computed yourself.
 - Geometry must hold: buy → stop < entry < targets; sell → targets < entry < stop.
 - A candidate carrying a weak-net-R warning is still a real option: take it and say the return is thin, or plan a better price instead. Do not silently ignore it.
 - SPAN CONTRACT (product rule): a plan spans a REAL swing of the analyzed timeframe — TP1 sits several ATR from the entry (roughly 30 candles of travel), never the first shelf a few points away. Candidates already respect this; when you propose your own levels, hold yourself to the same floor.
-- TARGETS: always at least TWO. A third target when the structure genuinely offers one beyond TP2 — never invented.
+- TARGETS: always at least TWO. A third target when the structure genuinely offers one beyond TP2 — never invented. Consecutive targets must be meaningfully spaced (several points on gold, or a fraction of ATR) — if TP3 would sit on top of TP2, omit TP3; if TP2 would sit on top of TP1, omit TP2. A 0.09-point gap is not a third target.
 - STOP: the structural invalidation level plus a real volatility buffer BEYOND it — never exactly ON the level (a stop at 4393.52 belongs at ≈4401.79 on a gold intraday plan). Candidates carry this buffer already (structuralStop vs stop_loss); when proposing levels, pick the evidence level past the invalidation, not the invalidation itself. Never tighten a stop to flatter the R ratio.
 
 ## Evidence, not gates
@@ -866,6 +1023,7 @@ Ask, in order:
   - {"verb":"read_zone","timeframe":"15m","low":4340,"high":4348} — what price DID at that band: how often it traded in, closed inside, closed through, or rejected. Ask this before claiming a level held or broke.
   You may browse several times; each answer comes back and you re-issue the FULL decision. Never repeat a question you already asked — the answer will not change and the budget is finite.
 - summary must be specific to THIS context (symbol, structure, the exact trigger or zone) — never a generic sentence.
+- LENGTH (presentational, not a veto): summary ≤900 characters; invalidationRule, alternativeScenario, activationCondition, decisionTrace.chosenBecause and planTypeBecause ≤400. Extra argument belongs in hypotheses supporting/opposing. The platform trims overflow rather than rejecting the plan — stay inside the cap so Arabic answers finish inside the token budget.
 - scalpingContext is fixed; higher timeframes are context evidence only.
 - Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
 
@@ -1009,7 +1167,7 @@ export async function runFinalDecisionSynthesizer(
     }
     const visuals = includeVisuals && visualBlocks.length ? visualBlocks : [];
     const budget = outputBudget;
-    const res = await callLLM({
+    const res = await callLLMStream({
       system,
       messages: [
         { role: "user", content: buildDecisionUserContent(user, visuals, tail) },
@@ -1021,6 +1179,8 @@ export async function runFinalDecisionSynthesizer(
       // quick/auxiliary tier, regardless of any default change.
       // The run signal (stage deadline / total budget / client disconnect)
       // tears the call down instead of leaving it running (item 2).
+    }, {
+      onThinkingDelta: deps.onThinkingDelta,
     }, {
       tier: "deep",
       signal: ctx.signal,
@@ -1282,6 +1442,7 @@ export async function runFinalDecisionSynthesizer(
             // that outlives it takes the decision already in hand down with
             // the stage — the opposite of what browsing is for.
             Math.max(1_000, browseDeadline - Date.now()),
+            deps.onThinkingDelta,
           );
       next = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
     } catch {
@@ -1570,6 +1731,7 @@ function applyModelDecision(
     macroRegime?: MacroRegimeBlock | null;
     cotPositioning?: CotPositioning[] | null;
     locale?: "ar" | "en";
+    visualSnapshots?: VisualSnapshot[] | null;
   },
 ): FinalDecisionResult {
   const confidence = Math.max(0, Math.min(1, parsed.confidence));
@@ -1607,6 +1769,7 @@ function applyModelDecision(
     evidenceLevels,
     tolerance,
     meta: { spread: input.market.spread },
+    atr: input.market.atr,
   });
 
   // Stop safety margin for MODEL-authored levels. The grounding check above
@@ -1681,6 +1844,106 @@ function applyModelDecision(
     );
   }
 
+  // Live price already through a leftover wait (or within the 10–15 point
+  // approach band): convert to immediate follow-through. The 4605.39 / live
+  // 4601.89 card shipped as "wait" because we demanded 5 points / 0.5×ATR of
+  // overshoot — through by more than 0 is printed. Conflict coercion above
+  // may have just MADE it conditional — the printed move wins.
+  let printAnchorMs: number | undefined;
+  if (
+    resolved.levels &&
+    planType !== "immediate" &&
+    currentPrice > 0
+  ) {
+    const pendingType = resolveEntryType({
+      declared: selected?.entryType,
+      planType,
+      activationRule,
+    });
+    const print = entryPrintState({
+      direction,
+      entry: resolved.levels.preferredEntry,
+      currentPrice,
+      entryType: pendingType,
+      atr: input.market.atr,
+      activationRule,
+    });
+    if (print.printed) {
+      // Conflict-coerced confirmation and anticipatory forming-structure
+      // waits stay on the waiting side when live has only APPROACHED the
+      // zone. Through (live already past the entry in the profit direction)
+      // still wins — that is the leftover-wait bug.
+      const keepApproachWait =
+        print.kind === "approach" &&
+        (coercedFromImmediate || planType === "anticipatory");
+      if (!keepApproachWait) {
+        const writtenEntry = resolved.levels.preferredEntry;
+      const live = roundToTick(currentPrice, { spread: input.market.spread });
+      // Through: keep the written zone (the fill printed there). Approach:
+      // fill at live and note the gap — unless filling NOW would be born
+      // stopped (a sell 8 points above a stop 3 points above the entry).
+      const stop = resolved.levels.stopLoss;
+      const wouldBreachStop =
+        print.kind === "approach" &&
+        (direction === "sell" ? live >= stop : live <= stop);
+      if (!wouldBreachStop) {
+        const fillAt = print.kind === "through" ? writtenEntry : live;
+        const nextTargets = filterDistinctTargets({
+          direction,
+          entry: fillAt,
+          targets: resolved.levels.targets,
+          atr: input.market.atr,
+        });
+        if (nextTargets.length > 0) {
+          resolved.levels = {
+            ...resolved.levels,
+            preferredEntry: fillAt,
+            entryLow: Math.min(resolved.levels.entryLow, fillAt),
+            entryHigh: Math.max(resolved.levels.entryHigh, fillAt),
+            targets: nextTargets,
+          };
+          planType = "immediate";
+          activationCondition = null;
+          activationRule = null;
+          const found = findPrintAnchorMs({
+            direction,
+            entry: writtenEntry,
+            candles: input.market.currentTfCandles,
+            tolerance: entryFillTolerance({
+              price: writtenEntry,
+              atr: input.market.atr,
+            }),
+          });
+          if (found != null) printAnchorMs = found;
+          const gap = Math.abs(live - writtenEntry);
+          riskWarnings.unshift(
+            print.kind === "approach"
+              ? t(input.locale === "en" ? "en" : "ar", "synth.activation_approach_gap", {
+                  live: live.toFixed(2),
+                  written: writtenEntry.toFixed(2),
+                  gap: gap.toFixed(2),
+                })
+              : t(input.locale === "en" ? "en" : "ar", "synth.activation_already_met", {
+                  live: live.toFixed(2),
+                  written: writtenEntry.toFixed(2),
+                }),
+          );
+        }
+      }
+      }
+    }
+  }
+
+  if (resolved.levels) {
+    const spaced = filterDistinctTargets({
+      direction,
+      entry: resolved.levels.preferredEntry,
+      targets: resolved.levels.targets,
+      atr: input.market.atr,
+    });
+    if (spaced.length) resolved.levels = { ...resolved.levels, targets: spaced };
+  }
+
   const executionState = deriveExecutionState({
     planType,
     levels: resolved.levels,
@@ -1752,7 +2015,9 @@ function applyModelDecision(
           low: resolved.levels.entryLow,
           high: resolved.levels.entryHigh,
         },
-        entryType: selected?.entryType,
+        // Immediate follow-through is a market fill. A leftover sell_limit /
+        // buy_stop from the candidate would re-arm G7 as a waiting plan.
+        entryType: planType === "immediate" ? "market" : selected?.entryType,
         stop_loss: resolved.levels.stopLoss,
         targets: resolved.levels.targets,
         take_profit: resolved.levels.targets[0],
@@ -1776,6 +2041,7 @@ function applyModelDecision(
         validityCandles: parsed.validityCandles,
         levelSource: resolved.source ?? undefined,
         status: executionState === "valid_now" ? "triggered" : "pending_entry",
+        ...(printAnchorMs != null ? { anchorTime: printAnchorMs } : {}),
       }
     : {
         action: direction,
@@ -1859,6 +2125,8 @@ function applyModelDecision(
       macroRegime: input.macroRegime ?? null,
       cotPositioning: input.cotPositioning ?? null,
       dataSufficient: input.market.dataQuality.sufficient,
+      visualConfirmation: (input.visualSnapshots?.length ?? 0) > 0 ? "confirmed" : "not_checked",
+      visualTimeframes: (input.visualSnapshots ?? []).map((s) => s.timeframe),
       validityCandles: parsed.validityCandles,
     }).dimensions,
     publicReasoningSummary: publicReasoningSummary.slice(0, 5),
@@ -1992,8 +2260,14 @@ function historicalCaseCard(
 
 /** Short human label for the most significant detected pattern. */
 function describePrimaryPattern(geometry: GeometrySnapshot): string | null {
-  const pattern = (geometry.patterns ?? [])[0];
-  if (!pattern) return null;
-  return `${pattern.patternType} · ${pattern.stage ?? pattern.status}`;
+  const ranked = [...(geometry.patterns ?? [])].sort(
+    (a, b) => b.confidence - a.confidence,
+  );
+  // Weak detector hits — especially a default-looking H&S — must not stamp
+  // the evidence card. The model names the pattern from the chart image.
+  const MIN_CARD_CONFIDENCE = 78;
+  const top = ranked.find((pattern) => pattern.confidence >= MIN_CARD_CONFIDENCE);
+  if (!top) return null;
+  return `${top.patternType} · ${top.stage ?? top.status}`;
 }
 

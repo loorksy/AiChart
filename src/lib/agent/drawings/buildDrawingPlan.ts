@@ -327,7 +327,7 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
       selectedAnnotations: annotations.slice(0, 3),
       forecastPath: buildForecastPathFromTrade(input.market, {
         entry: rec.entry,
-        target: rec.targets[0]!,
+        target: rec.targets[rec.targets.length - 1]!,
       }),
       // The structural justification drawn WITH the trade: the trendline,
       // channel, or pattern the recommendation narrative can point at.

@@ -95,6 +95,8 @@ export interface Recommendation {
   entry: number | null;
   stop_loss: number | null;
   take_profit: number | null;
+  /** Full TP ladder when the chart payload carries it (not just take_profit = TP1). */
+  targets?: number[];
   targets_json?: string | null;
   risk_json?: string | null;
   timeframe: string | null;
@@ -116,6 +118,13 @@ export interface Recommendation {
   engine_version?: string | null;
   legacy_tracking_id?: string | null;
   created_at: string;
+  /**
+   * Epoch ms (or ISO) of the candle that printed the entry condition.
+   * The native position tool prefers this over `created_at` so a leftover
+   * wait converted to immediate sits on the historical print bar, not "now".
+   * Pending plans omit it and keep `created_at`.
+   */
+  anchor_time?: string | number | null;
 }
 
 export type TradeLessonOutcome = "win" | "loss" | "breakeven";

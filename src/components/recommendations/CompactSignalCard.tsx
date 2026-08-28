@@ -11,13 +11,10 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { formatSignedR } from "@/lib/recommendations/tradeMetrics";
+import { displayROf } from "@/lib/recommendations/tradeMetricsSummary";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import { cn } from "@/lib/utils";
-
-function fmtR(value?: number): string | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  return `${value > 0 ? "+" : ""}${value.toFixed(1)}R`;
-}
 
 /**
  * The signal as the agent's own card language: the verdict (BUY or SELL) and
@@ -33,9 +30,8 @@ export function CompactSignalCard({ rec }: { rec: TrackedRecommendation }) {
   const DirIcon = isBuy ? TrendingUp : TrendingDown;
   const Chevron = dir === "rtl" ? ChevronLeft : ChevronRight;
 
-  const won = rec.outcome.startsWith("win_");
-  const lost = rec.outcome === "loss";
-  const netR = won ? fmtR(rec.netRr ?? rec.rr) : lost ? fmtR(-1) : null;
+  const shownR = displayROf(rec, rec.priceAtCreation);
+  const netR = formatSignedR(shownR);
 
   const levels = [
     { key: "entry", label: t("rec.row.entry"), value: rec.entry, icon: LogIn, tone: "text-foreground" },
@@ -80,7 +76,7 @@ export function CompactSignalCard({ rec }: { rec: TrackedRecommendation }) {
           <span
             className={cn(
               "ms-auto shrink-0 font-mono text-[12px] font-bold tabular-nums",
-              won ? "text-buy" : "text-sell",
+              (shownR ?? 0) >= 0 ? "text-buy" : "text-sell",
             )}
             dir="ltr"
           >

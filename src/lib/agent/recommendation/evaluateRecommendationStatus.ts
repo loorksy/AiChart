@@ -24,12 +24,14 @@ import {
 import {
   entryFillTolerance,
   resolveInvalidationMode,
+  targetHitTolerance,
   type InvalidationMode,
 } from "@/lib/recommendations/entrySemantics";
 import { activationRuleTimeframe } from "@/lib/recommendations/activationRule";
 import { isCandleComplete } from "@/lib/ohlc/candleTime";
 import { barDurationMs } from "@/lib/intervals";
 import { normalizeCanonicalInterval } from "@/lib/markets/intervals";
+import { t } from "@/lib/i18n";
 
 export interface RecommendationStatusEvaluation {
   status: RecommendationStatus;
@@ -99,6 +101,10 @@ export function evaluateRecommendationStatus(input: {
   // chat path told the operator "price never touched the entry" while the
   // sweep — grading with the band — had already filled the plan.
   const entryTolerance = entryFillTolerance({
+    price: recommendation.entry,
+    atr: market.atr,
+  });
+  const targetTolerance = targetHitTolerance({
     price: recommendation.entry,
     atr: market.atr,
   });
@@ -177,6 +183,7 @@ export function evaluateRecommendationStatus(input: {
     activationCandles,
     activationBarMs,
     entryTolerance,
+    targetTolerance,
   });
 
   const fill =
@@ -235,11 +242,28 @@ export function evaluateRecommendationStatus(input: {
     case "tp2_hit":
     case "tp3_hit": {
       const n = result.status === "tp3_hit" ? 3 : result.status === "tp2_hit" ? 2 : 1;
+      const labeled = recommendation.targets[n - 1];
+      const honest =
+        n === 1 ? result.tp1HitPrice : n === 2 ? result.tp2HitPrice : result.tp3HitPrice;
+      const gap =
+        honest != null &&
+        labeled != null &&
+        Number.isFinite(honest) &&
+        Number.isFinite(labeled)
+          ? Math.abs(honest - labeled)
+          : 0;
+      const zoneNote =
+        gap > 1e-9
+          ? ` ${t("ar", "rec.status.tp_band_hit", {
+              gap: String(Number(gap.toFixed(1))),
+              price: fmt(honest!),
+            })}.`
+          : "";
       return {
         // The session vocabulary has no tp3_hit; 3 targets report as tp2_hit
         // with the honest target number carried in hitTarget.
         status: n === 1 ? "tp1_hit" : "tp2_hit",
-        reason: `تحقق الهدف ${n}. الدخول الفعلي كان عند ${fmt(fill)}.`,
+        reason: `تحقق الهدف ${n}.${zoneNote} الدخول الفعلي كان عند ${fmt(fill)}.`,
         priceNow,
         triggered: true,
         invalidated: false,

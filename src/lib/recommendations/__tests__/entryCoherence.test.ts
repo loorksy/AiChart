@@ -15,8 +15,17 @@ import { describe, it } from "node:test";
 import {
   describeEntry,
   entryFillTolerance,
+  GOLD_FILL_TOLERANCE_CAP,
+  GOLD_FILL_TOLERANCE_FLOOR,
+  filterDistinctTargets,
+  honestTargetHitPrice,
+  minConsecutiveTargetSpacing,
+  resolveEntryType,
   resolveFill,
+  resolveTargetHit,
   rewardToRisk,
+  targetHitTolerance,
+  targetZoneReached,
   validateEntryCoherence,
 } from "../entrySemantics";
 import { evaluateRecommendation } from "../recommendationStatus";
@@ -335,22 +344,63 @@ describe("limit_touch fills within the tolerance band", () => {
   });
 });
 
-describe("entryFillTolerance clamps to the instrument's scale", () => {
-  it("gold at ~4600 lands inside the operator's 5–15 point band (0.5–1.5 USD)", () => {
-    // No ATR → the floor: ~0.5 USD.
+describe("entryFillTolerance is a 10–15 point gold band", () => {
+  it("gold at ~4600 floors at 10 and caps at 15", () => {
     const floor = entryFillTolerance({ price: 4646 });
-    assert.ok(floor >= 0.45 && floor <= 0.6, `floor ${floor} should be ≈0.5`);
-    // Huge ATR → the cap: ~1.5 USD, never more.
-    const cap = entryFillTolerance({ price: 4646, atr: 50 });
-    assert.ok(cap >= 1.4 && cap <= 1.6, `cap ${cap} should be ≈1.5`);
-    // Normal 5m ATR (~4 USD) → volatility-scaled inside the band.
+    assert.equal(floor, GOLD_FILL_TOLERANCE_FLOOR);
+    const cap = entryFillTolerance({ price: 4646, atr: 200 });
+    assert.equal(cap, GOLD_FILL_TOLERANCE_CAP);
     const mid = entryFillTolerance({ price: 4646, atr: 4 });
-    assert.ok(mid >= floor && mid <= cap, `mid ${mid} must sit inside [${floor}, ${cap}]`);
+    assert.equal(mid, GOLD_FILL_TOLERANCE_FLOOR, "5m ATR sits on the 10-point floor");
   });
 
   it("degenerate prices produce zero, never NaN", () => {
     assert.equal(entryFillTolerance({ price: 0 }), 0);
     assert.equal(entryFillTolerance({ price: Number.NaN }), 0);
+  });
+});
+
+describe("10–15 point gold touch: approach and through", () => {
+  const PLAN = {
+    direction: "sell" as const,
+    entryType: "limit_touch" as const,
+    entry: 4610,
+    retestZone: null,
+  };
+
+  it("sell 4610 / live 4620 (10 pts above) fills at the nearest traded price", () => {
+    const fill = resolveFill({
+      plan: PLAN,
+      candle: candle(1, 4622, 4623, 4619.5, 4620),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 10,
+    });
+    assert.equal(fill.filled, true);
+    assert.equal(fill.effectiveEntry, 4619.5);
+  });
+
+  it("sell 4610 / live 4630 (20 pts above) does not fill", () => {
+    const fill = resolveFill({
+      plan: PLAN,
+      candle: candle(1, 4631, 4632, 4628, 4630),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 10,
+    });
+    assert.equal(fill.filled, false);
+  });
+
+  it("sell 4605.39 / live 4601.89 (already through) fills", () => {
+    const fill = resolveFill({
+      plan: { ...PLAN, entry: 4605.39 },
+      candle: candle(1, 4603, 4604, 4601.2, 4601.89),
+      conditionMet: true,
+      armedBefore: false,
+      tolerance: 10,
+    });
+    assert.equal(fill.filled, true);
+    assert.equal(fill.effectiveEntry, 4604);
   });
 });
 
@@ -426,5 +476,134 @@ describe("reward:risk is measured from the fill", () => {
       actual.toFixed(2),
       "the two must differ — which is why grading has to use the fill",
     );
+  });
+});
+
+describe("consecutive targets must be meaningfully distinct", () => {
+  it("drops a gold TP3 that sits 0.09 from TP2", () => {
+    const spaced = filterDistinctTargets({
+      direction: "sell",
+      entry: 4616.66,
+      targets: [4603.33, 4593.8, 4593.71],
+      atr: 8.9,
+    });
+    assert.deepEqual(spaced, [4603.33, 4593.8]);
+  });
+
+  it("omits TP2 when it collapses onto TP1 and keeps a distant TP3 as the new TP2", () => {
+    const spaced = filterDistinctTargets({
+      direction: "sell",
+      entry: 4616.66,
+      targets: [4603.33, 4600.0, 4588.0],
+      atr: 8.9,
+    });
+    assert.deepEqual(spaced, [4603.33, 4588.0]);
+  });
+
+  it("uses at least several points on gold, or 0.15×ATR if that is larger", () => {
+    const atGold = minConsecutiveTargetSpacing({ price: 4606, atr: 8.9 });
+    assert.ok(atGold >= 5, `gold floor is several points; got ${atGold}`);
+    const wideAtr = minConsecutiveTargetSpacing({ price: 4606, atr: 50 });
+    assert.ok(wideAtr >= 7.5, `0.15×ATR=7.5 should win; got ${wideAtr}`);
+  });
+
+  it("an immediate plan with a leftover sell_limit is a market fill", () => {
+    assert.equal(
+      resolveEntryType({
+        declared: "sell_limit",
+        planType: "immediate",
+      }),
+      "market",
+    );
+    assert.equal(
+      resolveEntryType({
+        declared: "sell_limit",
+        planType: "conditional",
+      }),
+      "limit_touch",
+    );
+  });
+});
+
+describe("targetHitTolerance cannot drift from entryFillTolerance", () => {
+  it("is the same 10–15 gold band, point for point", () => {
+    for (const atr of [null, 4, 50, 200] as const) {
+      assert.equal(
+        targetHitTolerance({ price: 4596, atr }),
+        entryFillTolerance({ price: 4596, atr }),
+      );
+    }
+    assert.equal(targetHitTolerance({ price: 4596 }), GOLD_FILL_TOLERANCE_FLOOR);
+    assert.equal(targetHitTolerance({ price: 4596, atr: 200 }), GOLD_FILL_TOLERANCE_CAP);
+  });
+
+  it("sell zone geometry: low within 10 of TP is a hit; 20 away is not", () => {
+    assert.equal(
+      targetZoneReached({
+        direction: "sell",
+        candle: { high: 4598, low: 4596.15 },
+        target: 4591.48,
+        tolerance: 10,
+      }),
+      true,
+    );
+    assert.equal(
+      targetZoneReached({
+        direction: "sell",
+        candle: { high: 4613, low: 4611.48 },
+        target: 4591.48,
+        tolerance: 10,
+      }),
+      false,
+    );
+  });
+
+  it("honest sell print is the actual low when the labeled TP was never printed", () => {
+    assert.equal(
+      honestTargetHitPrice({
+        direction: "sell",
+        candle: { high: 4600, low: 4596.15 },
+        target: 4591.48,
+      }),
+      4596.15,
+    );
+  });
+
+  it("resolveTargetHit: screenshot sell + buy mirror + through + miss", () => {
+    const sellBand = resolveTargetHit({
+      direction: "sell",
+      target: 4591.48,
+      candle: { high: 4598, low: 4596.15 },
+      tolerance: 10,
+    });
+    assert.equal(sellBand.reached, true);
+    assert.equal(sellBand.hitPrice, 4596.15);
+
+    const buyBand = resolveTargetHit({
+      direction: "buy",
+      target: 2650,
+      candle: { high: 2640, low: 2634 },
+      tolerance: 10,
+    });
+    assert.equal(buyBand.reached, true);
+    assert.equal(buyBand.hitPrice, 2640);
+
+    const through = resolveTargetHit({
+      direction: "sell",
+      target: 4591.48,
+      candle: { high: 4596, low: 4588 },
+      tolerance: 10,
+    });
+    assert.equal(through.reached, true);
+    assert.equal(through.hitPrice, 4591.48, "the market printed the line — record it, not the overshoot");
+
+    const miss = resolveTargetHit({
+      direction: "sell",
+      target: 4591.48,
+      candle: { high: 4613, low: 4611.48 },
+      tolerance: 10,
+    });
+    assert.equal(miss.reached, false);
+    assert.equal(miss.hitPrice, undefined);
   });
 });

@@ -7,8 +7,9 @@
  *     evidence => different sentence), and there is no line without a value;
  *  2. the gate line speaks the localized checklist label, never the internal
  *     gate id / snake_case name;
- *  3. the transport (webTurn.ts) scrubs + sanitizes before the `thinking`
- *     SSE event, and no offline surface (Telegram) receives thinking at all.
+ *  3. both live transports (webTurn.ts SSE and Telegram's progress bubble)
+ *     scrub + sanitize through sanitizeThinkingLine before a thinking line
+ *     is shown — Telegram used to omit the seam entirely.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -22,6 +23,7 @@ import {
   narrateNews,
   narrateStructure,
   narrateWeighing,
+  sanitizeThinkingLine,
 } from "@/lib/agent/thinkingNarration";
 import { scrubInternalIdentifiers } from "@/lib/agent/userSafeOutbound";
 import type { GateVerdict } from "@/lib/agent/gates/types";
@@ -142,33 +144,49 @@ describe("thinkingNarration — evidence in, sentence out", () => {
 describe("thinking transport contract", () => {
   const webTurn = readFileSync(join(__dirname, "../webTurn.ts"), "utf8");
   const orchestrator = readFileSync(join(__dirname, "../orchestrator.ts"), "utf8");
+  const webhook = readFileSync(join(__dirname, "../../telegram/webhookAgent.ts"), "utf8");
+  const liveProgress = readFileSync(join(__dirname, "../../telegram/liveProgress.ts"), "utf8");
 
   it("webTurn scrubs and sanitizes before emitting the `thinking` SSE event", () => {
     assert.match(
       webTurn,
-      /scrubInternalIdentifiers\(sanitizeActivityMessage\(/,
+      /sanitizeThinkingLine\(text\)/,
       "the thinking emitter must pass both guards",
     );
     assert.match(webTurn, /send\("thinking"/);
   });
 
-  it("the orchestrator narrates through the optional emitThinking seam only", () => {
+  it("the orchestrator keeps narration as fallback and streams live thinking", () => {
     assert.match(orchestrator, /emitThinking\?\.\(/);
     assert.match(orchestrator, /narrateMarketRead/);
     assert.match(orchestrator, /narrateGateOutcome/);
+    assert.match(orchestrator, /createLiveThinkingSink/);
+    assert.match(orchestrator, /emitNarrationFallback/);
   });
 
-  it("telegram never receives a thinking trace", () => {
-    // The Telegram surface simply does not provide emitThinking — nothing to
-    // render, nothing to leak, and parity stays untouched.
-    for (const file of ["conversation.ts", "webhookTurn.ts", "sendAgentReply.ts"]) {
-      let src = "";
-      try {
-        src = readFileSync(join(__dirname, "../../telegram", file), "utf8");
-      } catch {
-        continue; // file layout may differ; the grep below still covers it
-      }
-      assert.doesNotMatch(src, /emitThinking/, `${file} must not wire thinking`);
-    }
+  it("Telegram wires the same sanitized thinking seam the web uses", () => {
+    assert.match(webhook, /emitThinking:/);
+    assert.match(webhook, /sanitizeThinkingLine/);
+    assert.match(webhook, /reporter\.onThinking/);
+    assert.match(liveProgress, /sanitizeThinkingLine/);
+  });
+
+  it("sanitizeThinkingLine strips chain-of-thought phrasing and system identifiers", () => {
+    const dirty =
+      "قرأت 240 شمعة. chain of thought: call gpt-4o with OPENAI_API_KEY at https://api.openai.com";
+    const clean = sanitizeThinkingLine(dirty);
+    assert.ok(clean.includes("قرأت 240 شمعة"));
+    assert.doesNotMatch(clean, /chain of thought/i);
+    assert.doesNotMatch(clean, /OPENAI_API_KEY/);
+    assert.doesNotMatch(clean, /gpt-4o/);
+    assert.doesNotMatch(clean, /api\.openai\.com/);
+    // Honest narration survives the same scrub unchanged.
+    const honest = narrateMarketRead({
+      locale: "ar",
+      interval: "1h",
+      candleCount: 240,
+      currentPrice: 4651.3,
+    })!;
+    assert.equal(sanitizeThinkingLine(honest), honest.trim());
   });
 });

@@ -19,7 +19,13 @@
  * Both produce a rewrite or a WAIT — never a quiet emission of the stale plan.
  */
 import { t } from "@/lib/i18n";
-import { rewardToRisk } from "@/lib/recommendations/entrySemantics";
+import {
+  activationRequiresClose,
+  closeTriggerLevel,
+  entryFillTolerance,
+  rewardToRisk,
+} from "@/lib/recommendations/entrySemantics";
+import type { ActivationRule } from "@/lib/recommendations/activationRule";
 
 /**
  * How far price may sit from a MARKET entry, in ATR multiples, and stay reachable.
@@ -69,6 +75,191 @@ function isWaitingEntry(entryType: string | undefined): boolean {
   return Boolean(entryType && WAITING_ENTRY_TYPES.has(entryType));
 }
 
+/**
+ * Epoch ms from a candle time that may be seconds or milliseconds.
+ */
+function candleTimeMs(time: number): number {
+  if (!Number.isFinite(time) || time <= 0) return 0;
+  return time < 1e12 ? Math.round(time * 1000) : Math.round(time);
+}
+
+/**
+ * Explicit retest thesis: waiting for a RETURN from the profit side is the
+ * plan. Leftover waits for a level the market already left are otherwise
+ * forbidden; only this tag (or `retest_zone`) keeps the pullback budget.
+ */
+function isExplicitRetest(
+  entryType: string | undefined,
+  rule: ActivationRule | { kind: string; rules?: Array<{ kind: string }> } | null | undefined,
+): boolean {
+  if (entryType === "retest_zone") return true;
+  if (!rule) return false;
+  if (rule.kind === "retest_confirmed") return true;
+  if (rule.kind === "composite" && Array.isArray(rule.rules)) {
+    return rule.rules.some((leaf) => leaf.kind === "retest_confirmed");
+  }
+  return false;
+}
+
+export type EntryPrintKind = "through" | "approach";
+
+export interface EntryPrintState {
+  printed: boolean;
+  kind?: EntryPrintKind;
+}
+
+export interface ConfirmationAlreadyPrintedInput {
+  direction: "buy" | "sell";
+  entry: number;
+  currentPrice: number;
+  entryType?: string;
+  atr?: number | null;
+  activationRule?: ActivationRule | { kind: string; rules?: Array<{ kind: string }> } | null;
+}
+
+/**
+ * Has a leftover wait already printed at the live price?
+ *
+ * The 2026-08 5m XAUUSD SELL (entry 4605.39 / live 4601.89, ~3.5 points
+ * through) shipped as "wait to touch 4605 again" because the previous rule
+ * demanded 0.5×ATR / 5 points of overshoot and only applied to
+ * `confirmation_close`. That threshold was the miss.
+ *
+ * New rule, applied to every waiting fill except an explicit retest:
+ *  - Sell: live < entry (already below) → through, immediate. Never wait to
+ *    re-touch the same zone.
+ *  - Buy: live > entry → through, immediate.
+ *  - Approach from the waiting side within the 10–15 point gold band (sell
+ *    still ABOVE entry by ≤ fill tolerance, buy still BELOW) → printed; the
+ *    gap is the fill.
+ *  - Sell still ABOVE entry by more than the band (or buy still below) → a
+ *    genuine wait; keep it.
+ *
+ * Do NOT require 0.5×ATR or 5 points of overshoot. Through by more than 0
+ * is printed.
+ */
+export function entryPrintState(input: ConfirmationAlreadyPrintedInput): EntryPrintState {
+  if (!isWaitingEntry(input.entryType)) return { printed: false };
+  if (isExplicitRetest(input.entryType, input.activationRule)) return { printed: false };
+  if (!(input.entry > 0) || !(input.currentPrice > 0)) return { printed: false };
+
+  // Close-based waits print when live has already crossed the TRIGGER level
+  // (sell close-below 4605.39 / live 4601.89). Measuring against the entry
+  // alone converted a "close above 4000" wait whose demand entry sat at 3996
+  // while live was 3998 — still waiting for the close.
+  const closeLevel = closeTriggerLevel(input.activationRule);
+  const trigger = closeLevel != null ? closeLevel : input.entry;
+  const through =
+    input.direction === "buy"
+      ? input.currentPrice > trigger
+      : input.currentPrice < trigger;
+  if (through) return { printed: true, kind: "through" };
+
+  // Close-based rules still need the confirming close. Being 10–15 points
+  // from the level on the waiting side is NOT that close — converting those
+  // leftover close-waits is what turned "candle_close_above 1.10 after news"
+  // and MTF-conflict confirmation into an immediate chase. Touch-based
+  // waits (limit / price_touch) do fill on the approach band.
+  if (activationRequiresClose(input.activationRule)) return { printed: false };
+
+  const tol = entryFillTolerance({ price: input.entry, atr: input.atr });
+  const approach =
+    input.direction === "sell"
+      ? input.currentPrice <= input.entry + tol
+      : input.currentPrice >= input.entry - tol;
+  if (approach) return { printed: true, kind: "approach" };
+  return { printed: false };
+}
+
+export function confirmationAlreadyPrinted(input: ConfirmationAlreadyPrintedInput): boolean {
+  return entryPrintState(input).printed;
+}
+
+/**
+ * Time of the candle that first printed the entry condition — the wick/price
+ * that tagged the zone, not "now" at issue time. Used as the position-tool
+ * left/entry anchor so advancing bars never slide the box to the live candle.
+ */
+export function findPrintAnchorMs(input: {
+  direction: "buy" | "sell";
+  entry: number;
+  candles: ReadonlyArray<{ time: number; high: number; low: number }>;
+  tolerance?: number;
+}): number | null {
+  if (!(input.entry > 0) || input.candles.length === 0) return null;
+  const tol =
+    input.tolerance != null && Number.isFinite(input.tolerance) && input.tolerance > 0
+      ? input.tolerance
+      : 0;
+  const bandLow = input.entry - tol;
+  const bandHigh = input.entry + tol;
+  const sorted = [...input.candles]
+    .filter((c) => Number.isFinite(c.time) && c.time > 0)
+    .sort((a, b) => candleTimeMs(a.time) - candleTimeMs(b.time));
+  for (const c of sorted) {
+    if (c.low <= bandHigh && c.high >= bandLow) return candleTimeMs(c.time);
+  }
+  // Live is through but no candle overlapped the band (sparse history): the
+  // most recent bar already on the profit side is the honest visual anchor.
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const c = sorted[i]!;
+    const through = input.direction === "sell" ? c.low < input.entry : c.high > input.entry;
+    if (through) return candleTimeMs(c.time);
+  }
+  return null;
+}
+
+/** The fields a follow-through conversion rewrites on a stored/authored plan. */
+export interface FollowThroughPlan {
+  entry?: number;
+  entryType?: string;
+  planType?: "immediate" | "anticipatory" | "conditional";
+  activationClass?: "immediate" | "conditional";
+  activationRule?: unknown;
+  triggerCondition?: string;
+  executionState?: string;
+  status?: string;
+  entryZone?: { low: number; high: number };
+  /**
+   * Epoch ms of the candle that printed the fill. The chart position tool
+   * anchors here instead of `created_at` ("now" at issue time).
+   */
+  anchorTime?: number;
+}
+
+/**
+ * Convert a pending plan whose activation already printed into an immediate
+ * market fill. `fillPrice` is the written entry when the market already went
+ * through (the fill printed at the zone) and the live price when only the
+ * approach band was tagged (the gap is the fill). The stop and targets stay.
+ */
+export function applyFollowThroughToPlan<T extends FollowThroughPlan>(
+  rec: T,
+  fillPrice: number,
+  opts?: { anchorTime?: number | null },
+): T {
+  rec.entry = fillPrice;
+  rec.entryType = "market";
+  rec.planType = "immediate";
+  rec.activationClass = "immediate";
+  rec.activationRule = undefined;
+  rec.triggerCondition = undefined;
+  rec.executionState = "valid_now";
+  rec.status = "triggered";
+  if (opts?.anchorTime != null && opts.anchorTime > 0) {
+    rec.anchorTime = opts.anchorTime;
+  }
+  if (rec.entryZone) {
+    rec.entryZone = {
+      low: Math.min(rec.entryZone.low, fillPrice),
+      high: Math.max(rec.entryZone.high, fillPrice),
+    };
+  } else {
+    rec.entryZone = { low: fillPrice, high: fillPrice };
+  }
+  return rec;
+}
+
 function maxAtrDistanceFor(entryType: string | undefined): number {
   return isWaitingEntry(entryType)
     ? WAITING_MAX_ATR_DISTANCE
@@ -95,6 +286,13 @@ export interface RevalidationInput {
    * price because waiting is what it does. Absent = treated as market.
    */
   entryType?: string;
+  /** When set, leftover-wait conversion respects an explicit retest thesis. */
+  activationRule?: ActivationRule | { kind: string; rules?: Array<{ kind: string }> } | null;
+  /**
+   * The synthesizer already froze a printed follow-through (kept the written
+   * entry, stamped `anchorTime`). G7 must not chase that number to live.
+   */
+  freezeEntry?: boolean;
   maxAtrDistance?: number;
 }
 
@@ -232,16 +430,42 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
       ? input.currentPrice > input.effectiveEntry
       : input.currentPrice < input.effectiveEntry;
 
-  if (movedPast && distance > maxDistance) {
-    // A re-anchored plan FILLS AT THE LIVE PRICE (the caller converts it to a
-    // market entry), so it must be viable there. For market plans steps 1–2
-    // already guaranteed this; for waiting plans they were measured from the
-    // plan's own entry, so the live-fill facts are checked here — a re-price
-    // into a position that has already lost, or whose reward is already
-    // spent, is worse than the refusal it replaces. When the re-price cannot
-    // win, the move the plan wanted has ALREADY COMPLETED: that is reported
-    // as the stale fact it is, and the caller's reprice loop feeds it back
-    // for a freshly-priced plan instead of publishing a refusal.
+  // Synthesizer already converted a leftover wait and froze the written
+  // entry + print-time drawing anchor. Chasing that number to live would
+  // put the box on "now" and rewrite a fill that already printed.
+  if (input.freezeEntry) {
+    return { ...base, status: "ok" };
+  }
+
+  // Leftover wait whose live price is already through the entry (any amount
+  // > 0) or within the 10–15 point approach band on the waiting side. Do
+  // NOT require 0.5×ATR / 5 points of overshoot — that is what shipped the
+  // 4605.39 / live-4601.89 card as "wait". Explicit retest thesis is excluded
+  // inside confirmationAlreadyPrinted.
+  const print = entryPrintState({
+    direction: input.direction,
+    entry: input.effectiveEntry,
+    currentPrice: input.currentPrice,
+    entryType: input.entryType,
+    atr: input.atr,
+    activationRule: input.activationRule,
+  });
+  const activationPrinted = print.printed;
+
+  const shouldConvert =
+    (activationPrinted &&
+      !(print.kind === "approach" && stopIsBreached(input, input.currentPrice))) ||
+    (movedPast && distance > maxDistance);
+
+  if (shouldConvert) {
+    // Through-print: keep the written entry (the fill printed at the zone).
+    // Approach-band or market-chase: fill at the live quote (the gap / the
+    // only price the operator can get now).
+    const fillNow =
+      print.kind === "through" ? input.effectiveEntry : input.currentPrice;
+    // Viability is judged at the LIVE quote: a through-print whose live price
+    // has already cleared every target (or the stop) is a completed move, not
+    // a position to open at the historical print.
     if (stopIsBreached(input, input.currentPrice)) {
       return {
         ...base,
@@ -251,7 +475,10 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
         }),
       };
     }
-    if (input.targets.length > 0 && reachableTargetsFrom(input, input.currentPrice).length === 0) {
+    if (
+      input.targets.length > 0 &&
+      reachableTargetsFrom(input, input.currentPrice).length === 0
+    ) {
       return {
         ...base,
         status: "targets_passed",
@@ -266,9 +493,10 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
     return {
       ...base,
       status: "reanchored",
-      reanchoredEntry: input.currentPrice,
-      reasonAr:
-        liveRr != null && input.plannedRr != null
+      reanchoredEntry: fillNow,
+      reasonAr: activationPrinted
+        ? t("ar", "gate.revalidation.activation_already_met", params)
+        : liveRr != null && input.plannedRr != null
           ? t("ar", "gate.revalidation.reanchored", {
               ...params,
               liveRr: liveRr.toFixed(2),

@@ -113,6 +113,9 @@ export interface TradeMetricsInput {
     tp1HitAt?: number | null;
     tp2HitAt?: number | null;
     tp3HitAt?: number | null;
+    tp1HitPrice?: number | null;
+    tp2HitPrice?: number | null;
+    tp3HitPrice?: number | null;
     slHitAt?: number | null;
     invalidatedAt?: number | null;
     cancelledAt?: number | null;
@@ -129,11 +132,42 @@ function finite(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** Levels + honest TP prints used to bank the furthest target that actually paid. */
+export interface BankedTargetSource {
+  direction?: TrackedDirection | null;
+  targets: readonly number[];
+  tp1HitPrice?: number | null;
+  tp2HitPrice?: number | null;
+  tp3HitPrice?: number | null;
+}
+
 /**
- * Where and why the trade ended, from the persisted lifecycle timestamps.
- * Mirrors the evaluator's own closing policy: a partial win closes AT the
- * banked target, whatever later killed the remainder.
+ * The price a win is banked at. Zone-only credits (10–15 points) use the
+ * nearest traded extreme; a print through or exactly on the line uses the
+ * labeled target — the market traded it.
  */
+export function bankedTargetPriceOf(rec: BankedTargetSource, n: 1 | 2 | 3): number | null {
+  const labeled = finite(rec.targets[n - 1]);
+  const honest =
+    n === 1 ? finite(rec.tp1HitPrice) : n === 2 ? finite(rec.tp2HitPrice) : finite(rec.tp3HitPrice);
+  const dir = rec.direction;
+  if (honest != null && labeled != null && (dir === "buy" || dir === "sell")) {
+    if (dir === "sell" && honest > labeled) return honest;
+    if (dir === "buy" && honest < labeled) return honest;
+    return labeled;
+  }
+  return honest ?? labeled;
+}
+
+/** Signed R as the report prints the trade result: +5.7R / -1.0R. */
+export function formatSignedR(value: number | null | undefined): string | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const body = Math.abs(value).toFixed(1);
+  if (value > 0) return `+${body}R`;
+  if (value < 0) return `-${body}R`;
+  return "0.0R";
+}
+
 function resolveExit(input: TradeMetricsInput): {
   exitAt: number | null;
   exitPrice: number | null;
@@ -156,16 +190,17 @@ function resolveExit(input: TradeMetricsInput): {
     case "win_tp2":
     case "win_tp3": {
       const n = r.outcome === "win_tp3" ? 3 : r.outcome === "win_tp2" ? 2 : 1;
-      const banked = finite(r.targets[n - 1]);
-      if (n === 3) {
+      const banked = bankedTargetPriceOf(r, n);
+      const hitAt = n === 3 ? r.tp3HitAt : n === 2 ? r.tp2HitAt : r.tp1HitAt;
+      // The last listed target (or TP3) is a full target exit. Anything short
+      // of that was the stop or the clock closing the remainder.
+      if (n === 3 || n === r.targets.length) {
         return {
-          exitAt: r.tp3HitAt ?? null,
+          exitAt: hitAt ?? null,
           exitPrice: banked,
           exitReason: "target",
         };
       }
-      // A tp1/tp2 TERMINAL outcome means the stop or the clock closed the
-      // remainder; the record closes at the banked target either way.
       if (r.slHitAt) {
         return { exitAt: r.slHitAt, exitPrice: banked, exitReason: "stop_after_target" };
       }
@@ -478,27 +513,54 @@ export interface RealizableRecommendation extends GradableRecommendation {
   effectiveEntry?: number | null;
   stopLoss: number;
   targets: number[];
+  direction?: TrackedDirection;
+  tp1HitPrice?: number | null;
+  tp2HitPrice?: number | null;
+  tp3HitPrice?: number | null;
 }
 
-/**
- * The realized R of a terminal record: the persisted measurement when the
- * sweep recorded one, otherwise the honest derivation legacy rows allow —
- * a win closed at its banked target, a loss at its stop (-1R, the touch
- * semantics those rows were always graded under). Anything else is null.
- */
-export function realizedROf(rec: RealizableRecommendation): number | null {
-  const persisted = finite(rec.realizedR);
-  if (persisted != null) return persisted;
+function furthestWinIndex(
+  outcome: TrackedRecommendationOutcome,
+): 1 | 2 | 3 | 0 {
+  return outcome === "win_tp3" ? 3 : outcome === "win_tp2" ? 2 : outcome === "win_tp1" ? 1 : 0;
+}
+
+function derivedWinR(rec: RealizableRecommendation, n: 1 | 2 | 3): number | null {
   const entry = finite(rec.effectiveEntry) ?? rec.entry;
   const risk = Math.abs(entry - rec.stopLoss);
   if (!(risk > 0)) return null;
-  if (rec.outcome === "loss") return -1;
-  const n =
-    rec.outcome === "win_tp3" ? 3 : rec.outcome === "win_tp2" ? 2 : rec.outcome === "win_tp1" ? 1 : 0;
-  if (n === 0) return null;
-  const target = finite(rec.targets[n - 1]);
+  const target = bankedTargetPriceOf(rec, n);
   if (target == null) return null;
-  return round2(Math.abs(target - entry) / risk);
+  const fav =
+    rec.direction === "buy"
+      ? target - entry
+      : rec.direction === "sell"
+        ? entry - target
+        : Math.abs(target - entry);
+  return round2(fav / risk);
+}
+
+/**
+ * The realized R of a terminal record.
+ *
+ * Target wins always grade the furthest TP that actually paid (honest print
+ * in the 10–15 point zone, else the labeled line) — a persisted TP1
+ * measurement must not freeze the number after TP2/TP3 hits. Losses and
+ * expiries keep the sweep's measurement when one exists (close-mode can be
+ * worse than -1R; a timed-out position needs its exit candle). Legacy rows
+ * without a measurement derive a win from the banked target and a loss as
+ * -1R. Anything else is null.
+ */
+export function realizedROf(rec: RealizableRecommendation): number | null {
+  const n = furthestWinIndex(rec.outcome);
+  if (n === 1 || n === 2 || n === 3) {
+    const derived = derivedWinR(rec, n);
+    if (derived != null) return derived;
+  }
+  const persisted = finite(rec.realizedR);
+  if (persisted != null) return persisted;
+  if (rec.outcome === "loss") return -1;
+  return null;
 }
 
 export interface ExitTimeSource {

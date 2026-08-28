@@ -24,11 +24,11 @@ export function visualTransparencyLine(
   if (input.state === "confirmed") {
     const frames = (input.timeframesReviewed ?? []).join(t(locale, "list.separator"));
     return frames
-      ? t(locale, "visual.line.verified_frames", { frames })
-      : t(locale, "visual.line.verified");
+      ? t(locale, "visual.line.reviewed_frames", { frames })
+      : t(locale, "visual.line.reviewed");
   }
   if (input.state === "contradicted") {
-    return t(locale, "visual.line.contradicted");
+    return t(locale, "visual.line.contradicted_plain");
   }
-  return t(locale, "visual.line.not_checked");
+  return t(locale, "visual.line.not_reviewed");
 }

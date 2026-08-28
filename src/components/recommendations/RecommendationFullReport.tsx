@@ -27,6 +27,9 @@ import { useLocale } from "@/hooks/useLocale";
 import { visualTransparencyLine } from "@/lib/recommendations/visualTransparency";
 import { cn } from "@/lib/utils";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
+import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
+import { ShareRecommendationButton } from "@/components/recommendations/ShareRecommendationButton";
+import { isRealizedOutcome } from "@/lib/recommendations/profitCard";
 import type { ActiveRecommendationView } from "@/app/api/recommendations/active/route";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import type { DimensionGrade, EvidenceDimension } from "@/lib/agent/evidenceDimensions";
@@ -219,10 +222,14 @@ export function RecommendationFullReport({ rec }: { rec: FullReportRecommendatio
             {t("rec.detail.revision")} #{rec.revisionNo}
           </span>
         ) : null}
+        <ShareRecommendationButton rec={rec} />
+        {isRealizedOutcome(rec.outcome) ? (
+          <ShareProfitButton rec={rec} variant="result" />
+        ) : null}
       </div>
 
       <div className="mt-3">
-        <RecommendationTrackerCard rec={rec} />
+        <RecommendationTrackerCard rec={rec} showShare={false} />
       </div>
 
       <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">

@@ -29,6 +29,9 @@ import {
   parseTelegramCallback,
   parseTelegramStart,
   parseTelegramUpdate,
+  recommendationReportUrl,
+  reportLinkButtons,
+  renderToolsBlock,
   resetTelegramDedupe,
 } from "@/lib/telegram/webhookAgent";
 
@@ -289,10 +292,29 @@ describe("a recommendation ships with its drawn chart", () => {
     assert.match(agentSource, /tg\.refresh_status/);
     assert.match(agentSource, /tg\.refresh_status_prompt/);
   });
+
+  it("deep-links 📊 فتح التقرير to /recommendations/<id> and omits the button without an id", () => {
+    const url = recommendationReportUrl("42");
+    assert.match(url, /\/recommendations\/42$/);
+    assert.doesNotMatch(url, /localhost|127\.0\.0\.1/);
+    const rows = reportLinkButtons("ar", 99);
+    assert.equal(rows.length, 1);
+    const arBtn = rows[0]![0]!;
+    assert.equal(arBtn.text, "📊 فتح التقرير");
+    assert.ok("url" in arBtn, "the report button is an inline URL, not a callback");
+    assert.match(arBtn.url, /\/recommendations\/99$/);
+    assert.deepEqual(reportLinkButtons("ar", null), []);
+    assert.deepEqual(reportLinkButtons("en", ""), []);
+    const en = reportLinkButtons("en", "rec_1");
+    const enBtn = en[0]![0]!;
+    assert.equal(enBtn.text, "📊 Open Report");
+    assert.ok("url" in enBtn);
+    assert.match(enBtn.url, /\/recommendations\/rec_1$/);
+  });
 });
 
 describe("the professional turn: progress, memory, and the right theatre", () => {
-  it("wires the engine's stage narration into the live bubble", () => {
+  it("wires the engine's stage narration AND thinking into the live bubble", () => {
     // The engine narrated itself all along (emitStage); the surface passed a
     // no-op and the bubble froze for the whole run. The reporter is the wire.
     assert.match(agentSource, /emitStage: \(event\) => reporter\.onStage\(event\)/);
@@ -300,6 +322,10 @@ describe("the professional turn: progress, memory, and the right theatre", () =>
     // The narration channel too: the specialist's own sentences reach the
     // bubble, filtered to visible events exactly like the web stream.
     assert.match(agentSource, /event\.visible !== false/);
+    // Thinking lines ride the same seam as the web SSE path, scrubbed first.
+    assert.match(agentSource, /emitThinking:/);
+    assert.match(agentSource, /sanitizeThinkingLine/);
+    assert.match(agentSource, /reporter\.onThinking/);
     // finish() must run before the answer replaces the bubble — a trailing
     // progress edit landing after finalize would overwrite the result.
     const finish = agentSource.indexOf("reporter.finish()");
@@ -310,6 +336,22 @@ describe("the professional turn: progress, memory, and the right theatre", () =>
   it("appends the collapsed tools block, Telegram-native", () => {
     assert.match(agentSource, /<blockquote expandable>/);
     assert.match(agentSource, /renderToolsBlock/);
+  });
+
+  it("the collapsed tools block is an ordered ✅ trace with thinking notes", () => {
+    const block = renderToolsBlock(
+      [
+        { stage: "market_data", status: "done", notes: ["قرأت 240 شمعة"] },
+        { stage: "structure", status: "done" },
+        { stage: "liquidity", status: "running" },
+      ],
+      "ar",
+    );
+    assert.ok(block.startsWith("<blockquote expandable>🛠 نُفِّذت 2 أدوات"));
+    assert.ok(block.includes("1. ✅ بيانات السوق"));
+    assert.ok(block.includes("<i>قرأت 240 شمعة</i>"));
+    assert.ok(block.includes("2. ✅ البنية السعرية"));
+    assert.ok(!block.includes("السيولة"));
   });
 
   it("gives a conversational RESULT a conversation's shape — decided after, not guessed before", () => {

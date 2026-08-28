@@ -87,4 +87,78 @@ describe("drawingAgent (plan-only)", () => {
     // Agent-owned + stamped.
     assert.equal((out[0]!.meta as { owner?: string }).owner, "agent");
   });
+
+  it("trade_setup does not emit دخول/وقف/هدف price_lines — the system RR box owns those", async () => {
+    const buyDecision: FinalDecisionResult = {
+      ...finalDecision,
+      decision: "buy",
+      recommendation: {
+        action: "buy",
+        entry: 100,
+        stop_loss: 99,
+        take_profit: 101.5,
+        targets: [101.5, 102.5],
+      },
+    };
+    const plan: DrawingPlan = {
+      shouldDraw: true,
+      reason: "خطة صفقة صالحة",
+      drawingIntent: "trade_setup",
+      selectedLevels: [],
+      selectedZones: [
+        {
+          type: "demand",
+          low: 99,
+          high: 99.6,
+          time: 0,
+          strength: 82,
+          reason: "POI",
+        },
+      ],
+      selectedAnnotations: [
+        {
+          type: "bos",
+          price: 100.8,
+          time: 0,
+          label: "هابط BOS",
+          strength: 80,
+          direction: "bearish",
+        },
+      ],
+      selectedGeometry: [],
+      forecastPath: [
+        { time: 1, price: 100 },
+        { time: 2, price: 101.5 },
+      ],
+    };
+    const out = await runDrawingAgent(fakeCtx(), {
+      analysisId: "a1",
+      market,
+      finalDecision: buyDecision,
+      plan,
+    });
+    const labels = out.map((d) => d.label ?? "");
+    const roles = out.map((d) => d.semanticRole);
+    const tradeLine = /^(دخول|وقف(?:\s*خسارة)?|هدف(?:\s*\d+)?|entry|stop(?:\s*loss)?|take[_\s-]?profit|target(?:\s*\d+)?)$/i;
+    assert.equal(
+      labels.filter((l) => tradeLine.test(l.trim())).length,
+      0,
+      "agent must not duplicate the system entry/stop/target labels",
+    );
+    assert.equal(roles.includes("entry"), false);
+    assert.equal(roles.includes("stop_loss"), false);
+    assert.equal(roles.includes("take_profit"), false);
+    assert.ok(
+      out.some((d) => d.semanticRole === "demand_zone"),
+      "trade_setup still draws the plan POI zone",
+    );
+    assert.ok(
+      out.some((d) => (d.meta as { annotation?: string } | undefined)?.annotation === "bos"),
+      "BOS annotations stay as agent drawings",
+    );
+    assert.ok(
+      out.some((d) => d.type === "forecast_path"),
+      "forecast path stays as an agent drawing",
+    );
+  });
 });

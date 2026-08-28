@@ -146,6 +146,73 @@ function bullets(lines: string[], mark = "•"): string {
   return lines.map((line) => `${mark} ${line}`).join("\n");
 }
 
+/** First sentence of a summary, capped so the TL;DR stays a one-liner. */
+function thesisLine(summary: string, cap = 180): string {
+  const clean = summary.trim();
+  if (!clean) return "";
+  // A price like 4696.9 is not a sentence boundary — only `.`/`!` followed
+  // by whitespace or the end of the string is.
+  const found = clean.search(/[.!\u06D4\u061F](?:\s|$)/);
+  const cut = (found >= 0 ? clean.slice(0, found) : clean).trim();
+  return cut.length > cap ? `${cut.slice(0, cap - 1)}…` : cut;
+}
+
+/**
+ * The compact TL;DR that opens a recommendation: direction, levels, thesis,
+ * invalidation. Same cards as the lead below it — a tighter reading, not a
+ * second derivation.
+ */
+export function renderTelegramTldr(
+  cards: AgentCard[],
+  locale: AppLocale,
+): string | null {
+  const byKind = new Map(cards.map((card) => [card.kind, card] as const));
+  const decision = byKind.get("decision");
+  if (!decision || decision.kind !== "decision") return null;
+  if (
+    decision.decision === "informational" ||
+    decision.decision === "action_required"
+  ) {
+    return null;
+  }
+  const plan = byKind.get("plan_levels");
+  const invalidation = byKind.get("invalidation");
+  const mark =
+    decision.decision === "buy" ? "🟢" : decision.decision === "sell" ? "🔴" : "⚪";
+  const lines: string[] = [
+    `<b>${t(locale, "tg.tldr")}:</b>`,
+    `• ${mark} <b>${t(locale, "tg.tldr.direction")}:</b> ${escapeTelegramHtml(
+      decisionLabel(decision.decision, locale),
+    )}`,
+  ];
+  if (plan && plan.kind === "plan_levels") {
+    lines.push(`• <b>${t(locale, "tg.tldr.entry")}:</b> ${price(plan.entry)}`);
+    lines.push(`• <b>${t(locale, "tg.tldr.stop")}:</b> ${price(plan.stopLoss)}`);
+    const target = plan.targets[0];
+    if (target != null) {
+      lines.push(`• <b>${t(locale, "tg.tldr.target")}:</b> ${price(target)}`);
+    }
+    if (plan.netRr != null) {
+      lines.push(`• <b>${t(locale, "tg.tldr.rr")}:</b> ${plan.netRr.toFixed(2)}`);
+    }
+  }
+  const thesis = thesisLine(decision.summary);
+  if (thesis) {
+    lines.push(`• <b>${t(locale, "tg.tldr.thesis")}:</b> ${esc(thesis)}`);
+  }
+  if (invalidation && invalidation.kind === "invalidation") {
+    const inv = invalidation.rule
+      ? esc(invalidation.rule)
+      : invalidation.level != null
+        ? `${t(locale, "agent.card.level")}: ${price(invalidation.level)}`
+        : "";
+    if (inv) {
+      lines.push(`• <b>${t(locale, "tg.tldr.invalid")}:</b> ${inv}`);
+    }
+  }
+  return lines.length > 1 ? lines.join("\n") : null;
+}
+
 /**
  * One card as Telegram text, or null when this card has nothing to say here.
  *
@@ -372,8 +439,6 @@ const EXPANDABLE_SECTIONS: readonly (readonly CardKind[])[] = [
   ["alternative_scenario"],
 ];
 
-const SECTION_KINDS: ReadonlySet<CardKind> = new Set(EXPANDABLE_SECTIONS.flat());
-
 /** The kinds every card message leads with — what the operator ACTS on. */
 const LEAD_KINDS: readonly CardKind[] = [
   "scenario_notice",
@@ -396,12 +461,20 @@ export function renderTelegramLead(
   locale: AppLocale,
 ): string {
   const byKind = new Map(cards.map((card) => [card.kind, card] as const));
-  return LEAD_KINDS
+  // A closed-market notice still frames everything: the operator must learn
+  // the market is closed before reading a plan. The TL;DR then leads the
+  // actionable card, before the plan section.
+  const scenario = byKind.get("scenario_notice");
+  const scenarioText =
+    scenario != null ? renderCardForTelegram(scenario, locale) : null;
+  const rest = LEAD_KINDS.filter((kind) => kind !== "scenario_notice")
     .map((kind) => byKind.get(kind))
     .filter((card): card is AgentCard => card != null)
     .map((card) => renderCardForTelegram(card, locale))
     .filter((block): block is string => block != null && block.trim().length > 0)
     .join("\n\n");
+  const tldr = renderTelegramTldr(cards, locale);
+  return [scenarioText, tldr, rest].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -444,19 +517,10 @@ export function renderCardsForTelegram(
     (decision.decision === "informational" ||
       decision.decision === "action_required");
 
-  // The lead, in the cards' own arrival order (which is CARD_ORDER).
-  const blocks = cards
-    .filter((card) => !SECTION_KINDS.has(card.kind))
-    .map((card) => renderCardForTelegram(card, locale))
-    .filter((block): block is string => block != null && block.trim().length > 0);
-
-  // A hello or a closed-market note is one paragraph. Appending its
-  // "reasons" / "warnings" / gate checklist is what made the phone feel
-  // like a debug dump — talk-only answers carry no folds at all.
-  if (!talkOnly) {
-    const details = renderTelegramDetails(cards, locale);
-    if (details) blocks.push(details);
-  }
-
-  return blocks.join("\n\n");
+  // The lead (TL;DR first, then decision / plan / activation / invalidation),
+  // then the folds. Talk-only answers carry no folds at all.
+  const lead = renderTelegramLead(cards, locale);
+  if (talkOnly) return lead;
+  const details = renderTelegramDetails(cards, locale);
+  return [lead, details].filter(Boolean).join("\n\n");
 }

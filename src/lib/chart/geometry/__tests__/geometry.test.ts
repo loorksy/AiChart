@@ -232,6 +232,23 @@ describe("head & shoulders", () => {
     assert.ok(hs, "H&S detected");
     assert.equal(hs!.status, "forming");
   });
+
+  it("does not stamp inverse H&S on a ranging tape", () => {
+    // Mild two-way drift — the production failure was a detector that labelled
+    // almost any gold range as inverse head-and-shoulders.
+    const candles: GeometryCandle[] = [];
+    let price = 4600;
+    for (let i = 0; i < 180; i++) {
+      price += ((i % 7) - 3) * 0.35;
+      candles.push(candle(i, price - 0.6, price + 0.6, price));
+    }
+    const snapshot = detectChartGeometry({ candles });
+    assert.equal(
+      snapshot.patterns.some((p) => p.patternType === "inverse_head_and_shoulders"),
+      false,
+      "ranging noise must not default to inverse H&S",
+    );
+  });
 });
 
 describe("bull flag", () => {

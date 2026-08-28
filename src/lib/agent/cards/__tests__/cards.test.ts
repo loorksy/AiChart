@@ -39,6 +39,11 @@ import {
   type AgentCard,
   type CardKind,
 } from "@/lib/agent/cards/types";
+import {
+  invalidationDisplay,
+  isPlaceholderGateLabel,
+  visibleGateVerdicts,
+} from "@/lib/agent/cards/reportPresentation";
 import type { AgentFinalResult } from "@/lib/agent/types";
 
 const SRC = path.join(import.meta.dirname, "..", "..", "..", "..");
@@ -279,7 +284,8 @@ describe("the phone gets the same answer", () => {
       deriveCards(fullResult({ marketClosedScenario: undefined })),
       "ar",
     );
-    assert.ok(openText.startsWith("<b>شراء</b>"), "mid-session the decision leads");
+    assert.ok(openText.startsWith("<b>TL;DR:</b>"), "mid-session the TL;DR leads");
+    assert.ok(openText.includes("<b>شراء</b>"), "the decision is in the lead");
     assert.ok(text.includes("3980"), "the stop must survive to the phone");
     assert.ok(text.includes("4040"), "so must the targets");
     // The four things the deleted `analysisCard` builder silently dropped.
@@ -351,6 +357,57 @@ describe("the phone gets the same answer", () => {
 });
 
 describe("the lead card and the folded depth (the phone's reading order)", () => {
+  it("opens the lead with a compact TL;DR before the plan", () => {
+    const lead = renderTelegramLead(
+      deriveCards(fullResult({ marketClosedScenario: undefined })),
+      "ar",
+    );
+    const tldrAt = lead.indexOf("<b>TL;DR:</b>");
+    const planAt = lead.indexOf("الخطة");
+    assert.ok(tldrAt === 0, "TL;DR is the first thing the operator reads");
+    assert.ok(planAt > tldrAt, "the plan section still follows");
+    for (const line of ["الاتجاه", "الدخول", "الوقف", "الهدف", "العائد/المخاطرة", "الأطروحة", "الإبطال"]) {
+      assert.ok(lead.includes(line), `TL;DR must name ${line}`);
+    }
+    assert.ok(lead.includes("🟢"), "buy is marked");
+    assert.ok(lead.includes("4000"), "entry is the real number");
+    assert.ok(lead.includes("3980"), "stop is the real number");
+    assert.ok(lead.includes("4040"), "first target is the real number");
+    assert.ok(lead.includes("1.80"), "net R:R is the real number");
+    assert.ok(lead.includes("شراء من منطقة الطلب"), "the thesis keeps the summary sentence");
+    assert.ok(!lead.includes("<blockquote"), "the TL;DR is always visible, never folded");
+  });
+
+  it("does not treat a price decimal as a sentence cut in the thesis", () => {
+    const lead = renderTelegramLead(
+      deriveCards(
+        fullResult({
+          marketClosedScenario: undefined,
+          summary: "بيع من إعادة اختبار المقاومة عند 4696.9 مع ضعف الزخم.",
+        }),
+      ),
+      "ar",
+    );
+    assert.ok(
+      lead.includes("بيع من إعادة اختبار المقاومة عند 4696.9 مع ضعف الزخم"),
+      "4696.9 must survive the thesis one-liner",
+    );
+  });
+
+  it("omits the TL;DR on a talk-only informational card", () => {
+    const text = renderCardsForTelegram(
+      deriveCards(
+        fullResult({
+          decision: "informational",
+          summary: "أهلاً — كيف أساعدك؟",
+          recommendation: undefined,
+        }),
+      ),
+      "ar",
+    );
+    assert.ok(!text.includes("TL;DR"));
+    assert.ok(text.includes("أهلاً — كيف أساعدك؟"));
+  });
   it("leads with what the operator acts on, folds the rest into expandable quotes", () => {
     const text = renderCardsForTelegram(
       deriveCards(fullResult({ marketClosedScenario: undefined })),
@@ -431,6 +488,37 @@ describe("internals never reach the phone (each pattern is a real transcript)", 
     assert.ok(!text.includes("أُزيل"), "the relic gate's label must never render");
     assert.ok(!text.includes("✅ Removed"), "nor its English label");
     assert.ok(text.includes("الأخبار والأحداث الاقتصادية"), "real gates still render");
+
+    const card = deriveCards(result).find((c) => c.kind === "gate_checklist");
+    assert.ok(card && card.kind === "gate_checklist");
+    const visible = visibleGateVerdicts(card.verdicts);
+    assert.deepEqual(
+      visible.map((v) => v.id),
+      ["G1", "G6"],
+      "the platform report drops the relic slot too",
+    );
+    assert.equal(isPlaceholderGateLabel("أُزيل"), true);
+    assert.equal(isPlaceholderGateLabel("Removed"), true);
+    assert.equal(isPlaceholderGateLabel("الأخبار والأحداث الاقتصادية"), false);
+  });
+
+  it("invalidation prints the rule once — never the price twice", () => {
+    assert.deepEqual(invalidationDisplay("إغلاق تحت 3975", 3975), {
+      statement: "إغلاق تحت 3975",
+      price: null,
+    });
+    assert.deepEqual(invalidationDisplay("إغلاق تحت 4612.76", 4612.76), {
+      statement: "إغلاق تحت 4612.76",
+      price: null,
+    });
+    assert.deepEqual(invalidationDisplay("كسر قاع الجلسة", 4612.76), {
+      statement: "كسر قاع الجلسة",
+      price: "4612.76",
+    });
+    assert.deepEqual(invalidationDisplay(undefined, 3975), {
+      statement: null,
+      price: "3975.00",
+    });
   });
 
   it("evidence renders as graded human sentences, never key:value dumps", () => {
@@ -531,6 +619,61 @@ describe("both surfaces are wired to the derivation", () => {
       /analysisCard\(/,
       "a second message builder is how the surfaces started disagreeing",
     );
+  });
+
+  it("the report button opens a modal, not an in-chat expansion", () => {
+    const view = readFileSync(
+      path.join(SRC, "components", "agent", "cards", "AgentCards.tsx"),
+      "utf8",
+    );
+    const report = readFileSync(
+      path.join(SRC, "components", "agent", "cards", "RecommendationReport.tsx"),
+      "utf8",
+    );
+    assert.match(view, /agent\.signal\.show_report/);
+    assert.match(view, /Dialog\.Root/);
+    assert.match(report, /recommendation-report-modal/);
+    assert.match(report, /recommendation-report-close/);
+    assert.match(
+      report,
+      /hidden[^\n]*md:inline-flex[\s\S]{0,200}recommendation-report-close/,
+      "the X is hidden on mobile and only shown from md up",
+    );
+    assert.match(report, /recommendation-report-handle/, "the drag handle is the mobile close affordance");
+    assert.match(report, /useSheetGesture/, "mobile dismiss is a fold-down gesture, not an X");
+    assert.match(report, /sr-only md:hidden/, "screen readers can still dismiss on mobile");
+    assert.match(view, /Dialog\.Backdrop/, "tapping the dimmed overlay still dismisses");
+    assert.doesNotMatch(
+      view + report,
+      /LiquidMetalFrame/,
+      "the report is a document, not a liquid-metal gadget",
+    );
+    assert.doesNotMatch(
+      report,
+      /metal-chip/,
+      "report chrome is not metal-chip",
+    );
+    assert.doesNotMatch(
+      view,
+      /data-testid="agent-cards-details"/,
+      "the report must not expand inside the chat thread",
+    );
+  });
+
+  it("the report document is responsive: sheet on mobile, two columns from tablet", () => {
+    const report = readFileSync(
+      path.join(SRC, "components", "agent", "cards", "RecommendationReport.tsx"),
+      "utf8",
+    );
+    assert.match(report, /left-0 right-0 top-auto bottom-0/);
+    assert.match(report, /md:left-1\/2/);
+    assert.match(report, /md:grid-cols-2/);
+    assert.match(report, /lg:w-\[min\(100%-2rem,56rem\)\]/);
+    assert.match(report, /flex-wrap gap-2/);
+    assert.match(report, /grid-cols-2 gap-x-4 gap-y-3/);
+    assert.match(report, /visibleGateVerdicts/);
+    assert.match(report, /isPlaceholderGateLabel/);
+    assert.match(report, /invalidationDisplay/);
   });
 
   it("the react renderer handles every kind the contract declares", () => {

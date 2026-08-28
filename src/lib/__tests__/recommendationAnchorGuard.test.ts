@@ -72,6 +72,11 @@ describe("recommendation anchors come from stored creation time, never render-ti
       /time: this\.anchorSec\(rec, barSec\)/,
       "the position boxes must anchor through anchorSec (created_at, else the cached fallback)",
     );
+    assert.match(
+      src,
+      /printAnchorSec\(rec\)/,
+      "immediate follow-through must prefer anchor_time / triggeredAt over created_at",
+    );
     assert.doesNotMatch(
       src,
       /time: stableAnchorSec\(/,
@@ -79,17 +84,92 @@ describe("recommendation anchors come from stored creation time, never render-ti
     );
   });
 
-  it("the trade plan renders through the NATIVE position tool with no future time anchor", () => {
+  it("the trade plan renders as one native Long/Short Position with no future time anchor", () => {
     const src = read("lib/chart/tv/tvDrawingAdapter.ts");
     assert.match(
       src,
-      /shape: direction === "long" \? "long_position" : "short_position"/,
-      "the risk/reward zones must be TradingView's RiskReward tool, not hand-drawn rectangles",
+      /positionBoxEdges/,
+      "P/L fills must go through positionBoxEdges so left/right are finite unix seconds",
+    );
+    assert.match(
+      src,
+      /positionToolPoints/,
+      "the RR tool must be created with Entry + Close unix-second corners",
+    );
+    assert.match(
+      src,
+      /shape: pending\.direction === "long" \? "long_position" : "short_position"/,
+      "profit and risk must be ONE native Long/Short Position tool, not two boxes",
+    );
+    assert.match(
+      src,
+      /stopLevel:/,
+      "stopLevel must be set on the same shape as profitLevel",
+    );
+    assert.match(
+      src,
+      /profitLevel:/,
+      "profitLevel (furthest TP) must be set on the same shape",
+    );
+    assert.doesNotMatch(
+      src,
+      /shape: "rectangle",\s*\n\s*\.\.\.EDITABLE,\s*\n\s*overrides: this\.boxOverrides/,
+      "P/L must not use rectangle: this widget ignores rectangle time and extends the fill",
+    );
+    assert.doesNotMatch(
+      src,
+      /shape: "polyline",\s*\n\s*\.\.\.EDITABLE,\s*\n\s*overrides: this\.boxOverrides/,
+      "two polylines still looked infinite and were two separate fills",
+    );
+    assert.match(
+      src,
+      /positionBoxVertices/,
+      "pin-failure fallback is one closed polyline with unix-second corners",
+    );
+    assert.match(
+      src,
+      /positionPinHonored/,
+      "after pin, getPoints must still show rec left and lastBar right",
+    );
+    assert.match(
+      src,
+      /createFiniteFallback|usingFallback/,
+      "dropped native times must fall back rather than ship an infinite band",
     );
     assert.doesNotMatch(
       src,
       /LATERAL_BARS/,
       "a caller-computed right edge beyond the last bar clamps to the MOVING live bar — that was the thin expanding column",
+    );
+    assert.match(
+      src,
+      /syncRightEdge/,
+      "right edge must grow to lastBar already in history via setPoints, not a future time",
+    );
+    assert.match(
+      src,
+      /setPoints/,
+      "width updates must pin left at the print entry and move only the Close point",
+    );
+    assert.match(
+      src,
+      /pinPosition/,
+      "createMultipointShape drops times on this widget — setPoints after create pins the walls",
+    );
+    assert.doesNotMatch(
+      src,
+      /lastBarTime.*\+.*barSec|LATERAL_BARS \*/,
+      "must not synthesize a future Close as entry + N bars",
+    );
+    assert.match(
+      src,
+      /MIN_PLAUSIBLE_UNIX_SEC/,
+      "zero/epoch/bar-index anchors must be rejected so the box never starts at t=0",
+    );
+    assert.doesNotMatch(
+      src,
+      /createShape\(\s*\{[^}]*\}\s*,\s*\{[^}]*shape:\s*"long_position"/,
+      "single-point createShape synthesizes Close from pane width — use two-point createMultipointShape",
     );
   });
 });

@@ -108,7 +108,7 @@
   "src/lib/agent/drawings/buildDrawingPlan.ts": 17,
   "src/lib/agent/envelopePresentation.ts": 2,
   "src/lib/agent/errorTaxonomy.ts": 1,
-  "src/lib/agent/evidenceDimensions.ts": 48,
+  "src/lib/agent/evidenceDimensions.ts": 45,
   "src/lib/agent/fallback.ts": 2,
   "src/lib/agent/generalAnswer.ts": 3,
   "src/lib/agent/indicators/handleIndicatorCommand.ts": 13,

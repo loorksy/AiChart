@@ -45,6 +45,11 @@ export interface GateInputs {
   statisticalSupport?: unknown;
   /** The plan about to be constructed, in canonical entry semantics. */
   plan: EntryPlan;
+  /**
+   * Synthesizer already froze a printed follow-through (kept the written
+   * entry, stamped a print-time drawing anchor). G7 must not chase it.
+   */
+  freezeEntry?: boolean;
   /** ATR on the entry timeframe, price units — G7's reachability yardstick. */
   atr: number;
   /**
@@ -310,6 +315,8 @@ export function buildGates(input: GateInputs): GateBuildResult {
           // Without this every waiting plan was judged by the market fill
           // tolerance and refused for sitting where it was designed to sit.
           entryType: input.plan.entryType,
+          activationRule: input.plan.activationRule ?? null,
+          freezeEntry: input.freezeEntry,
           minRr: input.plan.minRr,
         });
         // A re-priced plan PASSES. Price outrunning the written entry is not a

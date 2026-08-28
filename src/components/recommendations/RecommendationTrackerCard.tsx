@@ -16,10 +16,15 @@ import {
 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { smartTipKey } from "@/lib/recommendations/smartTip";
+import { formatSignedR } from "@/lib/recommendations/tradeMetrics";
+import { displayROf } from "@/lib/recommendations/tradeMetricsSummary";
 import type {
   TrackedRecommendation,
   TrackedRecommendationStatus,
 } from "@/lib/recommendations/types";
+import { ShareProfitButton } from "@/components/recommendations/ShareProfitButton";
+import { ShareRecommendationButton } from "@/components/recommendations/ShareRecommendationButton";
+import { isRealizedOutcome } from "@/lib/recommendations/profitCard";
 import { cn } from "@/lib/utils";
 
 type ExecutionState = NonNullable<TrackedRecommendation["executionState"]>;
@@ -75,12 +80,6 @@ const KNOWN_SETUP_TYPES = new Set([
   "breakout_retest",
 ]);
 
-function fmtR(value?: number): string | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  return `${value > 0 ? "+" : ""}${value.toFixed(1)}R`;
-}
-
-/** App-locale timestamp — never the browser locale (Arabic-first UI). */
 function fmtTime(ms: number | undefined, locale: string): string {
   if (!ms) return "";
   try {
@@ -137,8 +136,11 @@ function CopyPrice({ value }: { value: number }) {
  */
 export function RecommendationTrackerCard({
   rec,
+  showShare = true,
 }: {
   rec: TrackedRecommendation;
+  /** False when a parent already exposes the same control (full report header). */
+  showShare?: boolean;
 }) {
   const { t, dir, locale } = useLocale();
 
@@ -188,7 +190,8 @@ export function RecommendationTrackerCard({
       ? rec.slHitAt
       : undefined;
 
-  const netR = won ? fmtR(rec.netRr ?? rec.rr) : lost ? fmtR(-1) : null;
+  const shownR = displayROf(rec, rec.priceAtCreation);
+  const netR = formatSignedR(shownR);
 
   const levels = [
     {
@@ -257,6 +260,14 @@ export function RecommendationTrackerCard({
                 {t("rec.detail.plan_type")}: {t(`rec.plan_type.${rec.planType}`)}
               </span>
             )}
+            {showShare ? (
+              <span className="ms-auto inline-flex items-center gap-0.5">
+                <ShareRecommendationButton rec={rec} />
+                {isRealizedOutcome(rec.outcome) ? (
+                  <ShareProfitButton rec={rec} variant="result" />
+                ) : null}
+              </span>
+            ) : null}
           </div>
 
           {/* Narrow container: verdict and pill share a row. Wide container
@@ -383,7 +394,7 @@ export function RecommendationTrackerCard({
               <span
                 className={cn(
                   "shrink-0 font-mono font-bold tabular-nums",
-                  won ? "text-buy" : "text-sell",
+                  (shownR ?? 0) >= 0 ? "text-buy" : "text-sell",
                 )}
                 dir="ltr"
               >

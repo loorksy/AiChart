@@ -142,6 +142,25 @@ function closeBasedLeaves(rule: ActivationRule | null | undefined): LeafActivati
   );
 }
 
+/** True when the plan still needs a confirming close, not just a touch. */
+export function activationRequiresClose(
+  rule: ActivationRule | { kind: string; rules?: Array<{ kind: string }> } | null | undefined,
+): boolean {
+  return closeBasedLeaves(rule as ActivationRule | null | undefined).length > 0;
+}
+
+/** The level a close-based rule is waiting to print beyond, if any. */
+export function closeTriggerLevel(
+  rule: ActivationRule | { kind: string; rules?: Array<{ kind: string }> } | null | undefined,
+): number | null {
+  for (const leaf of closeBasedLeaves(rule as ActivationRule | null | undefined)) {
+    if ("level" in leaf && typeof leaf.level === "number" && leaf.level > 0) {
+      return leaf.level;
+    }
+  }
+  return null;
+}
+
 /** The price level a close-based leaf is measured against. */
 function leafLevel(leaf: LeafActivationRule): number | null {
   return "level" in leaf && typeof leaf.level === "number" ? leaf.level : null;
@@ -171,6 +190,11 @@ export function resolveEntryType(input: {
     return input.retestZone ? "retest_zone" : "confirmation_close";
   }
   if (input.retestZone) return "retest_zone";
+  // A wait that has been withdrawn (planType immediate, no remaining trigger)
+  // is a market fill — even if the candidate was authored as a limit/stop.
+  // Leaving `sell_limit` on an immediate follow-through re-armed G7 as a
+  // 4-ATR wait and shipped the 4616.66 / live-4606 card as conditional.
+  if (input.planType === "immediate" && !input.activationRule) return "market";
 
   const declared = (input.declared ?? "").toLowerCase();
   if (isEntryType(declared)) {
@@ -348,19 +372,31 @@ export interface FillResult {
 }
 
 /**
- * How close price must come to a touch-filled entry for the touch to count.
+ * Gold (XAUUSD) touch band, in price units. The operator was explicit: 10–15
+ * points. A live 5m sell at 4610 with price 10 points above counts as filled;
+ * 20 points above is still a wait. These are USD on gold, not 0.10 "pips".
+ */
+export const GOLD_FILL_TOLERANCE_FLOOR = 10;
+export const GOLD_FILL_TOLERANCE_CAP = 15;
+
+/**
+ * How close price must come to a touch-filled entry — or to a take-profit —
+ * for the touch to count. Same helper for both: a 10–15 point gold band
+ * (floor 10, cap 15) is the operator-mandated "near enough".
  *
  * Exists because of a real complaint: a XAUUSD plan whose entry sat at
  * 4646.19 watched price turn 30 cents above it and run to every target — and
  * the record graded the plan as never filled. Requiring the exact cent is
- * grading a fill the market never owed us; a real limit order at that level
- * with normal spread WOULD have filled.
+ * grading a fill the market never owed us. The same honesty applies to
+ * targets: a sell TP at 4591.48 with live 4596.15 (~4.7 points away) is
+ * inside this band and must count as reached.
  *
- * The band is proportional to price so one rule serves every instrument:
- *  - floor  ~0.011% of price (≈ 0.50 USD on gold at 4600 — "5 points")
- *  - cap    ~0.033% of price (≈ 1.50 USD on gold at 4600 — "15 points")
- *  - inside the band, volatility decides: 15% of ATR, matching the tolerance
- *    the plan builder already applies to activation rules at creation.
+ * On gold (price ≥ 100) the operator-mandated band is 10–15 points: floor 10,
+ * cap 15, ATR-scaled inside. The previous ~0.5–1.5 USD / 0.5×ATR / 5-point
+ * overshoot was too wide a *requirement* for converting leftover waits (a
+ * 4605.39 sell with live 4601.89 — 3.5 points through — still shipped as
+ * "wait") and too *narrow* a touch band for approach-from-the-waiting-side.
+ * Smaller instruments keep a proportional spread-scale band.
  */
 export function entryFillTolerance(input: {
   price: number;
@@ -368,13 +404,105 @@ export function entryFillTolerance(input: {
 }): number {
   const price = input.price;
   if (!Number.isFinite(price) || price <= 0) return 0;
-  const floor = price * 1.1e-4;
-  const cap = price * 3.3e-4;
   const fromAtr =
     input.atr != null && Number.isFinite(input.atr) && input.atr > 0
       ? input.atr * 0.15
       : 0;
+  if (price >= 100) {
+    return Math.min(
+      GOLD_FILL_TOLERANCE_CAP,
+      Math.max(GOLD_FILL_TOLERANCE_FLOOR, fromAtr),
+    );
+  }
+  const floor = price * 1.1e-4;
+  const cap = price * 3.3e-4;
   return Math.min(cap, Math.max(floor, fromAtr));
+}
+
+/**
+ * How close price must come to a take-profit for the target to count as hit.
+ *
+ * This is `entryFillTolerance` under a second name: the operator mandated the
+ * same 10–15 point gold band for every TP (buy or sell) that already grades a
+ * touch-filled entry. A wrapper — not a second formula — so the two cannot
+ * drift. The stop does NOT use this band; invalidation stays exact
+ * (close | touch) on the stop itself.
+ */
+export function targetHitTolerance(input: {
+  price: number;
+  atr?: number | null;
+}): number {
+  return entryFillTolerance(input);
+}
+
+export interface TargetHitResult {
+  reached: boolean;
+  /**
+   * Nearest price this candle actually traded to the target. Only set when
+   * `reached`. Never a level the market did not print — same clamp as a
+   * tolerance-band entry fill.
+   */
+  hitPrice?: number;
+}
+
+/**
+ * Did this candle reach a take-profit, and at what honest price?
+ *
+ * Side-aware, unlike the two-sided entry band: a target only counts from the
+ * waiting side (or already through). Omitted/zero tolerance is exact touch.
+ *
+ *  - Sell (target below): `low <= target + tolerance` — approached from above
+ *    within the band, or already through. Does not require `low <= target`.
+ *  - Buy (target above): `high >= target - tolerance` — approached from below
+ *    within the band, or already through.
+ *
+ * Hit price is the labeled target clamped into the candle's [low, high]: the
+ * nearest actually-traded print. A sell TP at 4591.48 whose low is 4596.15
+ * records 4596.15, never 4591.48. A candle that traded through records the
+ * labeled line (the market did print it). The stop does NOT use this.
+ */
+export function resolveTargetHit(input: {
+  direction: "buy" | "sell";
+  target: number;
+  candle: { high: number; low: number };
+  tolerance?: number;
+}): TargetHitResult {
+  const target = input.target;
+  if (!Number.isFinite(target)) return { reached: false };
+  const tol =
+    input.tolerance != null && Number.isFinite(input.tolerance) && input.tolerance > 0
+      ? input.tolerance
+      : 0;
+  const reached =
+    input.direction === "buy"
+      ? input.candle.high >= target - tol
+      : input.candle.low <= target + tol;
+  if (!reached) return { reached: false };
+  const hitPrice = Math.min(input.candle.high, Math.max(input.candle.low, target));
+  return { reached: true, hitPrice };
+}
+
+/** True when `resolveTargetHit` would count this candle as a hit. */
+export function targetZoneReached(input: {
+  direction: "buy" | "sell";
+  candle: { high: number; low: number };
+  target: number;
+  tolerance?: number;
+}): boolean {
+  return resolveTargetHit(input).reached;
+}
+
+/**
+ * Nearest actually-traded price to the labeled target, clamped into the
+ * candle. Callers that already know the zone was reached use this; otherwise
+ * prefer `resolveTargetHit` which refuses a price on a miss.
+ */
+export function honestTargetHitPrice(input: {
+  direction: "buy" | "sell";
+  candle: { high: number; low: number };
+  target: number;
+}): number {
+  return Math.min(input.candle.high, Math.max(input.candle.low, input.target));
 }
 
 /**
@@ -500,17 +628,18 @@ export function resolveFill(input: {
         input.tolerance != null && Number.isFinite(input.tolerance) && input.tolerance > 0
           ? input.tolerance
           : 0;
-      const touched =
-        plan.direction === "buy"
-          ? candle.low <= plan.entry + tol
-          : candle.high >= plan.entry - tol;
+      // Range overlap with [entry − tol, entry + tol]: a touch from EITHER
+      // side counts. The old one-sided test (sell: high ≥ entry − tol) treated
+      // a candle sitting 20 points ABOVE a sell as a fill once tol grew to
+      // 10–15, and missed a breakdown that had already gone through below.
+      const bandLow = plan.entry - tol;
+      const bandHigh = plan.entry + tol;
+      const touched = candle.low <= bandHigh && candle.high >= bandLow;
       if (!touched) return { filled: false };
       // Grading honesty: when only the tolerance band was reached, the fill is
-      // the nearest traded price (the candle's extreme), not the level itself.
-      const effectiveEntry =
-        plan.direction === "buy"
-          ? Math.max(plan.entry, candle.low)
-          : Math.min(plan.entry, candle.high);
+      // the nearest traded price (clamped into the candle's range), not the
+      // level itself — that gap is the recorded slip.
+      const effectiveEntry = Math.min(candle.high, Math.max(candle.low, plan.entry));
       return { filled: true, effectiveEntry };
     }
   }
@@ -542,4 +671,60 @@ export function describeEntry(plan: Pick<EntryPlan, "direction" | "entryType" | 
     default:
       return `${side} معلّق: الدخول عند لمس السعر ${fmt(plan.entry)}.`;
   }
+}
+
+/**
+ * Minimum distance between consecutive take-profits, so TP2/TP3 are distinct
+ * levels rather than a 0.09-point duplicate of their neighbour.
+ *
+ * Independent of the 10–15 point gold FILL / TARGET-HIT band — that band is
+ * touch activation and TP-zone grading (`entryFillTolerance` /
+ * `targetHitTolerance`), not how far apart consecutive TPs must sit. Gold
+ * keeps a several-point floor plus 0.15×ATR. The 2026-08 production card
+ * printed TP2 4593.80 / TP3 4593.71 — visually and practically the same line.
+ */
+export function minConsecutiveTargetSpacing(input: {
+  price: number;
+  atr?: number | null;
+}): number {
+  const price = input.price;
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  const atrFrac =
+    input.atr != null && Number.isFinite(input.atr) && input.atr > 0
+      ? input.atr * 0.15
+      : 0;
+  // Several points on XAUUSD (~4600); smaller instruments keep a spread-scale floor.
+  const pointsFloor = price >= 100 ? 5 : price * 1.1e-4;
+  return Math.max(pointsFloor, atrFrac);
+}
+
+/**
+ * Drop a target that would collapse onto its neighbour. Order is nearest-first
+ * in the trade direction: if TP2 sits inside the floor of TP1 it is omitted
+ * (TP3 may then become TP2 if it clears the floor from TP1); if TP3 sits
+ * inside the floor of TP2 it is omitted. Never invents a replacement level.
+ */
+export function filterDistinctTargets(input: {
+  direction: "buy" | "sell";
+  entry: number;
+  targets: number[];
+  atr?: number | null;
+}): number[] {
+  const spacing = minConsecutiveTargetSpacing({
+    price: input.entry,
+    atr: input.atr,
+  });
+  const side = input.direction === "buy" ? 1 : -1;
+  const ordered = [...input.targets]
+    .filter((t) => Number.isFinite(t) && t > 0)
+    .filter((t) => (side > 0 ? t > input.entry : t < input.entry))
+    .sort((a, b) => (side > 0 ? a - b : b - a));
+  const out: number[] = [];
+  for (const t of ordered) {
+    const prev = out[out.length - 1];
+    if (prev != null && Math.abs(t - prev) + 1e-9 < spacing) continue;
+    out.push(t);
+    if (out.length >= 3) break;
+  }
+  return out;
 }

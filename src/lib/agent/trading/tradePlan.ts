@@ -13,6 +13,7 @@
  * grounding every number in real evidence, and deriving the execution state.
  */
 import type { TradeCandidate } from "./buildTradeCandidates";
+import { filterDistinctTargets } from "@/lib/recommendations/entrySemantics";
 import { levelOrderValid, roundToTick, type SymbolGeometryMeta } from "./scalpGeometry";
 
 export type PlanType = "immediate" | "anticipatory" | "conditional";
@@ -146,16 +147,26 @@ export function resolvePlanLevels(input: {
   evidenceLevels: EvidenceLevel[];
   tolerance: number;
   meta?: SymbolGeometryMeta | null;
+  atr?: number | null;
 }): ResolvedPlanLevels {
+  const distinct = (entry: number, targets: number[]) =>
+    filterDistinctTargets({
+      direction: input.direction,
+      entry,
+      targets,
+      atr: input.atr,
+    });
+
   if (input.selectedCandidate) {
     const c = input.selectedCandidate;
+    const targets = distinct(c.entry, c.targets);
     return {
       levels: {
         entryLow: Math.min(c.poi.low, c.entry),
         entryHigh: Math.max(c.poi.high, c.entry),
         preferredEntry: c.entry,
         stopLoss: c.stop_loss,
-        targets: c.targets,
+        targets: targets.length ? targets : c.targets,
       },
       source: "candidate",
     };
@@ -211,13 +222,15 @@ export function resolvePlanLevels(input: {
   }
 
   const round = (price: number) => roundToTick(price, input.meta);
+  const roundedEntry = round(preferredEntry);
+  const roundedTargets = distinct(roundedEntry, targets.map(round));
   return {
     levels: {
       entryLow: round(Math.min(entryLow, entryHigh)),
       entryHigh: round(Math.max(entryLow, entryHigh)),
-      preferredEntry: round(preferredEntry),
+      preferredEntry: roundedEntry,
       stopLoss: round(stopLoss),
-      targets: targets.map(round),
+      targets: roundedTargets.length ? roundedTargets : targets.map(round),
     },
     source: "evidence_levels",
   };
@@ -239,12 +252,15 @@ export function deriveExecutionState(input: {
   if (input.blocked) return "blocked";
   if (!input.levels) return "awaiting_activation";
   if (input.planType === "conditional") return "awaiting_activation";
+  // Immediate follow-through is valid now even when live has already left
+  // the drawn zone (sell 4605.39 / live 4601.89). Requiring `inZone` here
+  // re-labelled those prints as awaiting_activation and sat the card in wait.
+  if (input.planType === "immediate") return "valid_now";
   const price = Number(input.currentPrice);
   if (!Number.isFinite(price)) return "awaiting_activation";
   const inZone =
     price >= Math.min(input.levels.entryLow, input.levels.entryHigh) &&
     price <= Math.max(input.levels.entryLow, input.levels.entryHigh);
-  if (input.planType === "immediate") return inZone ? "valid_now" : "awaiting_activation";
   // Anticipatory: acting early inside the zone is the point of the plan.
   return inZone ? "valid_now" : "awaiting_activation";
 }
