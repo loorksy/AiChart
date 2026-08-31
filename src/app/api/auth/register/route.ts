@@ -5,6 +5,7 @@ import { hashPassword, setSession } from "@/lib/auth";
 import { ensureUserDefaults } from "@/lib/store";
 import { isSingleUserMode } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
+import { assertRegistrationOpen } from "@/lib/auth/registration";
 import { hasPlatformAccess } from "@/lib/platformAccess";
 import { normalizeWhatsApp } from "@/lib/phone";
 
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
         { status: 403 },
       );
     }
+    await assertRegistrationOpen();
     const json = await req.json();
     const { username, whatsapp, email, password } = schema.parse(json);
     const phone = normalizeWhatsApp(whatsapp);

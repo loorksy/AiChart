@@ -831,6 +831,9 @@ export const ar: Record<TranslationKey, string> = {
   "auth.country_code": "رمز الدولة",
   "auth.phone_number": "رقم الهاتف",
   "auth.phone_hint": "أدخل رقم واتساب بدون صفر في البداية",
+  "auth.registration_closed_title": "التسجيل مغلق",
+  "auth.registration_closed":
+    "التسجيل مغلق حالياً. يمكنك تسجيل الدخول إذا كان لديك حساب.",
 
   // Guest chart + shared accessibility
   "chart.smart_chart": "الشارت الذكي",

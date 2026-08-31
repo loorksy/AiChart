@@ -11,6 +11,7 @@ import {
 import type { ActivationRule } from "./recommendations/activationRule";
 import { deriveExecutionState, type PlanType } from "./agent/trading/tradePlan";
 import { hashPassword } from "./auth";
+import { assertRegistrationOpen } from "./auth/registration";
 import type { TelegramLoginPayload } from "./telegramAuth";
 import { telegramDisplayEmail } from "./telegramAuth";
 import type {
@@ -267,6 +268,9 @@ export async function upsertTelegramUser(
     return { user: existing, isNew: false };
   }
 
+  // First-time Telegram account. Existing telegram_id rows still sign in
+  // when registration is closed; only this insert is gated.
+  await assertRegistrationOpen();
   const email = await uniqueTelegramEmail(telegramDisplayEmail(payload));
   const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
   const tgUsername = payload.username?.replace(/^@/, "").trim();

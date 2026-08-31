@@ -121,6 +121,23 @@ export function handleError(err: unknown): NextResponse {
   if (err instanceof ApiError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
+  // Closed public signup: a named, stable 403 so clients never see a 500.
+  // Matched by name (not instanceof) so a duplicate module copy still maps.
+  if (
+    err &&
+    typeof err === "object" &&
+    "name" in err &&
+    (err as { name?: string }).name === "RegistrationClosedError"
+  ) {
+    const closed = err as { message?: string };
+    return NextResponse.json(
+      {
+        error: closed.message || "REGISTRATION_CLOSED",
+        code: "REGISTRATION_CLOSED",
+      },
+      { status: 403 },
+    );
+  }
   // Surface Research Service failures with code + HTTP status (never opaque).
   if (
     err &&

@@ -232,6 +232,18 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "london | new-york | singapore",
   },
   {
+    // Public signup is CLOSED until an admin flips this on. A missing row
+    // is treated as off — see isRegistrationOpen() — so a new install or a
+    // key that was never saved cannot accept first-time accounts.
+    key: "REGISTRATION_OPEN",
+    label: "Allow new registrations",
+    labelEn: "Allow new registrations",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    type: "toggle",
+  },
+  {
     // V2-A4: Google Sign-In — paste the OAuth client and flip the toggle.
     key: "GOOGLE_AUTH_ENABLED",
     label: "تفعيل تسجيل الدخول عبر Google",
