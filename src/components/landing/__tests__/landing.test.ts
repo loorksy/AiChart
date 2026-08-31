@@ -7,12 +7,24 @@ import {
   LANDING_ROUTES,
   getLandingCopy,
 } from "../landingCopy";
+import {
+  ANTHROPIC_MODEL_CHOICES,
+  PLATFORM_DEFAULT_MODEL_ID,
+  shortModelLabel,
+} from "@/lib/modelCatalog";
+import { ar } from "@/lib/i18n/ar";
+import { en } from "@/lib/i18n/en";
 
 const root = resolve(process.cwd(), "src");
 
 function read(rel: string): string {
   return readFileSync(resolve(root, rel), "utf8");
 }
+
+const DEFAULT_MODEL_LABEL = shortModelLabel(
+  ANTHROPIC_MODEL_CHOICES.find((m) => m.id === PLATFORM_DEFAULT_MODEL_ID)?.label ??
+    "",
+);
 
 describe("landing redesign", () => {
   test("page redirects authenticated users and exports metadata", () => {
@@ -25,29 +37,43 @@ describe("landing redesign", () => {
     assert.doesNotMatch(page, /MetaTrader execution|Execute with clarity/);
   });
 
-  test("canonical structure mounts redesigned sections without candlestick backdrop", () => {
+  test("canonical structure is one viewport — no marketing scroll below the fold", () => {
     const page = read("components/landing/LandingPage.tsx");
     assert.match(page, /LandingHero/);
-    assert.match(page, /LandingBenefits/);
-    assert.match(page, /LandingHowItWorks/);
-    assert.match(page, /LandingStats/);
-    assert.match(page, /LandingWorkspace/);
-    assert.match(page, /LandingTrust/);
-    assert.match(page, /LandingTestimonials/);
-    assert.match(page, /LandingPricing/);
-    assert.match(page, /LandingHistory/);
-    assert.match(page, /LandingFaq/);
-    assert.match(page, /LandingCta/);
-    assert.doesNotMatch(page, /ChartBackground|LandingFeatures|LandingAccess|LandingPerformance|LandingSecurity/);
+    assert.match(page, /LandingNav/);
+    assert.match(page, /HorizonBackground/);
+    assert.match(page, /landing-viewport/);
+    assert.match(page, /faqJsonLd/);
+    assert.doesNotMatch(
+      page,
+      /LandingBenefits|LandingHowItWorks|LandingStats|LandingWorkspace|LandingTrust|LandingTestimonials|LandingPricing|LandingHistory|LandingFaq|LandingCta|LandingFooter/,
+    );
+    assert.doesNotMatch(
+      page,
+      /ChartBackground|LandingFeatures|LandingAccess|LandingPerformance|LandingSecurity/,
+    );
+  });
+
+  test("no-scroll is enforced with a viewport-locked container", () => {
+    const page = read("components/landing/LandingPage.tsx");
+    const css = read("app/globals.css");
+    assert.match(page, /landing-viewport/);
+    assert.match(css, /\.landing-viewport\s*\{/);
+    assert.match(css, /height:\s*100dvh/);
+    assert.match(css, /overflow:\s*hidden/);
+    assert.doesNotMatch(page, /min-h-dvh/);
+    const hero = read("components/landing/LandingHero.tsx");
+    assert.match(hero, /html\.style\.overflow = "hidden"/);
+    assert.match(hero, /body\.style\.overflow = "hidden"/);
   });
 
   test("exactly three primary benefits and three how-it-works steps", () => {
-    const ar = getLandingCopy("ar");
-    const en = getLandingCopy("en");
-    assert.equal(ar.benefits.items.length, 3);
-    assert.equal(en.benefits.items.length, 3);
-    assert.equal(ar.how.steps.length, 3);
-    assert.equal(en.how.steps.length, 3);
+    const arCopy = getLandingCopy("ar");
+    const enCopy = getLandingCopy("en");
+    assert.equal(arCopy.benefits.items.length, 3);
+    assert.equal(enCopy.benefits.items.length, 3);
+    assert.equal(arCopy.how.steps.length, 3);
+    assert.equal(enCopy.how.steps.length, 3);
   });
 
   test("CTA routes are real and have matching app pages or dynamic pages", () => {
@@ -76,7 +102,8 @@ describe("landing redesign", () => {
     const files = [
       "components/landing/LandingPage.tsx",
       "components/landing/LandingHero.tsx",
-      "components/landing/LandingBenefits.tsx",
+      "components/landing/LandingComposer.tsx",
+      "components/landing/HorizonBackground.tsx",
       "components/landing/LandingNav.tsx",
       "components/landing/landingCopy.ts",
       "components/landing/ProductPreview.tsx",
@@ -88,15 +115,11 @@ describe("landing redesign", () => {
       assert.doesNotMatch(src, /win rate|always profitable|999%|\$1,000,000/i);
       assert.doesNotMatch(src, /\bguaranteed returns?\b|\bguaranteed accuracy\b|\brisk-free trading\b/i);
       assert.doesNotMatch(src, /Skill Registry|Run Trace|Research Swarm|Shadow Trader|Trading DNA/i);
+      assert.doesNotMatch(src, /Horizon 1\.0 Max|Musk tweets|TSLA|SPY|Congress/i);
     }
   });
 
   test("the landing never sells the deleted execution product", () => {
-    // The platform places no orders. The old copy sold "MetaTrader execution
-    // with your approval" for months after the execution layer was deleted —
-    // a feature list nobody could use. Denials are allowed (the FAQ says
-    // "Lonora does not execute"); CLAIMS are not, so the ban is on the
-    // affirmative phrases, not the words.
     const copy = read("components/landing/landingCopy.ts");
     const tiers = read("lib/billing/tiers.ts");
     for (const src of [copy, tiers]) {
@@ -106,8 +129,6 @@ describe("landing redesign", () => {
       assert.doesNotMatch(src, /Live trade execution|Approve execution|MT5 account link/);
       assert.doesNotMatch(src, /Available after connection|متاح بعد الربط/);
     }
-    // The one honest survivor: the FAQ names MetaTrader only to say it is
-    // NOT needed.
     assert.match(copy, /هل أحتاج حساب وساطة أو MetaTrader؟/);
   });
 
@@ -122,7 +143,10 @@ describe("landing redesign", () => {
     assert.match(nav, /backgroundColor: "var\(--background\)"/);
     assert.match(nav, /href=\{LANDING_ROUTES\.signup\}/);
     assert.match(nav, /href=\{LANDING_ROUTES\.login\}/);
+    assert.match(nav, /LANDING_ROUTES\.pricing/);
+    assert.match(nav, /LANDING_ROUTES\.console/);
     assert.match(nav, /Escape/);
+    assert.doesNotMatch(nav, /#features|#how|#stats|#faq/);
   });
 
   test("product preview is illustrative and avoids TradingView runtime", () => {
@@ -134,12 +158,60 @@ describe("landing redesign", () => {
   });
 
   test("bilingual copy parity for FAQ and hero", () => {
-    const ar = getLandingCopy("ar");
-    const en = getLandingCopy("en");
-    assert.equal(ar.faq.items.length, en.faq.items.length);
-    assert.ok(ar.hero.title.length > 8);
-    assert.ok(en.hero.title.length > 8);
-    assert.notEqual(ar.hero.title, en.hero.title);
+    const arCopy = getLandingCopy("ar");
+    const enCopy = getLandingCopy("en");
+    assert.equal(arCopy.faq.items.length, enCopy.faq.items.length);
+    assert.ok(arCopy.hero.title.length > 8);
+    assert.ok(enCopy.hero.title.length > 8);
+    assert.notEqual(arCopy.hero.title, enCopy.hero.title);
+  });
+
+  test("landing i18n ar/en parity for the one-screen surface", () => {
+    const keys = [
+      "landing.hero.line1",
+      "landing.hero.line2",
+      "landing.composer.placeholder",
+      "landing.composer.submit",
+      "landing.pill.gold",
+      "landing.pill.recommend",
+      "landing.pill.telegram",
+      "landing.pill.performance",
+      "landing.nav.login",
+      "landing.nav.signup",
+      "landing.nav.pricing",
+      "landing.nav.chat",
+    ] as const;
+    for (const key of keys) {
+      assert.ok(en[key].length > 1, key);
+      assert.ok(ar[key].length > 1, key);
+      assert.notEqual(ar[key], en[key], key);
+    }
+    assert.match(ar["landing.hero.line1"], /اكتب جملة/);
+    assert.match(en["landing.hero.line1"], /Type a sentence/);
+    assert.match(ar["landing.composer.placeholder"], /ما فكرتك/);
+    assert.match(en["landing.composer.placeholder"], /What's your idea/);
+  });
+
+  test("composer uses the real catalog model and continues through /chat", () => {
+    const composer = read("components/landing/LandingComposer.tsx");
+    assert.match(composer, /PLATFORM_DEFAULT_MODEL_ID|shortModelLabel/);
+    assert.match(composer, /LANDING_ROUTES\.console/);
+    assert.match(composer, /landing-composer/);
+    assert.match(composer, /landing-pill-\$\{pill\.id\}/);
+    assert.match(composer, /id: "gold"/);
+    assert.doesNotMatch(composer, /Horizon 1\.0 Max|AudioLines|Mic\b/);
+    assert.ok(DEFAULT_MODEL_LABEL.length > 0);
+    assert.doesNotMatch(DEFAULT_MODEL_LABEL, /Horizon/);
+  });
+
+  test("registration-closed does not crash landing and hides signup", () => {
+    const page = read("components/landing/LandingPage.tsx");
+    const nav = read("components/landing/LandingNav.tsx");
+    assert.match(page, /isRegistrationOpen/);
+    assert.match(page, /registrationOpen = false/);
+    assert.match(page, /catch/);
+    assert.match(nav, /registrationOpen/);
+    assert.match(nav, /registrationOpen\s*\?/);
   });
 
   test("legal disclaimer remains accessible in footer", () => {

@@ -1517,6 +1517,27 @@ export const en = {
 
   // Admin
   "nav.admin_diagnostics": "Diagnostics",
+
+  // Public landing (one-screen horizon)
+  "landing.hero.line1": "Type a sentence.",
+  "landing.hero.line2": "Trade the market.",
+  "landing.composer.placeholder": "What's your idea?",
+  "landing.composer.plus": "Attachments",
+  "landing.composer.plus_unavailable": "Attachments open after sign-in",
+  "landing.composer.submit": "Continue to chat",
+  "landing.composer.model": "AI model",
+  "landing.pill.gold": "Analyze XAUUSD",
+  "landing.pill.recommend": "Ask for a recommendation",
+  "landing.pill.telegram": "Telegram recommendations",
+  "landing.pill.performance": "Recommendation performance",
+  "landing.prompt.gold": "Analyze XAUUSD on the live chart and give a clear gold read.",
+  "landing.prompt.recommend": "Give me a gold recommendation with entry, stop, and targets.",
+  "landing.prompt.telegram": "How do I get Lonora recommendations on Telegram?",
+  "landing.prompt.performance": "How does Lonora track recommendation performance to the outcome?",
+  "landing.nav.login": "Sign in",
+  "landing.nav.signup": "Create account",
+  "landing.nav.pricing": "Pricing",
+  "landing.nav.chat": "Chat",
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -1497,6 +1497,27 @@ export const ar: Record<TranslationKey, string> = {
 
   // Admin
   "nav.admin_diagnostics": "التشخيص",
+
+  // Public landing (one-screen horizon)
+  "landing.hero.line1": "اكتب جملة.",
+  "landing.hero.line2": "تداول السوق.",
+  "landing.composer.placeholder": "ما فكرتك؟",
+  "landing.composer.plus": "مرفقات",
+  "landing.composer.plus_unavailable": "المرفقات تُفتح بعد تسجيل الدخول",
+  "landing.composer.submit": "متابعة إلى المحادثة",
+  "landing.composer.model": "نموذج الذكاء الاصطناعي",
+  "landing.pill.gold": "تحليل XAUUSD",
+  "landing.pill.recommend": "اطلب توصية",
+  "landing.pill.telegram": "توصيات تيليجرام",
+  "landing.pill.performance": "أداء التوصيات",
+  "landing.prompt.gold": "حلّل الذهب XAUUSD على الشارت الحي وأعطني قراءة واضحة.",
+  "landing.prompt.recommend": "أعطني توصية على الذهب مع الدخول ووقف الخسارة والأهداف.",
+  "landing.prompt.telegram": "كيف أستقبل توصيات Lonora على تيليجرام؟",
+  "landing.prompt.performance": "كيف يتتبّع Lonora أداء التوصيات حتى نتيجتها؟",
+  "landing.nav.login": "تسجيل الدخول",
+  "landing.nav.signup": "إنشاء حساب",
+  "landing.nav.pricing": "الأسعار",
+  "landing.nav.chat": "المحادثة",
 };
 
 

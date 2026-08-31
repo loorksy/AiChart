@@ -11,7 +11,7 @@ export const LANDING_ROUTES = {
   // that actually exists.
   chart: "/chat",
   console: "/chat",
-  pricing: "/signup",
+  pricing: "/pricing",
   privacy: "/privacy",
   terms: "/privacy",
   agreement: "/privacy",
@@ -29,6 +29,7 @@ export type LandingCopy = {
     stats: string;
     pricing: string;
     signIn: string;
+    chat: string;
     primaryCta: string;
     openMenu: string;
     closeMenu: string;
@@ -191,6 +192,7 @@ const ar: LandingCopy = {
     stats: "حقائق",
     pricing: "الأسعار",
     signIn: "تسجيل الدخول",
+    chat: "المحادثة",
     primaryCta: "ابدأ مجاناً",
     openMenu: "فتح القائمة",
     closeMenu: "إغلاق القائمة",
@@ -200,7 +202,7 @@ const ar: LandingCopy = {
   },
   hero: {
     eyebrow: "مساحة تداول بالذكاء الاصطناعي",
-    title: "حلّل الذهب، ناقش الفرصة، وخذ توصية واضحة.",
+    title: "اكتب جملة. تداول السوق.",
     subtitle:
       "يجمع Lonora بين الشارت الحي ومحادثة ذكية متخصصة في الذهب، ثم يقدّم توصيات بمستويات واضحة تمر عبر فحوص إلزامية وتُتابَع حتى نتيجتها.",
     primaryCta: "افتح Lonora",
@@ -514,6 +516,7 @@ const en: LandingCopy = {
     stats: "Facts",
     pricing: "Pricing",
     signIn: "Sign in",
+    chat: "Chat",
     primaryCta: "Start free",
     openMenu: "Open menu",
     closeMenu: "Close menu",
@@ -523,7 +526,7 @@ const en: LandingCopy = {
   },
   hero: {
     eyebrow: "AI trading workspace",
-    title: "Analyze gold. Discuss the setup. Get a clear recommendation.",
+    title: "Type a sentence. Trade the market.",
     subtitle:
       "Lonora pairs a live chart with an intelligent gold-focused conversation, then issues recommendations with clear levels — screened by mandatory checks and tracked to their outcome.",
     primaryCta: "Open Lonora",
