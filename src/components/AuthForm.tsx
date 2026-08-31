@@ -21,6 +21,8 @@ export default function AuthForm({
   telegramConfigured,
   googleConfigured = false,
   allowRegister = true,
+  registrationOpen = true,
+  initialError,
   gateMode = false,
   defaultCountry,
 }: {
@@ -31,6 +33,10 @@ export default function AuthForm({
   /** V2-A4: server-resolved — true only when the Google OAuth client is configured. */
   googleConfigured?: boolean;
   allowRegister?: boolean;
+  /** Server-resolved platform flag. Closed signup shows a message and blocks submit. */
+  registrationOpen?: boolean;
+  /** Stable closed-registration code from a Google/Telegram bounce. */
+  initialError?: "registration_closed";
   gateMode?: boolean;
   defaultCountry?: CountryCode;
 }) {
@@ -43,11 +49,21 @@ export default function AuthForm({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const isLogin = mode === "login";
-  const canUseTelegram = !gateMode && telegramConfigured && Boolean(botUsername);
+  const signupClosed = !isLogin && !registrationOpen;
+  const canUseTelegram =
+    !gateMode && !signupClosed && telegramConfigured && Boolean(botUsername);
+  const showGoogle = !gateMode && !signupClosed && googleConfigured;
+  const displayError =
+    error ??
+    (initialError === "registration_closed" ? t("auth.registration_closed") : null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!isLogin && !registrationOpen) {
+      setError(t("auth.registration_closed"));
+      return;
+    }
     setLoading(true);
     try {
       const body = gateMode
@@ -107,19 +123,23 @@ export default function AuthForm({
           <h1 className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
             {gateMode
               ? t("auth.operator_title")
-              : isLogin
-                ? t("auth.login_title")
-                : t("auth.register_title")}
+              : signupClosed
+                ? t("auth.registration_closed_title")
+                : isLogin
+                  ? t("auth.login_title")
+                  : t("auth.register_title")}
           </h1>
           <p className="mt-3 text-sm text-muted-foreground">
             {gateMode
               ? t("auth.operator_subtitle")
-              : isLogin
-                ? t("auth.login_subtitle")
-                : t("auth.register_subtitle")}
+              : signupClosed
+                ? t("auth.registration_closed")
+                : isLogin
+                  ? t("auth.login_subtitle")
+                  : t("auth.register_subtitle")}
           </p>
 
-          {!gateMode && googleConfigured && (
+          {showGoogle && (
             <div className="mt-8">
               <a
                 href="/api/auth/google"
@@ -158,16 +178,17 @@ export default function AuthForm({
             </div>
           )}
 
-          {error && (
+          {displayError && !signupClosed && (
             <p
               role="alert"
               aria-live="assertive"
               className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
             >
-              {error}
+              {displayError}
             </p>
           )}
 
+          {!signupClosed && (
           <form onSubmit={submit} className="mt-4 space-y-4">
             {!gateMode && !isLogin && (
               <>
@@ -250,6 +271,7 @@ export default function AuthForm({
               {!loading && <ArrowUpRight className="h-4 w-4 rtl:-rotate-90" />}
             </Button>
           </form>
+          )}
 
           {isLogin && allowRegister && (
             <p className="mt-6 text-center text-sm text-muted-foreground">

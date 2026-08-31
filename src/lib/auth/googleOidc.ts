@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { execute, insertReturningId, queryOne } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
+import { assertRegistrationOpen } from "@/lib/auth/registration";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
 import { ensureUserDefaults, getPublicUser } from "@/lib/store";
 import type { PublicUser } from "@/lib/types";
@@ -159,6 +160,9 @@ export async function resolveGoogleUser(claims: GoogleClaims): Promise<{
     return { user, isNew: false };
   }
 
+  // First-time Google account. Existing subjects / verified emails above
+  // still sign in when registration is closed; only this insert is gated.
+  await assertRegistrationOpen();
   const userId = await insertReturningId(
     "INSERT INTO users (email, password_hash, role, status) VALUES (?, ?, 'user', 'active')",
     [claims.email, hashPassword(randomBytes(32).toString("hex"))],

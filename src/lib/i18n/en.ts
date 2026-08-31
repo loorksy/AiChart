@@ -847,6 +847,9 @@ export const en = {
   "auth.country_code": "Country code",
   "auth.phone_number": "Phone number",
   "auth.phone_hint": "Enter the WhatsApp number without a leading zero",
+  "auth.registration_closed_title": "Registration is closed",
+  "auth.registration_closed":
+    "Registration is currently closed. You can sign in if you already have an account.",
 
   // Guest chart + shared accessibility
   "chart.smart_chart": "Smart chart",

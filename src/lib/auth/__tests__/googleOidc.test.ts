@@ -83,6 +83,11 @@ describe("resolveGoogleUser", () => {
   });
 
   it("creates a fresh active account for an unknown email", async () => {
+    // Signup is closed unless this key is explicitly on — the default that
+    // protects a new install. Open it here so the original create-path
+    // assertion still holds.
+    const cfg = await import("@/lib/platformConfig");
+    await cfg.savePlatformConfig({ REGISTRATION_OPEN: true });
     const { user, isNew } = await oidc.resolveGoogleUser({
       sub: "g-sub-2",
       email: "brandnew@gmail.com",

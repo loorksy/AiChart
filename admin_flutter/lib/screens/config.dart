@@ -215,7 +215,10 @@ class _GroupCard extends StatelessWidget {
             if (f.type == 'toggle')
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(l.ar ? f.label : f.labelEn,
+                title: Text(
+                    f.key == 'REGISTRATION_OPEN'
+                        ? l.t('allowNewRegistrations')
+                        : (l.ar ? f.label : f.labelEn),
                     style: const TextStyle(fontSize: 14)),
                 subtitle: Text(f.key,
                     textDirection: TextDirection.ltr,

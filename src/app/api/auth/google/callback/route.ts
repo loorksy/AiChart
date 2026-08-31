@@ -7,6 +7,7 @@ import {
   googleAuthConfig,
   resolveGoogleUser,
 } from "@/lib/auth/googleOidc";
+import { isRegistrationClosedError } from "@/lib/auth/registration";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
 import { createLogger } from "@/lib/logger";
 
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest) {
     await setSession({ sub: user.id, email: user.email, role: user.role });
     return NextResponse.redirect(new URL("/chat", base));
   } catch (e) {
+    if (isRegistrationClosedError(e)) return fail("registration_closed");
     log.error("exchange.failed", {
       error: e instanceof Error ? e.message : String(e),
     });

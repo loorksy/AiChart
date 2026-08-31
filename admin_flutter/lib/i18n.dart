@@ -45,6 +45,10 @@ class L {
     'users': {'ar': 'المستخدمون', 'en': 'Users'},
     'billing': {'ar': 'الفوترة', 'en': 'Billing'},
     'config': {'ar': 'المفاتيح والإعدادات', 'en': 'Keys & Config'},
+    'allowNewRegistrations': {
+      'ar': 'السماح بتسجيل مستخدمين جدد',
+      'en': 'Allow new registrations'
+    },
     'support': {'ar': 'الدعم', 'en': 'Support'},
     'health': {'ar': 'صحة النظام', 'en': 'System health'},
     'retry': {'ar': 'إعادة المحاولة', 'en': 'Retry'},
