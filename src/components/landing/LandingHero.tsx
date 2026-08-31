@@ -1,51 +1,39 @@
 "use client";
 
-import Link from "next/link";
-import { useLocale } from "@/components/LocaleProvider";
-import { ProductPreview } from "@/components/landing/ProductPreview";
-import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
-import { buttonVariants } from "@/components/squareui/button";
-import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
-import { BRAND_NAME } from "@/lib/brand";
+import { useEffect } from "react";
+import { useLocale } from "@/hooks/useLocale";
+import { LandingComposer } from "@/components/landing/LandingComposer";
 
-/** Brand-first hero: Lonora dominates the first viewport; one headline, one line, CTAs. */
+/** One-viewport hero: two-line headline + glass composer + feature pills. */
 export function LandingHero() {
-  const { locale } = useLocale();
-  const c = getLandingCopy(locale).hero;
+  const { t, dir } = useLocale();
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+    };
+  }, []);
 
   return (
     <section
       data-testid="landing-hero"
-      className="relative border-b border-border bg-background"
+      dir={dir}
+      className="landing-hero flex h-full min-h-0 flex-col items-center overflow-hidden px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(4.25rem,10vh)] sm:px-8"
     >
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-16 lg:grid-cols-[1fr_1.05fr] lg:items-center lg:gap-12 lg:py-20">
-        <div className="max-w-xl">
-          <h1 className="font-serif text-5xl font-semibold tracking-tight text-foreground sm:text-6xl lg:text-[4.25rem] lg:leading-[1.05]">
-            {BRAND_NAME}
-          </h1>
-          <p className="mt-4 text-balance text-xl font-semibold tracking-tight text-foreground sm:text-2xl sm:leading-snug">
-            {c.title}
-          </p>
-          <p className="mt-3 max-w-prose text-pretty text-base leading-relaxed text-muted-foreground">
-            {c.subtitle}
-          </p>
+      <h1 className="max-w-xl text-center text-[2rem] font-bold leading-[1.12] tracking-tight text-white sm:max-w-2xl sm:text-5xl lg:text-6xl">
+        <span className="block">{t("landing.hero.line1")}</span>
+        <span className="block">{t("landing.hero.line2")}</span>
+      </h1>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <LiquidMetalButton href={LANDING_ROUTES.signup} label={c.primaryCta} />
-            <Link
-              href={LANDING_ROUTES.console}
-              className={buttonVariants({
-                variant: "outline",
-                size: "xl",
-                className: "px-6",
-              })}
-            >
-              {c.secondaryCta}
-            </Link>
-          </div>
-        </div>
-
-        <ProductPreview />
+      <div className="mt-8 flex w-full flex-1 flex-col items-center justify-start sm:mt-10">
+        <LandingComposer />
       </div>
     </section>
   );

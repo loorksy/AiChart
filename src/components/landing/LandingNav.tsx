@@ -14,15 +14,6 @@ import { MetalIconButton } from "@/components/ui/metal-icon-button";
 import { SkipLink } from "@/components/foundation";
 import { cn } from "@/lib/utils";
 
-const ANCHORS = [
-  { href: "#features", key: "features" as const },
-  { href: "#how", key: "how" as const },
-  { href: "#stats", key: "stats" as const },
-  { href: "#trust", key: "trust" as const },
-  { href: "#pricing", key: "pricing" as const },
-  { href: "#faq", key: "faq" as const },
-];
-
 export interface LandingNavLink {
   /** Href rendered verbatim — must be an existing route (or file, e.g. RSS). */
   href: string;
@@ -33,9 +24,8 @@ export interface LandingNavLink {
 
 export interface LandingNavProps {
   /**
-   * `full` (default): the landing anchors — used on `/` and `/p/[slug]`.
-   * `compact`: host-page route links only — used on /pricing, /blog, /docs.
-   * Both keep logo + theme/lang toggles + login/signup.
+   * `full` (default): one-screen landing — hamburger only, real product routes.
+   * `compact`: host-page route links — used on /pricing.
    */
   variant?: "full" | "compact";
   /** Compact-variant route links, hrefs passed through untouched. */
@@ -44,6 +34,11 @@ export interface LandingNavProps {
   actions?: React.ReactNode;
   /** The one skip link per page lives in this shared header. */
   skipTargetId?: string;
+  /**
+   * When false (platform default), signup is omitted so a closed gate
+   * cannot be reached from the landing hamburger.
+   */
+  registrationOpen?: boolean;
 }
 
 export function LandingNav({
@@ -51,8 +46,9 @@ export function LandingNav({
   links = [],
   actions,
   skipTargetId = "main",
+  registrationOpen = true,
 }: LandingNavProps) {
-  const { locale, setLocale } = useLocale();
+  const { locale, setLocale, t } = useLocale();
   const { resolved, setTheme } = useTheme();
   const c = getLandingCopy(locale);
   const [open, setOpen] = useState(false);
@@ -60,6 +56,7 @@ export function LandingNav({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   const isDark = resolved === "dark";
+  const isHorizon = variant === "full";
 
   useEffect(() => {
     setMounted(true);
@@ -103,21 +100,31 @@ export function LandingNav({
     };
   }, [open]);
 
-  const linkClass =
-    "flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9";
+  const linkClass = isHorizon
+    ? "flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 sm:min-h-9"
+    : "flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9";
+
+  const horizonLinks = [
+    { href: LANDING_ROUTES.login, label: t("landing.nav.login") },
+    ...(registrationOpen
+      ? [{ href: LANDING_ROUTES.signup, label: t("landing.nav.signup") }]
+      : []),
+    { href: LANDING_ROUTES.pricing, label: t("landing.nav.pricing") },
+    { href: LANDING_ROUTES.console, label: t("landing.nav.chat") },
+  ];
 
   const navLinks =
     variant === "full" ? (
       <>
-        {ANCHORS.map((item) => (
-          <a
+        {horizonLinks.map((item) => (
+          <Link
             key={item.href}
             href={item.href}
             onClick={() => setOpen(false)}
             className={linkClass}
           >
-            {c.nav[item.key]}
-          </a>
+            {item.label}
+          </Link>
         ))}
       </>
     ) : (
@@ -146,11 +153,21 @@ export function LandingNav({
       </>
     );
 
+  const drawerSurface = isHorizon
+    ? {
+        backgroundColor: "rgba(8, 10, 16, 0.96)",
+        color: "#ffffff",
+      }
+    : {
+        backgroundColor: "var(--background)",
+        color: "var(--foreground)",
+      };
+
   const mobileMenu =
     mounted && open
       ? createPortal(
           <div
-            className="fixed inset-0 z-[100] md:hidden"
+            className="fixed inset-0 z-[100]"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
@@ -167,24 +184,30 @@ export function LandingNav({
                 id={titleId}
                 data-testid="landing-mobile-drawer"
                 className={cn(
-                  "pointer-events-auto flex w-full max-w-sm flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border elevation-3 animate-landing-modal",
+                  "pointer-events-auto flex w-full max-w-sm flex-col overflow-hidden rounded-[var(--radius-lg)] border elevation-3 animate-landing-modal",
+                  isHorizon ? "border-white/15" : "border-border",
                 )}
-                style={{
-                  backgroundColor: "var(--background)",
-                  color: "var(--foreground)",
-                }}
+                style={drawerSurface}
               >
-                <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+                <div
+                  className={cn(
+                    "flex h-14 shrink-0 items-center justify-between border-b px-4",
+                    isHorizon ? "border-white/10" : "border-border",
+                  )}
+                >
                   <AiChartLogo
                     size={28}
                     showName
-                    nameClassName="text-sm font-semibold"
+                    nameClassName={cn(
+                      "text-sm font-semibold",
+                      isHorizon && "text-white",
+                    )}
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-lg"
-                    className="tap-target"
+                    className={cn("tap-target", isHorizon && "text-white hover:bg-white/10")}
                     aria-label={c.nav.closeMenu}
                     onClick={() => setOpen(false)}
                   >
@@ -194,25 +217,32 @@ export function LandingNav({
                 <nav className="flex flex-col gap-0.5 p-3" aria-label="Mobile">
                   {navLinks}
                 </nav>
-                <div className="space-y-2 border-t border-border p-3">
+                <div
+                  className={cn(
+                    "space-y-2 border-t p-3",
+                    isHorizon ? "border-white/10" : "border-border",
+                  )}
+                >
                   <button
                     type="button"
+                    data-testid={isHorizon ? "landing-theme-toggle" : undefined}
                     onClick={() => setTheme(isDark ? "light" : "dark")}
-                    className="flex min-h-11 w-full items-center gap-2 rounded-[var(--radius)] px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={linkClass}
                   >
                     {isDark ? (
-                      <Sun className="h-4 w-4" />
+                      <Sun className="me-2 h-4 w-4" />
                     ) : (
-                      <Moon className="h-4 w-4" />
+                      <Moon className="me-2 h-4 w-4" />
                     )}
                     {c.nav.theme}
                   </button>
                   <button
                     type="button"
+                    data-testid={isHorizon ? "landing-locale-toggle" : undefined}
                     onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
-                    className="flex min-h-11 w-full items-center gap-2 rounded-[var(--radius)] px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={linkClass}
                   >
-                    <Globe className="h-4 w-4" />
+                    <Globe className="me-2 h-4 w-4" />
                     {c.nav.language}
                   </button>
                   <Link
@@ -221,21 +251,27 @@ export function LandingNav({
                     className={buttonVariants({
                       variant: "outline",
                       size: "xl",
-                      className: "w-full",
+                      className: isHorizon
+                        ? "w-full border-white/20 bg-transparent text-white hover:bg-white/10"
+                        : "w-full",
                     })}
                   >
                     {c.nav.signIn}
                   </Link>
-                  <Link
-                    href={LANDING_ROUTES.signup}
-                    onClick={() => setOpen(false)}
-                    className={buttonVariants({
-                      size: "xl",
-                      className: "w-full",
-                    })}
-                  >
-                    {c.nav.primaryCta}
-                  </Link>
+                  {registrationOpen ? (
+                    <Link
+                      href={LANDING_ROUTES.signup}
+                      onClick={() => setOpen(false)}
+                      className={buttonVariants({
+                        size: "xl",
+                        className: isHorizon
+                          ? "w-full bg-white text-black hover:bg-white/90"
+                          : "w-full",
+                      })}
+                    >
+                      {c.nav.primaryCta}
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -243,6 +279,36 @@ export function LandingNav({
           document.body,
         )
       : null;
+
+  if (isHorizon) {
+    return (
+      <>
+        <SkipLink targetId={skipTargetId}>{c.nav.skip}</SkipLink>
+        <header
+          data-testid="landing-header"
+          className="pointer-events-none absolute inset-x-0 top-0 z-50"
+        >
+          <div
+            dir="ltr"
+            className="flex justify-end px-4 pt-[max(0.85rem,env(safe-area-inset-top))] sm:px-6"
+          >
+            <button
+              type="button"
+              data-testid="landing-menu-trigger"
+              aria-expanded={open}
+              aria-controls={titleId}
+              aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
+              onClick={() => setOpen((v) => !v)}
+              className="pointer-events-auto flex size-11 items-center justify-center rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            >
+              {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
+        </header>
+        {mobileMenu}
+      </>
+    );
+  }
 
   return (
     <>
@@ -302,11 +368,13 @@ export function LandingNav({
             >
               {c.nav.signIn}
             </Link>
-            <LiquidMetalButton
-              href={LANDING_ROUTES.signup}
-              label={c.nav.primaryCta}
-              data-testid="landing-primary-cta"
-            />
+            {registrationOpen ? (
+              <LiquidMetalButton
+                href={LANDING_ROUTES.signup}
+                label={c.nav.primaryCta}
+                data-testid="landing-primary-cta"
+              />
+            ) : null}
             <span className="md:hidden">
               <MetalIconButton
                 data-testid="landing-menu-trigger"
