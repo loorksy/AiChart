@@ -1,41 +1,58 @@
 "use client";
 
-import { Moon, Sun } from "lucide-react";
-import { useTheme } from "@/components/ThemeProvider";
+import { MonitorCog, MoonStar, Sun } from "lucide-react";
+import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
+import {
+  SegmentedControl,
+  type SegmentedTone,
+} from "@/components/SegmentedControl";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
+const OPTIONS: {
+  value: ThemePreference;
+  icon: typeof Sun;
+  labelKey: "settings.theme.system" | "profile.theme.light" | "profile.theme.dark";
+}[] = [
+  { value: "system", icon: MonitorCog, labelKey: "settings.theme.system" },
+  { value: "light", icon: Sun, labelKey: "profile.theme.light" },
+  { value: "dark", icon: MoonStar, labelKey: "profile.theme.dark" },
+];
+
 /**
- * Canonical quick theme toggle for sidebar / mobile drawer.
- * Cycles dark ↔ light. Settings page still exposes Dark / Light / System.
+ * Canonical theme control: system / light / dark.
+ * Wires to the existing next-themes store — never a second source.
  */
 export function ThemeToggle({
   collapsed = false,
   className,
+  tone = "default",
 }: {
   collapsed?: boolean;
   className?: string;
+  tone?: SegmentedTone;
 }) {
-  const { resolved, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const { t } = useLocale();
-  const isDark = resolved === "dark";
-  const label = isDark ? t("shell.theme_to_light") : t("shell.theme_to_dark");
+  void collapsed;
 
   return (
-    <button
-      type="button"
-      data-testid="theme-toggle"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className={cn(
-        "flex min-h-11 w-full items-center gap-2.5 rounded-lg border border-transparent px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-        collapsed && "justify-center px-0",
-        className,
-      )}
-      aria-label={label}
-      title={label}
-    >
-      {isDark ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
-      {!collapsed && <span className="truncate">{label}</span>}
-    </button>
+    <div data-testid="theme-toggle" aria-label={t("shell.theme")}>
+      <SegmentedControl
+        value={theme}
+        onChange={setTheme}
+        ariaLabel={t("shell.theme")}
+        tone={tone}
+        className={cn(className)}
+        items={OPTIONS.map((item) => {
+          const Icon = item.icon;
+          return {
+            value: item.value,
+            label: t(item.labelKey),
+            icon: <Icon className="h-4 w-4" aria-hidden />,
+          };
+        })}
+      />
+    </div>
   );
 }

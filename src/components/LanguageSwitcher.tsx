@@ -2,6 +2,10 @@
 
 import { useLocale } from "@/hooks/useLocale";
 import { APP_LOCALES, toggleLocale, type AppLocale } from "@/lib/i18n";
+import {
+  SegmentedControl,
+  type SegmentedTone,
+} from "@/components/SegmentedControl";
 import { cn } from "@/lib/utils";
 
 const LABEL: Record<AppLocale, string> = {
@@ -21,22 +25,18 @@ const FOCUS_RING =
 export type LanguageSwitcherVariant = "segmented" | "inline" | "row" | "rail";
 
 /**
- * Arabic/English switcher with four presentations of the same control:
- * - `segmented` (default) — compact pill group for dense toolbars.
- * - `inline` — equal-width buttons inside the profile popover.
- * - `row` — the canonical console home: a full-width pair in the sidebar footer,
- *   sized to a 44px touch target on phones and tightened on desktop.
- * - `rail` — a single toggle for the collapsed icon rail, where there is no room
- *   for two options; its accessible name states the language it switches TO.
- *
- * Changing language updates the UI direction immediately and persists it.
+ * Arabic/English switcher. The default `segmented` look matches ThemeToggle
+ * (sliding layoutId border). Other variants keep the same control on surfaces
+ * that already hosted a language toggle — nothing new is added.
  */
 export function LanguageSwitcher({
   variant = "segmented",
   className,
+  tone = "default",
 }: {
   variant?: LanguageSwitcherVariant;
   className?: string;
+  tone?: SegmentedTone;
 }) {
   const { locale, setLocale, t } = useLocale();
 
@@ -60,106 +60,22 @@ export function LanguageSwitcher({
     );
   }
 
-  if (variant === "row") {
-    return (
-      <div
-        data-testid="language-switcher"
-        role="radiogroup"
-        aria-label={t("shell.language")}
-        className={cn(
-          "grid grid-cols-2 gap-1 rounded-lg border border-sidebar-border bg-background/60 p-1",
-          className,
-        )}
-      >
-        {APP_LOCALES.map((lng) => {
-          const active = lng === locale;
-          return (
-            <button
-              key={lng}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => setLocale(lng)}
-              className={cn(
-                "flex min-h-11 items-center justify-center rounded-md px-2 text-[11px] font-medium transition-colors duration-150 ease-out lg:min-h-8",
-                FOCUS_RING,
-                active
-                  ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {LABEL[lng]}
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
-  if (variant === "inline") {
-    return (
-      <div
-        data-testid="language-switcher"
-        className={cn("flex gap-1", className)}
-        role="radiogroup"
-        aria-label={t("profile.select_language")}
-      >
-        {APP_LOCALES.map((lng) => {
-          const active = lng === locale;
-          return (
-            <button
-              key={lng}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => setLocale(lng)}
-              className={cn(
-                "min-h-9 flex-1 rounded-md px-2 text-[11px] font-medium transition-colors duration-150 ease-out",
-                FOCUS_RING,
-                active
-                  ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {LABEL[lng]}
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
-    <div
-      data-testid="language-switcher"
+    <SegmentedControl
+      testId="language-switcher"
+      value={locale}
+      onChange={setLocale}
+      ariaLabel={t("shell.language")}
+      tone={tone}
       className={cn(
-        "inline-flex rounded-lg border border-border/60 bg-background p-0.5",
+        variant === "row" || variant === "inline" ? "w-full justify-stretch" : undefined,
         className,
       )}
-      role="radiogroup"
-      aria-label={t("profile.select_language")}
-    >
-      {APP_LOCALES.map((lng) => {
-        const active = lng === locale;
-        return (
-          <button
-            key={lng}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => setLocale(lng)}
-            className={cn(
-              "min-h-8 rounded-md px-2.5 text-[11px] font-medium transition-colors duration-150 ease-out",
-              FOCUS_RING,
-              active
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {LABEL[lng]}
-          </button>
-        );
-      })}
-    </div>
+      items={APP_LOCALES.map((lng) => ({
+        value: lng,
+        label: LABEL[lng],
+        text: SHORT_LABEL[lng],
+      }))}
+    />
   );
 }

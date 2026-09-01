@@ -12,6 +12,8 @@ export const LANDING_ROUTES = {
   chart: "/chat",
   console: "/chat",
   pricing: "/pricing",
+  recommendations: "/recommendations",
+  performance: "/performance",
   privacy: "/privacy",
   terms: "/privacy",
   agreement: "/privacy",

@@ -3,14 +3,14 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Globe, Menu, Moon, Sun, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { AiChartLogo } from "@/components/AiChartLogo";
-import { useTheme } from "@/components/ThemeProvider";
 import { useLocale } from "@/components/LocaleProvider";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
 import { Button, buttonVariants } from "@/components/squareui/button";
 import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
-import { MetalIconButton } from "@/components/ui/metal-icon-button";
 import { SkipLink } from "@/components/foundation";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +41,43 @@ export interface LandingNavProps {
   registrationOpen?: boolean;
 }
 
+/** Exact hamburger ↔ X morph: three paths, group + aria-expanded, cubic-bezier. */
+function MenuMorphIcon() {
+  return (
+    <svg
+      className="pointer-events-none size-6"
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M4 12L20 12"
+        className="origin-center -translate-y-[7px] transition-all duration-300 [transition-timing-function:cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:translate-x-0 group-aria-expanded:translate-y-0 group-aria-expanded:rotate-[315deg]"
+      />
+      <path
+        d="M4 12H20"
+        className="origin-center transition-all duration-300 [transition-timing-function:cubic-bezier(.5,.85,.25,1.8)] group-aria-expanded:rotate-45"
+      />
+      <path
+        d="M4 12H20"
+        className="origin-center translate-y-[7px] transition-all duration-300 [transition-timing-function:cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:translate-y-0 group-aria-expanded:rotate-[135deg]"
+      />
+    </svg>
+  );
+}
+
+function routeActive(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function LandingNav({
   variant = "full",
   links = [],
@@ -48,15 +85,30 @@ export function LandingNav({
   skipTargetId = "main",
   registrationOpen = true,
 }: LandingNavProps) {
-  const { locale, setLocale, t } = useLocale();
-  const { resolved, setTheme } = useTheme();
+  const { locale, t } = useLocale();
+  const pathname = usePathname() ?? "/";
   const c = getLandingCopy(locale);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
-  const isDark = resolved === "dark";
   const isHorizon = variant === "full";
+  const accessHref = registrationOpen
+    ? LANDING_ROUTES.signup
+    : LANDING_ROUTES.pricing;
+
+  const navigation = [
+    { href: LANDING_ROUTES.home, label: t("landing.nav.home") },
+    { href: LANDING_ROUTES.console, label: t("landing.nav.chat") },
+    { href: LANDING_ROUTES.recommendations, label: t("nav.recommendations") },
+    { href: LANDING_ROUTES.performance, label: t("nav.performance") },
+  ];
+
+  const resources = [
+    { href: LANDING_ROUTES.pricing, label: t("landing.nav.pricing") },
+    { href: LANDING_ROUTES.privacy, label: t("landing.nav.privacy") },
+  ];
 
   useEffect(() => {
     setMounted(true);
@@ -67,12 +119,13 @@ export function LandingNav({
     document.body.style.overflow = "hidden";
     const previous =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const panel = panelRef.current;
     const selector =
       'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    const focusables = () =>
-      Array.from(panel?.querySelectorAll<HTMLElement>(selector) ?? []);
-    focusables()[0]?.focus();
+    const focusables = () => {
+      const from = (root: HTMLElement | null) =>
+        Array.from(root?.querySelectorAll<HTMLElement>(selector) ?? []);
+      return [...from(headerRef.current), ...from(panelRef.current)];
+    };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -100,70 +153,46 @@ export function LandingNav({
     };
   }, [open]);
 
-  const linkClass = isHorizon
-    ? "flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 sm:min-h-9"
-    : "flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9";
+  const overlayLink = (href: string, label: string) => {
+    const active = routeActive(pathname, href);
+    return (
+      <Link
+        key={href}
+        href={href}
+        onClick={() => setOpen(false)}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "flex min-h-12 items-center rounded-xl px-3 text-lg font-medium text-white transition-colors",
+          "hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50",
+          active && "bg-white/10",
+        )}
+      >
+        {label}
+      </Link>
+    );
+  };
 
-  const horizonLinks = [
-    { href: LANDING_ROUTES.login, label: t("landing.nav.login") },
-    ...(registrationOpen
-      ? [{ href: LANDING_ROUTES.signup, label: t("landing.nav.signup") }]
-      : []),
-    { href: LANDING_ROUTES.pricing, label: t("landing.nav.pricing") },
-    { href: LANDING_ROUTES.console, label: t("landing.nav.chat") },
-  ];
+  const compactLinkClass =
+    "flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9";
 
-  const navLinks =
-    variant === "full" ? (
-      <>
-        {horizonLinks.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setOpen(false)}
-            className={linkClass}
-          >
-            {item.label}
-          </Link>
-        ))}
-      </>
-    ) : (
+  const compactDesktopNav =
+    variant === "compact" ? (
       <>
         {links.map((item) =>
           item.external ? (
-            <a
-              key={item.href}
-              href={item.href}
-              onClick={() => setOpen(false)}
-              className={linkClass}
-            >
+            <a key={item.href} href={item.href} className={compactLinkClass}>
               {item.label}
             </a>
           ) : (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setOpen(false)}
-              className={linkClass}
-            >
+            <Link key={item.href} href={item.href} className={compactLinkClass}>
               {item.label}
             </Link>
           ),
         )}
       </>
-    );
+    ) : null;
 
-  const drawerSurface = isHorizon
-    ? {
-        backgroundColor: "rgba(8, 10, 16, 0.96)",
-        color: "#ffffff",
-      }
-    : {
-        backgroundColor: "var(--background)",
-        color: "var(--foreground)",
-      };
-
-  const mobileMenu =
+  const overlay =
     mounted && open
       ? createPortal(
           <div
@@ -172,140 +201,152 @@ export function LandingNav({
             aria-modal="true"
             aria-labelledby={titleId}
           >
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/55 animate-landing-backdrop"
-              aria-label={c.nav.closeMenu}
-              onClick={() => setOpen(false)}
-            />
-            <div className="pointer-events-none absolute inset-0 flex items-end justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4">
-              <div
-                ref={panelRef}
-                id={titleId}
-                data-testid="landing-mobile-drawer"
-                className={cn(
-                  "pointer-events-auto flex w-full max-w-sm flex-col overflow-hidden rounded-[var(--radius-lg)] border elevation-3 animate-landing-modal",
-                  isHorizon ? "border-white/15" : "border-border",
-                )}
-                style={drawerSurface}
+            <div
+              ref={panelRef}
+              id={titleId}
+              data-testid="landing-mobile-drawer"
+              className="absolute inset-0 flex flex-col overflow-y-auto overscroll-contain"
+              style={{
+                background:
+                  "linear-gradient(180deg, #05060a 0%, #071833 42%, #0a5cff 100%)",
+              }}
+            >
+              <div className="h-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] shrink-0" />
+              <nav
+                className="mx-auto flex w-full max-w-lg flex-col gap-10 px-6 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-4"
+                aria-label="Mobile"
               >
-                <div
-                  className={cn(
-                    "flex h-14 shrink-0 items-center justify-between border-b px-4",
-                    isHorizon ? "border-white/10" : "border-border",
-                  )}
-                >
-                  <AiChartLogo
-                    size={28}
-                    showName
-                    nameClassName={cn(
-                      "text-sm font-semibold",
-                      isHorizon && "text-white",
-                    )}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-lg"
-                    className={cn("tap-target", isHorizon && "text-white hover:bg-white/10")}
-                    aria-label={c.nav.closeMenu}
-                    onClick={() => setOpen(false)}
-                  >
-                    <X className="h-5 w-5" />
-                  </Button>
-                </div>
-                <nav className="flex flex-col gap-0.5 p-3" aria-label="Mobile">
-                  {navLinks}
-                </nav>
-                <div
-                  className={cn(
-                    "space-y-2 border-t p-3",
-                    isHorizon ? "border-white/10" : "border-border",
-                  )}
-                >
-                  <button
-                    type="button"
-                    data-testid={isHorizon ? "landing-theme-toggle" : undefined}
-                    onClick={() => setTheme(isDark ? "light" : "dark")}
-                    className={linkClass}
-                  >
-                    {isDark ? (
-                      <Sun className="me-2 h-4 w-4" />
-                    ) : (
-                      <Moon className="me-2 h-4 w-4" />
-                    )}
-                    {c.nav.theme}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid={isHorizon ? "landing-locale-toggle" : undefined}
-                    onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
-                    className={linkClass}
-                  >
-                    <Globe className="me-2 h-4 w-4" />
-                    {c.nav.language}
-                  </button>
-                  <Link
-                    href={LANDING_ROUTES.login}
-                    onClick={() => setOpen(false)}
-                    className={buttonVariants({
-                      variant: "outline",
-                      size: "xl",
-                      className: isHorizon
-                        ? "w-full border-white/20 bg-transparent text-white hover:bg-white/10"
-                        : "w-full",
-                    })}
-                  >
-                    {c.nav.signIn}
-                  </Link>
-                  {registrationOpen ? (
+                <section className="space-y-4">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/40">
+                    {t("landing.nav.section.account")}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
                     <Link
-                      href={LANDING_ROUTES.signup}
+                      href={LANDING_ROUTES.login}
+                      onClick={() => setOpen(false)}
+                      className={buttonVariants({
+                        variant: "outline",
+                        size: "xl",
+                        className:
+                          "rounded-full border-white/70 bg-transparent px-6 text-white hover:bg-white/10 hover:text-white",
+                      })}
+                    >
+                      {t("landing.nav.login")}
+                    </Link>
+                    <Link
+                      href={accessHref}
                       onClick={() => setOpen(false)}
                       className={buttonVariants({
                         size: "xl",
-                        className: isHorizon
-                          ? "w-full bg-white text-black hover:bg-white/90"
-                          : "w-full",
+                        className:
+                          "rounded-full bg-white px-6 text-[#0a4dce] hover:bg-white/90",
                       })}
                     >
-                      {c.nav.primaryCta}
+                      {t("landing.nav.signup")}
                     </Link>
-                  ) : null}
-                </div>
-              </div>
+                  </div>
+                </section>
+
+                <section className="space-y-3 border-t border-white/10 pt-8">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/40">
+                    {t("landing.nav.section.navigation")}
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {navigation.map((item) => overlayLink(item.href, item.label))}
+                  </div>
+                </section>
+
+                <section className="space-y-3 border-t border-white/10 pt-8">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/40">
+                    {t("landing.nav.section.resources")}
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {resources.map((item) => overlayLink(item.href, item.label))}
+                  </div>
+                </section>
+              </nav>
             </div>
           </div>,
           document.body,
         )
       : null;
 
+  const menuButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-lg"
+      data-testid="landing-menu-trigger"
+      aria-expanded={open}
+      aria-controls={titleId}
+      aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
+      onClick={() => setOpen((v) => !v)}
+      className={cn(
+        "group pointer-events-auto tap-target",
+        open || isHorizon
+          ? "text-white hover:bg-white/10 hover:text-white"
+          : "text-foreground",
+      )}
+    >
+      <MenuMorphIcon />
+    </Button>
+  );
+
+  const switchers = (
+    <div
+      data-testid="landing-theme-toggle"
+      className={cn(
+        "pointer-events-auto flex items-center gap-1.5",
+        isHorizon && !open && "hidden",
+        !isHorizon && !open && "hidden sm:flex",
+      )}
+    >
+      <ThemeToggle tone={open || isHorizon ? "overlay" : "default"} />
+      <div data-testid="landing-locale-toggle">
+        <LanguageSwitcher tone={open || isHorizon ? "overlay" : "default"} />
+      </div>
+    </div>
+  );
+
+  const brand = (
+    <Link
+      href={LANDING_ROUTES.home}
+      onClick={() => setOpen(false)}
+      className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-[var(--radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+    >
+      <AiChartLogo
+        size={isHorizon || open ? 28 : 32}
+        showName
+        forceScheme={open || isHorizon ? "dark" : undefined}
+        nameClassName={cn(
+          "text-sm font-semibold tracking-tight sm:text-base",
+          open || isHorizon ? "text-white" : "text-foreground",
+        )}
+      />
+    </Link>
+  );
+
   if (isHorizon) {
     return (
       <>
         <SkipLink targetId={skipTargetId}>{c.nav.skip}</SkipLink>
         <header
+          ref={headerRef}
           data-testid="landing-header"
-          className="pointer-events-none absolute inset-x-0 top-0 z-50"
+          className="pointer-events-none absolute inset-x-0 top-0 z-[110]"
         >
           <div
             dir="ltr"
-            className="flex justify-end px-4 pt-[max(0.85rem,env(safe-area-inset-top))] sm:px-6"
+            className="flex items-center justify-between gap-3 px-4 pt-[max(0.85rem,env(safe-area-inset-top))] sm:px-6"
           >
-            <button
-              type="button"
-              data-testid="landing-menu-trigger"
-              aria-expanded={open}
-              aria-controls={titleId}
-              aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
-              onClick={() => setOpen((v) => !v)}
-              className="pointer-events-auto flex size-11 items-center justify-center rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-            >
-              {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
+            {open ? brand : <span />}
+            <div className="ms-auto flex items-center gap-1.5">
+              {switchers}
+              {menuButton}
+            </div>
           </div>
         </header>
-        {mobileMenu}
+        {overlay}
       </>
     );
   }
@@ -314,82 +355,56 @@ export function LandingNav({
     <>
       <SkipLink targetId={skipTargetId}>{c.nav.skip}</SkipLink>
       <header
+        ref={headerRef}
         data-testid="landing-header"
-        className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90"
+        className={cn(
+          "sticky top-0 z-[110] border-b",
+          open
+            ? "border-transparent bg-transparent"
+            : "border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90",
+        )}
       >
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
-          <Link
-            href={LANDING_ROUTES.home}
-            className="flex shrink-0 items-center gap-2 rounded-[var(--radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <AiChartLogo
-              size={32}
-              showName
-              nameClassName="text-base font-semibold tracking-tight text-foreground"
-            />
-          </Link>
+          {brand}
 
-          <nav
-            className="ms-auto hidden items-center gap-0.5 md:flex"
-            aria-label="Primary"
-          >
-            {navLinks}
-          </nav>
-
-          <div className="ms-auto flex items-center gap-1.5 md:ms-2">
-            <span className="hidden sm:inline-flex">
-              <MetalIconButton
-                data-testid="landing-theme-toggle"
-                onClick={() => setTheme(isDark ? "light" : "dark")}
-                aria-label={c.nav.theme}
-                title={c.nav.theme}
-              >
-                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </MetalIconButton>
-            </span>
-            <span className="hidden sm:inline-flex">
-              <MetalIconButton
-                data-testid="landing-locale-toggle"
-                onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
-                aria-label={c.nav.language}
-                title={c.nav.language}
-              >
-                <Globe className="h-4 w-4" />
-              </MetalIconButton>
-            </span>
-            {actions}
-            <Link
-              href={LANDING_ROUTES.login}
-              className={buttonVariants({
-                variant: "ghost",
-                className:
-                  "hidden text-muted-foreground hover:text-foreground sm:inline-flex",
-              })}
+          {!open ? (
+            <nav
+              className="ms-auto hidden items-center gap-0.5 md:flex"
+              aria-label="Primary"
             >
-              {c.nav.signIn}
-            </Link>
-            {registrationOpen ? (
-              <LiquidMetalButton
-                href={LANDING_ROUTES.signup}
-                label={c.nav.primaryCta}
-                data-testid="landing-primary-cta"
-              />
+              {compactDesktopNav}
+            </nav>
+          ) : null}
+
+          <div className={cn("flex items-center gap-1.5", !open && "ms-auto md:ms-2")}>
+            {switchers}
+            {!open ? (
+              <>
+                {actions}
+                <Link
+                  href={LANDING_ROUTES.login}
+                  className={buttonVariants({
+                    variant: "ghost",
+                    className:
+                      "hidden text-muted-foreground hover:text-foreground sm:inline-flex",
+                  })}
+                >
+                  {c.nav.signIn}
+                </Link>
+                {registrationOpen ? (
+                  <LiquidMetalButton
+                    href={LANDING_ROUTES.signup}
+                    label={c.nav.primaryCta}
+                    data-testid="landing-primary-cta"
+                  />
+                ) : null}
+              </>
             ) : null}
-            <span className="md:hidden">
-              <MetalIconButton
-                data-testid="landing-menu-trigger"
-                aria-expanded={open}
-                aria-controls={titleId}
-                aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
-                onClick={() => setOpen((v) => !v)}
-              >
-                {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </MetalIconButton>
-            </span>
+            <span className="md:hidden">{menuButton}</span>
           </div>
         </div>
-        {mobileMenu}
       </header>
+      {overlay}
     </>
   );
 }

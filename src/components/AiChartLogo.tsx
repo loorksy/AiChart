@@ -10,6 +10,8 @@ type AiChartLogoProps = {
   size?: number;
   showName?: boolean;
   nameClassName?: string;
+  /** Overlay menus sit on a forced dark field regardless of the page theme. */
+  forceScheme?: "light" | "dark";
 };
 
 /**
@@ -21,10 +23,12 @@ export function AiChartLogo({
   size = 28,
   showName = false,
   nameClassName,
+  forceScheme,
 }: AiChartLogoProps) {
   const { resolved } = useTheme();
+  const scheme = forceScheme ?? resolved;
   const src =
-    resolved === "light"
+    scheme === "light"
       ? "/brand/aichart-mark-light.svg"
       : "/brand/aichart-mark.svg";
 
