@@ -40,9 +40,8 @@ describe("landing redesign", () => {
   test("canonical structure is one viewport — no marketing scroll below the fold", () => {
     const page = read("components/landing/LandingPage.tsx");
     assert.match(page, /LandingHero/);
-    assert.match(page, /LandingNav/);
-    assert.match(page, /HorizonBackground/);
-    assert.match(page, /landing-viewport/);
+    assert.match(page, /PublicChrome/);
+    assert.match(page, /lockViewport/);
     assert.match(page, /faqJsonLd/);
     assert.doesNotMatch(
       page,
@@ -56,8 +55,10 @@ describe("landing redesign", () => {
 
   test("no-scroll is enforced with a viewport-locked container", () => {
     const page = read("components/landing/LandingPage.tsx");
+    const chrome = read("components/landing/PublicChrome.tsx");
     const css = read("app/globals.css");
-    assert.match(page, /landing-viewport/);
+    assert.match(page, /lockViewport/);
+    assert.match(chrome, /landing-viewport/);
     assert.match(css, /\.landing-viewport\s*\{/);
     assert.match(css, /height:\s*100dvh/);
     assert.match(css, /overflow:\s*hidden/);
@@ -105,6 +106,7 @@ describe("landing redesign", () => {
       "components/landing/LandingComposer.tsx",
       "components/landing/HorizonBackground.tsx",
       "components/landing/LandingNav.tsx",
+      "components/landing/PublicChrome.tsx",
       "components/landing/landingCopy.ts",
       "components/landing/ProductPreview.tsx",
       "components/landing/LandingTestimonials.tsx",
@@ -132,18 +134,15 @@ describe("landing redesign", () => {
     assert.match(copy, /هل أحتاج حساب وساطة أو MetaTrader؟/);
   });
 
-  test("header exposes theme, locale, full-viewport overlay, and real CTAs", () => {
+  test("header exposes a full-viewport overlay and real CTAs — no theme or language", () => {
     const nav = read("components/landing/LandingNav.tsx");
-    assert.match(nav, /landing-theme-toggle/);
-    assert.match(nav, /landing-locale-toggle/);
+    assert.match(nav, /landing-brand/);
     assert.match(nav, /landing-mobile-drawer/);
     assert.match(nav, /landing-menu-trigger/);
     assert.match(nav, /createPortal/);
     assert.match(nav, /fixed inset-0/);
     assert.match(nav, /group-aria-expanded/);
     assert.match(nav, /cubic-bezier\(\.5,\.85,\.25,1\.1\)/);
-    assert.match(nav, /ThemeToggle/);
-    assert.match(nav, /LanguageSwitcher/);
     assert.match(nav, /LANDING_ROUTES\.signup/);
     assert.match(nav, /href=\{LANDING_ROUTES\.login\}/);
     assert.match(nav, /LANDING_ROUTES\.pricing/);
@@ -159,6 +158,23 @@ describe("landing redesign", () => {
     assert.doesNotMatch(nav, /#features|#how|#stats|#faq/);
     assert.doesNotMatch(nav, /max-w-sm/);
     assert.doesNotMatch(nav, /animate-landing-modal/);
+    assert.doesNotMatch(nav, /ThemeToggle|LanguageSwitcher/);
+    assert.doesNotMatch(nav, /landing-theme-toggle|landing-locale-toggle/);
+    assert.doesNotMatch(nav, /variant\s*=\s*"compact"|compactDesktopNav/);
+  });
+
+  test("logo is always visible and the menu trigger is a bare icon", () => {
+    const nav = read("components/landing/LandingNav.tsx");
+    assert.match(nav, /data-testid="landing-brand"/);
+    assert.match(nav, /<AiChartLogo/);
+    assert.doesNotMatch(nav, /open \? brand/);
+    assert.match(nav, /<button\s+type="button"/);
+    assert.match(nav, /bg-transparent/);
+    assert.match(nav, /hover:bg-transparent/);
+    assert.doesNotMatch(nav, /import \{ Button/);
+    const start = nav.indexOf("landing-menu-trigger");
+    const triggerBlock = nav.slice(start, start + 700);
+    assert.doesNotMatch(triggerBlock, /border-white|border-border|rounded-md|rounded-lg|bg-muted|bg-white\/10/);
   });
 
   test("product preview is illustrative and avoids TradingView runtime", () => {
@@ -228,11 +244,11 @@ describe("landing redesign", () => {
   });
 
   test("registration-closed does not crash landing and hides signup", () => {
-    const page = read("components/landing/LandingPage.tsx");
+    const chrome = read("components/landing/PublicChrome.tsx");
     const nav = read("components/landing/LandingNav.tsx");
-    assert.match(page, /isRegistrationOpen/);
-    assert.match(page, /registrationOpen = false/);
-    assert.match(page, /catch/);
+    assert.match(chrome, /isRegistrationOpen/);
+    assert.match(chrome, /registrationOpen = false/);
+    assert.match(chrome, /catch/);
     assert.match(nav, /registrationOpen/);
     assert.match(nav, /registrationOpen\s*\?/);
   });
@@ -251,14 +267,18 @@ describe("landing redesign", () => {
     assert.ok(!existsSync(resolve(root, "components/landing/LandingAccess.tsx")));
   });
 
-  test("brand mark assets keep the unclipped viewBox", () => {
+  test("brand mark assets keep the unclipped viewBox and LONORA wordmark", () => {
     const logo = read("components/AiChartLogo.tsx");
     assert.match(logo, /aichart-mark\.svg|aichart-mark-light\.svg/);
     assert.match(logo, /object-contain/);
+    assert.match(logo, /BRAND_WORDMARK/);
+    assert.match(logo, /uppercase/);
     const mark = readFileSync(
       resolve(process.cwd(), "public/brand/aichart-mark.svg"),
       "utf8",
     );
     assert.match(mark, /viewBox=["']0 350 3000 2250["']/);
+    const brand = read("lib/brand.ts");
+    assert.match(brand, /BRAND_WORDMARK = "LONORA"/);
   });
 });

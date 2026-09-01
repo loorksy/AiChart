@@ -4,15 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
-import { ChartBackdrop } from "@/components/chart/ChartBackdrop";
 import { TelegramLoginButton } from "@/components/TelegramLoginButton";
 import type { CountryCode } from "libphonenumber-js";
 import { PhoneInput } from "@/components/PhoneInput";
-import { AiChartLogo } from "@/components/AiChartLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Button, buttonVariants } from "@/components/squareui/button";
 import { useLocale } from "@/hooks/useLocale";
-import { BRAND_NAME } from "@/lib/brand";
 
 export default function AuthForm({
   mode,
@@ -99,28 +96,26 @@ export default function AuthForm({
 
   return (
     <div
-      className="relative flex min-h-dvh w-full max-w-[100vw] overflow-x-hidden"
+      className="relative z-10 w-full max-w-[100vw] overflow-x-hidden"
       dir={dir}
     >
-      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden bg-background">
-        <div className="absolute left-1/2 top-0 h-[280px] w-[480px] max-w-full -translate-x-1/2 rounded-full bg-muted/40 blur-[80px]" />
-      </div>
-
-      <main className="mx-auto flex w-full min-w-0 max-w-lg flex-col justify-center px-4 py-8 outline-none sm:px-8 sm:py-10 lg:mx-0 lg:w-[42%] lg:max-w-lg lg:px-14">
-        <div className="glass-card min-w-0 max-w-full overflow-hidden p-5 sm:p-8">
-          <div className="mb-8 flex min-w-0 items-center justify-between gap-3">
-            <Link
-              href="/"
-              className="flex min-w-0 items-center gap-2 text-lg font-semibold"
+      <main
+        id="auth-main"
+        tabIndex={-1}
+        className="mx-auto flex w-full min-w-0 max-w-lg flex-col justify-center px-4 pb-16 pt-[max(5.5rem,calc(env(safe-area-inset-top)+4.5rem))] outline-none sm:px-8"
+      >
+        <div className="landing-composer-glass min-w-0 max-w-full overflow-hidden rounded-3xl p-5 sm:p-8">
+          <div className="mb-8 flex min-w-0 items-center justify-end gap-3">
+            <div
+              className="shrink-0"
+              data-testid="auth-locale-toggle"
+              aria-label={t("auth.switch_language")}
             >
-              <AiChartLogo size={20} showName nameClassName="truncate text-lg" />
-            </Link>
-            <div className="shrink-0" aria-label={t("auth.switch_language")}>
-              <LanguageSwitcher />
+              <LanguageSwitcher tone="overlay" />
             </div>
           </div>
 
-          <h1 className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
+          <h1 className="text-2xl font-semibold leading-tight text-white sm:text-3xl">
             {gateMode
               ? t("auth.operator_title")
               : signupClosed
@@ -129,7 +124,7 @@ export default function AuthForm({
                   ? t("auth.login_title")
                   : t("auth.register_title")}
           </h1>
-          <p className="mt-3 text-sm text-muted-foreground">
+          <p className="mt-3 text-sm text-white/60">
             {gateMode
               ? t("auth.operator_subtitle")
               : signupClosed
@@ -171,7 +166,7 @@ export default function AuthForm({
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-border" />
                 </div>
-                <p className="relative mx-auto w-fit bg-card/80 px-3 text-xs text-muted-foreground backdrop-blur-sm">
+                <p className="relative mx-auto w-fit bg-black/40 px-3 text-xs text-white/55 backdrop-blur-sm">
                   {isLogin ? t("auth.telegram_or_login") : t("auth.telegram_or_register")}
                 </p>
               </div>
@@ -274,7 +269,7 @@ export default function AuthForm({
           )}
 
           {isLogin && allowRegister && (
-            <p className="mt-6 text-center text-sm text-muted-foreground">
+            <p className="mt-6 text-center text-sm text-white/55">
               {t("auth.no_account")}{" "}
               <Link href="/signup" className="text-link font-medium">
                 {t("auth.register_now")}
@@ -282,7 +277,7 @@ export default function AuthForm({
             </p>
           )}
           {!isLogin && (
-            <p className="mt-6 text-center text-sm text-muted-foreground">
+            <p className="mt-6 text-center text-sm text-white/55">
               {t("auth.have_account")}{" "}
               <Link href="/login" className="text-link font-medium">
                 {t("auth.sign_in")}
@@ -291,24 +286,6 @@ export default function AuthForm({
           )}
         </div>
       </main>
-
-      <div className="relative hidden flex-1 lg:block">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="chart-bg-canvas absolute -inset-[15%]">
-            <ChartBackdrop className="h-full" />
-          </div>
-          <div className="absolute inset-0 bg-background/80" />
-        </div>
-        <div className="relative flex h-full items-center justify-center p-8">
-          <div className="glass-card w-full max-w-2xl overflow-hidden">
-            <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold text-foreground">{BRAND_NAME}</p>
-              <p className="text-xs text-muted-foreground">{t("auth.preview_subtitle")}</p>
-            </div>
-            <ChartBackdrop className="h-[360px]" />
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
