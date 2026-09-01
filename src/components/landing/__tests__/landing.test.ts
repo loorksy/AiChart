@@ -132,21 +132,33 @@ describe("landing redesign", () => {
     assert.match(copy, /هل أحتاج حساب وساطة أو MetaTrader؟/);
   });
 
-  test("header exposes theme, locale, opaque mobile modal portal, and real CTAs", () => {
+  test("header exposes theme, locale, full-viewport overlay, and real CTAs", () => {
     const nav = read("components/landing/LandingNav.tsx");
     assert.match(nav, /landing-theme-toggle/);
     assert.match(nav, /landing-locale-toggle/);
     assert.match(nav, /landing-mobile-drawer/);
     assert.match(nav, /landing-menu-trigger/);
     assert.match(nav, /createPortal/);
-    assert.match(nav, /animate-landing-modal/);
-    assert.match(nav, /backgroundColor: "var\(--background\)"/);
-    assert.match(nav, /href=\{LANDING_ROUTES\.signup\}/);
+    assert.match(nav, /fixed inset-0/);
+    assert.match(nav, /group-aria-expanded/);
+    assert.match(nav, /cubic-bezier\(\.5,\.85,\.25,1\.1\)/);
+    assert.match(nav, /ThemeToggle/);
+    assert.match(nav, /LanguageSwitcher/);
+    assert.match(nav, /LANDING_ROUTES\.signup/);
     assert.match(nav, /href=\{LANDING_ROUTES\.login\}/);
     assert.match(nav, /LANDING_ROUTES\.pricing/);
     assert.match(nav, /LANDING_ROUTES\.console/);
+    assert.match(nav, /LANDING_ROUTES\.recommendations/);
+    assert.match(nav, /LANDING_ROUTES\.performance/);
+    assert.match(nav, /LANDING_ROUTES\.privacy/);
+    assert.match(nav, /landing\.nav\.section\.account/);
+    assert.match(nav, /landing\.nav\.section\.navigation/);
+    assert.match(nav, /landing\.nav\.section\.resources/);
+    assert.match(nav, /registrationOpen\s*\?/);
     assert.match(nav, /Escape/);
     assert.doesNotMatch(nav, /#features|#how|#stats|#faq/);
+    assert.doesNotMatch(nav, /max-w-sm/);
+    assert.doesNotMatch(nav, /animate-landing-modal/);
   });
 
   test("product preview is illustrative and avoids TradingView runtime", () => {
@@ -180,14 +192,25 @@ describe("landing redesign", () => {
       "landing.nav.signup",
       "landing.nav.pricing",
       "landing.nav.chat",
+      "landing.nav.home",
+      "landing.nav.privacy",
+      "landing.nav.section.account",
+      "landing.nav.section.navigation",
+      "landing.nav.section.resources",
     ] as const;
     for (const key of keys) {
       assert.ok(en[key].length > 1, key);
       assert.ok(ar[key].length > 1, key);
       assert.notEqual(ar[key], en[key], key);
     }
-    assert.match(ar["landing.hero.line1"], /اكتب جملة/);
-    assert.match(en["landing.hero.line1"], /Type a sentence/);
+    assert.match(ar["landing.hero.line1"], /ذكاء للذهب/);
+    assert.match(ar["landing.hero.line2"], /توصية/);
+    assert.match(en["landing.hero.line1"], /Intelligence for gold/);
+    assert.match(en["landing.hero.line2"], /recommendation/i);
+    assert.doesNotMatch(ar["landing.hero.line1"], /اكتب جملة/);
+    assert.doesNotMatch(en["landing.hero.line1"], /Type a sentence/);
+    assert.match(ar["landing.nav.signup"], /احصل على وصول/);
+    assert.match(en["landing.nav.signup"], /Get access/);
     assert.match(ar["landing.composer.placeholder"], /ما فكرتك/);
     assert.match(en["landing.composer.placeholder"], /What's your idea/);
   });

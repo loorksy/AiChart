@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Cable, Moon, Sparkles, Sun, User, X } from "lucide-react";
+import { Cable, Sparkles, Sun, User, X } from "lucide-react";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
 import { NotificationPrefsCard } from "@/components/settings/NotificationPrefsCard";
 import { TelegramLinkCard } from "@/components/settings/TelegramLinkCard";
@@ -14,7 +14,7 @@ import { AgentMemoryPanel } from "@/components/settings/AgentMemoryPanel";
 
 import { Surface } from "@/components/foundation";
 import { Button, buttonVariants } from "@/components/squareui/button";
-import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useLocale } from "@/hooks/useLocale";
 import {
   SETTINGS_SECTIONS,
@@ -90,7 +90,6 @@ export default function SettingsClient({
   void initialSettings;
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const tabListRef = useRef<HTMLElement | null>(null);
-  const { theme, setTheme } = useTheme();
   const { t, dir } = useLocale();
   void _limits;
 
@@ -197,28 +196,8 @@ export default function SettingsClient({
           <p className="mt-1 text-sm text-muted-foreground">
             {t("settings.appearance.description")}
           </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            {(["dark", "light", "system"] as ThemePreference[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setTheme(value)}
-                aria-pressed={theme === value}
-                className={cn(
-                  "min-h-11 rounded-md border px-4 text-sm font-medium transition-colors focus-ring",
-                  theme === value
-                    ? "border-transparent bg-primary text-primary-foreground"
-                    : "border-border bg-background hover:bg-muted",
-                )}
-              >
-                {value === "dark" ? <Moon className="me-2 inline h-4 w-4" aria-hidden /> : <Sun className="me-2 inline h-4 w-4" aria-hidden />}
-                {value === "dark"
-                  ? t("profile.theme.dark")
-                  : value === "light"
-                    ? t("profile.theme.light")
-                    : t("settings.theme.system")}
-              </button>
-            ))}
+          <div className="mt-4">
+            <ThemeToggle />
           </div>
         </Surface>
       )}

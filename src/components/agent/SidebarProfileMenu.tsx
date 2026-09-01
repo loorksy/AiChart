@@ -8,18 +8,16 @@ import {
   AlertTriangle,
   CalendarClock,
   ChevronUp,
-  Globe,
   LogOut,
-  Moon,
   LifeBuoy,
   Settings,
-  Sun,
   User as UserIcon,
   ShieldCheck,
 } from "lucide-react";
 import { useMe } from "@/hooks/useMe";
 import { useLocale } from "@/hooks/useLocale";
-import { useTheme } from "@/components/ThemeProvider";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useConsoleOverlays } from "@/components/shell/ConsoleOverlays";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
 import { AccountStatusBadge } from "@/components/billing/AccountStatusBadge";
@@ -27,15 +25,9 @@ import { useBillingSummary } from "@/hooks/useBillingSummary";
 import { useSupportUnread } from "@/hooks/useSupportUnread";
 import Link from "next/link";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
-import { APP_LOCALES, type AppLocale } from "@/lib/i18n";
 import { formatInteger } from "@/lib/display/numericDisplay";
 import { formatFullDate } from "@/lib/display/timestamp";
 import { cn } from "@/lib/utils";
-
-const LOCALE_LABEL: Record<AppLocale, string> = {
-  ar: "العربية",
-  en: "English",
-};
 
 type MenuPos = { top: number; left: number; width: number; maxHeight: number };
 
@@ -49,18 +41,13 @@ const ITEM_CLASS =
  */
 function ProfileMenuItems({
   onDone,
-  langOpen,
-  setLangOpen,
   touchSize = false,
 }: {
   onDone: () => void;
-  langOpen: boolean;
-  setLangOpen: (open: boolean) => void;
   touchSize?: boolean;
 }) {
   const router = useRouter();
-  const { t, locale, setLocale } = useLocale();
-  const { resolved, setTheme } = useTheme();
+  const { t } = useLocale();
   const { openSettings } = useConsoleOverlays();
   const { data: me } = useMe();
   // Cosmetic gating only. The console's own data is protected server-side —
@@ -71,8 +58,6 @@ function ProfileMenuItems({
   // The account menu is where a person looks for "talk to someone", and it is
   // the only entry that is reachable on a phone without opening the nav drawer.
   const supportUnread = useSupportUnread();
-  const isDark = resolved === "dark";
-  const themeLabel = isDark ? t("shell.theme_to_light") : t("shell.theme_to_dark");
   const rowClass = cn(ITEM_CLASS, touchSize && "min-h-11");
 
   async function logout() {
@@ -141,71 +126,15 @@ function ProfileMenuItems({
         {t("profile.profile")}
       </button>
 
-      <div className="relative">
-        <button
-          type="button"
-          role="menuitem"
-          aria-haspopup="menu"
-          aria-expanded={langOpen}
-          aria-label={t("profile.language")}
-          title={t("profile.language")}
-          data-testid="profile-language"
-          className={rowClass}
-          onClick={() => setLangOpen(!langOpen)}
-        >
-          <Globe className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-          <span>{t("profile.language")}</span>
-          <span className="ms-auto text-[11px] tabular-nums text-muted-foreground">
-            {LOCALE_LABEL[locale]}
-          </span>
-        </button>
-        {langOpen && (
-          <div
-            role="menu"
-            className="mx-2 mb-1 overflow-hidden rounded-md border border-border bg-background"
-            style={{ backgroundColor: "var(--background)" }}
-          >
-            {APP_LOCALES.map((lng) => (
-              <button
-                key={lng}
-                type="button"
-                role="menuitemradio"
-                aria-checked={lng === locale}
-                className={cn(
-                  "flex w-full px-3 py-2 text-start text-xs transition-colors duration-150 hover:bg-muted",
-                  touchSize && "min-h-11 items-center",
-                  lng === locale
-                    ? "font-semibold text-foreground"
-                    : "text-muted-foreground",
-                )}
-                onClick={() => {
-                  setLocale(lng);
-                  setLangOpen(false);
-                }}
-              >
-                {LOCALE_LABEL[lng]}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <button
-        type="button"
-        role="menuitem"
-        data-testid="theme-toggle"
-        aria-label={themeLabel}
-        title={themeLabel}
-        className={rowClass}
-        onClick={() => setTheme(isDark ? "light" : "dark")}
+      <div
+        className={cn("flex flex-col gap-2 px-3 py-2", touchSize && "min-h-11 justify-center")}
+        data-testid="profile-language"
+        aria-label={t("profile.language")}
       >
-        {isDark ? (
-          <Sun className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        ) : (
-          <Moon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        )}
-        <span>{themeLabel}</span>
-      </button>
+        <LanguageSwitcher />
+        {/* data-testid="theme-toggle" is on ThemeToggle */}
+        <ThemeToggle />
+      </div>
 
       <button
         type="button"
@@ -298,7 +227,6 @@ export function SidebarProfileMenu({
 }) {
   const { t, dir } = useLocale();
   const [open, setOpen] = useState(false);
-  const [langOpen, setLangOpen] = useState(false);
   const [pos, setPos] = useState<MenuPos | null>(null);
   const [mounted, setMounted] = useState(false);
   const [, setSheetOpen] = useSheetSlot("profileMenu");
@@ -351,7 +279,7 @@ export function SidebarProfileMenu({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, dir, langOpen, isDrawer]);
+  }, [open, dir, isDrawer]);
 
   useEffect(() => {
     if (!open) return;
@@ -360,16 +288,12 @@ export function SidebarProfileMenu({
       if (triggerRef.current?.contains(node)) return;
       if (menuRef.current?.contains(node)) return;
       setOpen(false);
-      setLangOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
-      if (langOpen) setLangOpen(false);
-      else {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
+      setOpen(false);
+      triggerRef.current?.focus();
     };
     document.addEventListener("mousedown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -377,7 +301,7 @@ export function SidebarProfileMenu({
       document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, langOpen]);
+  }, [open]);
 
   const menu =
     !isDrawer && mounted && open && pos
@@ -399,11 +323,7 @@ export function SidebarProfileMenu({
             }}
           >
             <div className="p-1.5">
-              <ProfileMenuItems
-                onDone={() => setOpen(false)}
-                langOpen={langOpen}
-                setLangOpen={setLangOpen}
-              />
+              <ProfileMenuItems onDone={() => setOpen(false)} />
             </div>
           </div>,
           document.body,
@@ -427,7 +347,6 @@ export function SidebarProfileMenu({
               return;
             }
             setOpen((v) => !v);
-            setLangOpen(false);
           }}
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-muted/70",
@@ -462,7 +381,6 @@ export function SidebarProfileMenu({
             return;
           }
           setOpen((v) => !v);
-          setLangOpen(false);
         }}
         className={cn(
           "flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-start transition-colors duration-150 hover:bg-muted",
@@ -504,7 +422,6 @@ export function SidebarProfileMenu({
 export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
   const { t, dir } = useLocale();
   const [open, setOpen] = useSheetSlot("profileMenu");
-  const [langOpen, setLangOpen] = useState(false);
   const { displayName: name, email, initial } = useIdentity(displayName);
   const sheetRef = useRef<HTMLDivElement>(null);
   // Menu content is short; expanding it to full screen would expand a void.
@@ -512,10 +429,6 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
     sheetRef,
     onDismiss: () => setOpen(false),
   });
-
-  useEffect(() => {
-    if (!open) setLangOpen(false);
-  }, [open]);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -544,12 +457,7 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
               actions — everything visible at once, contained in ONE card. */}
           <AccountFacts />
           <div className="px-2 pb-1 pt-1.5">
-            <ProfileMenuItems
-              onDone={() => setOpen(false)}
-              langOpen={langOpen}
-              setLangOpen={setLangOpen}
-              touchSize
-            />
+            <ProfileMenuItems onDone={() => setOpen(false)} touchSize />
           </div>
         </Dialog.Popup>
       </Dialog.Portal>

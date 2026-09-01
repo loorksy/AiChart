@@ -1499,8 +1499,8 @@ export const ar: Record<TranslationKey, string> = {
   "nav.admin_diagnostics": "التشخيص",
 
   // Public landing (one-screen horizon)
-  "landing.hero.line1": "اكتب جملة.",
-  "landing.hero.line2": "تداول السوق.",
+  "landing.hero.line1": "ذكاء للذهب.",
+  "landing.hero.line2": "توصية من جملة.",
   "landing.composer.placeholder": "ما فكرتك؟",
   "landing.composer.plus": "مرفقات",
   "landing.composer.plus_unavailable": "المرفقات تُفتح بعد تسجيل الدخول",
@@ -1515,9 +1515,14 @@ export const ar: Record<TranslationKey, string> = {
   "landing.prompt.telegram": "كيف أستقبل توصيات Lonora على تيليجرام؟",
   "landing.prompt.performance": "كيف يتتبّع Lonora أداء التوصيات حتى نتيجتها؟",
   "landing.nav.login": "تسجيل الدخول",
-  "landing.nav.signup": "إنشاء حساب",
+  "landing.nav.signup": "احصل على وصول",
   "landing.nav.pricing": "الأسعار",
   "landing.nav.chat": "المحادثة",
+  "landing.nav.home": "الرئيسية",
+  "landing.nav.privacy": "الخصوصية",
+  "landing.nav.section.account": "الحساب",
+  "landing.nav.section.navigation": "التنقل",
+  "landing.nav.section.resources": "الموارد",
 };
 
 

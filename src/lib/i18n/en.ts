@@ -1519,8 +1519,8 @@ export const en = {
   "nav.admin_diagnostics": "Diagnostics",
 
   // Public landing (one-screen horizon)
-  "landing.hero.line1": "Type a sentence.",
-  "landing.hero.line2": "Trade the market.",
+  "landing.hero.line1": "Intelligence for gold.",
+  "landing.hero.line2": "One sentence. One recommendation.",
   "landing.composer.placeholder": "What's your idea?",
   "landing.composer.plus": "Attachments",
   "landing.composer.plus_unavailable": "Attachments open after sign-in",
@@ -1535,9 +1535,14 @@ export const en = {
   "landing.prompt.telegram": "How do I get Lonora recommendations on Telegram?",
   "landing.prompt.performance": "How does Lonora track recommendation performance to the outcome?",
   "landing.nav.login": "Sign in",
-  "landing.nav.signup": "Create account",
+  "landing.nav.signup": "Get access",
   "landing.nav.pricing": "Pricing",
   "landing.nav.chat": "Chat",
+  "landing.nav.home": "Home",
+  "landing.nav.privacy": "Privacy",
+  "landing.nav.section.account": "Account",
+  "landing.nav.section.navigation": "Navigation",
+  "landing.nav.section.resources": "Resources",
 } as const;
 
 export type TranslationKey = keyof typeof en;
