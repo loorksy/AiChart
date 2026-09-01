@@ -34,7 +34,7 @@ export function PricingCards({
 
   async function subscribe() {
     if (!signedIn) {
-      router.push(`/signup?next=/pricing`);
+      router.push(`/login?next=/pricing`);
       return;
     }
     setBusy("plan");

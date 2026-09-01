@@ -1,4 +1,5 @@
 import AuthForm from "@/components/AuthForm";
+import { PublicChrome } from "@/components/landing/PublicChrome";
 import { getTelegramLoginConfig } from "@/lib/telegram";
 import { googleAuthConfig } from "@/lib/auth/googleOidc";
 import { isRegistrationOpen } from "@/lib/auth/registration";
@@ -28,15 +29,17 @@ export default async function LoginPage({
       : undefined;
 
   return (
-    <AuthForm
-      mode="login"
-      redirectTo={redirectTo}
-      botUsername={botUsername}
-      telegramConfigured={telegramConfigured}
-      googleConfigured={google != null}
-      gateMode={false}
-      allowRegister={registrationOpen}
-      initialError={closedError}
-    />
+    <PublicChrome skipTargetId="auth-main" registrationOpen={registrationOpen}>
+      <AuthForm
+        mode="login"
+        redirectTo={redirectTo}
+        botUsername={botUsername}
+        telegramConfigured={telegramConfigured}
+        googleConfigured={google != null}
+        gateMode={false}
+        allowRegister={registrationOpen}
+        initialError={closedError}
+      />
+    </PublicChrome>
   );
 }

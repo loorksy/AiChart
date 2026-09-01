@@ -6,32 +6,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { useLocale } from "@/components/LocaleProvider";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
-import { Button, buttonVariants } from "@/components/squareui/button";
-import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
+import { buttonVariants } from "@/components/squareui/button";
 import { SkipLink } from "@/components/foundation";
 import { cn } from "@/lib/utils";
 
-export interface LandingNavLink {
-  /** Href rendered verbatim — must be an existing route (or file, e.g. RSS). */
-  href: string;
-  label: string;
-  /** Plain anchor instead of a client-side <Link> (e.g. /blog/rss.xml). */
-  external?: boolean;
-}
-
 export interface LandingNavProps {
-  /**
-   * `full` (default): one-screen landing — hamburger only, real product routes.
-   * `compact`: host-page route links — used on /pricing.
-   */
-  variant?: "full" | "compact";
-  /** Compact-variant route links, hrefs passed through untouched. */
-  links?: LandingNavLink[];
-  /** Optional server-rendered action slot (e.g. pricing's billing link). */
-  actions?: React.ReactNode;
   /** The one skip link per page lives in this shared header. */
   skipTargetId?: string;
   /**
@@ -79,21 +59,17 @@ function routeActive(pathname: string, href: string): boolean {
 }
 
 export function LandingNav({
-  variant = "full",
-  links = [],
-  actions,
   skipTargetId = "main",
   registrationOpen = true,
 }: LandingNavProps) {
   const { locale, t } = useLocale();
   const pathname = usePathname() ?? "/";
-  const c = getLandingCopy(locale);
+  const copy = getLandingCopy(locale);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
-  const isHorizon = variant === "full";
   const accessHref = registrationOpen
     ? LANDING_ROUTES.signup
     : LANDING_ROUTES.pricing;
@@ -171,26 +147,6 @@ export function LandingNav({
       </Link>
     );
   };
-
-  const compactLinkClass =
-    "flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9";
-
-  const compactDesktopNav =
-    variant === "compact" ? (
-      <>
-        {links.map((item) =>
-          item.external ? (
-            <a key={item.href} href={item.href} className={compactLinkClass}>
-              {item.label}
-            </a>
-          ) : (
-            <Link key={item.href} href={item.href} className={compactLinkClass}>
-              {item.label}
-            </Link>
-          ),
-        )}
-      </>
-    ) : null;
 
   const overlay =
     mounted && open
@@ -271,137 +227,42 @@ export function LandingNav({
         )
       : null;
 
-  const menuButton = (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-lg"
-      data-testid="landing-menu-trigger"
-      aria-expanded={open}
-      aria-controls={titleId}
-      aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
-      onClick={() => setOpen((v) => !v)}
-      className={cn(
-        "group pointer-events-auto tap-target",
-        open || isHorizon
-          ? "text-white hover:bg-white/10 hover:text-white"
-          : "text-foreground",
-      )}
-    >
-      <MenuMorphIcon />
-    </Button>
-  );
-
-  const switchers = (
-    <div
-      data-testid="landing-theme-toggle"
-      className={cn(
-        "pointer-events-auto flex items-center gap-1.5",
-        isHorizon && !open && "hidden",
-        !isHorizon && !open && "hidden sm:flex",
-      )}
-    >
-      <ThemeToggle tone={open || isHorizon ? "overlay" : "default"} />
-      <div data-testid="landing-locale-toggle">
-        <LanguageSwitcher tone={open || isHorizon ? "overlay" : "default"} />
-      </div>
-    </div>
-  );
-
-  const brand = (
-    <Link
-      href={LANDING_ROUTES.home}
-      onClick={() => setOpen(false)}
-      className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-[var(--radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-    >
-      <AiChartLogo
-        size={isHorizon || open ? 28 : 32}
-        showName
-        forceScheme={open || isHorizon ? "dark" : undefined}
-        nameClassName={cn(
-          "text-sm font-semibold tracking-tight sm:text-base",
-          open || isHorizon ? "text-white" : "text-foreground",
-        )}
-      />
-    </Link>
-  );
-
-  if (isHorizon) {
-    return (
-      <>
-        <SkipLink targetId={skipTargetId}>{c.nav.skip}</SkipLink>
-        <header
-          ref={headerRef}
-          data-testid="landing-header"
-          className="pointer-events-none absolute inset-x-0 top-0 z-[110]"
-        >
-          <div
-            dir="ltr"
-            className="flex items-center justify-between gap-3 px-4 pt-[max(0.85rem,env(safe-area-inset-top))] sm:px-6"
-          >
-            {open ? brand : <span />}
-            <div className="ms-auto flex items-center gap-1.5">
-              {switchers}
-              {menuButton}
-            </div>
-          </div>
-        </header>
-        {overlay}
-      </>
-    );
-  }
-
   return (
     <>
-      <SkipLink targetId={skipTargetId}>{c.nav.skip}</SkipLink>
+      <SkipLink targetId={skipTargetId}>{copy.nav.skip}</SkipLink>
       <header
         ref={headerRef}
         data-testid="landing-header"
-        className={cn(
-          "sticky top-0 z-[110] border-b",
-          open
-            ? "border-transparent bg-transparent"
-            : "border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90",
-        )}
+        className="pointer-events-none absolute inset-x-0 top-0 z-[110]"
       >
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
-          {brand}
-
-          {!open ? (
-            <nav
-              className="ms-auto hidden items-center gap-0.5 md:flex"
-              aria-label="Primary"
-            >
-              {compactDesktopNav}
-            </nav>
-          ) : null}
-
-          <div className={cn("flex items-center gap-1.5", !open && "ms-auto md:ms-2")}>
-            {switchers}
-            {!open ? (
-              <>
-                {actions}
-                <Link
-                  href={LANDING_ROUTES.login}
-                  className={buttonVariants({
-                    variant: "ghost",
-                    className:
-                      "hidden text-muted-foreground hover:text-foreground sm:inline-flex",
-                  })}
-                >
-                  {c.nav.signIn}
-                </Link>
-                {registrationOpen ? (
-                  <LiquidMetalButton
-                    href={LANDING_ROUTES.signup}
-                    label={c.nav.primaryCta}
-                    data-testid="landing-primary-cta"
-                  />
-                ) : null}
-              </>
-            ) : null}
-            <span className="md:hidden">{menuButton}</span>
-          </div>
+        <div
+          dir="ltr"
+          className="flex items-center justify-between gap-3 px-4 pt-[max(0.85rem,env(safe-area-inset-top))] sm:px-6"
+        >
+          <Link
+            href={LANDING_ROUTES.home}
+            onClick={() => setOpen(false)}
+            data-testid="landing-brand"
+            className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-[var(--radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          >
+            <AiChartLogo
+              size={28}
+              showName
+              forceScheme="dark"
+              nameClassName="text-sm font-semibold tracking-[0.14em] text-white sm:text-base"
+            />
+          </Link>
+          <button
+            type="button"
+            data-testid="landing-menu-trigger"
+            aria-expanded={open}
+            aria-controls={titleId}
+            aria-label={open ? copy.nav.closeMenu : copy.nav.openMenu}
+            onClick={() => setOpen((v) => !v)}
+            className="group pointer-events-auto inline-flex size-11 appearance-none items-center justify-center border-0 bg-transparent p-0 text-white shadow-none [-webkit-tap-highlight-color:transparent] hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          >
+            <MenuMorphIcon />
+          </button>
         </div>
       </header>
       {overlay}

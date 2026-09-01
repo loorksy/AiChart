@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useTheme } from "@/components/ThemeProvider";
 import { cn } from "@/lib/utils";
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_NAME, BRAND_WORDMARK } from "@/lib/brand";
 
 type AiChartLogoProps = {
   className?: string;
@@ -53,8 +53,11 @@ export function AiChartLogo({
         />
       </span>
       {showName ? (
-        <span className={cn("font-semibold tracking-tight text-foreground", nameClassName)}>
-          {BRAND_NAME}
+        <span
+          data-testid="aichart-wordmark"
+          className={cn("font-semibold uppercase tracking-[0.14em] text-foreground", nameClassName)}
+        >
+          {BRAND_WORDMARK}
         </span>
       ) : null}
     </span>

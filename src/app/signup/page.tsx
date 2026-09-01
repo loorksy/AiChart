@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import AuthForm from "@/components/AuthForm";
+import { PublicChrome } from "@/components/landing/PublicChrome";
 import { getTelegramLoginConfig } from "@/lib/telegram";
 import { isSingleUserMode } from "@/lib/agentAuth";
 import { detectCountryFromHeaders } from "@/lib/geoCountry";
@@ -25,13 +26,15 @@ export default async function SignupPage() {
     ]);
 
   return (
-    <AuthForm
-      mode="register"
-      botUsername={botUsername}
-      telegramConfigured={telegramConfigured}
-      googleConfigured={google != null}
-      defaultCountry={defaultCountry}
-      registrationOpen={registrationOpen}
-    />
+    <PublicChrome skipTargetId="auth-main" registrationOpen={registrationOpen}>
+      <AuthForm
+        mode="register"
+        botUsername={botUsername}
+        telegramConfigured={telegramConfigured}
+        googleConfigured={google != null}
+        defaultCountry={defaultCountry}
+        registrationOpen={registrationOpen}
+      />
+    </PublicChrome>
   );
 }

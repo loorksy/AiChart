@@ -251,7 +251,7 @@ test("auth form prevents mobile horizontal overflow", () => {
   const auth = read("components/AuthForm.tsx");
   assert.match(auth, /max-w-\[100vw\]/);
   assert.match(auth, /overflow-x-hidden/);
-  assert.match(auth, /overflow-hidden bg-background/);
+  assert.match(auth, /landing-composer-glass/);
   assert.match(auth, /min-w-0 max-w-full/);
 });
 

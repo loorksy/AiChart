@@ -6,9 +6,12 @@ import { getBillingPlan, getCurrentPlanPrice } from "@/lib/billing/planConfig";
 import { AICHART_PLAN } from "@/lib/subscription/plan";
 import { PricingCards } from "@/components/billing/PricingCards";
 import { Surface } from "@/components/foundation";
-import { LandingNav } from "@/components/landing/LandingNav";
-import { LandingFooter } from "@/components/landing/LandingFooter";
+import {
+  PUBLIC_MAIN_PAD,
+  PublicChrome,
+} from "@/components/landing/PublicChrome";
 import { pageMetadata } from "@/lib/seo";
+import { cn } from "@/lib/utils";
 
 export const metadata = pageMetadata("pricing");
 
@@ -31,32 +34,29 @@ export default async function PricingPage() {
   ]);
 
   return (
-    <div dir="rtl" className="min-h-dvh bg-background">
-      <LandingNav
-        variant="compact"
-        skipTargetId="pricing-main"
-        actions={
-          user ? (
-            <Link
-              href="/console/billing"
-              className="hidden min-h-9 items-center rounded-[var(--radius)] px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
-            >
-              الفوترة والرصيد
-            </Link>
-          ) : null
-        }
-      />
-
+    <PublicChrome skipTargetId="pricing-main" showFooter>
       <main
         id="pricing-main"
         tabIndex={-1}
-        className="mx-auto max-w-6xl px-4 py-16 sm:px-8 sm:py-20"
+        dir="rtl"
+        className={cn(PUBLIC_MAIN_PAD, "mx-auto max-w-6xl sm:pb-20")}
       >
+        {user ? (
+          <div className="mb-6 flex justify-end">
+            <Link
+              href="/console/billing"
+              className="inline-flex min-h-9 items-center rounded-full border border-white/20 px-4 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+            >
+              الفوترة والرصيد
+            </Link>
+          </div>
+        ) : null}
+
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-foreground sm:text-4xl">
+          <h1 className="text-3xl font-bold text-white sm:text-4xl">
             باقة واحدة، كل القوة
           </h1>
-          <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">
+          <p className="mx-auto mt-3 max-w-2xl text-white/60">
             كل باقة تمنحك رصيد استخدام شهرياً يُستهلك حسب استخدامك الفعلي —
             تحليلات أعمق ومودلات أقوى تستهلك أكثر. نفد الرصيد؟ اشحن متى شئت
             ورصيد الشحن لا تنتهي صلاحيته.
@@ -76,24 +76,21 @@ export default async function PricingPage() {
         {/* CTA row — a live contact path for anything the cards can't answer.
             Same destination the platform already uses for manual activation. */}
         <div className="mx-auto mt-12 flex max-w-xl flex-col items-center gap-3 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-white/55">
             عندك سؤال قبل الاشتراك؟ تواصل معنا مباشرة.
           </p>
-          {/* Server component — buttonVariants() is client-only, so the xl
-              primary button classes are spelled out here (kept in sync with
-              squareui/button). */}
           <a
             href={AICHART_PLAN.telegramUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent bg-primary px-6 text-sm font-medium text-primary-foreground outline-none transition-all hover:bg-primary/80 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent bg-accent-gold px-6 text-sm font-medium text-black outline-none transition-all hover:bg-accent-gold/80 focus-visible:ring-[3px] focus-visible:ring-accent-gold/50"
           >
             تواصل عبر Telegram
           </a>
         </div>
 
         <section className="mx-auto mt-16 max-w-3xl space-y-6">
-          <h2 className="text-center text-xl font-semibold text-foreground">
+          <h2 className="text-center text-xl font-semibold text-white">
             أسئلة شائعة
           </h2>
           {[
@@ -114,15 +111,18 @@ export default async function PricingPage() {
               a: "نعم — الاشتراك شهري بلا التزام، وتديره بالكامل من بوابة الفوترة.",
             },
           ].map((item) => (
-            <Surface key={item.q} as="article" padding="lg">
-              <h3 className="font-semibold text-foreground">{item.q}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.a}</p>
+            <Surface
+              key={item.q}
+              as="article"
+              padding="lg"
+              className="border-white/10 bg-white/5 text-white backdrop-blur-md"
+            >
+              <h3 className="font-semibold text-white">{item.q}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-white/65">{item.a}</p>
             </Surface>
           ))}
         </section>
       </main>
-
-      <LandingFooter />
-    </div>
+    </PublicChrome>
   );
 }
