@@ -5,6 +5,10 @@ import { describe, it } from "node:test";
 import { BRAND_DOMAIN, BRAND_NAME, BRAND_URL } from "@/lib/brand";
 import { DATA_SYMBOL, DISPLAY_NAME_AR, DISPLAY_NAME_EN } from "@/lib/gold";
 import {
+  OG_DESCRIPTION_AR,
+  OG_DESCRIPTION_EN,
+  OG_TITLE_AR,
+  OG_TITLE_EN,
   PRIVATE_PATH_PREFIXES,
   SEO_DESCRIPTION_AR,
   SEO_DESCRIPTION_EN,
@@ -17,6 +21,7 @@ import {
   siteJsonLd,
   webManifest,
 } from "@/lib/seo";
+import { reshapeArabicLogical, shapeOgArabic } from "@/lib/ogArabic";
 
 const root = resolve(process.cwd());
 const src = resolve(root, "src");
@@ -78,6 +83,56 @@ describe("public SEO facts", () => {
       if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue;
       assert.doesNotMatch(line, /"XAUUSD"/);
     }
+  });
+
+  it("uses short professional OG copy, Arabic-only on the home card", () => {
+    assert.equal(OG_TITLE_AR, "لونورا — قرار أوضح في الذهب");
+    assert.equal(OG_DESCRIPTION_AR, "نقرأ سوق الذهب ونمنحك توصية واضحة تثق بها.");
+    assert.equal(OG_TITLE_EN, "Lonora — Clarity for gold");
+    assert.equal(OG_DESCRIPTION_EN, "Clarity on gold, and a recommendation you can trust.");
+    assert.ok(OG_TITLE_AR.length <= 60);
+    assert.ok(OG_TITLE_EN.length <= 60);
+    assert.ok(OG_DESCRIPTION_AR.length <= 160);
+    assert.ok(OG_DESCRIPTION_EN.length <= 160);
+    assert.doesNotMatch(OG_TITLE_AR, /[A-Za-z]/);
+    assert.doesNotMatch(OG_DESCRIPTION_AR, /[A-Za-z]/);
+    assert.doesNotMatch(`${OG_TITLE_AR} ${OG_DESCRIPTION_AR}`, /AI|XAUUSD|MCP|Telegram|artifacts/i);
+
+    const home = pageMetadata("home");
+    const root = rootMetadata();
+    assert.equal(home.openGraph?.title, OG_TITLE_AR);
+    assert.equal(home.openGraph?.description, OG_DESCRIPTION_AR);
+    assert.equal(home.twitter?.title, OG_TITLE_AR);
+    assert.equal(home.twitter?.description, OG_DESCRIPTION_AR);
+    assert.equal(root.openGraph?.title, OG_TITLE_AR);
+    assert.equal(root.openGraph?.description, OG_DESCRIPTION_AR);
+    assert.doesNotMatch(String(home.openGraph?.title), / \| /);
+    assert.doesNotMatch(String(home.openGraph?.description), /live chart|entry, stop/i);
+  });
+
+  it("renders the OG image as one RTL Arabic run with an Arabic font", () => {
+    const og = read("app/opengraph-image.tsx");
+    assert.match(og, /shapeOgArabic/);
+    assert.match(og, /CairoArabic/);
+    assert.match(og, /cairo-arabic-600\.ttf/);
+    assert.match(og, /OG_TITLE_AR/);
+    assert.match(og, /OG_DESCRIPTION_AR/);
+    assert.doesNotMatch(og, /\.map\(\(label\)/);
+    assert.doesNotMatch(og, /شارت حي وتوصيات/);
+    const helper = read("lib/ogArabic.ts");
+    assert.match(helper, /reshapeArabicLogical/);
+    assert.match(helper, /shapeOgArabic/);
+  });
+
+  it("shapes Arabic presentation forms and visual RTL order for the OG image", () => {
+    const lamAlef = reshapeArabicLogical("لا");
+    assert.equal(lamAlef, "\uFEFB");
+    const visual = shapeOgArabic("لونورا");
+    assert.notEqual(visual, "لونورا");
+    assert.ok([...visual].some((ch) => {
+      const cp = ch.codePointAt(0)!;
+      return (cp >= 0xfb50 && cp <= 0xfdff) || (cp >= 0xfe70 && cp <= 0xfeff);
+    }));
   });
 
   it("exposes Open Graph, Twitter, canonical, and bilingual alternates", () => {

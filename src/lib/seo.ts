@@ -12,16 +12,22 @@ export const SEO_CONTACT_EMAIL = "loorksy@gmail.com";
 export const SEO_OG_LOCALE = "ar_SA";
 export const SEO_OG_LOCALE_ALT = "en_US";
 
-export const SEO_TITLE_AR = `${BRAND_NAME} — شارت حي وتوصيات ${DISPLAY_NAME_AR}`;
-export const SEO_TITLE_EN = `${BRAND_NAME} — live chart and ${DISPLAY_NAME_EN} recommendations`;
+export const SEO_TITLE_AR = "لونورا — قرار أوضح في الذهب";
+export const SEO_TITLE_EN = "Lonora — Clarity for gold";
 export const SEO_TITLE_DEFAULT = `${SEO_TITLE_AR} | ${SEO_TITLE_EN}`;
 
-/** Arabic-first snippet for <meta name="description"> (html lang=ar). */
-export const SEO_DESCRIPTION_AR =
-  `${BRAND_NAME} منصة لتوصيات ${DISPLAY_NAME_AR} فقط: شارت حي، محادثة مع وكيل ذكي، وبطاقات دخول ووقف وهدف للمراجعة. لا تنفّذ صفقات. العربية والإنجليزية.`;
+/** Link-preview title. Arabic-only — do not concatenate with the English line. */
+export const OG_TITLE_AR = SEO_TITLE_AR;
+export const OG_TITLE_EN = SEO_TITLE_EN;
+
+/** Arabic-first snippet for <meta name="description"> and og:description. */
+export const SEO_DESCRIPTION_AR = "نقرأ سوق الذهب ونمنحك توصية واضحة تثق بها.";
 
 export const SEO_DESCRIPTION_EN =
-  `${BRAND_NAME} is a ${DISPLAY_NAME_EN}-only recommendations workspace: live chart, AI conversation, and review cards with entry, stop, and targets. It never places trades. Arabic and English.`;
+  "Clarity on gold, and a recommendation you can trust.";
+
+export const OG_DESCRIPTION_AR = SEO_DESCRIPTION_AR;
+export const OG_DESCRIPTION_EN = SEO_DESCRIPTION_EN;
 
 export const SEO_DESCRIPTION = SEO_DESCRIPTION_AR;
 
@@ -142,7 +148,7 @@ function socialImages(): NonNullable<Metadata["openGraph"]>["images"] {
       url: "/opengraph-image",
       width: 1200,
       height: 630,
-      alt: `${BRAND_NAME} — ${DISPLAY_NAME_AR} · ${DISPLAY_NAME_EN} recommendations`,
+      alt: OG_TITLE_AR,
     },
   ];
 }
@@ -160,8 +166,8 @@ export function pageMetadata(page: Exclude<PublicPage, "llms">): Metadata {
     keywords: [...SEO_KEYWORDS],
     alternates: languageAlternates(path),
     openGraph: {
-      title: `${copy.titleAr} | ${copy.titleEn}`,
-      description: `${copy.descriptionAr} ${copy.descriptionEn}`,
+      title: page === "home" ? OG_TITLE_AR : copy.titleAr,
+      description: page === "home" ? OG_DESCRIPTION_AR : copy.descriptionAr,
       url: absoluteUrl(path),
       siteName: BRAND_NAME,
       type: "website",
@@ -171,8 +177,8 @@ export function pageMetadata(page: Exclude<PublicPage, "llms">): Metadata {
     },
     twitter: {
       card: "summary_large_image",
-      title: copy.titleAr,
-      description: copy.descriptionAr,
+      title: page === "home" ? OG_TITLE_AR : copy.titleAr,
+      description: page === "home" ? OG_DESCRIPTION_AR : copy.descriptionAr,
       images: ["/opengraph-image"],
     },
     robots: {
@@ -210,8 +216,8 @@ export function rootMetadata(): Metadata {
     category: "finance",
     alternates: languageAlternates("/"),
     openGraph: {
-      title: SEO_TITLE_DEFAULT,
-      description: `${SEO_DESCRIPTION_AR} ${SEO_DESCRIPTION_EN}`,
+      title: OG_TITLE_AR,
+      description: OG_DESCRIPTION_AR,
       url: BRAND_URL,
       siteName: BRAND_NAME,
       type: "website",
@@ -221,8 +227,8 @@ export function rootMetadata(): Metadata {
     },
     twitter: {
       card: "summary_large_image",
-      title: SEO_TITLE_AR,
-      description: SEO_DESCRIPTION_AR,
+      title: OG_TITLE_AR,
+      description: OG_DESCRIPTION_AR,
       images: ["/opengraph-image"],
     },
     robots: {
