@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
-import { BRAND_DOMAIN, BRAND_NAME } from "@/lib/brand";
-import { DISPLAY_NAME_AR, DISPLAY_NAME_EN } from "@/lib/gold";
+import { BRAND_DOMAIN, BRAND_WORDMARK } from "@/lib/brand";
+import { OG_DESCRIPTION_AR, OG_TITLE_AR } from "@/lib/seo";
+import { shapeOgArabic } from "@/lib/ogArabic";
 
-export const alt = `${BRAND_NAME} — ${DISPLAY_NAME_AR} recommendations`;
+export const alt = OG_TITLE_AR;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -20,8 +21,8 @@ export default async function OpenGraphImage() {
     readFile(join(process.cwd(), "public/brand/aichart-mark-dark.png")),
   ]);
   const markSrc = `data:image/png;base64,${mark.toString("base64")}`;
-  const titleAr = `شارت حي وتوصيات ${DISPLAY_NAME_AR}`;
-  const titleEn = `Live chart and ${DISPLAY_NAME_EN} recommendations — review cards, not trade execution.`;
+  const title = shapeOgArabic(OG_TITLE_AR);
+  const description = shapeOgArabic(OG_DESCRIPTION_AR);
 
   return new ImageResponse(
     (
@@ -35,7 +36,6 @@ export default async function OpenGraphImage() {
           background: "#0c0a09",
           color: "#f5f5f4",
           padding: "64px 72px",
-          fontFamily: "Cairo",
         }}
       >
         <div
@@ -49,64 +49,121 @@ export default async function OpenGraphImage() {
             background: "#c9a227",
           }}
         />
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <img src={markSrc} width={72} height={72} alt="" />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            width: "100%",
+          }}
+        >
           <div
             style={{
               display: "flex",
               flexDirection: "column",
-              marginLeft: 20,
+              alignItems: "flex-end",
+              marginRight: 20,
             }}
           >
-            <div style={{ display: "flex", fontSize: 36, letterSpacing: -0.5 }}>
-              {BRAND_NAME}
+            <div
+              style={{
+                display: "block",
+                fontSize: 36,
+                letterSpacing: 4,
+                fontFamily: "CairoLatin",
+              }}
+            >
+              {BRAND_WORDMARK}
             </div>
-            <div style={{ display: "flex", fontSize: 20, color: "#a8a29e" }}>
+            <div
+              style={{
+                display: "block",
+                fontSize: 20,
+                color: "#a8a29e",
+                fontFamily: "CairoLatin",
+              }}
+            >
               {BRAND_DOMAIN}
             </div>
           </div>
+          <img src={markSrc} width={72} height={72} alt="" />
         </div>
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", fontSize: 54, lineHeight: 1.2 }}>
-            {titleAr}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            width: "100%",
+            alignItems: "flex-end",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              width: "100%",
+              justifyContent: "flex-end",
+            }}
+          >
+            <div
+              style={{
+                display: "block",
+                direction: "ltr",
+                fontSize: 56,
+                lineHeight: 1.25,
+                fontFamily: "CairoArabic",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {title}
+            </div>
           </div>
           <div
             style={{
               display: "flex",
-              fontSize: 28,
-              color: "#d6d3d1",
-              lineHeight: 1.35,
-              marginTop: 16,
+              width: "100%",
+              justifyContent: "flex-end",
+              marginTop: 20,
             }}
           >
-            {titleEn}
-          </div>
-        </div>
-        <div style={{ display: "flex" }}>
-          {["الذهب", "توصيات", "بدون تنفيذ"].map((label) => (
             <div
-              key={label}
               style={{
-                display: "flex",
-                border: "1px solid #44403c",
-                borderRadius: 999,
-                padding: "8px 18px",
-                fontSize: 22,
-                color: "#e7e5e4",
-                marginRight: 12,
+                display: "block",
+                direction: "ltr",
+                fontSize: 30,
+                color: "#d6d3d1",
+                lineHeight: 1.4,
+                fontFamily: "CairoArabic",
+                whiteSpace: "nowrap",
               }}
             >
-              {label}
+              {description}
             </div>
-          ))}
+          </div>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            width: "100%",
+            justifyContent: "flex-end",
+          }}
+        >
+          <div
+            style={{
+              display: "block",
+              fontSize: 20,
+              color: "#a8a29e",
+              fontFamily: "CairoLatin",
+            }}
+          >
+            {BRAND_DOMAIN}
+          </div>
         </div>
       </div>
     ),
     {
       ...size,
       fonts: [
-        { name: "Cairo", data: arabic, weight: 600, style: "normal" },
-        { name: "Cairo", data: latin, weight: 600, style: "normal" },
+        { name: "CairoArabic", data: arabic, weight: 600, style: "normal" },
+        { name: "CairoLatin", data: latin, weight: 600, style: "normal" },
       ],
     },
   );
