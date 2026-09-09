@@ -54,6 +54,17 @@ class L {
     'visitors': {'ar': 'الزوار', 'en': 'Visitors'},
     'visitorsLive': {'ar': 'الآن', 'en': 'Live'},
     'visitorsToday': {'ar': 'اليوم', 'en': 'Today'},
+    'downloadAdminApk': {
+      'ar': 'تنزيل تطبيق الإدارة (أندرويد)',
+      'en': 'Download admin app (Android)'
+    },
+    'downloadAdminApkHint': {
+      'ar':
+          'غلاف خفيف يفتح لوحة الإدارة. ثبّته يدوياً واسمح بالمصادر غير المعروفة إن طلب الجهاز ذلك.',
+      'en':
+          'A thin shell that opens the admin console. Install it manually and allow unknown sources if the device asks.'
+    },
+    'downloadAdminApkAction': {'ar': 'تنزيل APK', 'en': 'Download APK'},
     'retry': {'ar': 'إعادة المحاولة', 'en': 'Retry'},
     'refresh': {'ar': 'تحديث', 'en': 'Refresh'},
     'save': {'ar': 'حفظ', 'en': 'Save'},

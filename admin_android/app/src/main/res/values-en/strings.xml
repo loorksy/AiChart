@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lonora Admin</string>
+    <string name="update_title">Update available</string>
+    <string name="update_message">A newer build (%1$s) is available. Download and install it manually. You can keep using this version.</string>
+    <string name="update_download">Download update</string>
+    <string name="update_later">Later</string>
+    <string name="update_required_title">Update required</string>
+    <string name="update_required_message">This build is no longer supported. Download the update to continue.</string>
+</resources>

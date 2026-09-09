@@ -107,3 +107,12 @@ dump.rdb
 # infra/build-admin-app.sh compiles it into here at deploy time. Committing
 # ~40MB of generated output on every rebuild is not how it ships.
 /public/admin-app/
+
+# Android Gradle / keystore (source stays in admin_android/; the signed
+# APK is copied to public/admin-android/ by infra/build-admin-android.sh).
+admin_android/.gradle/
+admin_android/**/build/
+admin_android/local.properties
+admin_android/keystore/*.jks
+admin_android/keystore/*.keystore
+admin_android/keystore/keystore.properties

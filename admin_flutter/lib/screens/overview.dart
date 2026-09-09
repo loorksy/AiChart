@@ -4,9 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 
 import '../api/models.dart';
+import '../api/open_url.dart';
 import '../api/repository.dart';
 import '../i18n.dart';
 import 'shell.dart';
+
+/// Same-origin path served by Next from public/admin-android/.
+const adminApkPath = '/admin-android/lonora-admin.apk';
 
 class OverviewScreen extends StatefulWidget {
   final AdminRepository repo;
@@ -101,6 +105,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
               _HealthCard(health: health),
               const SizedBox(height: 12),
               _VisitorsCard(stats: _traffic),
+              const SizedBox(height: 12),
+              const _AdminApkCard(),
               const SizedBox(height: 12),
               if (overview.kpis != null) ...[
                 Wrap(
@@ -233,6 +239,53 @@ class _VisitorsCard extends StatelessWidget {
             Text(
               '${l.t('visitorsToday')}: ${n(stats?.today)}',
               style: TextStyle(color: scheme.onSurface),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminApkCard extends StatelessWidget {
+  const _AdminApkCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 10,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Icon(Icons.android, color: scheme.secondary),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l.t('downloadAdminApk'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    l.t('downloadAdminApkHint'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            FilledButton.tonal(
+              onPressed: () => openExternalUrl(adminApkPath),
+              child: Text(l.t('downloadAdminApkAction')),
             ),
           ],
         ),

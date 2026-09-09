@@ -93,6 +93,32 @@ const nextConfig: NextConfig = {
           "/admin-app/:file(index\\.html|flutter_bootstrap\\.js|main\\.dart\\.js|version\\.json|flutter_service_worker\\.js)",
         headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
       },
+      // Sideload APK for the admin WebView shell. Browsers and WhatsApp
+      // need the Android package MIME; a generic octet-stream often opens
+      // as a zip or is blocked. version.json is what the installed app
+      // polls — it must never be served stale.
+      {
+        source: "/admin-android/lonora-admin.apk",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/vnd.android.package-archive",
+          },
+          {
+            key: "Content-Disposition",
+            value: 'attachment; filename="lonora-admin.apk"',
+          },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Cache-Control", value: "public, max-age=300" },
+        ],
+      },
+      {
+        source: "/admin-android/version.json",
+        headers: [
+          { key: "Content-Type", value: "application/json; charset=utf-8" },
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+        ],
+      },
     ];
   },
   // better-sqlite3 is a native module and must not be bundled by Next.

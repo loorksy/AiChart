@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">لونورا — إدارة</string>
+    <string name="update_title">يوجد تحديث</string>
+    <string name="update_message">يتوفر إصدار أحدث (%1$s). نزّله وثبّته يدوياً. يمكنك المتابعة على هذا الإصدار.</string>
+    <string name="update_download">تنزيل التحديث</string>
+    <string name="update_later">لاحقاً</string>
+    <string name="update_required_title">تحديث مطلوب</string>
+    <string name="update_required_message">هذا الإصدار لم يعد مدعوماً. نزّل التحديث للمتابعة.</string>
+</resources>

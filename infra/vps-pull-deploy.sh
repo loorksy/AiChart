@@ -80,6 +80,19 @@ if ! grep -q 'base href="/admin-app/"' "$INSTALL_DIR/public/admin-app/index.html
 fi
 log "Admin console rebuilt."
 
+# Admin Android WebView APK. Best-effort: a missing SDK must not abort a
+# web deploy. First-time download needs the file at
+# public/admin-android/lonora-admin.apk — build it on a host that has the
+# SDK, or copy the already-built APK there.
+if [[ -x "$INSTALL_DIR/infra/build-admin-android.sh" ]]; then
+  if bash "$INSTALL_DIR/infra/build-admin-android.sh" --copy-only \
+    || bash "$INSTALL_DIR/infra/build-admin-android.sh"; then
+    log "Admin Android APK published."
+  else
+    log "Admin Android APK skipped (no SDK / no built APK) — web admin is unchanged."
+  fi
+fi
+
 # pm2: restart what is running, and start from the ecosystem file otherwise.
 for app in "$APP_WEB" "$APP_WORKER" "$APP_MCP"; do
   if pm2 describe "$app" >/dev/null 2>&1; then
