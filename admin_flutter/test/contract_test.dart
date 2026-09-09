@@ -98,6 +98,14 @@ void main() {
     expect(DiagnosticsReport.fromJson(json).parityUnpaired, 0);
   });
 
+  test('traffic visitors parse separately from registered users', () {
+    final traffic = VisitorStats.fromJson(f('admin/traffic'));
+    expect(traffic.ok, isTrue);
+    expect(traffic.live, 12);
+    expect(traffic.today, 847);
+    expect(traffic.timezone, 'Asia/Riyadh');
+  });
+
   test('health, usage and the audit trail parse', () {
     final health = AdminHealth.fromJson(f('admin/health'));
     expect(health.aiProvider, 'anthropic');
@@ -203,6 +211,7 @@ void main() {
     final exercised = {
       'admin/diagnostics',
       'admin/health',
+      'admin/traffic',
       'admin/usage',
       'admin/overview/users',
       'admin/overview',

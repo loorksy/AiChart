@@ -33,6 +33,7 @@ import type { BillingPlanRow, PlanPriceRow, TopupPackRow, OfferRow } from "@/lib
 import type { ClaudeUsageRow } from "@/lib/store";
 import type { AdRow } from "@/lib/ads/adsStore";
 import type { InboxTicketRow, MessageRow } from "@/lib/support/supportStore";
+import type { AdminTrafficResponse } from "@/app/api/admin/traffic/route";
 
 const REPO = path.join(import.meta.dirname, "..", "..", "..");
 const FIXTURES = path.join(REPO, "admin_flutter", "test", "fixtures", "admin_contracts.json");
@@ -108,6 +109,18 @@ describe("the admin API contract — the server's half", () => {
     expectType<AdRow["slides_json"]>("");
     assert.equal(typeof row.slides_json, "string");
     assert.doesNotThrow(() => JSON.parse(row.slides_json as string));
+  });
+
+  it("admin/traffic is live + today visitors, not registered users", () => {
+    const traffic = endpoint("admin/traffic");
+    expectType<AdminTrafficResponse["live"]>(0);
+    expectType<AdminTrafficResponse["today"]>(0);
+    expectType<AdminTrafficResponse["timezone"]>("");
+    assert.equal(typeof traffic.live, "number");
+    assert.equal(typeof traffic.today, "number");
+    assert.equal(traffic.timezone, "Asia/Riyadh");
+    assert.equal(typeof traffic.ok, "boolean");
+    assert.ok(!("users" in traffic), "do not mix visitor counts with usersTotal");
   });
 
   it("the overview roster answers under `rows`, which is what the client reads", () => {

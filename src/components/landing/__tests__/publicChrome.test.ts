@@ -21,9 +21,20 @@ describe("shared public chrome", () => {
     const chrome = read("components/landing/PublicChrome.tsx");
     assert.match(chrome, /HorizonBackground/);
     assert.match(chrome, /LandingNav/);
+    assert.match(chrome, /VisitorBeacon/);
     assert.match(chrome, /landing-viewport/);
     assert.match(chrome, /public-chrome/);
     assert.doesNotMatch(chrome, /ThemeToggle|LanguageSwitcher/);
+  });
+
+  test("the visitor beacon is public-only — not on authenticated chat", () => {
+    const beacon = read("components/landing/VisitorBeacon.tsx");
+    assert.match(beacon, /\/api\/public\/presence/);
+    assert.match(beacon, /document\.hidden/);
+    assert.match(beacon, /sendBeacon/);
+    const chat = read("app/chat/page.tsx");
+    assert.doesNotMatch(chat, /VisitorBeacon/);
+    assert.doesNotMatch(chat, /\/api\/public\/presence/);
   });
 
   test("every public marketing/auth page uses PublicChrome", () => {

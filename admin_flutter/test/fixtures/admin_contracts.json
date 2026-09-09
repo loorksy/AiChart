@@ -311,6 +311,16 @@
       }
     ]
   },
+  "admin/traffic": {
+    "ok": true,
+    "live": 12,
+    "today": 847,
+    "timezone": "Asia/Riyadh",
+    "recent_paths": [
+      { "path": "/", "count": 8 },
+      { "path": "/pricing", "count": 4 }
+    ]
+  },
   "admin/overview": {
     "ok": true,
     "days": 30,

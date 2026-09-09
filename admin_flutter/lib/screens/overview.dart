@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 
@@ -16,12 +18,34 @@ class OverviewScreen extends StatefulWidget {
 
 class _OverviewScreenState extends State<OverviewScreen> {
   late Future<(OverviewResponse, AdminHealth)> _future;
+  VisitorStats? _traffic;
+  Timer? _trafficTimer;
   int _days = 30;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshTraffic();
+    _trafficTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _refreshTraffic();
+    });
+  }
+
+  @override
+  void dispose() {
+    _trafficTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshTraffic() async {
+    try {
+      final stats = await widget.repo.traffic();
+      if (!mounted) return;
+      setState(() => _traffic = stats);
+    } catch (_) {
+      /* keep the last snapshot — Redis/auth blips must not blank the card */
+    }
   }
 
   void _load() {
@@ -30,6 +54,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
       final health = await widget.repo.health();
       return (overview, health);
     }();
+    _refreshTraffic();
     setState(() {});
   }
 
@@ -74,6 +99,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
               ),
               const SizedBox(height: 16),
               _HealthCard(health: health),
+              const SizedBox(height: 12),
+              _VisitorsCard(stats: _traffic),
               const SizedBox(height: 12),
               if (overview.kpis != null) ...[
                 Wrap(
@@ -170,6 +197,42 @@ class _HealthCard extends StatelessWidget {
               label: Text(
                 '${l.t('totalUsers')}: ${health.usersTotal} · ${l.t('active')}: ${health.usersActive}',
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VisitorsCard extends StatelessWidget {
+  final VisitorStats? stats;
+  const _VisitorsCard({this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    String n(int? v) => v == null ? '—' : '$v';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 10,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              l.t('visitors'),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            Text(
+              '${l.t('visitorsLive')}: ${n(stats?.live)}',
+              style: TextStyle(color: scheme.onSurface),
+            ),
+            Text(
+              '${l.t('visitorsToday')}: ${n(stats?.today)}',
+              style: TextStyle(color: scheme.onSurface),
             ),
           ],
         ),

@@ -47,6 +47,18 @@ void main() {
     expect(user.role, 'admin');
   });
 
+  test('visitor stats parse without mixing in registered-user counts', () {
+    final stats = VisitorStats.fromJson({
+      'ok': true,
+      'live': '4',
+      'today': 21,
+      'timezone': 'Asia/Riyadh',
+    });
+    expect(stats.live, 4);
+    expect(stats.today, 21);
+    expect(stats.timezone, 'Asia/Riyadh');
+  });
+
   test('overview handles null kpis (no profit_read permission)', () {
     final o = OverviewResponse.fromJson({
       'ok': true,

@@ -2,6 +2,7 @@ import { isRegistrationOpen } from "@/lib/auth/registration";
 import { HorizonBackground } from "@/components/landing/HorizonBackground";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { LandingNav } from "@/components/landing/LandingNav";
+import { VisitorBeacon } from "@/components/landing/VisitorBeacon";
 import { cn } from "@/lib/utils";
 
 /** Shared top offset so page content clears the always-visible logo + menu. */
@@ -48,6 +49,7 @@ export async function PublicChrome({
       )}
     >
       <HorizonBackground />
+      <VisitorBeacon />
       <LandingNav skipTargetId={skipTargetId} registrationOpen={registrationOpen} />
       {children}
       {showFooter ? <LandingFooter registrationOpen={registrationOpen} /> : null}

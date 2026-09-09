@@ -51,7 +51,7 @@
   "src/app/console/layout.tsx": 1,
   "src/app/performance/layout.tsx": 1,
   "src/app/pricing/page.tsx": 16,
-  "src/app/privacy/page.tsx": 23,
+  "src/app/privacy/page.tsx": 27,
   "src/app/recommendations/layout.tsx": 1,
   "src/app/subscribe/page.tsx": 1,
   "src/components/AccessBlockedCard.tsx": 1,

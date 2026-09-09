@@ -69,6 +69,10 @@ class AdminRepository {
   Future<AdminHealth> health() async =>
       AdminHealth.fromJson(await api.getJson('/api/admin/health'));
 
+  /// Live + daily unique visitors on public pages. Separate from registered users.
+  Future<VisitorStats> traffic() async =>
+      VisitorStats.fromJson(await api.getJson('/api/admin/traffic'));
+
   // ── Users ───────────────────────────────────────────────────────
   Future<List<AdminUserView>> users() async {
     final j = await api.getJson('/api/admin/users');

@@ -443,6 +443,28 @@ class TicketThread {
       );
 }
 
+/// Anonymous public-page visitors — not registered `usersTotal` / `usersActive`.
+class VisitorStats {
+  final bool ok;
+  final int live;
+  final int today;
+  final String timezone;
+
+  VisitorStats({
+    required this.ok,
+    required this.live,
+    required this.today,
+    required this.timezone,
+  });
+
+  factory VisitorStats.fromJson(Map<String, dynamic> j) => VisitorStats(
+        ok: asBool(j['ok']),
+        live: asInt(j['live']),
+        today: asInt(j['today']),
+        timezone: j['timezone']?.toString() ?? '',
+      );
+}
+
 class AdminHealth {
   final String status;
   final bool llm;

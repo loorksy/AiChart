@@ -8,7 +8,7 @@ const KEY = "aichart_cookie_consent";
 
 /**
  * V2-C (#97): consent banner. The platform sets only essential cookies
- * (session + preferences) and loads no third-party trackers, so "decline
+ * (session, preferences, anonymous visitor id) and loads no third-party trackers, so "decline"
  * non-essential" is genuinely honored by construction — the banner records
  * the choice and nothing conditional ever loads before (or after) it.
  */
@@ -42,8 +42,8 @@ export function CookieConsent() {
       className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-xl rounded-[var(--radius-lg)] border border-border bg-card/95 p-4 elevation-3 backdrop-blur-md"
     >
       <p className="text-sm leading-relaxed text-foreground">
-        نستخدم ملفات تعريف ارتباط أساسية لتشغيل المنصة (الجلسة والتفضيلات) ولا
-        نستخدم أي متتبعات طرف ثالث. التفاصيل في{" "}
+        نستخدم ملفات تعريف ارتباط أساسية لتشغيل المنصة (الجلسة والتفضيلات
+        ومعرّف زائر مجهول لعدّ الزيارات) ولا نستخدم أي متتبعات طرف ثالث. التفاصيل في{" "}
         <a
           href="/privacy"
           className="rounded-sm text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
