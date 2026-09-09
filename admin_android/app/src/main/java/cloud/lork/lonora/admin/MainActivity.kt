@@ -64,6 +64,9 @@ class MainActivity : AppCompatActivity() {
         settings.builtInZoomControls = true
         settings.displayZoomControls = false
         settings.cacheMode = WebSettings.LOAD_DEFAULT
+        // Append only — replacing the Chromium UA can break cookie / login
+        // quirks. Flutter hides the APK download card when this token is set.
+        settings.userAgentString = "${settings.userAgentString} $ADMIN_UA_TOKEN"
 
         webView.webViewClient = AdminWebViewClient()
         webView.webChromeClient = AdminChromeClient()
@@ -168,10 +171,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        const val ADMIN_URL = "https://aichart.lork.cloud/admin-app/"
+        const val ADMIN_URL = "https://aichart.lork.cloud/admin-app/?app=1"
         const val ADMIN_HOST = "aichart.lork.cloud"
         const val ADMIN_HOST_SUFFIX = "lork.cloud"
         const val ORIGIN = "https://aichart.lork.cloud"
+        const val ADMIN_UA_TOKEN = "LonoraAdmin"
         private const val UPDATE_CHECK_MIN_INTERVAL_MS = 30_000L
         private const val ANY_MIME = "*/*"
     }

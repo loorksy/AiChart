@@ -4,7 +4,7 @@ A thin Kotlin wrapper. It is **not** a native rewrite of the admin console.
 The WebView loads the live origin:
 
 ```
-https://aichart.lork.cloud/admin-app/
+https://aichart.lork.cloud/admin-app/?app=1
 ```
 
 That origin is required. Admin login uses relative `/api/admin/*`, the
@@ -12,7 +12,7 @@ That origin is required. Admin login uses relative `/api/admin/*`, the
 sign-in.
 
 - Package: `cloud.lork.lonora.admin`
-- First release: `versionCode 1` / `versionName 1.0.0`
+- Current: `versionCode 2` / `versionName 1.0.1`
 - Update check: `https://aichart.lork.cloud/admin-android/version.json`
 - Download URL: `/admin-android/lonora-admin.apk`
 

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart' as intl;
 import '../api/models.dart';
 import '../api/open_url.dart';
 import '../api/repository.dart';
+import '../embedded_admin.dart';
 import '../i18n.dart';
 import 'shell.dart';
 
@@ -106,8 +107,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
               const SizedBox(height: 12),
               _VisitorsCard(stats: _traffic),
               const SizedBox(height: 12),
-              const _AdminApkCard(),
-              const SizedBox(height: 12),
+              if (!isEmbeddedAdminApp()) ...[
+                const _AdminApkCard(),
+                const SizedBox(height: 12),
+              ],
               if (overview.kpis != null) ...[
                 Wrap(
                   spacing: 12,

@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 const REPO = path.join(import.meta.dirname, "..", "..", "..");
 
 describe("admin Android WebView shell", () => {
-  it("version.json is a dismissible v1 manifest on the same origin", () => {
+  it("version.json is a dismissible update manifest on the same origin", () => {
     const file = path.join(REPO, "public", "admin-android", "version.json");
     assert.equal(existsSync(file), true, "public/admin-android/version.json");
     const manifest = JSON.parse(readFileSync(file, "utf8")) as {
@@ -15,8 +15,8 @@ describe("admin Android WebView shell", () => {
       apkUrl: string;
       minVersionCode: number;
     };
-    assert.equal(manifest.versionCode, 1);
-    assert.equal(manifest.versionName, "1.0.0");
+    assert.equal(manifest.versionCode, 2);
+    assert.equal(manifest.versionName, "1.0.1");
     assert.equal(manifest.apkUrl, "/admin-android/lonora-admin.apk");
     // Force is optional and OFF for v1 — operators must be able to dismiss.
     assert.ok(manifest.minVersionCode <= manifest.versionCode);
@@ -54,12 +54,16 @@ describe("admin Android WebView shell", () => {
       ),
       "utf8",
     );
-    assert.match(main, /https:\/\/aichart\.lork\.cloud\/admin-app\//);
+    assert.match(main, /https:\/\/aichart\.lork\.cloud\/admin-app\/\?app=1/);
     assert.match(main, /javaScriptEnabled = true/);
     assert.match(main, /domStorageEnabled = true/);
     assert.match(main, /setAcceptThirdPartyCookies/);
     assert.match(main, /onShowFileChooser/);
     assert.doesNotMatch(main, /file:\/\//);
-    assert.doesNotMatch(main, /userAgentString\s*=/);
+    // Suffix only — a wholesale UA replace is what used to be banned.
+    assert.match(
+      main,
+      /userAgentString = "\$\{settings\.userAgentString\} \$ADMIN_UA_TOKEN"/,
+    );
   });
 });
