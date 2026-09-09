@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { handleError, requireUser } from "@/lib/api";
 import { initDb } from "@/lib/db";
 import {
   addMessage,
+  findRatableConversation,
   getOrCreateConversation,
   getTicket,
+  getVisibleConversation,
   markConversationRead,
+  submitSupportRating,
   unreadCount,
 } from "@/lib/support/supportStore";
 import { intakeSupportAttachment } from "@/lib/support/attachments";
@@ -37,7 +41,7 @@ export async function GET(req: Request) {
   try {
     const user = await requireUser();
     await initDb();
-    const ticketId = await getOrCreateConversation(user.id);
+    const ticketId = await getVisibleConversation(user.id);
 
     if (new URL(req.url).searchParams.get("peek") === "1") {
       return NextResponse.json({
@@ -51,22 +55,52 @@ export async function GET(req: Request) {
     if (!thread) return NextResponse.json({ ok: false }, { status: 404 });
     // Reading it IS reading it.
     await markConversationRead(ticketId, "user");
+    const rating = thread.ticket.rating ?? null;
+    const ratingRequested =
+      thread.ticket.rating_requested_at != null && rating == null;
     return NextResponse.json({
       ok: true,
       conversation_id: ticketId,
       messages: thread.messages,
       status: thread.ticket.status,
+      rating,
+      rating_requested: ratingRequested,
     });
   } catch (err) {
     return handleError(err);
   }
 }
 
+const ratingSchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
+});
+
 export async function POST(req: Request) {
   try {
     const user = await requireUser();
     await initDb();
-    const parsed = supportMessageSchema.safeParse(await req.json().catch(() => null));
+    const raw = await req.json().catch(() => null);
+    const asRating = ratingSchema.safeParse(raw);
+    if (asRating.success && raw && typeof raw === "object" && "rating" in raw && !("body" in raw) && !("attachment" in raw)) {
+      const ticketId = await findRatableConversation(user.id);
+      if (ticketId == null) {
+        return NextResponse.json({ ok: false, error: "not_requested" }, { status: 400 });
+      }
+      const result = await submitSupportRating(ticketId, user.id, asRating.data.rating);
+      if (!result.ok) {
+        return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+      }
+      const thread = await getTicket(ticketId, user.id);
+      return NextResponse.json({
+        ok: true,
+        conversation_id: ticketId,
+        messages: thread?.messages ?? [],
+        status: thread?.ticket.status ?? "open",
+        rating: asRating.data.rating,
+        rating_requested: false,
+      });
+    }
+    const parsed = supportMessageSchema.safeParse(raw);
     if (!parsed.success) {
       return NextResponse.json({ ok: false, error: "invalid payload" }, { status: 400 });
     }
@@ -87,10 +121,14 @@ export async function POST(req: Request) {
     const ticketId = await getOrCreateConversation(user.id);
     await addMessage(ticketId, "user", checked.text, user.id, attachment);
     const thread = await getTicket(ticketId, user.id);
+    const rating = thread?.ticket.rating ?? null;
     return NextResponse.json({
       ok: true,
       conversation_id: ticketId,
       messages: thread?.messages ?? [],
+      status: thread?.ticket.status ?? "open",
+      rating,
+      rating_requested: thread?.ticket.rating_requested_at != null && rating == null,
     });
   } catch (err) {
     return handleError(err);

@@ -69,6 +69,26 @@ describe("support tickets", () => {
     await store.closeTicket(id);
     thread = await store.getTicket(id);
     assert.equal(thread.ticket.status, "closed");
+
+    await store.reopenTicket(id);
+    thread = await store.getTicket(id);
+    assert.equal(thread.ticket.status, "open");
+    assert.equal(thread.ticket.user_email, "ask@t.local", "the admin thread joins the email");
+  });
+
+  it("lists in-progress conversations under the open filter", async () => {
+    const id = await store.createTicket(50, "بعد الرد", "ما زال عالقاً");
+    await store.assignTicket(id, 20);
+    const open = await store.listAllTickets("open");
+    assert.ok(
+      open.some((row: { id: number; status: string }) => row.id === id && row.status === "in_progress"),
+      "an answered thread must stay in the open inbox",
+    );
+    const closed = await store.listAllTickets("closed");
+    assert.equal(
+      closed.some((row: { id: number }) => row.id === id),
+      false,
+    );
   });
 });
 
@@ -329,5 +349,79 @@ describe("an admin reply must not lose the user's thread", () => {
     assert.equal(thread.ticket.status, "in_progress");
     assert.equal(thread.messages.length, 2);
     assert.equal(await store.unreadCount(id, "user"), 1, "and the reply is waiting for them");
+  });
+});
+
+describe("support rating and reopen", () => {
+  before(async () => {
+    await db.execute(
+      "INSERT INTO users (id, email, password_hash, role, status) VALUES (53, 'rate@t.local', 'x', 'user', 'active')",
+    );
+  });
+
+  it("asks for a rating as a marker message, then stores 1–5 stars", async () => {
+    const id = await store.getOrCreateConversation(53);
+    await store.addMessage(id, "user", "fixed, thanks", 53);
+    await store.requestSupportRating(id, 20);
+
+    let thread = await store.getTicket(id, 53);
+    assert.ok(thread.ticket.rating_requested_at);
+    assert.equal(thread.ticket.rating, null);
+    assert.equal(thread.messages.at(-1).body, store.RATING_REQUEST_BODY);
+    assert.equal(store.isRatingRequestMessage(thread.messages.at(-1).body), true);
+    const dart = (await import("node:fs")).readFileSync(
+      (await import("node:path")).join(import.meta.dirname, "..", "..", "..", "..", "admin_flutter", "lib", "api", "models.dart"),
+      "utf8",
+    );
+    assert.match(
+      dart,
+      new RegExp(store.RATING_REQUEST_BODY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      "the admin client must recognise the same marker the store writes",
+    );
+    assert.equal(await store.unreadCount(id, "user"), 1, "the request is unread like a reply");
+
+    const refused = await store.submitSupportRating(id, 53, 9);
+    assert.equal(refused.ok, false);
+
+    const ok = await store.submitSupportRating(id, 53, 5);
+    assert.equal(ok.ok, true);
+    thread = await store.getTicket(id, 53);
+    assert.equal(thread.ticket.rating, 5);
+    assert.ok(thread.ticket.rated_at);
+
+    const again = await store.submitSupportRating(id, 53, 1);
+    assert.equal(again.ok, false);
+    assert.equal(again.error, "already_rated");
+  });
+
+  it("keeps a closed thread visible while a rating is pending", async () => {
+    const id = await store.getOrCreateConversation(53);
+    await store.closeTicket(id);
+    await store.requestSupportRating(id, 20);
+
+    // A visit after close would mint an empty new thread — that empty one
+    // must not hide the conversation still waiting on a rating.
+    const visible = await store.getVisibleConversation(53);
+    assert.equal(visible, id);
+
+    const minted = await store.getOrCreateConversation(53);
+    assert.notEqual(minted, id, "writing still opens a new conversation after close");
+    assert.equal(await store.getVisibleConversation(53), id, "the empty new thread loses to the rating");
+  });
+
+  it("reopen files away a newer live thread so the person returns here", async () => {
+    await db.execute(
+      "INSERT INTO users (id, email, password_hash, role, status) VALUES (54, 'reopen@t.local', 'x', 'user', 'active')",
+    );
+    const first = await store.getOrCreateConversation(54);
+    await store.addMessage(first, "user", "still broken", 54);
+    await store.closeTicket(first);
+    const newer = await store.getOrCreateConversation(54);
+    assert.notEqual(newer, first);
+
+    await store.reopenTicket(first);
+    assert.equal(await store.getOrCreateConversation(54), first);
+    const newerThread = await store.getTicket(newer);
+    assert.equal(newerThread.ticket.status, "closed");
   });
 });

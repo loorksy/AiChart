@@ -70,6 +70,18 @@ test("every refusal the server can send has words the user can read", () => {
   }
 });
 
+test("a rating request is a card in the thread, never a second product", () => {
+  assert.match(CHAT, /data-testid="support-rating"/);
+  assert.match(CHAT, /isRatingRequestMessage/);
+  assert.match(CHAT, /from "@\/lib\/support\/rating"/);
+  assert.doesNotMatch(
+    CHAT,
+    /from "@\/lib\/support\/supportStore"/,
+    "the browser chat must not import the database store",
+  );
+  assert.doesNotMatch(CHAT, /support\.subtitle/);
+});
+
 test("the support surface IS the agent chat surface", () => {
   // Owner's instruction: same chat, different counterpart. The thread lives
   // in the agent panel's shell — the same scroll region and the same docked

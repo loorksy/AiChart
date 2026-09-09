@@ -8,6 +8,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { notifySupportRead } from "@/hooks/useSupportUnread";
 import { APP_WAKE_EVENT } from "@/lib/appWake";
 import { formatClock, formatDayLabel, isSameCalendarDay } from "@/lib/display/timestamp";
+import { isRatingRequestMessage } from "@/lib/support/rating";
 import { cn } from "@/lib/utils";
 
 /**
@@ -66,6 +67,9 @@ export function SupportChat() {
   const { t, locale, dir } = useLocale();
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [status, setStatus] = useState<string>("open");
+  const [rating, setRating] = useState<number | null>(null);
+  const [ratingRequested, setRatingRequested] = useState(false);
+  const [ratingBusy, setRatingBusy] = useState(false);
   const [draft, setDraft] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,10 +86,18 @@ export function SupportChat() {
   const load = useCallback(() => {
     fetch("/api/support/conversation", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { ok?: boolean; messages?: SupportMessage[]; status?: string } | null) => {
+      .then((data: {
+        ok?: boolean;
+        messages?: SupportMessage[];
+        status?: string;
+        rating?: number | null;
+        rating_requested?: boolean;
+      } | null) => {
         if (!data?.ok) throw new Error("load_failed");
         setMessages(data.messages ?? []);
         setStatus(data.status ?? "open");
+        setRating(typeof data.rating === "number" ? data.rating : null);
+        setRatingRequested(data.rating_requested === true);
         if (!announcedRead.current) {
           announcedRead.current = true;
           notifySupportRead();
@@ -169,6 +181,9 @@ export function SupportChat() {
         ok?: boolean;
         error?: string;
         messages?: SupportMessage[];
+        status?: string;
+        rating?: number | null;
+        rating_requested?: boolean;
       } | null;
       if (!res.ok || !data?.ok) {
         // The server names WHY it refused; say that rather than "failed".
@@ -188,7 +203,9 @@ export function SupportChat() {
       setDraft("");
       setFile(null);
       if (fileInput.current) fileInput.current.value = "";
-      setStatus("open");
+      setStatus(typeof data.status === "string" ? data.status : "open");
+      setRating(typeof data.rating === "number" ? data.rating : null);
+      setRatingRequested(data.rating_requested === true);
     } catch {
       setError(t("support.error.send"));
     } finally {
@@ -196,8 +213,37 @@ export function SupportChat() {
     }
   }
 
+  async function sendRating(stars: number) {
+    if (ratingBusy || rating != null) return;
+    setRatingBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/support/conversation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rating: stars }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        rating?: number | null;
+        rating_requested?: boolean;
+      } | null;
+      if (!res.ok || !data?.ok) {
+        setError(t("support.rate.error"));
+        return;
+      }
+      setRating(typeof data.rating === "number" ? data.rating : stars);
+      setRatingRequested(false);
+    } catch {
+      setError(t("support.rate.error"));
+    } finally {
+      setRatingBusy(false);
+    }
+  }
+
   const canSend = (draft.trim().length > 0 || file != null) && !sending;
-  const empty = !loading && messages.length === 0;
+  const visibleMessages = messages.filter((m) => !isRatingRequestMessage(m.body));
+  const empty = !loading && visibleMessages.length === 0 && !ratingRequested && rating == null;
 
   return (
     <div ref={panelRef} className="chat-panel-shell h-full w-full bg-transparent" dir={dir}>
@@ -247,14 +293,14 @@ export function SupportChat() {
           </div>
         ) : (
           <div className="flex flex-col space-y-3">
-            {messages.map((m, index) => {
+            {visibleMessages.map((m, index) => {
               const mine = m.author === "user";
               const author = mine
                 ? t("support.you")
                 : m.author === "bot"
                   ? t("support.bot")
                   : t("support.team");
-              const previous = messages[index - 1];
+              const previous = visibleMessages[index - 1];
               const newDay =
                 !previous || !isSameCalendarDay(previous.created_at, m.created_at);
               const separator = newDay ? (
@@ -333,6 +379,13 @@ export function SupportChat() {
                 </Fragment>
               );
             })}
+            {(ratingRequested || rating != null) && (
+              <SupportRatingCard
+                rating={rating}
+                busy={ratingBusy}
+                onRate={sendRating}
+              />
+            )}
           </div>
         )}
       </div>
@@ -460,6 +513,55 @@ export function SupportChat() {
  * the private serving route, which checks that the reader is in this
  * conversation before it hands over a single byte.
  */
+/** One quiet in-thread card — same family as the empty state, not a banner. */
+function SupportRatingCard({
+  rating,
+  busy,
+  onRate,
+}: {
+  rating: number | null;
+  busy: boolean;
+  onRate: (stars: number) => void;
+}) {
+  const { t } = useLocale();
+  return (
+    <div
+      data-testid="support-rating"
+      className="mx-auto w-full max-w-3xl px-1 py-2"
+    >
+      <div className="mx-auto flex w-fit max-w-full flex-col items-center gap-2 rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-center">
+        {rating != null ? (
+          <>
+            <p className="text-sm text-muted-foreground">{t("support.rate.thanks")}</p>
+            <p className="text-sm tabular-nums text-accent-gold" aria-label={t("support.rate.star", { n: rating })}>
+              {"★".repeat(rating)}
+              <span className="text-muted-foreground">{"☆".repeat(5 - rating)}</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-foreground/85">{t("support.rate.prompt")}</p>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  disabled={busy}
+                  aria-label={t("support.rate.star", { n })}
+                  onClick={() => onRate(n)}
+                  className="px-1.5 text-lg leading-none text-accent-gold transition-opacity hover:opacity-80 disabled:opacity-40"
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SupportAttachment({
   path,
   name,

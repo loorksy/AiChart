@@ -14,6 +14,8 @@ import {
   getTicket,
   listAllTickets,
   markConversationRead,
+  reopenTicket,
+  requestSupportRating,
   unreadCount,
 } from "@/lib/support/supportStore";
 
@@ -62,6 +64,11 @@ export async function GET(req: NextRequest) {
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("assign"), ticket_id: z.coerce.number().int().positive() }),
   z.object({ action: z.literal("close"), ticket_id: z.coerce.number().int().positive() }),
+  z.object({ action: z.literal("reopen"), ticket_id: z.coerce.number().int().positive() }),
+  z.object({
+    action: z.literal("request_rating"),
+    ticket_id: z.coerce.number().int().positive(),
+  }),
   z.object({
     action: z.literal("reply"),
     // Coerced: the id round-trips through the panel's own list response, and a
@@ -84,6 +91,15 @@ export async function POST(req: NextRequest) {
     const input = parsed.data;
     if (input.action === "assign") await assignTicket(input.ticket_id, admin.id);
     if (input.action === "close") await closeTicket(input.ticket_id);
+    if (input.action === "reopen") await reopenTicket(input.ticket_id);
+    if (input.action === "request_rating") {
+      await requestSupportRating(input.ticket_id, admin.id);
+      const owner = await queryOne<{ user_id: number }>(
+        "SELECT user_id FROM support_tickets WHERE id = ?",
+        [input.ticket_id],
+      );
+      if (owner) void notifySupportReply(owner.user_id);
+    }
     if (input.action === "reply") {
       const checked = checkSupportMessage(input);
       if (!checked.ok) {

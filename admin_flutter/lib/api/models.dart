@@ -346,10 +346,16 @@ class TicketRow {
   final String status;
   final int? assignedTo;
   final bool needsHuman;
+  final int createdAt;
   final int updatedAt;
 
   /// Who the conversation is with. Null only for a deleted account.
   final String? userEmail;
+
+  /// 1–5 once the person has rated; null until then.
+  final int? rating;
+  final int? ratingRequestedAt;
+  final int? ratedAt;
 
   TicketRow({
     required this.id,
@@ -358,9 +364,21 @@ class TicketRow {
     required this.status,
     this.assignedTo,
     required this.needsHuman,
+    required this.createdAt,
     required this.updatedAt,
     this.userEmail,
+    this.rating,
+    this.ratingRequestedAt,
+    this.ratedAt,
   });
+
+  /// Anything not filed away is live — including `in_progress` after a reply.
+  bool get isClosed => status == 'closed';
+
+  bool get isOpen => !isClosed;
+
+  bool get ratingPending =>
+      rating == null && ratingRequestedAt != null && ratingRequestedAt != 0;
 
   /// What the inbox should call this conversation.
   ///
@@ -380,8 +398,13 @@ class TicketRow {
         status: j['status']?.toString() ?? '',
         assignedTo: j['assigned_to'] == null ? null : asInt(j['assigned_to']),
         needsHuman: asBool(j['needs_human']),
+        createdAt: asInt(j['created_at'], asInt(j['updated_at'])),
         updatedAt: asInt(j['updated_at']),
         userEmail: asStringOrNull(j['user_email']),
+        rating: j['rating'] == null ? null : asInt(j['rating']),
+        ratingRequestedAt:
+            j['rating_requested_at'] == null ? null : asInt(j['rating_requested_at']),
+        ratedAt: j['rated_at'] == null ? null : asInt(j['rated_at']),
       );
 }
 
@@ -406,6 +429,11 @@ class MessageRow {
     this.attachmentName,
     this.attachmentBytes,
   });
+
+  /// Matches `RATING_REQUEST_BODY` in `src/lib/support/rating.ts`.
+  static const ratingRequestBody = '__lonora_rating_request__';
+
+  bool get isRatingRequest => body == ratingRequestBody;
 
   bool get hasAttachment =>
       attachmentPath != null && attachmentPath!.isNotEmpty;

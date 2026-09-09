@@ -140,6 +140,25 @@ class L {
     'writeMessage': {'ar': 'اكتب رسالة…', 'en': 'Write a message…'},
     'ticketOpen': {'ar': 'مفتوحة', 'en': 'Open'},
     'ticketClosed': {'ar': 'مغلقة', 'en': 'Closed'},
+    'ticketReopen': {'ar': 'إعادة فتح', 'en': 'Reopen'},
+    'requestRating': {'ar': 'طلب تقييم', 'en': 'Request a rating'},
+    'ratingRequested': {'ar': 'طُلب تقييم.', 'en': 'A rating was requested.'},
+    'rated': {'ar': 'التقييم', 'en': 'Rating'},
+    'selectConversation': {
+      'ar': 'اختر محادثة.',
+      'en': 'Select a conversation.'
+    },
+    'conversationClosed': {
+      'ar': 'أُغلقت هذه المحادثة.',
+      'en': 'This conversation is closed.'
+    },
+    'today': {'ar': 'اليوم', 'en': 'Today'},
+    'yesterday': {'ar': 'أمس', 'en': 'Yesterday'},
+    'supportUser': {'ar': 'المستخدم', 'en': 'Customer'},
+    'supportBot': {'ar': 'المساعد', 'en': 'Assistant'},
+    'send': {'ar': 'إرسال', 'en': 'Send'},
+    'created': {'ar': 'أُنشئت', 'en': 'Created'},
+    'updated': {'ar': 'آخر تحديث', 'en': 'Updated'},
     'close': {'ar': 'إغلاق', 'en': 'Close'},
     'confirm': {'ar': 'تأكيد', 'en': 'Confirm'},
     'delete': {'ar': 'حذف', 'en': 'Delete'},

@@ -218,6 +218,12 @@ class AdminRepository {
   Future<void> closeTicket(int id) => api
       .sendJson('POST', '/api/admin/support', {'action': 'close', 'ticket_id': id});
 
+  Future<void> reopenTicket(int id) => api.sendJson(
+      'POST', '/api/admin/support', {'action': 'reopen', 'ticket_id': id});
+
+  Future<void> requestSupportRating(int id) => api.sendJson(
+      'POST', '/api/admin/support', {'action': 'request_rating', 'ticket_id': id});
+
   // ── Billing configuration ───────────────────────────────────────
   // Every priced or bounded number the platform enforces is DATA read and
   // written here — none of it is a constant in code.

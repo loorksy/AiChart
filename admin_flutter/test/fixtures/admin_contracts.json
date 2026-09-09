@@ -253,8 +253,12 @@
         "status": "open",
         "assigned_to": null,
         "needs_human": 1,
+        "created_at": 1786990000000,
         "updated_at": 1787000000000,
-        "user_email": "trader@example.com"
+        "user_email": "trader@example.com",
+        "rating": null,
+        "rating_requested_at": null,
+        "rated_at": null
       },
       {
         "id": 5,
@@ -263,8 +267,12 @@
         "status": "open",
         "assigned_to": null,
         "needs_human": 0,
+        "created_at": 1787000400000,
         "updated_at": 1787000500000,
-        "user_email": null
+        "user_email": null,
+        "rating": null,
+        "rating_requested_at": null,
+        "rated_at": null
       }
     ],
     "unread": {
@@ -370,8 +378,12 @@
       "status": "open",
       "assigned_to": null,
       "needs_human": 1,
+      "created_at": 1786990000000,
       "updated_at": 1787000000000,
-      "user_email": "trader@example.com"
+      "user_email": "trader@example.com",
+      "rating": null,
+      "rating_requested_at": null,
+      "rated_at": null
     },
     "messages": [
       {

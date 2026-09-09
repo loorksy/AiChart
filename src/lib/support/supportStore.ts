@@ -1,5 +1,8 @@
 import { execute, insertReturningId, query, queryOne } from "@/lib/db";
 import { createLogger } from "@/lib/logger";
+import { RATING_REQUEST_BODY } from "@/lib/support/rating";
+
+export { RATING_REQUEST_BODY, isRatingRequestMessage } from "@/lib/support/rating";
 
 const log = createLogger("support");
 
@@ -32,6 +35,12 @@ export interface TicketRow {
    */
   user_last_read_id: number | null;
   admin_last_read_id: number | null;
+  /** 1–5 once the person has rated this conversation. */
+  rating: number | null;
+  rating_requested_at: number | null;
+  rated_at: number | null;
+  /** Present when the row is joined to `users` (inbox + admin thread). */
+  user_email?: string | null;
 }
 
 export interface MessageRow {
@@ -74,6 +83,14 @@ export async function listAllTickets(status?: string): Promise<InboxTicketRow[]>
   const select = `SELECT t.*, u.email AS user_email
                     FROM support_tickets t
                     LEFT JOIN users u ON u.id = t.user_id`;
+  // "Open" means the conversation is live — including `in_progress` after
+  // an admin reply. Filtering on the literal 'open' hid every answered
+  // thread from the inbox the moment someone wrote back.
+  if (status === "open") {
+    return query<InboxTicketRow>(
+      `${select} WHERE t.status <> 'closed' ORDER BY t.updated_at DESC LIMIT 200`,
+    );
+  }
   if (status) {
     return query<InboxTicketRow>(
       `${select} WHERE t.status = ? ORDER BY t.updated_at DESC LIMIT 200`,
@@ -86,9 +103,12 @@ export async function listAllTickets(status?: string): Promise<InboxTicketRow[]>
 export async function getTicket(
   ticketId: number,
   userId?: number,
-): Promise<{ ticket: TicketRow; messages: MessageRow[] } | null> {
-  const ticket = await queryOne<TicketRow>(
-    "SELECT * FROM support_tickets WHERE id = ?",
+): Promise<{ ticket: InboxTicketRow; messages: MessageRow[] } | null> {
+  const ticket = await queryOne<InboxTicketRow>(
+    `SELECT t.*, u.email AS user_email
+       FROM support_tickets t
+       LEFT JOIN users u ON u.id = t.user_id
+      WHERE t.id = ?`,
     [ticketId],
   );
   if (!ticket) return null;
@@ -307,4 +327,132 @@ export async function closeTicket(ticketId: number): Promise<void> {
     "UPDATE support_tickets SET status = 'closed', updated_at = ? WHERE id = ?",
     [Date.now(), ticketId],
   );
+}
+
+/**
+ * Put this conversation back in front of the person.
+ *
+ * Any other live thread for the same user is filed away first — otherwise
+ * `getOrCreateConversation` would keep handing them the newer empty one
+ * created after the original close, and this reopen would be invisible.
+ */
+export async function reopenTicket(ticketId: number): Promise<void> {
+  const ticket = await queryOne<TicketRow>(
+    "SELECT * FROM support_tickets WHERE id = ?",
+    [ticketId],
+  );
+  if (!ticket) return;
+  const now = Date.now();
+  await execute(
+    `UPDATE support_tickets
+        SET status = 'closed', updated_at = ?
+      WHERE user_id = ? AND id <> ? AND status <> 'closed'`,
+    [now, ticket.user_id, ticketId],
+  );
+  await execute(
+    "UPDATE support_tickets SET status = 'open', updated_at = ? WHERE id = ?",
+    [now, ticketId],
+  );
+}
+
+/** The live thread, if any — never creates one. */
+async function findOpenConversation(userId: number): Promise<number | null> {
+  const open = await queryOne<{ id: number }>(
+    "SELECT id FROM support_tickets WHERE user_id = ? AND status <> 'closed' ORDER BY updated_at DESC LIMIT 1",
+    [userId],
+  );
+  return open?.id ?? null;
+}
+
+/** A closed thread that is still waiting on a rating. */
+async function findPendingRatingConversation(userId: number): Promise<number | null> {
+  const pending = await queryOne<{ id: number }>(
+    `SELECT id FROM support_tickets
+      WHERE user_id = ?
+        AND rating_requested_at IS NOT NULL
+        AND rating IS NULL
+      ORDER BY updated_at DESC LIMIT 1`,
+    [userId],
+  );
+  return pending?.id ?? null;
+}
+
+async function messageCount(ticketId: number): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM support_messages WHERE ticket_id = ?",
+    [ticketId],
+  );
+  return Number(row?.count ?? 0);
+}
+
+/**
+ * What the person's support page should open.
+ *
+ * Same as `getOrCreateConversation` except a closed thread that still
+ * awaits a rating stays visible — otherwise closing then asking for a
+ * rating would strand the card on a conversation they can no longer see
+ * (the next visit would mint an empty new thread).
+ */
+export async function getVisibleConversation(userId: number): Promise<number> {
+  const open = await findOpenConversation(userId);
+  const pending = await findPendingRatingConversation(userId);
+  if (open != null && pending != null && open !== pending) {
+    if ((await messageCount(open)) === 0) return pending;
+    return open;
+  }
+  if (open != null) return open;
+  if (pending != null) return pending;
+  return getOrCreateConversation(userId);
+}
+
+/**
+ * Ask the person to rate this conversation.
+ *
+ * Writes a marker message so the unread badge and the Telegram ping fire
+ * the same way they do for a real reply. The chats render the marker as
+ * a card, never as the raw token.
+ */
+export async function requestSupportRating(
+  ticketId: number,
+  adminId: number,
+): Promise<void> {
+  const now = Date.now();
+  await execute(
+    `UPDATE support_tickets
+        SET rating = NULL,
+            rated_at = NULL,
+            rating_requested_at = ?,
+            updated_at = ?
+      WHERE id = ?`,
+    [now, now, ticketId],
+  );
+  await addMessage(ticketId, "admin", RATING_REQUEST_BODY, adminId);
+}
+
+export async function submitSupportRating(
+  ticketId: number,
+  userId: number,
+  stars: number,
+): Promise<{ ok: true } | { ok: false; error: "not_found" | "not_requested" | "already_rated" | "invalid_rating" }> {
+  if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+    return { ok: false, error: "invalid_rating" };
+  }
+  const ticket = await queryOne<TicketRow>(
+    "SELECT * FROM support_tickets WHERE id = ? AND user_id = ?",
+    [ticketId, userId],
+  );
+  if (!ticket) return { ok: false, error: "not_found" };
+  if (ticket.rating_requested_at == null) return { ok: false, error: "not_requested" };
+  if (ticket.rating != null) return { ok: false, error: "already_rated" };
+  const now = Date.now();
+  await execute(
+    "UPDATE support_tickets SET rating = ?, rated_at = ?, updated_at = ? WHERE id = ?",
+    [stars, now, now, ticketId],
+  );
+  return { ok: true };
+}
+
+/** The ticket this person may rate right now, if any. */
+export async function findRatableConversation(userId: number): Promise<number | null> {
+  return findPendingRatingConversation(userId);
 }

@@ -174,6 +174,11 @@ describe("the admin API contract — the server's half", () => {
 
     const messages = endpoint("admin/support?ticket").messages as Array<Record<string, unknown>>;
     // Declared server-side, so a column rename stops compiling here.
+    const ticket = endpoint("admin/support?ticket").ticket as Record<string, unknown>;
+    expectType<InboxTicketRow["created_at"]>(0);
+    assert.equal(typeof ticket.created_at, "number");
+    assert.ok("rating" in ticket, "the thread carries the rating columns");
+
     expectType<MessageRow["attachment_path"]>(null);
     expectType<MessageRow["attachment_name"]>(null);
     expectType<MessageRow["attachment_bytes"]>(null);

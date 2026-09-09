@@ -69,6 +69,8 @@ void main() {
 
   test('a support thread parses messages with and without attachments', () {
     final thread = TicketThread.fromJson(f('admin/support?ticket'));
+    expect(thread.ticket.createdAt, 1786990000000);
+    expect(thread.ticket.rating, isNull);
     expect(thread.messages.length, 3);
 
     final plain = thread.messages[0];
@@ -88,6 +90,25 @@ void main() {
     expect(pdf.hasAttachment, true);
     // A PDF is shown as a labelled file, never fed to Image.memory.
     expect(pdf.attachmentIsImage, false);
+  });
+
+  test('a rating-request message is flagged, not shown as ordinary text', () {
+    final message = MessageRow.fromJson({
+      'id': 99,
+      'author': 'admin',
+      'body': MessageRow.ratingRequestBody,
+      'created_at': 1,
+    });
+    expect(message.isRatingRequest, isTrue);
+    expect(
+      MessageRow.fromJson({
+        'id': 1,
+        'author': 'admin',
+        'body': 'here is the setting',
+        'created_at': 1,
+      }).isRatingRequest,
+      isFalse,
+    );
   });
 
   test('diagnostics: a zero count parses too', () {

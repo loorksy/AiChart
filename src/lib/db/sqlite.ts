@@ -2091,6 +2091,9 @@ function migrate(db: Database.Database) {
     // forever, so it is silently never unread. Ids are monotonic and exact.
     ["user_last_read_id", "INTEGER"],
     ["admin_last_read_id", "INTEGER"],
+    ["rating", "INTEGER"],
+    ["rating_requested_at", "INTEGER"],
+    ["rated_at", "INTEGER"],
   ] as const) {
     if (ticketCols.includes(column)) continue;
     try {

@@ -750,6 +750,9 @@ const SCHEMA = `
   -- it has read, and a message may carry a file.
   ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS user_last_read_id BIGINT;
   ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS admin_last_read_id BIGINT;
+  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS rating INTEGER;
+  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS rating_requested_at BIGINT;
+  ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS rated_at BIGINT;
   ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_path TEXT;
   ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT;
   ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS attachment_bytes BIGINT;
