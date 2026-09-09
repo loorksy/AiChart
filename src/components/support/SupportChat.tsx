@@ -533,7 +533,7 @@ function SupportRatingCard({
         {rating != null ? (
           <>
             <p className="text-sm text-muted-foreground">{t("support.rate.thanks")}</p>
-            <p className="text-sm tabular-nums text-accent-gold" aria-label={t("support.rate.star", { n: rating })}>
+            <p className="text-sm tabular-nums text-accent-gold" aria-label={t("support.rate.star", { n: String(rating) })}>
               {"★".repeat(rating)}
               <span className="text-muted-foreground">{"☆".repeat(5 - rating)}</span>
             </p>
@@ -547,7 +547,7 @@ function SupportRatingCard({
                   key={n}
                   type="button"
                   disabled={busy}
-                  aria-label={t("support.rate.star", { n })}
+                  aria-label={t("support.rate.star", { n: String(n) })}
                   onClick={() => onRate(n)}
                   className="px-1.5 text-lg leading-none text-accent-gold transition-opacity hover:opacity-80 disabled:opacity-40"
                 >
