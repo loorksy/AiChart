@@ -63,11 +63,17 @@ test("both consoles share one top bar: account and nav", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /<ConsoleTopBar/);
   assert.doesNotMatch(shell, /needsPageMenu/);
-  // Library header is hidden; traders refresh candles from the top bar.
-  assert.match(shell, /refreshMode=\{isAdmin \? "page" : "chart"\}/);
+  // Admin keeps a page-reload control; traders do not see a refresh icon.
+  assert.match(shell, /refreshMode=\{isAdmin \? "page" : "none"\}/);
+  assert.doesNotMatch(shell, /refreshMode=\{isAdmin \? "page" : "chart"\}/);
+  // Chart-mode button code stays for the event path; shell never mounts it.
   assert.match(
     read("components/shell/ConsoleTopBar.tsx"),
     /data-testid=\{refreshMode === "chart" \? "chart-refresh" : "console-refresh"\}/,
+  );
+  assert.match(
+    read("components/SmartChartWorkspace.tsx"),
+    /addEventListener\(CHART_RELOAD_EVENT/,
   );
   assert.match(read("components/shell/ConsoleTopBar.tsx"), /data-testid="topbar-scroll"/);
   // Read past the imports so the order below is the rendered order, not the
