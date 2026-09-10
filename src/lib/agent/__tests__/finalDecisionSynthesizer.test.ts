@@ -201,12 +201,14 @@ describe("AI final decision authority", () => {
           },
         }),
     });
-    assert.equal(out.result?.recommendation.entry, 1.095);
     assert.equal(out.result?.recommendation.levelSource, "evidence_levels");
     // Live 1.1 is already through the buy entry at 1.095 — leftover wait
-    // converts to immediate follow-through rather than sitting pending.
+    // converts to immediate follow-through rather than sitting pending. The
+    // through is DEEP (50 pips against a sub-pip fill band), so the plan is
+    // booked at the live quote: the only fill anyone can get now.
     assert.equal(out.result?.planType, "immediate");
     assert.equal(out.result?.executionState, "valid_now");
+    assert.equal(out.result?.recommendation.entry, 1.1);
   });
 
   it("refuses invented levels but keeps the direction and the reasoning", async () => {
@@ -349,16 +351,27 @@ describe("AI final decision authority", () => {
     assert.notEqual(out.result?.recommendation.status, "pending_entry");
     assert.equal(out.result?.recommendation.activationRule, undefined);
     assert.equal(out.result?.recommendation.entryType, "market");
-    assert.ok(
-      Math.abs((out.result?.recommendation.entry ?? 0) - 4616.66) < 0.5,
-      `through-print keeps the written entry 4616.66, got ${out.result?.recommendation.entry}`,
-    );
+    // Live 4606 is 10.66 below the written 4616.66 — past the 10-point fill
+    // band, so the position is booked at the live quote, not at a print
+    // nobody holds. (Storing the written number counted TP1 as hit at birth.)
+    assert.equal(out.result?.recommendation.entry, 4606);
+    assert.equal(out.result?.recommendation.anchorTime, undefined);
     const tps = out.result?.recommendation.targets ?? [];
     assert.ok(tps.length >= 1 && tps.length <= 2, `expected 1–2 spaced TPs, got ${tps.join(",")}`);
+    assert.ok(
+      !tps.some((p) => Math.abs(p - 4603.33) < 0.05),
+      `TP1 4603.33 sits inside the touch band of live — spent, not reachable; got ${tps.join(",")}`,
+    );
     assert.ok(
       !tps.some((p) => Math.abs(p - 4593.71) < 0.05),
       `TP3 4593.71 must be omitted as a collapsed neighbour; got ${tps.join(",")}`,
     );
+    // Stop room is measured from the fill that ships: 2×ATR (scalp) above
+    // 4606, not above the written 4616.66 — and the card's R is recomputed
+    // from those levels instead of carrying the candidate's 6R.
+    const stop = out.result?.recommendation.stop_loss ?? 0;
+    assert.ok(Math.abs(stop - (4606 + 2 * 8.9)) < 0.05, `stop floored from the fill, got ${stop}`);
+    assert.ok((out.result?.recommendation.rr ?? 99) < 1, `R recomputed from shipped levels, got ${out.result?.recommendation.rr}`);
     const gaps = tps.slice(1).map((p, i) => Math.abs(p - tps[i]!));
     assert.ok(
       gaps.every((g) => g + 1e-9 >= 5),
@@ -537,8 +550,10 @@ describe("presentational overflow and recoverable aliases are not contract fault
     });
     assert.equal(out.failure, undefined);
     assert.equal(out.result?.decision, "buy");
-    assert.equal(out.result?.recommendation.entry, 1.095);
+    // Aliases resolved: the levels came from the evidence menu (and the deep
+    // through of live 1.1 then converts the wait to a live fill).
     assert.equal(out.result?.recommendation.levelSource, "evidence_levels");
+    assert.equal(out.result?.recommendation.entry, 1.1);
   });
 
   it("defaults a missing drawingAdvice instead of rejecting a complete plan", async () => {

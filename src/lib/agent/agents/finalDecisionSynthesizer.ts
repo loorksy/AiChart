@@ -44,11 +44,24 @@ import {
   normalizeActivationRule,
 } from "@/lib/recommendations/activationRule";
 import { entryTolerance } from "@/lib/agent/trading/buildTradeCandidates";
-import { applyStopSafetyBuffer, entryFillTolerance, filterDistinctTargets, resolveEntryType } from "@/lib/recommendations/entrySemantics";
-import { roundToTick } from "../trading/scalpGeometry";
+import {
+  applyStopSafetyBuffer,
+  entryFillTolerance,
+  filterDistinctTargets,
+  resolveEntryType,
+  targetHitTolerance,
+} from "@/lib/recommendations/entrySemantics";
+import {
+  applyStopDistanceFloor,
+  computeGrossR,
+  computeNetR,
+  roundToTick,
+  SCALP_GEOMETRY,
+} from "../trading/scalpGeometry";
 import {
   entryPrintState,
   findPrintAnchorMs,
+  throughIsShallow,
 } from "../gates/revalidation";
 import {
   buildEvidenceLevels,
@@ -69,7 +82,6 @@ import { linePriceAt } from "@/lib/chart/geometry/types";
 import { breakLevelOf, offersAnticipatoryEntry } from "@/lib/chart/geometry/patternStage";
 import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
-import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 import type { StatisticalSupport } from "@/lib/strategies/supportTypes";
 import { serializeCostEvidence } from "../marketContext/costEvidence";
 import { FEATURES } from "../featureFlags";
@@ -1042,6 +1054,8 @@ ${PATTERN_IDENTIFICATION_DOCTRINE}
 - TARGETS: always at least TWO. A third target when the structure genuinely offers one beyond TP2 — never invented. Consecutive targets must be meaningfully spaced (several points on gold, or a fraction of ATR) — if TP3 would sit on top of TP2, omit TP3; if TP2 would sit on top of TP1, omit TP2. A 0.09-point gap is not a third target.
 - STOP: the structural invalidation level plus a real volatility buffer BEYOND it — never exactly ON the level (a stop at 4393.52 belongs at ≈4401.79 on a gold intraday plan). Candidates carry this buffer already (structuralStop vs stop_loss); when proposing levels, pick the evidence level past the invalidation, not the invalidation itself. Never tighten a stop to flatter the R ratio.
 - The stop is placed by SCENARIO, never by a risk percentage or a fixed distance: ask "where does price have to trade for my idea to be wrong?" — the close beyond the swing, the demand/supply zone, the neckline, or the trendline/channel wall the plan leans on (a sloped line is invalidated the same way a horizontal level is) — and put the stop past THAT. Position size is computed after the decision and never moves the stop.
+- STOP ROOM (product rule): the stop must leave the trade room to breathe — at least a full ATR-scale swing of the analyzed timeframe between entry and stop, never a distance one ordinary rejection candle wipes out. A stop that sits a couple of points from a gold entry is not a tight stop, it is a coin flip; move the entry to the zone edge or the stop past the next structure instead. The platform widens a stop that is too close; write it right the first time.
+- ENTRY vs LIVE (product rule): the entry is where the trade can actually be dealt. If the live price is already past your entry in the trade direction (a sell whose entry is above live, a buy whose entry is below live), the plan is NOT "wait for price to come back and then sell" — that is a bet on the opposite move. Either the trade is valid at LIVE now (write the entry at the live price, measure the stop and targets from there, and say the chase costs R) or the move has been spent and there is no trade. A genuine retest thesis must be declared as such (entryType retest_zone / a retest_confirmed rule) and must sit within reach — not several ATR away.
 
 ## Evidence, not gates
 - Structure, liquidity, patterns, historical cases, backtests, costs, and news STRENGTHEN or WEAKEN a plan. None of them decides whether a plan exists.
@@ -1945,42 +1959,58 @@ function applyModelDecision(
       if (!keepApproachWait) {
         const writtenEntry = resolved.levels.preferredEntry;
       const live = roundToTick(currentPrice, { spread: input.market.spread });
-      // Through: keep the written zone (the fill printed there). Approach:
-      // fill at live and note the gap — unless filling NOW would be born
-      // stopped (a sell 8 points above a stop 3 points above the entry).
+      // Shallow through (live past the written entry by no more than the fill
+      // band): keep the written zone — the fill printed there. Deep through
+      // or approach: fill at live and note the gap. A deep through stored at
+      // the written number is a position nobody holds: the 5m sell written at
+      // 4335.64 with live at 4317 was booked as filled 18 points better than
+      // the market and had its first target "hit" before the operator read
+      // the card. Never convert when filling NOW would be born stopped (a
+      // sell 8 points above a stop 3 points above the entry).
       const stop = resolved.levels.stopLoss;
-      const wouldBreachStop =
-        print.kind === "approach" &&
-        (direction === "sell" ? live >= stop : live <= stop);
+      const shallowThrough =
+        print.kind === "through" &&
+        throughIsShallow({ entry: writtenEntry, currentPrice: live, atr: input.market.atr });
+      const wouldBreachStop = direction === "sell" ? live >= stop : live <= stop;
       if (!wouldBreachStop) {
-        const fillAt = print.kind === "through" ? writtenEntry : live;
+        const fillAt = shallowThrough ? writtenEntry : live;
+        // Targets a fill at live has already spent — behind live, or inside
+        // the band the tracker grades a touch by — are gone, not "reachable".
+        const spentBand = targetHitTolerance({ price: live, atr: input.market.atr });
         const nextTargets = filterDistinctTargets({
           direction,
           entry: fillAt,
-          targets: resolved.levels.targets,
+          targets: resolved.levels.targets.filter((tp) =>
+            direction === "sell" ? tp < live - spentBand : tp > live + spentBand,
+          ),
           atr: input.market.atr,
         });
         if (nextTargets.length > 0) {
           resolved.levels = {
             ...resolved.levels,
             preferredEntry: fillAt,
-            entryLow: Math.min(resolved.levels.entryLow, fillAt),
-            entryHigh: Math.max(resolved.levels.entryHigh, fillAt),
+            // A live fill has no zone — the written one is behind price.
+            entryLow: shallowThrough ? Math.min(resolved.levels.entryLow, fillAt) : fillAt,
+            entryHigh: shallowThrough ? Math.max(resolved.levels.entryHigh, fillAt) : fillAt,
             targets: nextTargets,
           };
           planType = "immediate";
           activationCondition = null;
           activationRule = null;
-          const found = findPrintAnchorMs({
-            direction,
-            entry: writtenEntry,
-            candles: input.market.currentTfCandles,
-            tolerance: entryFillTolerance({
-              price: writtenEntry,
-              atr: input.market.atr,
-            }),
-          });
-          if (found != null) printAnchorMs = found;
+          // The print candle anchors the box only when the plan really fills
+          // at the written zone; a live fill is anchored at issue time.
+          if (shallowThrough) {
+            const found = findPrintAnchorMs({
+              direction,
+              entry: writtenEntry,
+              candles: input.market.currentTfCandles,
+              tolerance: entryFillTolerance({
+                price: writtenEntry,
+                atr: input.market.atr,
+              }),
+            });
+            if (found != null) printAnchorMs = found;
+          }
           const gap = Math.abs(live - writtenEntry);
           riskWarnings.unshift(
             print.kind === "approach"
@@ -2000,6 +2030,33 @@ function applyModelDecision(
     }
   }
 
+  // Stop ROOM, whichever path produced the levels and measured from the price
+  // the plan really fills at (after any live-fill conversion above): structure
+  // places the stop, but a thin zone can leave two or three gold points
+  // between entry and stop — a distance one ordinary rejection candle covers.
+  // The style floor (ATR of the analyzed timeframe) widens such a stop; it
+  // never tightens one.
+  if (resolved.levels) {
+    const floored = applyStopDistanceFloor({
+      action: direction,
+      entry: resolved.levels.preferredEntry,
+      stop: resolved.levels.stopLoss,
+      atr: input.market.atr,
+      spread: input.market.spread,
+      interval: input.market.interval,
+      meta: { spread: input.market.spread },
+    });
+    if (floored.widened) {
+      resolved.levels = { ...resolved.levels, stopLoss: floored.stop };
+      riskWarnings.push(
+        t(input.locale === "en" ? "en" : "ar", "synth.stop_widened", {
+          stop: floored.stop.toFixed(2),
+          floor: floored.floor.toFixed(2),
+        }),
+      );
+    }
+  }
+
   if (resolved.levels) {
     const spaced = filterDistinctTargets({
       direction,
@@ -2009,6 +2066,29 @@ function applyModelDecision(
     });
     if (spaced.length) resolved.levels = { ...resolved.levels, targets: spaced };
   }
+
+  // R is a property of the levels that SHIP, not of the candidate they came
+  // from: a live-fill conversion, a widened stop or evidence-menu levels all
+  // change the geometry, and carrying the candidate's 6R onto a 0.7R card is
+  // the number the operator would trade on.
+  const shippedR = resolved.levels
+    ? (() => {
+        const geometry = {
+          action: direction,
+          entry: resolved.levels.preferredEntry,
+          stop: resolved.levels.stopLoss,
+          spread: input.market.spread,
+          meta: { spread: input.market.spread },
+        };
+        const tp1 = resolved.levels.targets[0];
+        const tp2 = resolved.levels.targets[1];
+        return {
+          rr: tp1 != null ? computeGrossR({ ...geometry, target: tp1 }) : undefined,
+          netRr: tp1 != null ? computeNetR({ ...geometry, target: tp1 }) : undefined,
+          netRrTp2: tp2 != null ? computeNetR({ ...geometry, target: tp2 }) : undefined,
+        };
+      })()
+    : null;
 
   const executionState = deriveExecutionState({
     planType,
@@ -2041,7 +2121,7 @@ function applyModelDecision(
 
   const activationClass: "immediate" | "conditional" =
     planType === "immediate" ? "immediate" : "conditional";
-  const netRr = selected?.netRr;
+  const netRr = shippedR?.netRr ?? selected?.netRr;
   // The tolerance the tracker will grade this rule with. Without it an omitted
   // tolerance became `?? 0` and the plan waited for an exact-cent touch that
   // real price action rarely delivers — the setup happened, the rule disagreed,
@@ -2087,9 +2167,9 @@ function applyModelDecision(
         stop_loss: resolved.levels.stopLoss,
         targets: resolved.levels.targets,
         take_profit: resolved.levels.targets[0],
-        rr: selected?.rr,
+        rr: shippedR?.rr ?? selected?.rr,
         netRr,
-        netRrTp2: selected?.netRrTp2,
+        netRrTp2: shippedR?.netRrTp2 ?? selected?.netRrTp2,
         activationClass,
         // An immediate plan never inherits the candidate's conditional text:
         // a card whose header says "valid now" must not carry a body sentence

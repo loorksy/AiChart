@@ -188,7 +188,7 @@ describe("waiting plans: the stop is the FILL's geometry, not the approach path"
       direction: "buy",
       effectiveEntry: 4600.0,
       stopLoss: 4594.0,
-      targets: [4610.0],
+      targets: [4625.0],
       atr: 8.9,
       entryType: "retest_zone",
       currentPrice: 4613.0,
@@ -237,29 +237,39 @@ describe("a sell mirrors the buy exactly", () => {
     entryType: "confirmation_close",
   };
 
-  it("converts a leftover limit_touch whose live price already went through", () => {
+  it("a deep through with its reward spent is refused, never booked at the written zone", () => {
     // Doctrine: do not wait for a return to a level the market already left
-    // unless the plan is an explicit retest. Live 4630 is below the 4650.44
-    // sell — the wait is over; keep the written entry (the print).
+    // unless the plan is an explicit retest. Live 4630 is 20 points below the
+    // 4650.44 sell: TP1 (4638.1) is behind live and TP2 (4625.5) sits inside
+    // the touch band of live — a fill here has nothing left to make. The old
+    // rule stored this as "filled at 4650.44" with TP1 hit at birth.
     const limit = { ...sell, entryType: "limit_touch" };
     const verdict = revalidatePlan({ ...limit, currentPrice: 4630.0 });
-    assert.equal(verdict.status, "reanchored");
-    assert.equal(verdict.reanchoredEntry, 4650.44);
+    assert.equal(verdict.status, "targets_passed");
+    assert.equal(verdict.reanchoredEntry, undefined);
   });
 
-  it("converts a confirmation_close sell already through its entry and keeps the written fill", () => {
-    // Same drop: live 4630 is already below the 4650.44 entry. Through by
-    // more than 0 — keep the zone, do not chase to live.
-    const verdict = revalidatePlan({ ...sell, currentPrice: 4630.0 });
+  it("a deep through with a target still standing fills at LIVE, not at the written zone", () => {
+    // Same drop, but a real second target further down: the trade is still
+    // there — at the price the operator can actually get.
+    const far = { ...sell, targets: [4638.1, 4600.0] };
+    const verdict = revalidatePlan({ ...far, currentPrice: 4630.0 });
     assert.equal(verdict.status, "reanchored");
-    assert.equal(verdict.reanchoredEntry, 4650.44);
+    assert.equal(verdict.reanchoredEntry, 4630.0);
   });
 
   it("re-prices a drop that outran the budget while a target still stands", () => {
-    const far = { ...sell, targets: [4638.1, 4600.0] };
+    const far = { ...sell, targets: [4638.1, 4590.0] };
     const verdict = revalidatePlan({ ...far, currentPrice: 4610.0 });
     assert.equal(verdict.status, "reanchored");
-    assert.equal(verdict.reanchoredEntry, 4650.44);
+    assert.equal(verdict.reanchoredEntry, 4610.0);
+  });
+
+  it("a target inside the touch band of live counts as spent", () => {
+    // 4600 is exactly 10 points (the gold touch band) from live 4610: the
+    // tracker would grade it hit on the first sweep, so it is not a target.
+    const far = { ...sell, targets: [4638.1, 4600.0] };
+    assert.equal(revalidatePlan({ ...far, currentPrice: 4610.0 }).status, "targets_passed");
   });
 
   it("prefers targets_passed over re-pricing when the drop cleared them all", () => {
@@ -296,10 +306,12 @@ describe("conditional already printed — leftover waits convert without oversho
     currentPrice: 4606.0,
   };
 
-  it("converts a confirmation sell already below the entry and keeps the written fill", () => {
+  it("converts a confirmation sell already below the entry — at LIVE when the print is deep", () => {
+    // 10.66 points through is past the 10-point fill band: the written zone
+    // is a price nobody can deal at any more, so the immediate fill is live.
     const verdict = revalidatePlan(incident);
     assert.equal(verdict.status, "reanchored");
-    assert.equal(verdict.reanchoredEntry, 4616.66);
+    assert.equal(verdict.reanchoredEntry, 4606.0);
     assert.match(verdict.reasonAr ?? "", /شرط التفعيل كان قد تحقق/);
   });
 
@@ -320,7 +332,7 @@ describe("conditional already printed — leftover waits convert without oversho
   it("also converts a leftover limit_touch sell already through — no retest assumed", () => {
     const verdict = revalidatePlan({ ...incident, entryType: "limit_touch" });
     assert.equal(verdict.status, "reanchored");
-    assert.equal(verdict.reanchoredEntry, 4616.66);
+    assert.equal(verdict.reanchoredEntry, 4606.0);
   });
 
   it("the 4605.39 / live 4601.89 screenshot is immediate, not a wait", () => {
@@ -429,6 +441,38 @@ describe("applyFollowThroughToPlan", () => {
 });
 
 describe("findPrintAnchorMs", () => {
+  it("ignores an old crossing of the same price — the print is THIS approach", () => {
+    // Two days of 5m history: price traded through 4335 on the 8th, sat
+    // above it for a day, then fell through it again on the 10th. The box
+    // belongs at the 10th's print, not at the oldest bar that once touched
+    // the level (that anchor spanned the whole pane).
+    const bar = 5 * 60_000;
+    const T_OLD = Date.UTC(2026, 8, 8, 21, 25, 0);
+    const T_NEW = Date.UTC(2026, 8, 10, 21, 30, 0);
+    const candles = [
+      { time: T_OLD, high: 4340, low: 4330, open: 4338, close: 4332 }, // old crossing
+      { time: T_OLD + bar, high: 4331, low: 4322, open: 4331, close: 4325 },
+      { time: T_NEW - 3 * bar, high: 4372, low: 4360, open: 4370, close: 4362 }, // waiting side
+      { time: T_NEW - 2 * bar, high: 4361, low: 4352, open: 4360, close: 4353 },
+      { time: T_NEW - bar, high: 4353, low: 4346, open: 4353, close: 4347 },
+      { time: T_NEW, high: 4347, low: 4331, open: 4346, close: 4333 }, // the print
+      { time: T_NEW + bar, high: 4333, low: 4316, open: 4333, close: 4317 },
+    ];
+    const ms = findPrintAnchorMs({ direction: "sell", entry: 4335.64, candles, tolerance: 10 });
+    assert.equal(ms, T_NEW);
+  });
+
+  it("anchors at the live bar when the run never met the waiting side inside the history", () => {
+    const bar = 5 * 60_000;
+    const T0 = Date.UTC(2026, 8, 10, 20, 0, 0);
+    const candles = [
+      { time: T0, high: 4320, low: 4310, open: 4318, close: 4312 },
+      { time: T0 + bar, high: 4313, low: 4305, open: 4312, close: 4306 },
+    ];
+    const ms = findPrintAnchorMs({ direction: "sell", entry: 4335.64, candles, tolerance: 10 });
+    assert.equal(ms, T0 + bar);
+  });
+
   it("returns the first candle that tagged the entry, not the latest bar", () => {
     const T0 = Date.UTC(2026, 7, 27, 17, 20, 0);
     const bar = 5 * 60_000;

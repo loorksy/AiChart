@@ -1816,15 +1816,19 @@ async function runUnifiedChartAgentInner(
       });
       const written = gateRec.entry;
       const direction = decision.decision === "buy" ? "buy" : "sell";
-      const anchorTime = findPrintAnchorMs({
-        direction,
-        entry: typeof written === "number" ? written : entry,
-        candles: market.currentTfCandles,
-        tolerance: entryFillTolerance({
-          price: typeof written === "number" ? written : entry,
-          atr: market.atr,
-        }),
-      });
+      // The print candle anchors the box only when the plan keeps its written
+      // entry (a shallow through-print). A fill re-priced to live opens NOW —
+      // anchoring it at the bar that once traded the written number would
+      // draw a position nobody held.
+      const keptWrittenEntry = typeof written === "number" && Math.abs(written - entry) < 1e-9;
+      const anchorTime = keptWrittenEntry
+        ? findPrintAnchorMs({
+            direction,
+            entry: written,
+            candles: market.currentTfCandles,
+            tolerance: entryFillTolerance({ price: written, atr: market.atr }),
+          })
+        : null;
       applyFollowThroughToPlan(gateRec, entry, { anchorTime });
       if (anchorTime != null) gateRec.anchorTime = anchorTime;
       decision.planType = "immediate";

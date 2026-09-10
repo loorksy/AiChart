@@ -24,6 +24,7 @@ import {
   closeTriggerLevel,
   entryFillTolerance,
   rewardToRisk,
+  targetHitTolerance,
 } from "@/lib/recommendations/entrySemantics";
 import type { ActivationRule } from "@/lib/recommendations/activationRule";
 
@@ -176,9 +177,19 @@ export function confirmationAlreadyPrinted(input: ConfirmationAlreadyPrintedInpu
 }
 
 /**
- * Time of the candle that first printed the entry condition — the wick/price
- * that tagged the zone, not "now" at issue time. Used as the position-tool
- * left/entry anchor so advancing bars never slide the box to the live candle.
+ * Time of the candle that printed the entry condition for THIS approach — the
+ * wick that tagged the zone on the way through, not "now" at issue time. Used
+ * as the position-tool left/entry anchor so advancing bars never slide the
+ * box to the live candle.
+ *
+ * "This approach" matters: gold crosses any given price many times over a
+ * few hundred bars of history. Taking the OLDEST overlapping candle anchored
+ * a plan two days back (a 5m sell at 4335.64 opened its box at a Sept-8
+ * candle that once traded there) and the box then spanned the whole pane.
+ * The print is the most recent run of bars that left the waiting side: walk
+ * back from the live bar until a bar sits entirely on the waiting side
+ * (above the band for a sell, below it for a buy); the earliest band-tagging
+ * bar inside that run is where the fill printed.
  */
 export function findPrintAnchorMs(input: {
   direction: "buy" | "sell";
@@ -196,17 +207,48 @@ export function findPrintAnchorMs(input: {
   const sorted = [...input.candles]
     .filter((c) => Number.isFinite(c.time) && c.time > 0)
     .sort((a, b) => candleTimeMs(a.time) - candleTimeMs(b.time));
-  for (const c of sorted) {
-    if (c.low <= bandHigh && c.high >= bandLow) return candleTimeMs(c.time);
-  }
-  // Live is through but no candle overlapped the band (sparse history): the
-  // most recent bar already on the profit side is the honest visual anchor.
+  let tagged: number | null = null;
+  let runStart: number | null = null;
+  let boundedByWaitSide = false;
   for (let i = sorted.length - 1; i >= 0; i--) {
     const c = sorted[i]!;
-    const through = input.direction === "sell" ? c.low < input.entry : c.high > input.entry;
-    if (through) return candleTimeMs(c.time);
+    const onWaitSide = input.direction === "sell" ? c.low > bandHigh : c.high < bandLow;
+    if (onWaitSide) {
+      boundedByWaitSide = true;
+      break;
+    }
+    runStart = candleTimeMs(c.time);
+    if (c.low <= bandHigh && c.high >= bandLow) tagged = candleTimeMs(c.time);
   }
-  return null;
+  if (tagged != null) return tagged;
+  // Through with no bar overlapping the band (a gap through the zone): the
+  // first bar after the waiting side is the print. A run that never met the
+  // waiting side inside the history is not a print at all — anchor at the
+  // live bar rather than at the oldest bar we happen to hold.
+  if (boundedByWaitSide && runStart != null) return runStart;
+  const last = sorted[sorted.length - 1];
+  return last ? candleTimeMs(last.time) : null;
+}
+
+/**
+ * Is a through-print SHALLOW — live past the written entry by no more than
+ * the fill band? Only then is "filled at the written zone" an honest reading
+ * of the tape: the operator can still deal within the band the tracker
+ * itself grades touches by. Past that, the written number is a price nobody
+ * can get any more; the plan fills at live or not at all (the 5m sell written
+ * at 4335.64 with live 4317 — 18 points through — was stored as a fill at
+ * 4335.64 and its first target counted as hit at birth).
+ */
+export function throughIsShallow(input: {
+  entry: number;
+  currentPrice: number;
+  atr?: number | null;
+}): boolean {
+  if (!(input.entry > 0) || !(input.currentPrice > 0)) return false;
+  return (
+    Math.abs(input.currentPrice - input.entry) <=
+    entryFillTolerance({ price: input.entry, atr: input.atr })
+  );
 }
 
 /** The fields a follow-through conversion rewrites on a stored/authored plan. */
@@ -340,10 +382,19 @@ function stopIsBreached(input: RevalidationInput, fillPrice: number): boolean {
     : fillPrice >= input.stopLoss;
 }
 
-/** Targets still in front of the given fill price — the reward not yet spent. */
+/**
+ * Targets still in front of the given fill price — the reward not yet spent.
+ *
+ * A target inside the touch band of the fill price is spent too: the tracker
+ * grades a target as reached when price comes within `targetHitTolerance` of
+ * it (the same 10–15 point gold band as fills), so a plan opened here would
+ * have that target "hit" on its first sweep without price moving. The 5m sell
+ * repriced to live 4317.02 with TP2 at 4316.48 is the case this closes.
+ */
 function reachableTargetsFrom(input: RevalidationInput, fillPrice: number): number[] {
+  const band = targetHitTolerance({ price: fillPrice, atr: input.atr });
   return input.targets.filter((tp) =>
-    input.direction === "buy" ? tp > fillPrice : tp < fillPrice,
+    input.direction === "buy" ? tp > fillPrice + band : tp < fillPrice - band,
   );
 }
 
@@ -458,11 +509,20 @@ export function revalidatePlan(input: RevalidationInput): RevalidationVerdict {
     (movedPast && distance > maxDistance);
 
   if (shouldConvert) {
-    // Through-print: keep the written entry (the fill printed at the zone).
-    // Approach-band or market-chase: fill at the live quote (the gap / the
-    // only price the operator can get now).
-    const fillNow =
-      print.kind === "through" ? input.effectiveEntry : input.currentPrice;
+    // Shallow through-print (live past the written entry by no more than the
+    // fill band): keep the written entry — the fill printed at the zone and
+    // the operator can still deal inside the band. Deep through, approach
+    // band, or market-chase: fill at the live quote, the only price anyone
+    // can get now. Storing the written number for a deep through graded the
+    // operator against a fill nobody had and counted TP1 as hit at birth.
+    const shallowThrough =
+      print.kind === "through" &&
+      throughIsShallow({
+        entry: input.effectiveEntry,
+        currentPrice: input.currentPrice,
+        atr: input.atr,
+      });
+    const fillNow = shallowThrough ? input.effectiveEntry : input.currentPrice;
     // Viability is judged at the LIVE quote: a through-print whose live price
     // has already cleared every target (or the stop) is a completed move, not
     // a position to open at the historical print.
