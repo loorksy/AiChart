@@ -273,17 +273,22 @@ export async function resolveActiveSelection(
   tier: ModelTier = "deep",
 ): Promise<RequestModelSelection> {
   const picked = requestModel.getStore();
-  // A user's explicit pick governs their analysis, not the platform's
-  // housekeeping: a chore stays on the cheap model whoever asked for it.
-  if (picked && tier !== "chore") return picked;
+  // A user's explicit pick governs their ANALYSIS — the deep tier. It does not
+  // promote the platform's auxiliary generations (status replies, follow-up
+  // answers, suggestions, drawing narration) onto the frontier model: those
+  // run on the operator's configured quick model of the SAME provider when
+  // there is one, and only fall back to the pick when there is none. Before
+  // this, every quick call in a pinned session was billed at analysis rates.
+  if (picked && tier === "deep") return picked;
   const provider = picked?.provider ?? (await getActiveProviderAsync());
   const configured = (await getPlatformValueAsync(tierField(provider, tier)!))?.trim();
   if (configured) return { provider, model: configured };
   // A chore falls back to the cheap default — never to the decision model.
   if (tier === "chore") return { provider, model: CHORE_DEFAULT[provider] };
   // The quick tier is OPT-IN: with no cheap model configured it falls back
-  // to the deep model rather than inventing one.
-  if (tier === "quick") return resolveActiveSelection("deep");
+  // to the deep model (the user's pick when there is one) rather than
+  // inventing one.
+  if (tier === "quick") return picked ?? resolveActiveSelection("deep");
   return {
     provider,
     model: provider === "anthropic" ? DEFAULT_ANTHROPIC_MODEL : DEFAULT_MODEL,
@@ -347,9 +352,8 @@ export function getDeepModel(): string {
 
 /** Fast/cheap model for auxiliary generations; defaults to the deep model. */
 export function getQuickModel(): string {
-  // An explicit user pick is honoured for every tier — splitting their chosen
-  // model across tiers would silently answer with a model they did not choose.
-  if (requestModel.getStore()) return getDeepModel();
+  // Same rule as resolveActiveSelection: a user's pick owns the decision, the
+  // operator's quick model (same provider) serves the auxiliary calls.
   const provider = getActiveProvider();
   return getPlatformValue(tierField(provider, "quick")!)?.trim() || getDeepModel();
 }

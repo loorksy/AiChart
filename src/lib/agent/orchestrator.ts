@@ -208,10 +208,10 @@ const log = createLogger("agent.orchestrator");
 
 /**
  * `AGENT_TIMEOUTS.general` was calibrated against the fast platform default
- * (gpt-4.1). An explicit user model pick is honoured for the quick tier too
- * (`getQuickModel()` in lib/llm.ts) — so picking a reasoning-family model
- * (o-series, gpt-5) pins these short general-question calls onto a model that
- * "thinks" before answering, even at reasoning_effort "low". Double the
+ * (gpt-4.1). With no quick model configured `getQuickModel()` falls back to
+ * the deep model — the user's pick in a pinned session — so a reasoning-family
+ * pick (o-series, gpt-5) lands these short general-question calls on a model
+ * that "thinks" before answering, even at reasoning_effort "low". Double the
  * budget rather than leave a real, well-formed answer to die on a deadline
  * sized for a model the operator didn't choose. Safe to widen freely: these
  * are early-return paths that never run alongside the deep-tier decision

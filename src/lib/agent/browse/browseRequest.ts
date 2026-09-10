@@ -25,8 +25,15 @@
  */
 import { TIMEFRAMES } from "@/lib/gold";
 
-/** Total browse calls one analysis may spend. */
-export const MAX_BROWSE_CALLS = 12;
+/**
+ * Total browse calls one analysis may spend. Every round re-issues the FULL
+ * decision on top of the whole evidence bundle and every chart attached so
+ * far, so each one costs roughly a complete analysis in tokens; the wall
+ * clock below rarely allows more than two or three anyway. Four keeps the
+ * capability (a second frame, a candle read, a zone check, one more look)
+ * without a budget that can multiply an analysis twelvefold.
+ */
+export const MAX_BROWSE_CALLS = 4;
 
 /** Wall clock for the whole browse phase, however many calls it took. */
 export const BROWSE_DEADLINE_MS = 25_000;

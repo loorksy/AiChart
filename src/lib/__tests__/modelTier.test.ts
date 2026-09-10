@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { getDeepModel, getQuickModel, modelForTier } from "@/lib/llm";
+import {
+  getDeepModel,
+  getQuickModel,
+  modelForTier,
+  resolveActiveSelection,
+  withRequestModel,
+} from "@/lib/llm";
 import { clearPlatformConfigCache } from "@/lib/platformConfig";
 
 describe("model tiers (item 15: fast/deep split)", () => {
@@ -42,5 +48,29 @@ describe("model tiers (item 15: fast/deep split)", () => {
     assert.equal(modelForTier("quick"), "gpt-x-quick");
     // The deep model is never the quick model when a split is configured.
     assert.notEqual(modelForTier("deep"), modelForTier("quick"));
+  });
+
+  it("a user's model pick owns the decision tier only — quick calls stay on the configured quick model", async () => {
+    process.env.AI_MODEL = "gpt-x-deep";
+    process.env.AI_QUICK_MODEL = "gpt-x-quick";
+    clearPlatformConfigCache();
+    const picked = { provider: "openai" as const, model: "gpt-x-frontier" };
+    await withRequestModel(picked, async () => {
+      assert.deepEqual(await resolveActiveSelection("deep"), picked);
+      assert.equal((await resolveActiveSelection("quick")).model, "gpt-x-quick");
+      assert.equal(getQuickModel(), "gpt-x-quick");
+      // Chores never touch the pick either.
+      assert.notEqual((await resolveActiveSelection("chore")).model, "gpt-x-frontier");
+    });
+  });
+
+  it("with no quick model configured, a pinned session's quick calls fall back to the pick", async () => {
+    process.env.AI_MODEL = "gpt-x-deep";
+    delete process.env.AI_QUICK_MODEL;
+    clearPlatformConfigCache();
+    const picked = { provider: "openai" as const, model: "gpt-x-frontier" };
+    await withRequestModel(picked, async () => {
+      assert.deepEqual(await resolveActiveSelection("quick"), picked);
+    });
   });
 });
