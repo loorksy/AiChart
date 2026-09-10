@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { evaluateRecommendationStatus } from "@/lib/agent/recommendation/evaluateRecommendationStatus";
+import { evaluateRecommendationStatus, scenarioProgressOf } from "@/lib/agent/recommendation/evaluateRecommendationStatus";
 import {
   computeRecommendationExpiry,
   getActiveRecommendation,
@@ -107,6 +107,54 @@ describe("evaluateRecommendationStatus", () => {
     });
     assert.equal(status.status, "pending_entry");
     assert.equal(status.triggered, false);
+  });
+
+  it("carries the scenario progress read on a live verdict", () => {
+    // Pending buy at 100, price sat below: waiting, nothing touched.
+    const pending = evaluateRecommendationStatus({
+      recommendation: rec(),
+      market: market([candle(1, 81, 81.2, 80.5, 81)]),
+    });
+    assert.ok(pending.progress);
+    assert.equal(pending.progress!.verdict, "waiting");
+    assert.equal(pending.progress!.entryTouched, false);
+    assert.equal(pending.progress!.barsSinceCreated, 1);
+    assert.ok(pending.progress!.pointsPastEntry < 0);
+
+    // Filled and running: the excursion so far and the room left are facts.
+    const live = evaluateRecommendationStatus({
+      recommendation: rec({ targets: [130] }),
+      market: market([candle(1, 101, 101.2, 99.8, 100.5), candle(2, 100.5, 104, 99.5, 103)]),
+    });
+    assert.equal(live.status, "triggered");
+    assert.equal(live.progress!.verdict, "in_profit");
+    assert.equal(live.progress!.entryTouched, true);
+    assert.equal(live.progress!.maxFavorablePoints, 4);
+    assert.equal(live.progress!.maxAdversePoints, 0.5);
+    assert.equal(live.progress!.pointsToStop, 4);
+    assert.equal(live.progress!.pointsToFirstTarget, 27);
+  });
+
+  it("names the move that is happening WITHOUT a fill", () => {
+    // Sell at 4335 never touched; price already 12 points below the entry
+    // (past the fill band) and heading for the targets — no position exists.
+    const progress = scenarioProgressOf({
+      direction: "sell",
+      entry: 4335.64,
+      stopLoss: 4345,
+      targets: [4310, 4290],
+      priceNow: 4323,
+      triggered: false,
+      createdCandleTime: T,
+      moveAwayBand: 10,
+      candles: [
+        { time: T + 60_000, high: 4330, low: 4324, },
+        { time: T + 120_000, high: 4325, low: 4322 },
+      ],
+    });
+    assert.equal(progress.verdict, "moving_away");
+    assert.equal(progress.entryTouched, false);
+    assert.ok(progress.pointsPastEntry > 10);
   });
 
   it("marks a recommendation triggered after entry touch, citing the honest fill", () => {

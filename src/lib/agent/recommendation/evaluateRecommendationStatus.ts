@@ -46,6 +46,97 @@ export interface RecommendationStatusEvaluation {
   pointsFromEntry?: number;
   /** The stop's own termination semantics, so the reply words it correctly. */
   invalidationMode?: InvalidationMode;
+  /** How far the plan's scenario has actually played out (see ScenarioProgress). */
+  progress?: ScenarioProgress;
+}
+
+/**
+ * The plan's scenario against the tape since it was issued — the facts behind
+ * "has this already happened, or am I still waiting?". Deterministic, from
+ * the completed candles printed after the plan's creation bar.
+ */
+export interface ScenarioProgress {
+  /** Completed candles of the plan timeframe since the creation bar. */
+  barsSinceCreated: number;
+  /** Candles the plan gave itself, when it set a validity. */
+  validityCandles?: number;
+  /** Whether price has dealt at the entry (the plan is a position). */
+  entryTouched: boolean;
+  /**
+   * Signed distance of live from the entry along the trade direction:
+   * positive = live is already BEYOND the entry (in profit for a filled plan;
+   * for an unfilled one, the move is happening without us).
+   */
+  pointsPastEntry: number;
+  /** Furthest price travelled in the trade direction from the entry, in points (>= 0). */
+  maxFavorablePoints: number;
+  /** Furthest price travelled against the trade from the entry, in points (>= 0). */
+  maxAdversePoints: number;
+  /** Points between live and the stop (positive = stop not reached). */
+  pointsToStop: number;
+  /** Points between live and the first target (positive = target ahead). */
+  pointsToFirstTarget: number;
+  /**
+   * The one-line verdict the reply must lead with:
+   *  - waiting        — untouched entry, price still on the waiting side;
+   *  - moving_away    — untouched entry and price already running toward the
+   *                     targets without us (the move is happening without a fill);
+   *  - in_profit / in_drawdown — filled, and where price sits against the entry;
+   */
+  verdict: "waiting" | "moving_away" | "in_profit" | "in_drawdown";
+}
+
+/** Facts of the scenario so far, from the candles printed after creation. */
+export function scenarioProgressOf(input: {
+  direction: "buy" | "sell";
+  entry: number;
+  stopLoss: number;
+  targets: number[];
+  priceNow: number;
+  triggered: boolean;
+  effectiveEntry?: number;
+  createdCandleTime: number;
+  validityCandles?: number;
+  /** Band past the entry that still counts as "at the entry" (fill tolerance). */
+  moveAwayBand?: number;
+  candles: ReadonlyArray<{ time: number; high: number; low: number }>;
+}): ScenarioProgress {
+  const side = input.direction === "buy" ? 1 : -1;
+  const ref = input.triggered ? (input.effectiveEntry ?? input.entry) : input.entry;
+  const since = input.candles.filter((c) => c.time > input.createdCandleTime);
+  let favorable = 0;
+  let adverse = 0;
+  for (const c of since) {
+    const best = side > 0 ? c.high - ref : ref - c.low;
+    const worst = side > 0 ? ref - c.low : c.high - ref;
+    if (best > favorable) favorable = best;
+    if (worst > adverse) adverse = worst;
+  }
+  const pointsPastEntry = side * (input.priceNow - ref);
+  const pointsToStop = side * (input.priceNow - input.stopLoss);
+  const tp1 = input.targets[0];
+  const pointsToFirstTarget = tp1 != null ? side * (tp1 - input.priceNow) : Number.NaN;
+  let verdict: ScenarioProgress["verdict"];
+  if (input.triggered) {
+    verdict = pointsPastEntry >= 0 ? "in_profit" : "in_drawdown";
+  } else {
+    verdict = pointsPastEntry > (input.moveAwayBand ?? 0) ? "moving_away" : "waiting";
+  }
+  return {
+    barsSinceCreated: since.length,
+    ...(input.validityCandles != null ? { validityCandles: input.validityCandles } : {}),
+    entryTouched: input.triggered,
+    pointsPastEntry: round2(pointsPastEntry),
+    maxFavorablePoints: round2(Math.max(0, favorable)),
+    maxAdversePoints: round2(Math.max(0, adverse)),
+    pointsToStop: round2(pointsToStop),
+    pointsToFirstTarget: round2(pointsToFirstTarget),
+    verdict,
+  };
+}
+
+function round2(n: number): number {
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : n;
 }
 
 /** Normalize an epoch value to milliseconds (candle feeds may use seconds). */
@@ -76,6 +167,30 @@ function completeCandles(
 }
 
 export function evaluateRecommendationStatus(input: {
+  recommendation: ActiveRecommendation;
+  market: AgentMarketContext;
+}): RecommendationStatusEvaluation {
+  const verdict = gradeRecommendationStatus(input);
+  if (isTerminalRecommendationStatus(verdict.status)) return verdict;
+  const { recommendation, market } = input;
+  const candles = completeCandles(market.currentTfCandles, market.interval);
+  const progress = scenarioProgressOf({
+    direction: recommendation.direction,
+    entry: recommendation.entry,
+    stopLoss: recommendation.stopLoss,
+    targets: recommendation.targets,
+    priceNow: verdict.priceNow,
+    triggered: verdict.triggered,
+    effectiveEntry: verdict.effectiveEntry ?? recommendation.effectiveEntry,
+    createdCandleTime: toMs(recommendation.createdCandleTime ?? recommendation.createdAt),
+    validityCandles: recommendation.validityCandles,
+    moveAwayBand: entryFillTolerance({ price: recommendation.entry, atr: market.atr }),
+    candles,
+  });
+  return { ...verdict, progress };
+}
+
+function gradeRecommendationStatus(input: {
   recommendation: ActiveRecommendation;
   market: AgentMarketContext;
 }): RecommendationStatusEvaluation {
