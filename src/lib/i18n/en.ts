@@ -763,10 +763,6 @@ export const en = {
   "settings.memory.source.daily_summary": "From the daily summary",
   "settings.appearance.description": "Applied immediately across every screen.",
   "settings.theme.system": "System",
-  "settings.trading.only_setting": "The only trading setting",
-  "settings.trading.description":
-    "The maximum percentage of equity that may be lost at the trade stop. It never changes the direction or the plan.",
-  "settings.trading.risk_label": "Risk per trade",
   "settings.save": "Save",
   "settings.saving": "Saving…",
   "settings.saved": "Saved.",

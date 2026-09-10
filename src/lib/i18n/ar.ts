@@ -747,10 +747,6 @@ export const ar: Record<TranslationKey, string> = {
   "settings.memory.source.daily_summary": "من الملخص اليومي",
   "settings.appearance.description": "يُطبّق فوراً على جميع الشاشات.",
   "settings.theme.system": "حسب الجهاز",
-  "settings.trading.only_setting": "الإعداد الوحيد للتداول",
-  "settings.trading.description":
-    "النسبة القصوى من Equity التي يمكن خسارتها عند وقف الصفقة. لا تغيّر قرار BUY أو SELL أو WAIT.",
-  "settings.trading.risk_label": "المخاطرة لكل صفقة",
   "settings.save": "حفظ",
   "settings.saving": "جارٍ الحفظ…",
   "settings.saved": "تم الحفظ.",

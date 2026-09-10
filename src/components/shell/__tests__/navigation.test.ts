@@ -111,14 +111,15 @@ test("subscription credit chip renders regardless of billing enforcement flag", 
 });
 
 
-test("risk per trade is a composer control, not a settings section", () => {
+test("risk per trade is not an operator control anywhere — stops come from the scenario", () => {
   const settings = read("components/SettingsClient.tsx");
   assert.doesNotMatch(settings, /id: "trading"/);
   const input = read("components/agent/AgentChatInput.tsx");
-  assert.match(input, /RiskPerTradeControl/);
-  // Both open on the one shared composer surface.
-  const risk = read("components/agent/RiskPerTradeControl.tsx");
-  assert.match(risk, /ComposerPopover/);
+  assert.doesNotMatch(input, /RiskPerTradeControl/);
+  assert.ok(
+    !existsSync(resolve(root, "components/agent/RiskPerTradeControl.tsx")),
+    "the risk-percentage chip was removed; the analysis never read it",
+  );
 });
 
 

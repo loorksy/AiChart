@@ -10,7 +10,6 @@ import {
 import { ArrowUp, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
-import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
 import { ComposerIntervalPicker } from "@/components/agent/ComposerMarketPickers";
 import {
   ModelChoiceList,
@@ -175,13 +174,15 @@ export function AgentChatInput({
           {/*
             One row for what governs the next turn: which model answers and
             which timeframe is up. There is no instrument picker — the
-            platform analyses gold and only gold.
+            platform analyses gold and only gold — and no risk-percentage
+            chip: the stop is placed by the invalidation scenario (structure,
+            zone, trendline), never by a percentage, so the control only
+            suggested a lever the analysis does not have.
           */}
           <ComposerModelChip />
           {interval && onIntervalChange && (
             <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
           )}
-          <RiskPerTradeControl />
 
           {/*
             End of the row: ONE morphing action slot — the send arrow and the

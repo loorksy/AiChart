@@ -25,15 +25,19 @@ describe("composer chrome", () => {
     assert.doesNotMatch(input, /ComposerMoreMenu/);
     assert.doesNotMatch(input, /composer-more/);
     assert.match(input, /ComposerModelChip/);
-    assert.match(input, /RiskPerTradeControl/);
     assert.match(input, /ComposerIntervalPicker/);
+  });
+
+  it("carries no risk-percentage chip — stops are placed by scenario, not by a percentage", () => {
+    assert.doesNotMatch(input, /RiskPerTradeControl/);
+    assert.doesNotMatch(input, /per_trade_pct/);
   });
 
   it("shows the model name without the company in the picker", () => {
     assert.match(picker, /shortModelLabel/);
   });
 
-  it("uses one tucked sheet for model, timeframe and risk", () => {
+  it("uses one tucked sheet for model and timeframe", () => {
     assert.match(input, /composer-model-menu/);
     assert.match(input, /ComposerPopover/);
     assert.match(popover, /composer-sheet/);
@@ -49,14 +53,8 @@ describe("composer chrome", () => {
       join(__dirname, "../ComposerMarketPickers.tsx"),
       "utf8",
     );
-    const risk = readFileSync(
-      join(__dirname, "../RiskPerTradeControl.tsx"),
-      "utf8",
-    );
     assert.match(interval, /composer-interval-menu/);
     assert.match(interval, /composer-sheet-item/);
-    assert.match(risk, /composer-risk-menu/);
-    assert.doesNotMatch(risk, /only_setting/);
   });
 
   it("uses a chip-styled send control with a live ArrowUp glyph", () => {
@@ -75,12 +73,7 @@ describe("composer chrome", () => {
       join(__dirname, "../ComposerMarketPickers.tsx"),
       "utf8",
     );
-    const risk = readFileSync(
-      join(__dirname, "../RiskPerTradeControl.tsx"),
-      "utf8",
-    );
     assert.doesNotMatch(interval, /ChevronDown/);
-    assert.doesNotMatch(risk, /ChevronDown/);
   });
 
   it("wraps the writing field in the same liquid-metal frame as suggestions", () => {
