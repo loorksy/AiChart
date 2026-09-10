@@ -11,10 +11,13 @@
  *
  * The rule is stated once, here:
  *
- *   While a recommendation is LIVE, an ambiguous market message is a
- *   follow-up about it — answered with fresh data, never with a new plan.
- *   Only an EXPLICIT request for a new analysis re-opens the pipeline, and
- *   then the old plan is superseded out loud: discussed, closed, replaced.
+ *   ONE recommendation per conversation at a time. While it is LIVE — not yet
+ *   closed by target, stop, invalidation, cancellation or its validity clock —
+ *   every market message is a follow-up about it, answered with fresh data
+ *   and the agent's current read of the market, never with a second plan.
+ *   Asking for a new analysis outright does not re-open the pipeline either:
+ *   the operator gets an opinion on the live plan and the market, and a new
+ *   recommendation only once this one has ended (or in a new conversation).
  *
  * The planner decides; the orchestrator obeys. It is deliberately pure (text
  * + intents + one boolean in, a plan out) so the contract is testable without
@@ -26,16 +29,17 @@ export type TurnMode =
   /** No live plan in the way — run the full analysis pipeline as always. */
   | "full_analysis"
   /**
-   * A live plan exists AND the operator explicitly asked for a fresh analysis:
-   * run the pipeline, but the old plan must be discussed and closed before the
-   * new one stands (the orchestrator cancels it when the new plan is stored,
-   * and the synthesizer prompt receives the old plan to speak to).
+   * Kept for the brain's own scheduled work and for results that revise the
+   * plan they were opened for. The planner never chooses it any more: an
+   * operator's explicit request for a fresh analysis while a plan is live is
+   * a follow-up, not a supersession (one recommendation per conversation).
    */
   | "supersede_analysis"
   /**
-   * A live plan exists and the message is an ambiguous market comment or
-   * question: answer it AS a follow-up about that plan, with fresh market
-   * data — never by minting a competing recommendation.
+   * A live plan exists: answer AS a follow-up about that plan, with fresh
+   * market data and the agent's current read — never by minting a competing
+   * recommendation. This includes an explicit "analyze again" / "new
+   * recommendation" request; the reply then says so.
    */
   | "recommendation_followup"
   /** Another specialist path (drawing, tracking, news…) already owns the turn. */
@@ -47,12 +51,19 @@ export interface TurnPlan {
   mode: TurnMode;
   reason:
     | "no_active_recommendation"
-    | "explicit_new_analysis"
+    /** Operator asked for a fresh plan while one is live — answered as an opinion. */
+    | "explicit_new_analysis_with_live_recommendation"
     | "ambiguous_with_live_recommendation"
     | "specialist_intent"
     | "no_trade_signal";
   /** True when a would-be analysis was redirected to the follow-up path. */
   redirectedFromAnalysis: boolean;
+  /**
+   * The operator explicitly asked for a new analysis / recommendation and was
+   * refused one because a plan is still live. The follow-up reply must say
+   * why (one recommendation per conversation) and give the read they wanted.
+   */
+  requestedNewPlan: boolean;
   /**
    * Tool policy for the turn — which machinery the mode is entitled to. The
    * follow-up path reads fresh candles but never spends the chart-capture
@@ -167,6 +178,7 @@ export function planTurn(input: {
       mode: specialist ? "specialist" : "conversation",
       reason: specialist ? "specialist_intent" : "no_trade_signal",
       redirectedFromAnalysis: false,
+      requestedNewPlan: false,
       tools: NO_TOOLS,
     };
   }
@@ -176,23 +188,22 @@ export function planTurn(input: {
       mode: "full_analysis",
       reason: "no_active_recommendation",
       redirectedFromAnalysis: false,
+      requestedNewPlan: false,
       tools: FULL_TOOLS,
     };
   }
 
-  if (wantsExplicitNewAnalysis(input.message)) {
-    return {
-      mode: "supersede_analysis",
-      reason: "explicit_new_analysis",
-      redirectedFromAnalysis: false,
-      tools: FULL_TOOLS,
-    };
-  }
-
+  // One recommendation per conversation: a live plan blocks a second one no
+  // matter how the request is phrased. An explicit ask is still honoured with
+  // the agent's read of the market — just not with a competing plan.
+  const requestedNewPlan = wantsExplicitNewAnalysis(input.message);
   return {
     mode: "recommendation_followup",
-    reason: "ambiguous_with_live_recommendation",
+    reason: requestedNewPlan
+      ? "explicit_new_analysis_with_live_recommendation"
+      : "ambiguous_with_live_recommendation",
     redirectedFromAnalysis: true,
+    requestedNewPlan,
     tools: FOLLOWUP_TOOLS,
   };
 }

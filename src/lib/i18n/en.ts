@@ -411,6 +411,8 @@ export const en = {
   "orch.rec_cancelled": "The active recommendation in this session has been cancelled.",
   "orch.rec_superseded":
     "The previous recommendation ({direction} at {entry}) was closed and replaced by the new analysis below.",
+  "orch.one_rec_per_session":
+    "One recommendation per conversation: the current one ({direction} at {entry}) is still live, so no second recommendation is issued until it ends at a target, the stop, or its time window. What follows is my read of the market only, not a new recommendation.",
   "orch.scenario_building": "{reason} Building the next-open scenario from the last close.",
   "orch.news_unknown":
     "News risk is unknown because no news provider is configured — I cannot confirm news risk right now.",

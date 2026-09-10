@@ -4,9 +4,10 @@
  * The complaint: "any message gives me a recommendation in the same
  * conversation, even contradicting the recommendation it gave in the first
  * message." These tests fail on the old behaviour (every market word re-ran
- * the pipeline) and pass on the planner's rule: while a plan is live, an
- * ambiguous market message is a follow-up; only an explicit request re-opens
- * the pipeline, and then the old plan is superseded rather than ignored.
+ * the pipeline) and pass on the planner's rule: one recommendation per
+ * conversation — while a plan is live, every market message (even an explicit
+ * "analyze again") is a follow-up answered with the agent's read, and a new
+ * plan waits until the live one has ended.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -46,7 +47,7 @@ describe("while a recommendation is live, ambiguity is a follow-up", () => {
     assert.equal(plan.mode, "recommendation_followup");
   });
 
-  it("an explicit re-analysis supersedes instead of contradicting", () => {
+  it("an explicit re-analysis is an opinion, not a second plan (one recommendation per conversation)", () => {
     for (const message of [
       "حلل من جديد",
       "أعطني توصية جديدة",
@@ -57,11 +58,20 @@ describe("while a recommendation is live, ambiguity is a follow-up", () => {
       const plan = planTurn({ intents: intentsFor(message), message, ...live });
       assert.equal(
         plan.mode,
-        "supersede_analysis",
-        `"${message}" is an explicit request and must re-open the pipeline`,
+        "recommendation_followup",
+        `"${message}" must not mint a second plan while one is live`,
       );
-      assert.equal(plan.tools.runFullPipeline, true);
+      assert.equal(plan.reason, "explicit_new_analysis_with_live_recommendation");
+      assert.equal(plan.requestedNewPlan, true, "the reply must say why no new plan was issued");
+      assert.equal(plan.tools.runFullPipeline, false);
+      assert.equal(plan.tools.fetchMarketData, true, "the opinion is grounded in fresh candles");
     }
+  });
+
+  it("an ambiguous follow-up is not flagged as a refused request", () => {
+    const message = "شو وضع الذهب الآن؟";
+    const plan = planTurn({ intents: intentsFor(message), message, ...live });
+    assert.equal(plan.requestedNewPlan, false);
   });
 });
 

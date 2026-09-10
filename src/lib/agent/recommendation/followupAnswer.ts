@@ -19,23 +19,55 @@ export async function composeRecommendationExplanation(input: {
   });
 }
 
+/** Deterministic read of the market at answer time (detectors, not a model). */
+export interface FollowupMarketRead {
+  price: number | null;
+  atr: number | null;
+  regime: string;
+  support: number[];
+  resistance: number[];
+  nearestBuySideLiquidity: number | null;
+  nearestSellSideLiquidity: number | null;
+}
+
+/**
+ * The one-recommendation-per-conversation rule, as the reply states it. The
+ * model must never invite the operator to "ask for a new analysis" while a
+ * plan is live — that invitation was the polarity that minted contradicting
+ * plans. The way to a new plan is the live one ending (target, stop, expiry)
+ * or the operator cancelling it outright.
+ */
+const ONE_PLAN_RULE =
+  "RULE — one recommendation per conversation: the recommendation below is still live, so you must NOT issue, hint at, or sketch a second plan (no new entry/stop/target set, no opposite direction). Do not tell the operator to ask for a new analysis; a new recommendation only becomes possible once this one ends (target, stop, invalidation, expiry) or the operator cancels it explicitly. You MAY and SHOULD give your honest read of the market (structure, momentum, nearby levels, what would strengthen or weaken the live plan) as opinion.";
+
 export async function composeRecommendationStatusAnswer(input: {
   userMessage?: string;
   recommendation: ActiveRecommendation;
   evaluation: RecommendationStatusEvaluation;
   /** English session block from core/tradingSessions — a fact the reply may cite. */
   tradingSession?: string;
+  /** The operator explicitly asked for a new analysis / recommendation. */
+  requestedNewPlan?: boolean;
+  marketRead?: FollowupMarketRead;
 }): Promise<string> {
+  const task = input.requestedNewPlan
+    ? "The operator explicitly asked for a NEW analysis or recommendation, but a recommendation from this conversation is still live. Open by saying plainly, in one sentence, that you issue one recommendation per conversation and will not give a second until the current one ends. Then give what they actually wanted — your current read of the market from the data provided (regime, where price sits against the live plan's entry/stop/targets, the nearest levels and liquidity) and what it means for the LIVE plan. Report the plan's live status as well. " +
+      ONE_PLAN_RULE
+    : "Update the operator on the previous recommendation's current status: still pending, triggered, target hit, stop hit, or invalidated. Answer the operator's actual question against this recommendation and the live evaluation, and add your short read of the market from the data provided when it helps. Be direct. " +
+      ONE_PLAN_RULE;
   return compose({
-    task:
-      "Update the operator on the previous recommendation's current status: still pending, triggered, target hit, stop hit, or invalidated. Answer the operator's actual question against this recommendation and the live evaluation. Be direct; do not issue a new opposite recommendation — if the operator wants a fresh plan, tell them to ask for a new analysis explicitly.",
+    task,
     payload: {
       question: input.userMessage,
       recommendation: publicRecommendation(input.recommendation),
       evaluation: input.evaluation,
+      ...(input.marketRead ? { marketRead: input.marketRead } : {}),
       ...(input.tradingSession ? { tradingSession: input.tradingSession } : {}),
     },
     fallback:
+      (input.requestedNewPlan
+        ? "توصية واحدة لكل محادثة: التوصية الحالية ما زالت قائمة ولن أُصدر توصية ثانية حتى تنتهي.\n"
+        : "") +
       `حالة التوصية ${input.recommendation.direction} على ${input.recommendation.symbol}: ${input.evaluation.status}.\n` +
       `${input.evaluation.reason}\nالسعر الحالي: ${input.evaluation.priceNow}. الدخول: ${input.recommendation.entry}، الوقف: ${input.recommendation.stopLoss}، الأهداف: ${input.recommendation.targets.join(", ")}.`,
   });

@@ -688,6 +688,7 @@ async function runUnifiedChartAgentInner(
       collected,
       userMessage,
       locale,
+      requestedNewPlan: turnPlan.requestedNewPlan,
     });
   }
   // The plan a fresh EXPLICIT analysis must speak to and then replace.
@@ -2235,8 +2236,41 @@ async function runUnifiedChartAgentInner(
     });
   }
 
+  // One recommendation per conversation — the hard gate. The planner already
+  // routes every message to the follow-up path while a plan is live, so this
+  // is reached with a live plan only when one appeared DURING this run (a
+  // concurrent turn, a Telegram/MCP analysis of the same account). The fresh
+  // plan is then demoted to an opinion: nothing is stored, no card, no P/L
+  // box — the operator reads the analysis and keeps the plan they have.
+  let blockedByLivePlan: ActiveRecommendation | null = null;
   if (
     input.purpose !== "reevaluation" &&
+    !supersededRecommendation &&
+    (finalDecision.decision === "buy" || finalDecision.decision === "sell")
+  ) {
+    const liveNow = await getActiveRecommendation(
+      sessionId,
+      chartContext?.symbol,
+      ctx.userId,
+    ).catch(() => null);
+    if (isActiveRecommendationLive(liveNow)) {
+      blockedByLivePlan = liveNow;
+      trackedCtx.emitActivity({
+        type: "analysis",
+        status: "completed",
+        message: t(locale, "orch.one_rec_per_session", {
+          direction: t(locale, liveNow.direction === "buy" ? "decision.buy" : "decision.sell"),
+          entry: String(liveNow.entry),
+        }),
+        metadata: { liveRecommendationId: liveNow.id, code: "one_recommendation_per_session" },
+      });
+      ctx.emitDebug?.({ type: "turn_plan", mode: "recommendation_followup", reason: "live_plan_at_store_time" });
+    }
+  }
+
+  if (
+    input.purpose !== "reevaluation" &&
+    !blockedByLivePlan &&
     (finalDecision.decision === "buy" ||
       finalDecision.decision === "sell")
   ) {
@@ -2380,7 +2414,15 @@ async function runUnifiedChartAgentInner(
     : finalDecision.summary;
 
   const presented = attachMandatoryPresentation({
-    summary: summaryWithScenario,
+    summary: blockedByLivePlan
+      ? `${t(locale, "orch.one_rec_per_session", {
+          direction: t(
+            locale,
+            blockedByLivePlan.direction === "buy" ? "decision.buy" : "decision.sell",
+          ),
+          entry: String(blockedByLivePlan.entry),
+        })}\n\n${summaryWithScenario}`
+      : summaryWithScenario,
     envelope,
     levels,
     locale,
@@ -2394,11 +2436,17 @@ async function runUnifiedChartAgentInner(
   );
 
   return {
-    decision: finalDecision.decision,
+    // A plan demoted by the one-per-conversation gate is an opinion: no trade
+    // card, no plan drawings, no P/L box — the live plan keeps the chart.
+    decision: blockedByLivePlan ? "informational" : finalDecision.decision,
     // The planner's routing, carried out to both surfaces: an explicit fresh
     // analysis that replaced a live plan says so; everything else here is the
     // full pipeline. Presentation (cards vs plain text) keys off this.
-    turnMode: supersededRecommendation ? "supersede_analysis" : "full_analysis",
+    turnMode: blockedByLivePlan
+      ? "recommendation_followup"
+      : supersededRecommendation
+        ? "supersede_analysis"
+        : "full_analysis",
     visualReview,
     envelope: presented.envelope,
     confidence: finalDecision.confidence,
@@ -2406,18 +2454,20 @@ async function runUnifiedChartAgentInner(
     summary: presented.summary,
     keyReasons: finalDecision.keyReasons,
     riskWarnings: finalDecision.riskWarnings,
-    recommendation: storedRecommendation
-      ? {
-          ...finalDecision.recommendation,
-          id: storedRecommendation.id,
-          status: storedRecommendation.status,
-          triggerCondition: storedRecommendation.triggerCondition,
-          invalidationLevel: storedRecommendation.invalidationLevel,
-          invalidationRule: storedRecommendation.invalidationRule,
-          chartSnapshotHash,
-        }
-      : finalDecision.recommendation,
-    drawings,
+    recommendation: blockedByLivePlan
+      ? undefined
+      : storedRecommendation
+        ? {
+            ...finalDecision.recommendation,
+            id: storedRecommendation.id,
+            status: storedRecommendation.status,
+            triggerCondition: storedRecommendation.triggerCondition,
+            invalidationLevel: storedRecommendation.invalidationLevel,
+            invalidationRule: storedRecommendation.invalidationRule,
+            chartSnapshotHash,
+          }
+        : finalDecision.recommendation,
+    drawings: blockedByLivePlan ? undefined : drawings,
     newsRisk: news ? { level: news.newsRisk, reason: news.reason } : undefined,
     activityEvents: collected,
     analysisId,
@@ -2456,7 +2506,15 @@ async function runUnifiedChartAgentInner(
           symbol: storedRecommendation.symbol,
           interval: storedRecommendation.interval,
         }
-      : undefined,
+      : blockedByLivePlan
+        ? {
+            id: blockedByLivePlan.id,
+            status: blockedByLivePlan.status,
+            direction: blockedByLivePlan.direction,
+            symbol: blockedByLivePlan.symbol,
+            interval: blockedByLivePlan.interval,
+          }
+        : undefined,
     publicReasoningSummary: finalDecision.publicReasoningSummary,
     // Explainability is a validity condition, not a nicety. The trace and the
     // dimensions come from the decision engine; the evidence card comes from
@@ -2481,8 +2539,8 @@ async function runUnifiedChartAgentInner(
     costEvidence: serializeCostEvidence(market.costEvidence),
     debugDecisionFlow,
     options: contextualOptionsFor({
-      decision: finalDecision.decision,
-      hasActiveRecommendation: Boolean(storedRecommendation),
+      decision: blockedByLivePlan ? "informational" : finalDecision.decision,
+      hasActiveRecommendation: Boolean(storedRecommendation || blockedByLivePlan),
       locale,
     }),
   };
@@ -2752,6 +2810,8 @@ async function trackStoredRecommendation(input: {
   collected: AgentFinalResult["activityEvents"];
   userMessage?: string;
   locale?: AppLocale;
+  /** The operator asked for a NEW plan and the live one blocks it (turnPlanner). */
+  requestedNewPlan?: boolean;
 }): Promise<AgentFinalResult> {
   const { activeRecommendation: rec, chartContext, ctx, collected } = input;
   const locale: AppLocale = input.locale ?? "ar";
@@ -2866,6 +2926,19 @@ async function trackStoredRecommendation(input: {
     // The session is a fact of the moment (New York hours, the London/NY
     // overlap…) — the reply may cite it when it explains behaviour at levels.
     tradingSession: tradingSessionPromptBlock(getTradingSessionInfo()),
+    requestedNewPlan: input.requestedNewPlan === true,
+    // The agent's read of the market right now — deterministic detectors on
+    // the fresh candles, so the opinion is grounded without a second full
+    // pipeline run (one recommendation per conversation; opinions are cheap).
+    marketRead: {
+      price: market.currentPrice,
+      atr: market.atr,
+      regime: market.marketRegime,
+      support: market.majorLevels.support.slice(0, 3).map((l) => l.price),
+      resistance: market.majorLevels.resistance.slice(0, 3).map((l) => l.price),
+      nearestBuySideLiquidity: market.liquidity.nearestBuySide?.price ?? null,
+      nearestSellSideLiquidity: market.liquidity.nearestSellSide?.price ?? null,
+    },
   });
   ctx.emitActivity({
     type: "analysis",
