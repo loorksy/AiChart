@@ -23,7 +23,23 @@ export interface TradePlanAnchorFields {
   created_at?: unknown;
   /** Printing-candle time for immediate follow-through; pending plans omit it. */
   anchor_time?: unknown;
+  /** Tracker lifecycle mirrored onto the chart payload (see chartLifecycle.ts). */
+  tracked_id?: unknown;
+  status?: unknown;
+  outcome?: unknown;
+  triggered_at?: unknown;
+  exit_at?: unknown;
+  expires_at?: unknown;
 }
+
+const LIFECYCLE_FIELDS = [
+  "tracked_id",
+  "status",
+  "outcome",
+  "triggered_at",
+  "exit_at",
+  "expires_at",
+] as const;
 
 /** created_at → epoch ms, or null when absent/unparseable. Accepts epoch
  *  seconds, epoch ms, or a date string — the shapes seen in stored layouts. */
@@ -78,7 +94,7 @@ export function withStableCreatedAt<T extends TradePlanAnchorFields>(
   nowIso: string = new Date().toISOString(),
 ): T | null {
   if (!next) return null;
-  const withAnchor = inheritAnchorTime(next, prev);
+  const withAnchor = inheritLifecycle(inheritAnchorTime(next, prev), prev);
   if (createdAtMs(withAnchor.created_at) != null) return withAnchor;
   if (prev && sameTradePlan(prev, withAnchor) && createdAtMs(prev.created_at) != null) {
     // createdAtMs validated prev.created_at as a parseable string/number, so
@@ -87,6 +103,26 @@ export function withStableCreatedAt<T extends TradePlanAnchorFields>(
     return { ...withAnchor, created_at: prev.created_at } as T;
   }
   return { ...withAnchor, created_at: nowIso } as T;
+}
+
+/**
+ * A re-delivered same plan (layout poll, MCP re-write) that carries no tracker
+ * lifecycle keeps the one already attached — the status the tracker reported
+ * must not be stripped by a payload that never knew it.
+ */
+function inheritLifecycle<T extends TradePlanAnchorFields>(
+  next: T,
+  prev: TradePlanAnchorFields | null | undefined,
+): T {
+  if (!prev || !sameTradePlan(prev, next)) return next;
+  let out: T = next;
+  for (const key of LIFECYCLE_FIELDS) {
+    if (next[key] == null && prev[key] != null) {
+      if (out === next) out = { ...next };
+      (out as Record<string, unknown>)[key] = prev[key];
+    }
+  }
+  return out;
 }
 
 /** A re-delivered same plan without `anchor_time` inherits the print bar. */

@@ -50,6 +50,11 @@ import {
   pointTimeSec,
   isPlausibleUnixSec,
   MIN_PLAUSIBLE_UNIX_SEC,
+  PENDING_BOX_BARS,
+  maxPhase,
+  phaseFromCandle,
+  positionPhaseOf,
+  positionRightEdgeFor,
 } from "@/lib/chart/tv/tvDrawingAdapter";
 import { priceDistanceTicks } from "@/lib/chart/tv/tvSymbolTicks";
 import { planTargetList } from "@/lib/chart/planTargets";
@@ -1125,6 +1130,197 @@ describe("tvDrawingAdapter — visual width follows lastBar, left print-anchor s
       "force-redraw after SL must not pick up bars printed after close",
     );
     void setPointsCalls;
+  });
+});
+
+describe("tvDrawingAdapter — lifecycle width: fixed while pending, grows once filled, frozen at close", () => {
+  const PRINT_MS = Date.UTC(2026, 8, 1, 10, 0, 0);
+  const BAR_MS = 5 * 60_000;
+  const barAt = (n: number) => PRINT_MS + n * BAR_MS;
+  const PENDING_REC = {
+    action: "buy",
+    entryType: "buy_limit",
+    entry: 4500,
+    stop_loss: 4490,
+    take_profit: 4530,
+    targets: [4515, 4530],
+    created_at: PRINT_MS,
+  } as unknown as Recommendation;
+  const PCTX = { symbol: "XAUUSD", interval: "5m" as const };
+  const boxRight = (calls: SetPointsCall[]) =>
+    calls.filter((c) => c.points.length === 2).at(-1)?.points[1]?.time;
+
+  it("positionPhaseOf reads tracker fields, immediate plans, and defaults to pending", () => {
+    assert.equal(positionPhaseOf(PENDING_REC), "pending");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, entryType: "market" } as Recommendation), "active");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, anchor_time: PRINT_MS } as Recommendation), "active");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, status: "triggered" } as Recommendation), "active");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, status: "tp1_hit" } as unknown as Recommendation), "active");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, triggered_at: barAt(2) } as Recommendation), "active");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, status: "sl_hit" } as Recommendation), "closed");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, status: "expired" } as Recommendation), "closed");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, outcome: "win_tp1" } as Recommendation), "closed");
+    assert.equal(positionPhaseOf({ ...PENDING_REC, exit_at: barAt(9) } as Recommendation), "closed");
+    assert.equal(maxPhase("active", "pending"), "active");
+    assert.equal(maxPhase("pending", "closed"), "closed");
+  });
+
+  it("positionRightEdgeFor: pending is capped, active follows lastBar, closed holds the exit wall", () => {
+    const left = Math.round(PRINT_MS / 1000);
+    const barSec = BAR_MS / 1000;
+    const far = left + 40 * barSec;
+    assert.equal(
+      positionRightEdgeFor({ phase: "pending", leftSec: left, lastBarSec: far, barSec }),
+      left + PENDING_BOX_BARS * barSec,
+    );
+    assert.equal(
+      positionRightEdgeFor({ phase: "pending", leftSec: left, lastBarSec: left + 3 * barSec, barSec }),
+      left + 3 * barSec,
+      "before the cap the pending box only spans bars already printed",
+    );
+    assert.equal(positionRightEdgeFor({ phase: "active", leftSec: left, lastBarSec: far, barSec }), far);
+    assert.equal(
+      positionRightEdgeFor({
+        phase: "closed",
+        leftSec: left,
+        lastBarSec: far,
+        barSec,
+        closedRightSec: left + 20 * barSec,
+      }),
+      left + 20 * barSec,
+    );
+    assert.equal(positionRightEdgeFor({ phase: "active", leftSec: left, lastBarSec: null, barSec }), null);
+  });
+
+  it("phaseFromCandle: entry touch activates, TP touch or a CLOSE through the stop closes, wicks survive", () => {
+    const base = { direction: "long" as const, entry: 4500, stopLoss: 4490, takeProfit: 4530 };
+    assert.equal(
+      phaseFromCandle({ ...base, phase: "pending", candle: { high: 4505, low: 4499, close: 4503 } }),
+      "active",
+    );
+    assert.equal(
+      phaseFromCandle({ ...base, phase: "pending", candle: { high: 4510, low: 4502, close: 4505 } }),
+      "pending",
+    );
+    assert.equal(
+      phaseFromCandle({ ...base, phase: "active", candle: { high: 4531, low: 4510, close: 4520 } }),
+      "closed",
+    );
+    assert.equal(
+      phaseFromCandle({ ...base, phase: "active", candle: { high: 4500, low: 4485, close: 4495 } }),
+      "active",
+      "a wick through the stop that closes back inside keeps the position visually live",
+    );
+    assert.equal(
+      phaseFromCandle({ ...base, phase: "active", candle: { high: 4500, low: 4485, close: 4488 } }),
+      "closed",
+    );
+    assert.equal(
+      phaseFromCandle({ ...base, phase: "closed", candle: { high: 4600, low: 4400, close: 4500 } }),
+      "closed",
+    );
+  });
+
+  it("an untouched entry keeps a bounded width: new bars stop widening the box at the cap", async () => {
+    const { chart, multi, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    mgr.apply([], { recommendation: PENDING_REC }, { ...PCTX, lastBarTime: barAt(1) });
+    await flush();
+    assert.equal(rrTools(multi).length, 1);
+    const left = Math.round(PRINT_MS / 1000);
+    const cap = left + PENDING_BOX_BARS * (BAR_MS / 1000);
+
+    // Bars pass without price reaching the entry (all trade well above it).
+    for (let n = 2; n <= 30; n += 1) {
+      mgr.syncRightEdge(barAt(n), { high: 4525, low: 4508, close: 4515 });
+    }
+    await flush();
+    assert.equal(rrTools(multi).length, 1, "width changes never recreate");
+    assert.equal(boxRight(setPointsCalls), cap, "right wall holds at anchor + PENDING_BOX_BARS");
+    assert.ok(cap < Math.round(barAt(30) / 1000), "the box did NOT trail the live candle");
+  });
+
+  it("the candle that touches the entry re-opens growth; growth then follows every new bar", async () => {
+    const { chart, multi, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    mgr.apply([], { recommendation: PENDING_REC }, { ...PCTX, lastBarTime: barAt(1) });
+    await flush();
+    for (let n = 2; n <= 20; n += 1) {
+      mgr.syncRightEdge(barAt(n), { high: 4525, low: 4508, close: 4515 });
+    }
+    await flush();
+    const left = Math.round(PRINT_MS / 1000);
+    assert.equal(boxRight(setPointsCalls), left + PENDING_BOX_BARS * (BAR_MS / 1000));
+
+    // Bar 21 trades through the entry → position exists → box widens again.
+    mgr.syncRightEdge(barAt(21), { high: 4506, low: 4498, close: 4502 });
+    await flush();
+    assert.equal(boxRight(setPointsCalls), Math.round(barAt(21) / 1000));
+    mgr.syncRightEdge(barAt(25), { high: 4512, low: 4501, close: 4510 });
+    await flush();
+    assert.equal(boxRight(setPointsCalls), Math.round(barAt(25) / 1000), "live position follows lastBar");
+    assert.equal(rrTools(multi).length, 1);
+  });
+
+  it("reaching the furthest target freezes the wall on that bar; later bars are ignored", async () => {
+    const { chart, multi, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    const active = { ...PENDING_REC, status: "triggered" } as unknown as Recommendation;
+    mgr.apply([], { recommendation: active }, { ...PCTX, lastBarTime: barAt(1) });
+    await flush();
+    mgr.syncRightEdge(barAt(2), { high: 4512, low: 4501, close: 4510 });
+    mgr.syncRightEdge(barAt(3), { high: 4531, low: 4509, close: 4526 });
+    await flush();
+    const frozen = boxRight(setPointsCalls);
+    assert.equal(frozen, Math.round(barAt(3) / 1000), "wall lands on the closing bar");
+    const stretches = setPointsCalls.length;
+    for (let n = 4; n <= 12; n += 1) {
+      mgr.syncRightEdge(barAt(n), { high: 4560, low: 4540, close: 4550 });
+    }
+    await flush();
+    assert.equal(setPointsCalls.length, stretches, "a finished trade never widens again");
+    assert.equal(rrTools(multi).length, 1);
+  });
+
+  it("the tracker's verdict wins: exit_at freezes the wall at the exit candle, even mid-growth", async () => {
+    const { chart, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    const active = { ...PENDING_REC, status: "triggered" } as unknown as Recommendation;
+    mgr.apply([], { recommendation: active }, { ...PCTX, lastBarTime: barAt(1) });
+    await flush();
+    for (let n = 2; n <= 10; n += 1) {
+      mgr.syncRightEdge(barAt(n), { high: 4512, low: 4501, close: 4510 });
+    }
+    await flush();
+    assert.equal(boxRight(setPointsCalls), Math.round(barAt(10) / 1000));
+
+    const closed = {
+      ...active,
+      status: "sl_hit",
+      outcome: "loss",
+      exit_at: barAt(6),
+    } as unknown as Recommendation;
+    mgr.apply([], { recommendation: closed }, { ...PCTX, lastBarTime: barAt(10) });
+    await flush();
+    assert.equal(boxRight(setPointsCalls), Math.round(barAt(6) / 1000), "wall pulled back to the exit bar");
+    const stretches = setPointsCalls.length;
+    mgr.syncRightEdge(barAt(11), { high: 4512, low: 4501, close: 4510 });
+    await flush();
+    assert.equal(setPointsCalls.length, stretches);
+  });
+
+  it("a status downgrade in the payload never re-opens a frozen box (phases are monotonic)", async () => {
+    const { chart, setPointsCalls } = fakeChart();
+    const mgr = new TvDrawingManager(chart);
+    const closed = { ...PENDING_REC, status: "tp_hit" } as unknown as Recommendation;
+    mgr.apply([], { recommendation: closed }, { ...PCTX, lastBarTime: barAt(4) });
+    await flush();
+    const stretches = setPointsCalls.length;
+    const stale = { ...PENDING_REC, status: "pending_entry" } as unknown as Recommendation;
+    mgr.apply([], { recommendation: stale }, { ...PCTX, lastBarTime: barAt(9) });
+    mgr.syncRightEdge(barAt(9), { high: 4512, low: 4501, close: 4510 });
+    await flush();
+    assert.equal(setPointsCalls.length, stretches);
   });
 });
 

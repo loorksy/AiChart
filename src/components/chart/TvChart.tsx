@@ -607,7 +607,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             onLatestCandle: (candle) => {
               latestCandleRef.current = candle;
               try {
-                managerRef.current?.syncRightEdge(candle.time);
+                managerRef.current?.syncRightEdge(candle.time, candle);
               } catch {
                 /* widget mid-teardown */
               }

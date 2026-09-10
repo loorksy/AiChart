@@ -617,6 +617,25 @@ export async function listCanonicalRecommendations(
   return rows.map(toCanonical);
 }
 
+/**
+ * The newest plan issued from ONE chat session (web chat id / `tg:<id>`),
+ * whatever its status — the chart mirrors this plan's lifecycle onto its
+ * P/L box and the turn gate asks whether it is still open.
+ */
+export async function getLatestCanonicalRecommendationForSession(
+  userId: number,
+  sessionId: string,
+): Promise<CanonicalRecommendation | null> {
+  if (!sessionId) return null;
+  const row = await queryOne<RecommendationRow>(
+    `SELECT * FROM recommendations
+      WHERE user_id = ? AND (chat_id = ? OR session_id = ?)
+      ORDER BY created_at DESC, id DESC LIMIT 1`,
+    [userId, sessionId, sessionId],
+  );
+  return row ? toCanonical(row) : null;
+}
+
 export async function listAllActiveCanonicalRecommendations(
   limit = 500,
 ): Promise<CanonicalRecommendation[]> {

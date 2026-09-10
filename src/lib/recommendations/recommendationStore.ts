@@ -8,6 +8,7 @@ import type { TradabilityAssessment } from "./tradability";
 import {
   createCanonicalRecommendation,
   getCanonicalRecommendationByReference,
+  getLatestCanonicalRecommendationForSession,
   listAllActiveCanonicalRecommendations,
   listCanonicalRecommendations,
   listRecommendationOutcomes,
@@ -505,6 +506,16 @@ export async function getTrackedRecommendation(
 ): Promise<TrackedRecommendation | null> {
   await migrateLegacyTrackedRecommendations(userId);
   const recommendation = await getCanonicalRecommendationByReference(userId, id);
+  return recommendation ? toTracked(recommendation) : null;
+}
+
+/** Newest plan issued from one chat session, any status (null = none yet). */
+export async function getLatestTrackedRecommendationForSession(
+  userId: number,
+  sessionId: string,
+): Promise<TrackedRecommendation | null> {
+  await migrateLegacyTrackedRecommendations(userId);
+  const recommendation = await getLatestCanonicalRecommendationForSession(userId, sessionId);
   return recommendation ? toTracked(recommendation) : null;
 }
 

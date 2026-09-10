@@ -304,8 +304,6 @@ function printAnchorSec(rec: Recommendation): number | null {
  */
 const TERMINAL_CHART_STATUS = new Set<string>([
   "tp_hit",
-  "tp1_hit",
-  "tp2_hit",
   "tp3_hit",
   "sl_hit",
   "expired",
@@ -314,13 +312,144 @@ const TERMINAL_CHART_STATUS = new Set<string>([
   "closed",
 ]);
 
-function isTerminalChartRecommendation(
+/** Statuses meaning the position EXISTS (entry filled, ladder still running). */
+const ACTIVE_CHART_STATUS = new Set<string>([
+  "triggered",
+  "tp1_hit",
+  "tp2_hit",
+  "partially_closed",
+]);
+
+/**
+ * Visual lifecycle of the P/L box. The width rule the operator asked for:
+ * a plan that has NOT filled keeps a fixed, bounded width; once price touches
+ * the entry the box follows every new candle; once the trade ends (TP / SL /
+ * expiry / cancel) it stops growing for good. Phases only move forward.
+ */
+export type PositionPhase = "pending" | "active" | "closed";
+
+/**
+ * Bars of width a still-pending plan may occupy. Right = min(lastBar,
+ * anchor + PENDING_BOX_BARS) — the box grows to this width and then holds,
+ * so an untouched entry never trails the live candle across the pane.
+ */
+export const PENDING_BOX_BARS = 12;
+
+const PHASE_RANK: Record<PositionPhase, number> = { pending: 0, active: 1, closed: 2 };
+
+export function maxPhase(a: PositionPhase, b: PositionPhase): PositionPhase {
+  return PHASE_RANK[a] >= PHASE_RANK[b] ? a : b;
+}
+
+/**
+ * Lifecycle phase carried by the chart payload. Tracker fields (`status`,
+ * `outcome`, `triggered_at`, `exit_at`) win when present; an immediate plan
+ * (`market` entry, or `anchor_time` = the candle that printed the entry) is
+ * already a position; everything else is still waiting for its entry.
+ */
+export function positionPhaseOf(
   rec: Recommendation | null | undefined,
-): boolean {
-  if (!rec) return false;
-  if (rec.status && TERMINAL_CHART_STATUS.has(rec.status)) return true;
-  const extra = rec as Recommendation & { outcome?: unknown };
-  return typeof extra.outcome === "string" && extra.outcome !== "" && extra.outcome !== "pending";
+): PositionPhase {
+  if (!rec) return "pending";
+  const extra = rec as Recommendation & {
+    outcome?: unknown;
+    triggeredAt?: unknown;
+    triggered_at?: unknown;
+    exit_at?: unknown;
+    exitAt?: unknown;
+  };
+  if (typeof extra.outcome === "string" && extra.outcome !== "" && extra.outcome !== "pending") {
+    return "closed";
+  }
+  if (rec.status && TERMINAL_CHART_STATUS.has(rec.status)) return "closed";
+  if (parseTimeSec(extra.exit_at) != null || parseTimeSec(extra.exitAt) != null) {
+    return "closed";
+  }
+  if (rec.status && ACTIVE_CHART_STATUS.has(rec.status)) return "active";
+  if (
+    parseTimeSec(extra.triggered_at) != null ||
+    parseTimeSec(extra.triggeredAt) != null ||
+    parseTimeSec(rec.anchor_time) != null
+  ) {
+    return "active";
+  }
+  if (rec.entryType === "market") return "active";
+  return "pending";
+}
+
+/** Close time the tracker recorded for a finished plan, in TV seconds. */
+function exitAtSec(rec: Recommendation | null | undefined): number | null {
+  if (!rec) return null;
+  const extra = rec as Recommendation & { exit_at?: unknown; exitAt?: unknown };
+  return parseTimeSec(extra.exit_at) ?? parseTimeSec(extra.exitAt);
+}
+
+/**
+ * Where the box's right wall should sit for a phase. Always a bar already in
+ * history (≤ lastBar) — never a future Close, which this widget clamps to the
+ * moving last bar and slides the left edge with it.
+ */
+export function positionRightEdgeFor(input: {
+  phase: PositionPhase;
+  leftSec: number;
+  lastBarSec: number | null | undefined;
+  barSec: number;
+  /** Close wall fixed when the plan ended (exit candle / freeze time). */
+  closedRightSec?: number | null;
+}): number | null {
+  const last = input.lastBarSec;
+  if (last == null || !Number.isFinite(last)) return null;
+  const barSec = Math.max(60, input.barSec);
+  if (input.phase === "pending") {
+    return Math.min(last, input.leftSec + PENDING_BOX_BARS * barSec);
+  }
+  if (input.phase === "closed" && input.closedRightSec != null) {
+    return Math.min(last, Math.max(input.leftSec, input.closedRightSec));
+  }
+  return last;
+}
+
+/**
+ * Local, visual-only lifecycle read from live candles so the box reacts on
+ * the bar that touched the entry / target / stop instead of waiting for the
+ * next tracker sweep. Entry: any trade at the level. Target: any trade at
+ * the furthest TP. Stop: a CLOSE beyond it (a wick that closes back inside
+ * is a rejection many plans survive — the tracker, not this box, grades it).
+ * Never moves a phase backwards; the tracker's verdict still overrides.
+ */
+export function phaseFromCandle(input: {
+  phase: PositionPhase;
+  direction: "long" | "short";
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  candle: { high: number; low: number; close: number };
+}): PositionPhase {
+  const { candle } = input;
+  if (input.phase === "closed") return "closed";
+  if (
+    !Number.isFinite(candle.high) ||
+    !Number.isFinite(candle.low) ||
+    !Number.isFinite(candle.close)
+  ) {
+    return input.phase;
+  }
+  let phase: PositionPhase = input.phase;
+  if (phase === "pending" && candle.low <= input.entry && candle.high >= input.entry) {
+    phase = "active";
+  }
+  if (phase === "active") {
+    const tpTouched =
+      input.direction === "long"
+        ? candle.high >= input.takeProfit
+        : candle.low <= input.takeProfit;
+    const slClosed =
+      input.direction === "long"
+        ? candle.close <= input.stopLoss
+        : candle.close >= input.stopLoss;
+    if (tpTouched || slClosed) phase = "closed";
+  }
+  return phase;
 }
 
 function tradeKeyOf(rec: Recommendation | null | undefined): string {
@@ -380,6 +509,11 @@ export class TvDrawingManager {
   private frozenRightSec: number | null = null;
   private positionFrozen = false;
   private pendingTerminal = false;
+  /**
+   * Visual lifecycle of the current trade (pending → active → closed). Fed by
+   * the chart payload (tracker status) and by live candles; monotonic.
+   */
+  private phase: PositionPhase = "pending";
   private lastTradeKey = "";
   /** Latest in-history bar, unix seconds. Never a future time. */
   private liveLastBarSec: number | null = null;
@@ -562,7 +696,9 @@ export class TvDrawingManager {
    *
    * - Left = print/anchor candle (`anchor_time` / `triggeredAt`, else
    *   created_at, else a sticky lastBar fallback — never t=0).
-   * - Right = last historical bar while live; frozen on terminal.
+   * - Right follows the lifecycle (`PositionPhase`): a bounded fixed width
+   *   while the entry is untouched, the last historical bar once the entry
+   *   filled, frozen on the exit bar once the trade ended.
    * - Intermediate TPs stay labeled hlines inside the one box.
    * - Horizontal growth is VISUAL ONLY. Tracking never reads this width.
    */
@@ -623,13 +759,10 @@ export class TvDrawingManager {
     if (!pending) return;
     if (this.positionId != null || this.usingFallback) return;
     if (this.boxCreateStarted) return;
-    const rightSrc =
-      this.positionFrozen && this.frozenRightSec != null
-        ? this.frozenRightSec
-        : this.liveLastBarSec;
+    const left = this.positionLeftSec ?? pending.entry.time;
     const edges = positionBoxEdges({
-      leftSec: this.positionLeftSec ?? pending.entry.time,
-      lastBarSec: rightSrc,
+      leftSec: left,
+      lastBarSec: this.targetRightSec(left),
     });
     if (!edges) return;
     this.boxCreateStarted = true;
@@ -681,24 +814,92 @@ export class TvDrawingManager {
    * delete/recreate. A terminal plan ignores further advances. If the rec
    * arrived before any lastBar, this is also what first creates the box.
    */
-  syncRightEdge(lastBarTime: number): void {
+  syncRightEdge(
+    lastBarTime: number,
+    candle?: { high?: number; low?: number; close?: number } | null,
+  ): void {
     if (!Number.isFinite(lastBarTime) || lastBarTime <= 0) return;
     this.liveLastBarSec = toSec(lastBarTime);
+    this.observeCandle(this.liveLastBarSec, candle);
     this.stretchPosition();
   }
 
-  private freezePosition(): void {
-    if (this.lastRightSec != null) this.frozenRightSec = this.lastRightSec;
-    else if (this.liveLastBarSec != null && this.positionLeftSec != null) {
-      this.frozenRightSec = Math.max(this.liveLastBarSec, this.positionLeftSec);
+  /**
+   * Live-candle lifecycle: the bar that trades through the entry turns the
+   * fixed pending box into a growing one; the bar that reaches the furthest
+   * target or CLOSES through the stop ends it. Only bars printed AFTER the
+   * anchor count — the anchor bar's own range predates the plan.
+   */
+  private observeCandle(
+    barSec: number,
+    candle?: { high?: number; low?: number; close?: number } | null,
+  ): void {
+    const pending = this.pendingBox;
+    if (!pending || !candle || this.phase === "closed") return;
+    const left = this.positionLeftSec ?? pending.entry.time;
+    if (!(barSec > left)) return;
+    if (
+      typeof candle.high !== "number" ||
+      typeof candle.low !== "number" ||
+      typeof candle.close !== "number"
+    ) {
+      return;
     }
-    this.positionFrozen = true;
+    const next = phaseFromCandle({
+      phase: this.phase,
+      direction: pending.direction,
+      entry: pending.entry.price,
+      stopLoss: pending.stopLoss,
+      takeProfit: pending.takeProfit,
+      candle: { high: candle.high, low: candle.low, close: candle.close },
+    });
+    this.advancePhase(next, next === "closed" ? barSec : null);
+  }
+
+  /** Phases only move forward; reaching `closed` freezes the right wall. */
+  private advancePhase(next: PositionPhase, closedAtSec: number | null): void {
+    const merged = maxPhase(this.phase, next);
+    if (merged === this.phase) return;
+    this.phase = merged;
+    if (merged === "closed") {
+      this.freezePosition(closedAtSec);
+      // Land the wall on the closing bar even though the box is now frozen.
+      this.stretchPosition({ evenIfFrozen: true });
+    }
   }
 
   /**
-   * Write right = lastBar (or the frozen right, on recreate) via setPoints.
-   * Left is always re-pinned to the print-time edge. The time we write is
-   * never past lastBar — a future Close is the clamp-and-slide bug.
+   * Right wall for the current phase (≤ lastBar). Pending: bounded fixed
+   * width. Active: the live last bar. Closed: the frozen close wall.
+   */
+  private targetRightSec(left: number): number | null {
+    return positionRightEdgeFor({
+      phase: this.phase,
+      leftSec: left,
+      lastBarSec: this.liveLastBarSec,
+      barSec: this.barSec,
+      closedRightSec:
+        this.positionFrozen && this.frozenRightSec != null ? this.frozenRightSec : null,
+    });
+  }
+
+  private freezePosition(closedAtSec: number | null = null): void {
+    if (closedAtSec != null && Number.isFinite(closedAtSec)) {
+      this.frozenRightSec = closedAtSec;
+    } else if (this.lastRightSec != null) {
+      this.frozenRightSec = this.lastRightSec;
+    } else if (this.liveLastBarSec != null && this.positionLeftSec != null) {
+      this.frozenRightSec = Math.max(this.liveLastBarSec, this.positionLeftSec);
+    }
+    this.positionFrozen = true;
+    this.phase = "closed";
+  }
+
+  /**
+   * Write right = the phase's wall (fixed while pending, lastBar while the
+   * position is live, the frozen close once ended) via setPoints. Left is
+   * always re-pinned to the print-time edge. The time we write is never past
+   * lastBar — a future Close is the clamp-and-slide bug.
    */
   private stretchPosition(opts?: { evenIfFrozen?: boolean }): void {
     if (this.positionFrozen && !opts?.evenIfFrozen) return;
@@ -708,12 +909,9 @@ export class TvDrawingManager {
       if (this.positionId == null && !this.usingFallback) this.tryCreatePositionBox();
       return;
     }
-    const targetRight = this.positionFrozen
-      ? this.frozenRightSec
-      : this.liveLastBarSec;
     const edges = positionBoxEdges({
       leftSec: left,
-      lastBarSec: targetRight,
+      lastBarSec: this.targetRightSec(left),
     });
     if (!edges) return;
 
@@ -1107,9 +1305,19 @@ export class TvDrawingManager {
       this.pendingBox = null;
       this.usingFallback = false;
       this.fallbackIds = [];
+      this.phase = "pending";
       this.lastTradeKey = nextKey;
     }
-    const terminal = isTerminalChartRecommendation(rec0 ?? null);
+    const barSec = Math.max(
+      60,
+      Math.round((barDurationMs(ctx?.interval ?? "15m") || 900_000) / 1000),
+    );
+    this.barSec = barSec;
+    // Lifecycle from the payload (tracker status / outcome / fill / exit
+    // times). Same trade, later status → phase moves forward, never back.
+    const payloadPhase = positionPhaseOf(rec0 ?? null);
+    if (rec0) this.advancePhase(payloadPhase, exitAtSec(rec0));
+    const terminal = this.phase === "closed";
     // Idempotence guard: the layout poll and unrelated re-renders re-deliver the
     // same payload every few seconds. Destroying and re-creating every shape for
     // an unchanged payload is what made agent drawings flicker and the position
@@ -1132,23 +1340,13 @@ export class TvDrawingManager {
       paintTradeOverlay,
     ]);
     if (!opts?.force && fingerprint === this.lastFingerprint) {
-      if (terminal && !this.positionFrozen) {
-        this.stretchPosition();
-        this.freezePosition();
-      } else if (!this.positionFrozen) {
-        this.stretchPosition();
-      }
+      if (!this.positionFrozen) this.stretchPosition();
       return;
     }
     this.pendingTerminal = terminal;
     this.clear();
     this.lastFingerprint = fingerprint;
     const symbol = ctx?.symbol ?? "";
-    const barSec = Math.max(
-      60,
-      Math.round((barDurationMs(ctx?.interval ?? "15m") || 900_000) / 1000),
-    );
-    this.barSec = barSec;
     for (const d of drawings) {
       try {
         this.drawOne(d, symbol, barSec);

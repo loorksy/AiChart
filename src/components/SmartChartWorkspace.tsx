@@ -42,6 +42,7 @@ import {
   type SmartChartAgentHandle,
 } from "@/components/agent/SmartChartAgentPanel";
 import { useChatSessions } from "@/hooks/useChatSessions";
+import { useRecommendationLifecycle } from "@/hooks/useRecommendationLifecycle";
 import { useMe } from "@/hooks/useMe";
 import { useLocale } from "@/hooks/useLocale";
 import { useTheme } from "@/components/ThemeProvider";
@@ -677,6 +678,9 @@ function SmartChartWorkspaceInner({
               confidence: Math.round(result.confidence * 100),
               timeframe: interval,
               ...(rec.anchorTime != null ? { anchor_time: rec.anchorTime } : {}),
+              // The tracker row this box mirrors — lets the lifecycle poll
+              // attach status/fill/exit to exactly this plan.
+              ...(result.recommendationId ? { tracked_id: result.recommendationId } : {}),
             } as Recommendation,
             prev,
           ),
@@ -769,6 +773,15 @@ function SmartChartWorkspaceInner({
     locale,
     urlChatId,
     syncChatUrl,
+  });
+
+  // Tracker verdict → chart payload: the P/L box only widens after the entry
+  // filled and freezes once the trade ended (see tvDrawingAdapter phases).
+  useRecommendationLifecycle({
+    enabled: chatEnabled && !capture,
+    chatId: chat.activeChatId,
+    recommendation,
+    setRecommendation,
   });
 
   const didInitialUrlSync = useRef(false);

@@ -125,6 +125,17 @@ export interface Recommendation {
    * Pending plans omit it and keep `created_at`.
    */
   anchor_time?: string | number | null;
+  /**
+   * Tracker lifecycle mirrored onto the chart payload so the P/L box can
+   * follow the trade: `outcome` ≠ "pending" / `exit_at` = finished (width
+   * frozen), `triggered_at` = the entry filled (width follows new candles).
+   * Optional — payloads without them are read as a still-pending plan.
+   */
+  outcome?: string | null;
+  triggered_at?: string | number | null;
+  exit_at?: string | number | null;
+  /** Server tracker id this chart payload mirrors, when known. */
+  tracked_id?: string | null;
 }
 
 export type TradeLessonOutcome = "win" | "loss" | "breakeven";
