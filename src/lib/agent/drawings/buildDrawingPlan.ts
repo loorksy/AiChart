@@ -71,12 +71,26 @@ export type DrawingPlan = {
   }>;
   /** BOS/CHoCH lines, sweep markers, range extremes, invalidation zone. */
   selectedAnnotations: DrawingAnnotation[];
-  /** Scenario path — a POSSIBLE route, never a prediction guarantee. */
-  forecastPath?: Array<{ time: number; price: number }>;
+  /**
+   * Primary scenario path — the route the analysis EXPECTS price to travel to
+   * the final target (a possible route, never a prediction guarantee). Model
+   * waypoints when the synthesizer drew them, else the deterministic
+   * current → entry → target sketch.
+   */
+  forecastPath?: Array<{ time: number; price: number; label?: string }>;
+  /** Alternative scenario — the invalidation route toward the stop. */
+  forecastPathAlt?: Array<{ time: number; price: number; label?: string }>;
   /** Detected geometry drawings (trendlines/channels/patterns) — pre-built
    *  ChartDrawings from the shared engine, already strength-gated. */
   selectedGeometry: ChartDrawing[];
 };
+
+/** A scenario waypoint as the synthesizer emits it (candles ahead, price). */
+export interface ScenarioWaypointInput {
+  barsAhead: number;
+  price: number;
+  label?: string;
+}
 
 /** Hard cap: meaningful analysis, never chart clutter.
  *  Raised 7 → 9 when geometry landed so trendlines/patterns never evict the
@@ -101,6 +115,16 @@ export interface DrawingPlanInput {
   /** LLM drawing veto. `shouldDraw:false` suppresses drawings; `true` cannot
    *  force weak levels through — validation still applies. */
   drawingAdvice?: { shouldDraw: boolean; reason: string } | null;
+  /**
+   * Scenario waypoints the synthesizer drew (primary route to the final
+   * target, alternative route to the stop). Validated here: ordered in time,
+   * priced within a sane band around the plan, and pinned to the plan's own
+   * target/stop at the end so the picture agrees with the card.
+   */
+  scenarioPaths?: {
+    primary: ScenarioWaypointInput[];
+    alternative: ScenarioWaypointInput[];
+  } | null;
 }
 
 /**
@@ -325,10 +349,22 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
         },
       ],
       selectedAnnotations: annotations.slice(0, 3),
-      forecastPath: buildForecastPathFromTrade(input.market, {
-        entry: rec.entry,
-        target: rec.targets[rec.targets.length - 1]!,
-      }),
+      forecastPath:
+        buildScenarioPath(input.market, input.scenarioPaths?.primary, {
+          entry: rec.entry,
+          stop: rec.stop_loss,
+          endAt: rec.targets[rec.targets.length - 1]!,
+        }) ??
+        buildForecastPathFromTrade(input.market, {
+          entry: rec.entry,
+          target: rec.targets[rec.targets.length - 1]!,
+        }),
+      forecastPathAlt:
+        buildScenarioPath(input.market, input.scenarioPaths?.alternative, {
+          entry: rec.entry,
+          stop: rec.stop_loss,
+          endAt: rec.stop_loss,
+        }) ?? undefined,
       // The structural justification drawn WITH the trade: the trendline,
       // channel, or pattern the recommendation narrative can point at.
       selectedGeometry: selectGeometryDrawings(input.geometry, threshold),
@@ -646,6 +682,71 @@ export function buildForecastPathFromTrade(
     { time: lastTime + step, price: rec.entry },
     { time: lastTime + step * 3, price: rec.target },
   ];
+}
+
+/** How far a scenario may stray from the plan's own price band (× band). */
+const SCENARIO_BAND_SLACK = 1.5;
+
+/**
+ * Turn the synthesizer's waypoints into a chart path. Starts at the current
+ * price on the last bar, keeps waypoints in strictly increasing time, drops
+ * prices outside a sane band around the plan (entry/stop/end ± slack), and
+ * pins the last point to `endAt` (the final target, or the stop for the
+ * alternative) so the drawn route ends where the card says the trade does.
+ * Null when fewer than two model points survive — the caller then falls back.
+ */
+export function buildScenarioPath(
+  market: AgentMarketContext,
+  waypoints: ScenarioWaypointInput[] | null | undefined,
+  plan: { entry: number; stop: number; endAt: number },
+): Array<{ time: number; price: number; label?: string }> | null {
+  if (!waypoints?.length) return null;
+  const candles = market.currentTfCandles;
+  const lastTime = candles.at(-1)?.time ?? Date.now();
+  const current = market.currentPrice ?? plan.entry;
+  const step = estimateBarMs(candles);
+
+  const lo = Math.min(plan.entry, plan.stop, plan.endAt, current);
+  const hi = Math.max(plan.entry, plan.stop, plan.endAt, current);
+  const band = Math.max(hi - lo, market.atr ?? 0, current * 0.001);
+  const minPrice = lo - band * SCENARIO_BAND_SLACK;
+  const maxPrice = hi + band * SCENARIO_BAND_SLACK;
+
+  const ordered = [...waypoints]
+    .filter(
+      (w) =>
+        Number.isFinite(w.barsAhead) &&
+        w.barsAhead >= 1 &&
+        Number.isFinite(w.price) &&
+        w.price >= minPrice &&
+        w.price <= maxPrice,
+    )
+    .sort((a, b) => a.barsAhead - b.barsAhead);
+  const points: Array<{ time: number; price: number; label?: string }> = [];
+  let lastBars = 0;
+  for (const w of ordered) {
+    const bars = Math.round(w.barsAhead);
+    if (bars <= lastBars) continue;
+    lastBars = bars;
+    points.push({
+      time: lastTime + bars * step,
+      price: w.price,
+      ...(w.label ? { label: w.label } : {}),
+    });
+    if (points.length >= 7) break;
+  }
+  if (points.length < 2) return null;
+
+  // The route ends where the plan ends: replace a last point that already
+  // sits at the end level, otherwise add the end level one leg later.
+  const tail = points[points.length - 1]!;
+  const tol = Math.max(market.atr ?? 0, current * 0.0005) * 0.5;
+  if (Math.abs(tail.price - plan.endAt) <= tol) {
+    tail.price = plan.endAt;
+  } else {
+    points.push({ time: tail.time + step, price: plan.endAt });
+  }
+  return [{ time: lastTime, price: current }, ...points.slice(0, 7)];
 }
 
 function estimateBarMs(candles: AgentCandle[]): number {

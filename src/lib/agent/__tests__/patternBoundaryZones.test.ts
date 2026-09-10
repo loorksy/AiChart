@@ -105,6 +105,59 @@ describe("pattern boundaries become zones", () => {
   });
 });
 
+describe("live trendlines and channel walls are reversal points too", () => {
+  const supportLine: GeometrySnapshot["trendlines"][number] = {
+    side: "support",
+    anchors: [pivot(0, 100, "low"), pivot(10, 105, "low")],
+    slope: 0.5,
+    touches: 3,
+    candleSeparation: 10,
+    priceAtLastBar: 110,
+    broken: false,
+    confidence: 70,
+    evidence: [],
+  };
+
+  it("offers a rising support trendline as demand where it meets the current bar", () => {
+    const zones = patternBoundaryZones({ ...snapshot([]), trendlines: [supportLine] }, 1);
+    const demand = zones.find((z) => z.patternBoundary.boundaryType === "trendline");
+    assert.ok(demand, "a live trendline is a POI, not just prose");
+    assert.equal(demand.type, "demand");
+    // Centred on the line's price NOW — a stop built off this zone sits beyond
+    // the trendline, which is the scenario that invalidates the bounce.
+    assert.ok(Math.abs((demand.low + demand.high) / 2 - 110) < 0.01);
+    assert.equal(demand.patternBoundary.patternType, "support_trendline");
+  });
+
+  it("a broken or barely-touched line offers nothing", () => {
+    const broken = { ...supportLine, broken: true };
+    const single = { ...supportLine, touches: 1 };
+    assert.deepEqual(
+      patternBoundaryZones({ ...snapshot([]), trendlines: [broken, single] }, 1),
+      [],
+    );
+  });
+
+  it("offers the opposite channel wall at the current bar", () => {
+    const channel: GeometrySnapshot["channels"][number] = {
+      direction: "rising",
+      base: supportLine,
+      // Parallel wall 6 above the base line at the anchor times.
+      parallel: [pivot(3, 107.5, "high"), pivot(8, 110, "high")],
+      widthAtr: 6,
+      oppositeTouches: 2,
+      confidence: 65,
+      evidence: [],
+    };
+    const zones = patternBoundaryZones({ ...snapshot([]), channels: [channel] }, 1);
+    const wall = zones.find((z) => z.patternBoundary.boundaryType === "channel_boundary");
+    assert.ok(wall);
+    assert.equal(wall.type, "supply", "the upper wall of a support-based channel is supply");
+    // base at pivot(3) = 101.5, wall there = 107.5 → offset 6 → 110 + 6 = 116.
+    assert.ok(Math.abs((wall.low + wall.high) / 2 - 116) < 0.01);
+  });
+});
+
 describe("the boundary reaches the candidate engine, not just the prompt", () => {
   it("is consumed by buildTradeCandidates through the zones input", async () => {
     const { readFileSync } = await import("node:fs");

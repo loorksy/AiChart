@@ -1983,6 +1983,9 @@ async function runUnifiedChartAgentInner(
     preferMinimalDrawings: ctx.session?.preferences.preferMinimalDrawings,
     selectedCandidateIds: synth.selectedCandidateIds,
     drawingAdvice: synth.drawingAdvice ?? null,
+    // The scenario the brain expects, drawn: primary route to the final
+    // target, alternative route to the stop (Elliott-style waypoints).
+    scenarioPaths: synth.scenarioPaths ?? null,
   });
 
   // Drawings are non-critical: failure → return text result without drawings.

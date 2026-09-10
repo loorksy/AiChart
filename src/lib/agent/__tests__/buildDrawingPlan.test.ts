@@ -191,6 +191,72 @@ describe("buildDrawingPlan", () => {
     assert.equal(plan.forecastPath?.length, 3);
   });
 
+  it("model scenario waypoints become the primary and alternative paths", () => {
+    const demand = { type: "demand" as const, low: 99, high: 100, time: 0 };
+    const buy = {
+      ...waitDecision,
+      decision: "buy" as const,
+      recommendation: { action: "buy" as const, entry: 100, stop_loss: 99, targets: [102, 103] },
+    };
+    const plan = buildDrawingPlan(
+      baseInput({
+        decision: buy,
+        supplyDemand: { zones: [demand], nearestDemand: demand, nearestSupply: null },
+        structure: makeStructure({ trend: "uptrend" }),
+        scenarioPaths: {
+          // Out of order, one duplicate bar, one absurd price — all repaired.
+          primary: [
+            { barsAhead: 6, price: 101.2, label: "pullback" },
+            { barsAhead: 2, price: 101.8 },
+            { barsAhead: 6, price: 101.0 },
+            { barsAhead: 9, price: 500 },
+            { barsAhead: 12, price: 103 },
+          ],
+          alternative: [
+            { barsAhead: 3, price: 100.4 },
+            { barsAhead: 7, price: 98.0 },
+          ],
+        },
+      }),
+    );
+    const step = 60_000;
+    const lastTime = 599 * step;
+    const primary = plan.forecastPath!;
+    // Anchor at the current price on the last bar, then the surviving waypoints.
+    assert.deepEqual(
+      primary.map((p) => [p.time - lastTime, p.price]),
+      [
+        [0, 100],
+        [2 * step, 101.8],
+        [6 * step, 101.2],
+        [12 * step, 103],
+      ],
+    );
+    assert.equal(primary[2]!.label, "pullback");
+    assert.equal(primary.at(-1)!.price, 103, "the primary route ends at the final target");
+    const alt = plan.forecastPathAlt!;
+    assert.equal(alt.at(-1)!.price, 99, "the alternative route ends at the stop");
+    assert.equal(alt.length, 4, "a route not already at the stop gets the stop appended");
+  });
+
+  it("fewer than two usable waypoints fall back to the deterministic sketch", () => {
+    const demand = { type: "demand" as const, low: 99, high: 100, time: 0 };
+    const plan = buildDrawingPlan(
+      baseInput({
+        decision: {
+          ...waitDecision,
+          decision: "buy",
+          recommendation: { action: "buy", entry: 100, stop_loss: 99, targets: [103] },
+        },
+        supplyDemand: { zones: [demand], nearestDemand: demand, nearestSupply: null },
+        structure: makeStructure({ trend: "uptrend" }),
+        scenarioPaths: { primary: [{ barsAhead: 4, price: 102 }], alternative: [] },
+      }),
+    );
+    assert.equal(plan.forecastPath?.length, 3);
+    assert.equal(plan.forecastPathAlt, undefined);
+  });
+
   it("buy decision with no POI does not draw", () => {
     const plan = buildDrawingPlan(
       baseInput({

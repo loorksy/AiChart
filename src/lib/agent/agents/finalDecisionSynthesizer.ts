@@ -65,6 +65,7 @@ import {
   summarizeGeometry,
   type GeometrySnapshot,
 } from "@/lib/chart/geometry";
+import { linePriceAt } from "@/lib/chart/geometry/types";
 import { breakLevelOf, offersAnticipatoryEntry } from "@/lib/chart/geometry/patternStage";
 import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
@@ -303,6 +304,19 @@ const DecisionTraceSchema = z.object({
   planTypeBecause: cappedText(400),
 });
 
+/**
+ * One waypoint of a drawn scenario: `barsAhead` candles of the lead timeframe
+ * after the last bar, at `price`. The chart draws the waypoints as a dashed
+ * zig-zag path — the route the model expects the market to travel, with its
+ * pullbacks and wave legs, not a straight line to the target.
+ */
+const ScenarioWaypointSchema = z.object({
+  barsAhead: z.number().int().min(1).max(200),
+  price: z.number().positive(),
+  label: cappedText(40).optional(),
+});
+export type ScenarioWaypoint = z.infer<typeof ScenarioWaypointSchema>;
+
 const FinalDecisionModelSchemaStrict = z.object({
   /** Layer 1 — always a side on a successful analysis. */
   direction: z.enum(["buy", "sell"]),
@@ -341,6 +355,10 @@ const FinalDecisionModelSchemaStrict = z.object({
     reason: z.string(),
   }),
   selectedCandidateIds: capped(z.string(), 8).optional(),
+  /** The expected route to the final target, as drawn waypoints (2–6). */
+  scenarioPath: capped(ScenarioWaypointSchema, 6).nullable().optional(),
+  /** The invalidation route toward the stop — the alternative scenario, drawn. */
+  alternativeScenarioPath: capped(ScenarioWaypointSchema, 6).nullable().optional(),
   /**
    * One question the model wants answered from the chart before finalising.
    *
@@ -522,7 +540,32 @@ function repairRecoverableDecisionShape(raw: unknown): unknown {
     // on attempt 2 after a Too-big chosenBecause on attempt 1).
     o.drawingAdvice = { shouldDraw: true, reason: "levels" };
   }
+  // Scenario paths are illustration, never a validity condition: a malformed
+  // waypoint list is dropped (the plan falls back to the deterministic path)
+  // instead of failing a complete plan.
+  o.scenarioPath = repairWaypoints(o.scenarioPath);
+  o.alternativeScenarioPath = repairWaypoints(o.alternativeScenarioPath);
   return dropUnreadPlanFields(o);
+}
+
+function repairWaypoints(raw: unknown): unknown[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: unknown[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const w = item as Record<string, unknown>;
+    const barsAhead = coerceFiniteNumber(w.barsAhead ?? w.bars ?? w.bar);
+    const price = coerceFiniteNumber(w.price ?? w.level);
+    if (typeof barsAhead !== "number" || typeof price !== "number" || price <= 0) continue;
+    const bars = Math.round(barsAhead);
+    if (bars < 1 || bars > 200) continue;
+    out.push({
+      barsAhead: bars,
+      price,
+      ...(typeof w.label === "string" && w.label.trim() ? { label: w.label.trim() } : {}),
+    });
+  }
+  return out.length ? out : null;
 }
 
 /**
@@ -617,6 +660,12 @@ export interface SynthesizerOutcome {
   evidenceSnapshot?: Record<string, unknown>;
   selectedCandidateIds?: string[];
   drawingAdvice?: { shouldDraw: boolean; reason: string };
+  /**
+   * The scenario the model expects, as waypoints for the chart: the primary
+   * route to the final target and the alternative route to the stop. Either
+   * may be empty; the drawing plan then falls back to its deterministic path.
+   */
+  scenarioPaths?: { primary: ScenarioWaypoint[]; alternative: ScenarioWaypoint[] };
   /** Present only when `result` is null. */
   failure?: SynthesizerFailure;
 }
@@ -992,6 +1041,7 @@ ${PATTERN_IDENTIFICATION_DOCTRINE}
 - SPAN CONTRACT (product rule): a plan spans a REAL swing of the analyzed timeframe — TP1 sits several ATR from the entry (roughly 30 candles of travel), never the first shelf a few points away. Candidates already respect this; when you propose your own levels, hold yourself to the same floor.
 - TARGETS: always at least TWO. A third target when the structure genuinely offers one beyond TP2 — never invented. Consecutive targets must be meaningfully spaced (several points on gold, or a fraction of ATR) — if TP3 would sit on top of TP2, omit TP3; if TP2 would sit on top of TP1, omit TP2. A 0.09-point gap is not a third target.
 - STOP: the structural invalidation level plus a real volatility buffer BEYOND it — never exactly ON the level (a stop at 4393.52 belongs at ≈4401.79 on a gold intraday plan). Candidates carry this buffer already (structuralStop vs stop_loss); when proposing levels, pick the evidence level past the invalidation, not the invalidation itself. Never tighten a stop to flatter the R ratio.
+- The stop is placed by SCENARIO, never by a risk percentage or a fixed distance: ask "where does price have to trade for my idea to be wrong?" — the close beyond the swing, the demand/supply zone, the neckline, or the trendline/channel wall the plan leans on (a sloped line is invalidated the same way a horizontal level is) — and put the stop past THAT. Position size is computed after the decision and never moves the stop.
 
 ## Evidence, not gates
 - Structure, liquidity, patterns, historical cases, backtests, costs, and news STRENGTHEN or WEAKEN a plan. None of them decides whether a plan exists.
@@ -1017,6 +1067,8 @@ ${PATTERN_IDENTIFICATION_DOCTRINE}
 - Do not reveal chain-of-thought, scratchpad, POI scores, ATR ratios, or machine ranking labels.
 - drawingAdvice.shouldDraw=false only when drawing would genuinely mislead (no usable levels, thin data).
 - selectedCandidateIds: at most 8 candidate ids worth drawing; omit or empty if none.
+- scenarioPath: the route you EXPECT price to travel from the current price to the final target, as 2–6 waypoints {"barsAhead":n,"price":p,"label":"..."} in candles of the lead timeframe after the last bar (barsAhead strictly increasing, the last waypoint at the final target). Draw it the way the market actually moves — the impulse, the pullback/retest into the entry, the next leg (an Elliott-style zig-zag), never a straight line. Where the route meets a trendline, channel boundary, or level from geometry/candidates, put a waypoint AT that touch and show the reaction (a bounce off a trendline is a reversal point exactly like a horizontal level). Time the legs from ATR and recent swing durations; the final waypoint should land within validityCandles.
+- alternativeScenarioPath: the invalidation route — how price would reach the stop if the idea fails — 2–4 waypoints, last one at the stop. Both paths: null when drawingAdvice.shouldDraw is false.
 - browse: null almost always. Set it ONLY when one specific fact from the chart would genuinely change your read — you always answer with a complete decision anyway, and that answer stands if the round fails.
   - {"verb":"view_timeframe","timeframe":"1h"} — show me that chart. Frames: 5m, 15m, 1h, 4h, 1d. Never one already attached.
   - {"verb":"read_candles","timeframe":"15m","count":60} — the last N bars as numbers, when the shape matters less than the exact prices.
@@ -1028,7 +1080,7 @@ ${PATTERN_IDENTIFICATION_DOCTRINE}
 - Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
 
 Respond with ONLY a JSON object, no markdown fences:
-{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"timeframeRoles":{"lead":"15m","context":"4h","timing":"5m"},"activationCondition":"...|null","activationRule":{"kind":"candle_close_above","level":0,"timeframe":"15m"}|null,"invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[]}`;
+{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"timeframeRoles":{"lead":"15m","context":"4h","timing":"5m"},"activationCondition":"...|null","activationRule":{"kind":"candle_close_above","level":0,"timeframe":"15m"}|null,"invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[],"scenarioPath":[{"barsAhead":2,"price":0,"label":"..."}],"alternativeScenarioPath":[{"barsAhead":3,"price":0}]}`;
 
 export async function runFinalDecisionSynthesizer(
   ctx: AgentRunContext,
@@ -1473,7 +1525,21 @@ export async function runFinalDecisionSynthesizer(
       shouldDraw: parsed.drawingAdvice.shouldDraw,
       reason: sanitizePublicText(parsed.drawingAdvice.reason).slice(0, 240),
     },
+    scenarioPaths: {
+      primary: publicWaypoints(parsed.scenarioPath),
+      alternative: publicWaypoints(parsed.alternativeScenarioPath),
+    },
   };
+}
+
+function publicWaypoints(
+  raw: ScenarioWaypoint[] | null | undefined,
+): ScenarioWaypoint[] {
+  return (raw ?? []).map((w) => ({
+    barsAhead: w.barsAhead,
+    price: w.price,
+    ...(w.label ? { label: sanitizePublicText(w.label).slice(0, 40) } : {}),
+  }));
 }
 
 /** Compact, evidence-only context for the model (no raw candles, no secrets). */
@@ -2232,6 +2298,20 @@ function formingOpportunities(geometry: GeometrySnapshot): Array<{
 /** Prices a plan may legitimately cite from detected chart geometry. */
 function geometryLevelPrices(geometry: GeometrySnapshot): number[] {
   const out: number[] = [];
+  // A live (unbroken) trendline is a level where it meets the current bar:
+  // price can reverse off it exactly as off a horizontal — a plan that puts
+  // its entry or its stop just beyond that touch must pass level grounding.
+  for (const line of geometry.trendlines ?? []) {
+    if (!line.broken) out.push(line.priceAtLastBar);
+  }
+  for (const channel of geometry.channels ?? []) {
+    if (channel.base.broken) continue;
+    // Parallel lines keep a constant price offset, so the opposite boundary
+    // at the last bar is the base's last-bar price plus that offset.
+    const [a, b] = channel.base.anchors;
+    const offset = channel.parallel[0].price - linePriceAt(a, b, channel.parallel[0].time);
+    out.push(channel.base.priceAtLastBar + offset);
+  }
   for (const pattern of geometry.patterns ?? []) {
     if (typeof pattern.projectedTarget === "number") out.push(pattern.projectedTarget);
     if (pattern.neckline) {

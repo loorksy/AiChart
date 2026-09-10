@@ -13,6 +13,7 @@
  * POI. Nothing here decides — a boundary zone is one more entry on the menu.
  */
 import type { GeometrySnapshot, PatternInstance } from "@/lib/chart/geometry";
+import { linePriceAt } from "@/lib/chart/geometry/types";
 import type { SupplyDemandZone } from "../marketContext/detectors";
 
 export type BoundaryType =
@@ -20,7 +21,10 @@ export type BoundaryType =
   | "resistance_boundary"
   | "neckline"
   | "range_edge"
-  | "pattern_invalidation_boundary";
+  | "pattern_invalidation_boundary"
+  /** A live trendline or channel boundary where it meets the current bar. */
+  | "trendline"
+  | "channel_boundary";
 
 export interface PatternBoundaryZone extends SupplyDemandZone {
   /** Marks the zone as pattern-derived so the candidate carries the caveat. */
@@ -39,7 +43,7 @@ function zoneAround(
   atr: number,
   type: "supply" | "demand",
   time: number,
-  pattern: PatternInstance,
+  source: { patternType: string; stage: string },
   boundaryType: BoundaryType,
 ): PatternBoundaryZone {
   const half = atr * ZONE_HALF_ATR;
@@ -49,11 +53,15 @@ function zoneAround(
     high: price + half,
     time,
     patternBoundary: {
-      patternType: pattern.patternType,
+      patternType: source.patternType,
       boundaryType,
-      stage: pattern.stage ?? pattern.status,
+      stage: source.stage,
     },
   };
+}
+
+function sourceOf(pattern: PatternInstance): { patternType: string; stage: string } {
+  return { patternType: pattern.patternType, stage: pattern.stage ?? pattern.status };
 }
 
 /**
@@ -72,6 +80,45 @@ export function patternBoundaryZones(
   if (!geometry || !atr || atr <= 0) return [];
   const zones: PatternBoundaryZone[] = [];
 
+  // Live trendlines and channel boundaries, at the price where they meet the
+  // current bar. Price reverses off a sloped line exactly as off a horizontal
+  // level, so the touch is a POI: an entry at the line with the stop placed
+  // BEYOND it — the invalidation scenario is a close through the line, not a
+  // risk percentage. Broken lines are history and offer nothing.
+  for (const line of geometry.trendlines ?? []) {
+    if (line.broken || line.touches < 2) continue;
+    zones.push(
+      zoneAround(
+        line.priceAtLastBar,
+        atr,
+        line.side === "support" ? "demand" : "supply",
+        line.anchors[1].time,
+        {
+          patternType: line.side === "support" ? "support_trendline" : "resistance_trendline",
+          stage: "live",
+        },
+        "trendline",
+      ),
+    );
+  }
+  for (const channel of geometry.channels ?? []) {
+    if (channel.base.broken) continue;
+    const [a, b] = channel.base.anchors;
+    const offset =
+      channel.parallel[0].price - linePriceAt(a, b, channel.parallel[0].time);
+    const parallelAtLastBar = channel.base.priceAtLastBar + offset;
+    zones.push(
+      zoneAround(
+        parallelAtLastBar,
+        atr,
+        channel.base.side === "support" ? "supply" : "demand",
+        channel.parallel[1].time,
+        { patternType: `${channel.direction}_channel`, stage: "live" },
+        "channel_boundary",
+      ),
+    );
+  }
+
   for (const pattern of geometry.patterns ?? []) {
     if (pattern.status !== "forming") continue;
     const lastAnchor = pattern.anchors[pattern.anchors.length - 1];
@@ -83,7 +130,7 @@ export function patternBoundaryZones(
     if (pattern.neckline) {
       const price = pattern.neckline.to.price;
       const type = pattern.breakDirection === "up" ? "supply" : "demand";
-      zones.push(zoneAround(price, atr, type, time, pattern, "neckline"));
+      zones.push(zoneAround(price, atr, type, time, sourceOf(pattern), "neckline"));
     }
 
     // Boundary pivots: the extremes the structure keeps respecting. For a
@@ -101,7 +148,7 @@ export function patternBoundaryZones(
           atr,
           "demand",
           time,
-          pattern,
+          sourceOf(pattern),
           isRange ? "range_edge" : "support_boundary",
         ),
       );
@@ -114,7 +161,7 @@ export function patternBoundaryZones(
           atr,
           "supply",
           time,
-          pattern,
+          sourceOf(pattern),
           isRange ? "range_edge" : "resistance_boundary",
         ),
       );

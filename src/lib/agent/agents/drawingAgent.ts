@@ -116,15 +116,32 @@ export async function runDrawingAgent(
   // forming/completed state — already strength-gated and bounded by the plan.
   raw.push(...(plan.selectedGeometry ?? []));
 
-  // Scenario path (valid setups only) — a POSSIBLE route, never a guarantee.
+  // Scenario paths (valid setups only) — POSSIBLE routes, never a guarantee.
+  // Primary: the expected zig-zag to the final target. Alternative: the
+  // invalidation route to the stop, drawn fainter so the two read as the
+  // analysis's main and runner-up scenarios.
   if (plan.forecastPath?.length) {
     raw.push({
       type: "forecast_path",
       confidence: 55,
-      label: "سيناريو محتمل",
+      label: plan.forecastPathAlt?.length ? "السيناريو الأساسي" : "سيناريو محتمل",
       semanticRole: "forecast",
       style: "dashed",
+      color: "#3b82f6",
       points: plan.forecastPath.map((p) => ({ time: p.time, price: p.price })),
+      meta: { scenario: "primary", waypointLabels: plan.forecastPath.map((p) => p.label ?? "") },
+    });
+  }
+  if (plan.forecastPathAlt?.length) {
+    raw.push({
+      type: "forecast_path",
+      confidence: 40,
+      label: "السيناريو البديل",
+      semanticRole: "forecast",
+      style: "dotted",
+      color: "#f87171",
+      points: plan.forecastPathAlt.map((p) => ({ time: p.time, price: p.price })),
+      meta: { scenario: "alternative", waypointLabels: plan.forecastPathAlt.map((p) => p.label ?? "") },
     });
   }
 
