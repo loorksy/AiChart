@@ -17,6 +17,7 @@ import type { RangePosition } from "../marketContext/rangePosition";
 import { scorePoi, type PoiScore, type ScorePoiInput } from "./scorePoi";
 import {
   SCALP_GEOMETRY,
+  applyStopDistanceFloor,
   classifyActivation,
   computeNetR,
   inferTickSize,
@@ -165,8 +166,19 @@ export function buildTradeCandidates(
       );
       const stopRaw =
         action === "buy" ? zone.low - buffer : zone.high + buffer;
-      const stop = roundToTick(stopRaw, meta);
       const entry = roundToTick(entryOpt.entry, meta);
+      // Structure + buffer places the stop; the style floor keeps it from
+      // sitting one rejection candle away when the zone is thin (the 5m gold
+      // sell with 2.9 points between entry and stop).
+      const stop = applyStopDistanceFloor({
+        action,
+        entry,
+        stop: roundToTick(stopRaw, meta),
+        atr,
+        spread: input.spread,
+        interval: input.interval,
+        meta,
+      }).stop;
       const risk = Math.abs(entry - stop);
       if (!(risk > 0)) continue;
 

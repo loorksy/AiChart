@@ -3,11 +3,13 @@ import { describe, it } from "node:test";
 import {
   SCALP_GEOMETRY,
   TRADE_SPAN,
+  applyStopDistanceFloor,
   classifyActivation,
   computeGrossR,
   computeNetR,
   levelOrderValid,
   meetsExecutableGeometry,
+  minStopDistance,
   roundToTick,
   scoreCandidateQuality,
 } from "@/lib/agent/trading/scalpGeometry";
@@ -319,6 +321,68 @@ describe("buildTradeCandidates geometry repair", () => {
     assert.ok(result.best);
     assert.ok(result.best!.targets[0]! < result.best!.entry);
     assert.ok(result.best!.entry < result.best!.stop_loss);
+  });
+
+  it("every candidate's stop clears the style floor from its entry", () => {
+    const result = supplyScenario({ farTarget: 3968 });
+    const floor = minStopDistance({ atr: 1.5, spread: 0.2, interval: null, price: 3980 });
+    assert.ok(floor + 1e-9 >= TRADE_SPAN.intraday.minStopAtr * 1.5);
+    for (const c of result.candidates) {
+      assert.ok(
+        Math.abs(c.entry - c.stop_loss) + 1e-9 >= floor,
+        `stop ${c.stop_loss} within one candle of entry ${c.entry}`,
+      );
+    }
+  });
+});
+
+describe("stop room floor — a stop is never one rejection candle away", () => {
+  it("widens the reported 5m gold stop (2.93 points) out to the scalp floor", () => {
+    // Sell 4335.64 / stop 4338.57 on a 5m chart with ATR ≈ 3: a single
+    // ordinary candle covered the whole distance.
+    const out = applyStopDistanceFloor({
+      action: "sell",
+      entry: 4335.64,
+      stop: 4338.57,
+      atr: 3,
+      spread: 0.3,
+      interval: "5m",
+      meta: { tickSize: 0.01, digits: 2 },
+    });
+    assert.equal(out.widened, true);
+    assert.equal(out.stop, roundToTick(4335.64 + TRADE_SPAN.scalp.minStopAtr * 3, { digits: 2 }));
+    assert.ok(out.stop > 4338.57);
+  });
+
+  it("leaves a stop that already has room exactly where structure put it", () => {
+    const out = applyStopDistanceFloor({
+      action: "buy",
+      entry: 4300,
+      stop: 4285,
+      atr: 3,
+      spread: 0.3,
+      interval: "15m",
+    });
+    assert.equal(out.widened, false);
+    assert.equal(out.stop, 4285);
+  });
+
+  it("never pulls a stop in and never moves the entry side", () => {
+    const out = applyStopDistanceFloor({
+      action: "buy",
+      entry: 4300,
+      stop: 4299,
+      atr: 4,
+      interval: "1h",
+    });
+    assert.equal(out.widened, true);
+    assert.ok(out.stop < 4299);
+    assert.ok(Math.abs(4300 - out.stop) + 1e-9 >= TRADE_SPAN.swing.minStopAtr * 4);
+  });
+
+  it("falls back to a spread multiple when the ATR is unknown", () => {
+    const floor = minStopDistance({ atr: null, spread: 0.5, price: 4300 });
+    assert.equal(floor, 2);
   });
 });
 

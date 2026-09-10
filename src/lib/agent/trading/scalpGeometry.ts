@@ -45,11 +45,18 @@ export const TRADE_SPAN: Record<
     minTp2Atr: number;
     /** Stop buffer BEYOND the structural level, in ATR. */
     stopBufferAtr: number;
+    /**
+     * Minimum distance between ENTRY and stop, in ATR. Structure + buffer
+     * places the stop; this is the floor under the whole distance, so a thin
+     * zone (entry at one edge, structure a point away) cannot produce a stop
+     * one ordinary rejection candle wipes out.
+     */
+    minStopAtr: number;
   }
 > = {
-  scalp: { minTp1Atr: 3.5, minTp2Atr: 6, stopBufferAtr: 0.5 },
-  intraday: { minTp1Atr: 4.5, minTp2Atr: 7.5, stopBufferAtr: 0.6 },
-  swing: { minTp1Atr: 6, minTp2Atr: 10, stopBufferAtr: 0.75 },
+  scalp: { minTp1Atr: 3.5, minTp2Atr: 6, stopBufferAtr: 0.5, minStopAtr: 2 },
+  intraday: { minTp1Atr: 4.5, minTp2Atr: 7.5, stopBufferAtr: 0.6, minStopAtr: 1.5 },
+  swing: { minTp1Atr: 6, minTp2Atr: 10, stopBufferAtr: 0.75, minStopAtr: 1.2 },
 };
 
 /**
@@ -75,6 +82,63 @@ export function spanStyleForInterval(interval?: string | null): TradeSpanStyle {
 
 export function tradeSpanFor(interval?: string | null) {
   return TRADE_SPAN[spanStyleForInterval(interval)];
+}
+
+/**
+ * The least distance a stop may sit from its entry on the analyzed timeframe:
+ * the style's ATR floor, or a spread multiple when the ATR is unknown. The
+ * structure decides WHERE the stop goes; this decides that it is not so close
+ * that one rejection wick decides the trade.
+ */
+export function minStopDistance(input: {
+  atr?: number | null;
+  spread?: number | null;
+  interval?: string | null;
+  price: number;
+  meta?: SymbolGeometryMeta | null;
+}): number {
+  const span = tradeSpanFor(input.interval);
+  const atr = Number(input.atr);
+  const spread = Number(input.spread ?? input.meta?.spread);
+  const tick = inferTickSize(input.price, input.meta);
+  return Math.max(
+    Number.isFinite(atr) && atr > 0 ? atr * span.minStopAtr : 0,
+    Number.isFinite(spread) && spread > 0 ? spread * 4 : 0,
+    tick * 20,
+  );
+}
+
+/**
+ * Push a stop OUT to the minimum distance when structure put it too close to
+ * the entry. Never pulls a stop in; never moves an entry. Returns the stop as
+ * given when it already clears the floor or the geometry is unusable.
+ */
+export function applyStopDistanceFloor(input: {
+  action: "buy" | "sell";
+  entry: number;
+  stop: number;
+  atr?: number | null;
+  spread?: number | null;
+  interval?: string | null;
+  meta?: SymbolGeometryMeta | null;
+}): { stop: number; floor: number; widened: boolean } {
+  const floor = minStopDistance({
+    atr: input.atr,
+    spread: input.spread,
+    interval: input.interval,
+    price: input.entry,
+    meta: input.meta,
+  });
+  if (!(input.entry > 0) || !(input.stop > 0) || !(floor > 0)) {
+    return { stop: input.stop, floor, widened: false };
+  }
+  const distance = Math.abs(input.entry - input.stop);
+  if (distance + 1e-9 >= floor) return { stop: input.stop, floor, widened: false };
+  const widened = roundToTick(
+    input.action === "buy" ? input.entry - floor : input.entry + floor,
+    input.meta,
+  );
+  return { stop: widened, floor, widened: true };
 }
 
 export type GeometryActivationClass =

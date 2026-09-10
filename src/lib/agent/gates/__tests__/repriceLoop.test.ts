@@ -398,9 +398,13 @@ describe("stale-scenario reprice: the refusal becomes a repriced, actionable pla
       (rec.stop_loss ?? 0) > (rec.entry ?? 0),
       "the sell stop sits above its own entry (buffer applied away from the fill)",
     );
+    // Stop room (product rule): a 2.8-point stop on a 6-point ATR is one
+    // rebound candle from being killed. The intraday floor (1.5×ATR = 9 pts)
+    // lifts it above the live market — a breakdown stop belongs above the
+    // range it breaks, and the chain still passes the plan (asserted above).
     assert.ok(
-      (rec.stop_loss ?? 0) < 4613,
-      "…and below the live market: the buffered stop no longer self-refuses the plan",
+      (rec.stop_loss ?? 0) >= 4605.3 + 1.5 * ATR - 1e-6,
+      "…and at least the style ATR floor away from the entry",
     );
   });
 
