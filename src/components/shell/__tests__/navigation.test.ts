@@ -202,6 +202,22 @@ test("collapsed rail brand expands the sidebar and does not navigate", () => {
   assert.match(shell, /group-focus-visible:opacity-100/);
 });
 
+test("mobile drawer header folds the sidebar; it is not an X-close", () => {
+  const shell = read("components/shell/AppConsoleShell.tsx");
+  const at = shell.indexOf('data-testid="sidebar-collapse-mobile"');
+  assert.ok(at > 0);
+  const button = shell.slice(at - 160, at + 420);
+  assert.match(button, /onClick=\{\(\) => setMobileOpen\(false\)\}/);
+  assert.match(button, /<PanelRight /);
+  assert.match(button, /ltr:-scale-x-100/);
+  assert.match(button, /shell\.collapse_sidebar/);
+  assert.doesNotMatch(button, /<X[\s/>]/);
+  assert.doesNotMatch(button, /shell\.close/);
+  // Lucide X stays off this shell; dialogs and support chat keep their own.
+  assert.doesNotMatch(shell, /from "lucide-react".*\bX\b/);
+  assert.doesNotMatch(shell, /<X[\s/>]/);
+});
+
 
 test("docked composer keeps a fade wall and live thread padding", () => {
   const css = read("app/globals.css");

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PanelLeft, PanelLeftClose, ShieldCheck, X } from "lucide-react";
+import { PanelLeft, PanelLeftClose, PanelRight, ShieldCheck } from "lucide-react";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { ProfileAccountSheet } from "@/components/agent/SidebarProfileMenu";
 import { ConsoleOverlaysProvider } from "@/components/shell/ConsoleOverlays";
@@ -376,13 +376,14 @@ function ConsoleShellBody({
                 <button
                   type="button"
                   onClick={() => setMobileOpen(false)}
+                  data-testid="sidebar-collapse-mobile"
                   className={cn(
                     "flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted",
                     FOCUS_RING,
                   )}
-                  aria-label={t("shell.close")}
+                  aria-label={t("shell.collapse_sidebar")}
                 >
-                  <X className="h-5 w-5" />
+                  <PanelRight className="h-5 w-5 ltr:-scale-x-100" />
                 </button>
               </div>
               {navList(() => setMobileOpen(false))}
