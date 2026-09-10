@@ -1868,6 +1868,14 @@ async function migratePg(client: PoolClient) {
   await client.query(
     "CREATE INDEX IF NOT EXISTS idx_chart_layouts_user ON chart_layouts(user_id)",
   ).catch(() => {});
+  // One chart per chat session: a layout bound to a conversation id. Rows with
+  // chat_id NULL are the legacy per-user "primary" board (MCP default).
+  await client.query(
+    "ALTER TABLE chart_layouts ADD COLUMN IF NOT EXISTS chat_id TEXT",
+  ).catch(() => {});
+  await client.query(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_chart_layouts_user_chat ON chart_layouts(user_id, chat_id)",
+  ).catch(() => {});
 
   // Subscription entitlements + account-wide trial interaction ledger.
   await client.query(`

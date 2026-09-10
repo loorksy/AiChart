@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { getOrCreateChartLayout } from "@/lib/store";
+import { getOrCreateChatChartLayout, listChartLayouts } from "@/lib/store";
+import { CHAT_QUERY_KEY, isValidChatId } from "@/lib/chatUrl";
 import { SmartChartWorkspace } from "@/components/SmartChartWorkspace";
 import { AdModal } from "@/components/ads/AdModal";
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
@@ -10,7 +11,11 @@ import { initDb } from "@/lib/db";
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
 import { getBillingPlan, getCurrentPlanPrice } from "@/lib/billing/planConfig";
 
-export default async function ChatPage() {
+export default async function ChatPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await getCurrentUser();
   if (!user) return null;
 
@@ -41,10 +46,24 @@ export default async function ChatPage() {
   // A valid trial gets the FULL workspace — every feature, bounded only by
   // the one-hour clock and the three-recommendation cap enforced server-side.
 
-  const layout = await getOrCreateChartLayout(user.id);
+  // One chart per conversation. A deep link into a chat renders THAT chat's
+  // board server-side (no flash of another conversation's drawings); the bare
+  // home screen is not a conversation and gets a clean, unsaved chart — only
+  // the last-used symbol/interval carry over.
+  const rawChat = (await searchParams)[CHAT_QUERY_KEY];
+  const chatId = isValidChatId(typeof rawChat === "string" ? rawChat : null)
+    ? (rawChat as string)
+    : null;
+  const recent = (await listChartLayouts(user.id))[0] ?? null;
+  const layout = chatId
+    ? await getOrCreateChatChartLayout(user.id, chatId, {
+        symbol: recent?.symbol,
+        interval: recent?.interval,
+      })
+    : null;
   let initialState: import("@/components/SmartChartWorkspace").ChartLayoutState | null = null;
   try {
-    initialState = layout.state_json ? JSON.parse(layout.state_json) : null;
+    initialState = layout?.state_json ? JSON.parse(layout.state_json) : null;
   } catch {
     initialState = null;
   }
@@ -55,9 +74,10 @@ export default async function ChatPage() {
       <ChartErrorBoundary>
         <SmartChartWorkspace
           agentReady={await isLLMConfiguredAsync()}
-          initialSymbol={layout.symbol}
-          layoutId={layout.id}
-          initialInterval={layout.interval}
+          initialSymbol={layout?.symbol ?? recent?.symbol}
+          layoutId={layout?.id}
+          initialChatId={chatId}
+          initialInterval={layout?.interval ?? recent?.interval}
           initialState={initialState}
         />
       </ChartErrorBoundary>

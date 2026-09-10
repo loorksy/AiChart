@@ -48,6 +48,8 @@ export interface ChartLayoutRow {
   interval: string;
   state_json: string | null;
   updated_at?: string;
+  /** Conversation this chart belongs to; NULL = the legacy per-user board. */
+  chat_id?: string | null;
 }
 
 const LAYOUT_ID_ALPHABET =
@@ -60,13 +62,16 @@ function newLayoutId(): string {
   return out;
 }
 
+const LAYOUT_COLUMNS =
+  "id, user_id, symbol, interval, state_json, updated_at, chat_id";
+
 export async function getChartLayoutById(
   id: string,
   userId: number,
 ): Promise<ChartLayoutRow | null> {
   if (!/^[A-Za-z0-9]{8,16}$/.test(id)) return null;
   return await queryOne<ChartLayoutRow>(
-    "SELECT id, user_id, symbol, interval, state_json, updated_at FROM chart_layouts WHERE id = ? AND user_id = ?",
+    `SELECT ${LAYOUT_COLUMNS} FROM chart_layouts WHERE id = ? AND user_id = ?`,
     [id, userId],
   );
 }
@@ -74,18 +79,23 @@ export async function getChartLayoutById(
 /** All layouts for a user, newest first (agent/MCP listing). */
 export async function listChartLayouts(userId: number): Promise<ChartLayoutRow[]> {
   return query<ChartLayoutRow>(
-    "SELECT id, user_id, symbol, interval, state_json, updated_at FROM chart_layouts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20",
+    `SELECT ${LAYOUT_COLUMNS} FROM chart_layouts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20`,
     [userId],
   );
 }
 
-/** The user's primary layout — created on first visit. */
+/**
+ * The user's most recently used layout — created on first visit. With one
+ * chart per conversation this is whichever board the operator touched last
+ * (a chat's chart or the legacy per-user one), which is what MCP callers
+ * that name no layout mean by "the chart".
+ */
 export async function getOrCreateChartLayout(
   userId: number,
   symbol?: string,
 ): Promise<ChartLayoutRow> {
   const existing = await queryOne<ChartLayoutRow>(
-    "SELECT id, user_id, symbol, interval, state_json FROM chart_layouts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+    `SELECT ${LAYOUT_COLUMNS} FROM chart_layouts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`,
     [userId],
   );
   if (existing) return existing;
@@ -95,7 +105,49 @@ export async function getOrCreateChartLayout(
     "INSERT INTO chart_layouts (id, user_id, symbol) VALUES (?, ?, ?)",
     [id, userId, sym],
   );
-  return { id, user_id: userId, symbol: sym, interval: "15m", state_json: null };
+  return { id, user_id: userId, symbol: sym, interval: "15m", state_json: null, chat_id: null };
+}
+
+/** The layout bound to one conversation, or null when it has none yet. */
+export async function getChatChartLayout(
+  userId: number,
+  chatId: string,
+): Promise<ChartLayoutRow | null> {
+  if (!chatId) return null;
+  return await queryOne<ChartLayoutRow>(
+    `SELECT ${LAYOUT_COLUMNS} FROM chart_layouts WHERE user_id = ? AND chat_id = ?`,
+    [userId, chatId],
+  );
+}
+
+/**
+ * One chart per chat session. Every conversation gets its own board, born
+ * clean (no drawings, no P/L box) unless the caller seeds it — switching
+ * chats swaps the whole chart, drawings from one never leak into another.
+ * Idempotent under the (user_id, chat_id) unique index: two callers racing
+ * to create the same chat's board (the tab and the agent turn) converge on
+ * one row.
+ */
+export async function getOrCreateChatChartLayout(
+  userId: number,
+  chatId: string,
+  seed?: { symbol?: string; interval?: string; state?: unknown },
+): Promise<ChartLayoutRow> {
+  const existing = await getChatChartLayout(userId, chatId);
+  if (existing) return existing;
+  const id = newLayoutId();
+  const sym = (seed?.symbol ?? DATA_SYMBOL).toUpperCase();
+  const interval = seed?.interval ?? "15m";
+  const stateJson = seed?.state !== undefined ? JSON.stringify(seed.state) : null;
+  await execute(
+    `INSERT INTO chart_layouts (id, user_id, symbol, interval, state_json, chat_id)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id, chat_id) DO NOTHING`,
+    [id, userId, sym, interval, stateJson, chatId],
+  );
+  const created = await getChatChartLayout(userId, chatId);
+  if (created) return created;
+  return { id, user_id: userId, symbol: sym, interval, state_json: stateJson, chat_id: chatId };
 }
 
 export async function saveChartLayout(

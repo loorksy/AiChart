@@ -300,13 +300,49 @@ export interface WebTurnOutcome {
   aborted: boolean;
 }
 
+/** Session ids are conversation ids (UUID / `chat-…`); anything else is left alone. */
+const SESSION_LAYOUT_ID_RE = /^[A-Za-z0-9_:-]{8,64}$/;
+
+async function withSessionChartLayout(
+  userId: number,
+  sessionId: string,
+  body: WebChatBody,
+): Promise<WebChatBody> {
+  // Only a conversation the CLIENT named gets a board; a one-off id minted for
+  // a session-less request must not leave an orphan layout behind.
+  if (body.sessionId !== sessionId || !SESSION_LAYOUT_ID_RE.test(sessionId)) return body;
+  try {
+    const { getOrCreateChatChartLayout } = await import("@/lib/store");
+    const layout = await getOrCreateChatChartLayout(userId, sessionId, {
+      symbol: body.chartContext?.symbol,
+      interval: body.chartContext?.interval,
+    });
+    if (body.chartContext?.layoutId === layout.id) return body;
+    return {
+      ...body,
+      chartContext: { ...(body.chartContext ?? {}), layoutId: layout.id },
+    };
+  } catch (error) {
+    log.warn("agent.session_layout.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return body;
+  }
+}
+
 export async function runWebChatTurn(
   input: WebTurnInput,
   deps: WebTurnDeps = {},
 ): Promise<WebTurnOutcome> {
-  const { user, body, requestId, sessionId, signal } = input;
+  const { user, requestId, sessionId, signal } = input;
   const runAgent = deps.runAgent ?? runUnifiedChartAgent;
   const suggest = deps.suggest ?? generateAgentSuggestions;
+
+  // One chart per conversation: the turn draws on, captures from, and saves
+  // into THIS session's board — never the shared per-user layout the tab may
+  // still be pointing at while the chat id was being minted. Resolved here
+  // so the tab and the agent converge on the same row (unique per chat).
+  const body = await withSessionChartLayout(user.id, sessionId, input.body);
 
   const limits = await getLimits(user.id);
   const canExecute = limits.can_execute !== 0;

@@ -92,8 +92,14 @@ export function SmartChartWorkspace(props: {
   guest?: boolean;
   /** Symbol from the URL — takes precedence over last-used. */
   initialSymbol?: string;
-  /** Per-user chart layout id (TradingView-style /chart/<id> URL). */
+  /** Chart layout id (TradingView-style /chart/<id> URL). */
   layoutId?: string;
+  /**
+   * The conversation `layoutId`/`initialState` belong to, when the page was
+   * deep-linked into a chat. Every chat owns its own board; `undefined` means
+   * the bare home screen (clean chart, nothing saved).
+   */
+  initialChatId?: string | null;
   initialInterval?: string;
   /** Saved drawings/recommendation restored on load (no re-analysis). */
   initialState?: ChartLayoutState | null;
@@ -117,7 +123,8 @@ function SmartChartWorkspaceInner({
   agentReady = true,
   guest = false,
   initialSymbol,
-  layoutId,
+  layoutId: layoutIdProp,
+  initialChatId,
   initialInterval,
   initialState,
   capture = false,
@@ -128,8 +135,10 @@ function SmartChartWorkspaceInner({
   guest?: boolean;
   /** Symbol from the URL — takes precedence over last-used. */
   initialSymbol?: string;
-  /** Per-user chart layout id (TradingView-style /chart/<id> URL). */
+  /** Chart layout id (TradingView-style /chart/<id> URL). */
   layoutId?: string;
+  /** Conversation the initial layout belongs to (deep link); see wrapper doc. */
+  initialChatId?: string | null;
   initialInterval?: string;
   /** Saved drawings/recommendation restored on load (no re-analysis). */
   initialState?: ChartLayoutState | null;
@@ -200,6 +209,21 @@ function SmartChartWorkspaceInner({
   // on, which rewrote the address to /workspace mid-load — so the screenshot
   // was of the workspace at the SAVED timeframe, not the requested chart.
   const chatEnabled = !guest && !capture;
+
+  /**
+   * One chart per conversation. In the signed-in workspace the board on
+   * screen is the ACTIVE CHAT's layout: switching chats swaps the whole chart
+   * (drawings, P/L box, indicators), and the bare home screen — not a
+   * conversation — shows a clean chart that is neither saved nor polled.
+   * Guests and headless captures keep the layout the page named.
+   */
+  const [chatBoard, setChatBoard] = useState<{ chatId: string; layoutId: string } | null>(
+    () =>
+      chatEnabled && initialChatId && layoutIdProp
+        ? { chatId: initialChatId, layoutId: layoutIdProp }
+        : null,
+  );
+  const layoutId = chatEnabled ? chatBoard?.layoutId : layoutIdProp;
 
   const { locale, t, dir } = useLocale();
   const { resolved: chartTheme } = useTheme();
@@ -784,6 +808,130 @@ function SmartChartWorkspaceInner({
     setRecommendation,
   });
 
+  // Board switching. `adoptChatBoard` resolves (creating on first use) the
+  // layout owned by a chat, then either hydrates it onto the chart (a real
+  // conversation switch) or carries the current board into it (a chat minted
+  // for a send from the home screen — whatever was drawn there belongs to
+  // the conversation it started). One in-flight resolution per chat id: the
+  // send path awaits it so live-capture polling is already on the new layout
+  // before the agent asks for a screenshot.
+  const symbolRef = useRef(symbol);
+  const intervalRef = useRef(interval);
+  const chatBoardRef = useRef(chatBoard);
+  useEffect(() => {
+    symbolRef.current = symbol;
+    intervalRef.current = interval;
+    chatBoardRef.current = chatBoard;
+  }, [symbol, interval, chatBoard]);
+  const boardInFlightRef = useRef<{ chatId: string; promise: Promise<void> } | null>(null);
+
+  const adoptChatBoard = useCallback(
+    (chatId: string, mode: "switch" | "mint"): Promise<void> => {
+      if (chatBoardRef.current?.chatId === chatId) return Promise.resolve();
+      if (boardInFlightRef.current?.chatId === chatId) return boardInFlightRef.current.promise;
+      const run = async () => {
+        try {
+          const qs = new URLSearchParams({
+            chat: chatId,
+            symbol: symbolRef.current,
+            interval: intervalRef.current,
+          });
+          const res = await fetchWithTimeout(`/api/chart/layout?${qs.toString()}`, {
+            cache: "no-store",
+            timeoutMs: 8_000,
+          });
+          if (!res.ok) return;
+          const d = (await res.json()) as {
+            id: string;
+            symbol?: string;
+            interval?: string;
+            updated_at?: string | null;
+            state?: ChartLayoutState | null;
+          };
+          // Superseded by a later switch while this one was resolving.
+          if (boardInFlightRef.current?.chatId !== chatId) return;
+          layoutCursorRef.current = d.updated_at ?? null;
+          setChatBoard({ chatId, layoutId: d.id });
+          if (mode === "mint") {
+            const snap = layoutSnapshotRef.current;
+            void persistLayoutNow({
+              layoutId: d.id,
+              symbol: symbolRef.current,
+              interval: intervalRef.current,
+              state: {
+                drawings: snap.drawings,
+                overlays: snap.overlays,
+                drawingsCleared: snap.drawingsCleared === true,
+                studies: snap.studies,
+                recommendation: snap.recommendation,
+                targets: snap.targets,
+                liveReasoningLog: snap.liveReasoningLog,
+                dataSource: snap.dataSource,
+              },
+            }).then((saved) => {
+              if (saved?.updated_at) layoutCursorRef.current = saved.updated_at;
+            });
+            return;
+          }
+          const state: ChartHydrateSnapshot = d.state ?? {
+            drawings: [],
+            overlays: [],
+            studies: [],
+            recommendation: null,
+            targets: [],
+            drawingsCleared: false,
+          };
+          const nextSymbol = d.symbol ? normalizeSymbolCase(d.symbol) : null;
+          if (d.interval && d.interval !== intervalRef.current) {
+            setChartInterval(normalizeInterval(d.interval));
+          }
+          if (nextSymbol && nextSymbol !== symbolRef.current) {
+            // A symbol change clears the layers after commit (useChartAnalysis);
+            // hydrate once that has happened, or the board would be wiped.
+            setSymbol(nextSymbol);
+            setTimeout(() => hydrateFromSnapshot(state), 0);
+          } else {
+            hydrateFromSnapshot(state);
+          }
+        } catch {
+          /* transient — the switch effect retries on the next chat change */
+        } finally {
+          if (boardInFlightRef.current?.chatId === chatId) boardInFlightRef.current = null;
+        }
+      };
+      const promise = run();
+      boardInFlightRef.current = { chatId, promise };
+      return promise;
+    },
+    [hydrateFromSnapshot],
+  );
+
+  useEffect(() => {
+    if (!chatEnabled || !chat.ready) return;
+    const id = chat.activeChatId;
+    if (!id) {
+      // Home is not a conversation: leave the previous chat's board behind and
+      // show a clean chart. Nothing is saved or polled until a chat exists.
+      if (chatBoard || boardInFlightRef.current) {
+        boardInFlightRef.current = null;
+        layoutCursorRef.current = null;
+        setChatBoard(null);
+        clearLayers();
+      }
+      return;
+    }
+    if (chatBoard?.chatId === id) return;
+    // panelKey moves only on a genuine switch (selectChat / deep link); a chat
+    // minted by ensureChat for an in-flight send leaves it on "home".
+    void adoptChatBoard(id, chat.panelKey === id ? "switch" : "mint");
+  }, [chatEnabled, chat.ready, chat.activeChatId, chat.panelKey, chatBoard, adoptChatBoard, clearLayers]);
+
+  const ensureChatWithBoard = useCallback(async (): Promise<string | null> => {
+    const id = await chat.ensureChat();
+    if (id) await adoptChatBoard(id, "mint");
+    return id;
+  }, [chat.ensureChat, adoptChatBoard]);
+
   const didInitialUrlSync = useRef(false);
   const lastUrlChatId = useRef<string | null | undefined>(undefined);
 
@@ -1113,7 +1261,7 @@ function SmartChartWorkspaceInner({
               onIntervalChange={handleIntervalChange}
               onResult={handleAgentResult}
               onPersistMessage={chat.persistMessage}
-              ensureChatId={chat.ensureChat}
+              ensureChatId={ensureChatWithBoard}
             />
           </div>
         )}

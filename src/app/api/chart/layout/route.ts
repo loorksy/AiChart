@@ -4,19 +4,39 @@ import { requireUser, handleError } from "@/lib/api";
 import {
   getChartLayoutById,
   getOrCreateChartLayout,
+  getOrCreateChatChartLayout,
   saveChartLayout,
 } from "@/lib/store";
 import { initDb } from "@/lib/db";
 
-/** GET: the user's layout (by ?id= or their primary one, created on demand). */
+const CHAT_ID_RE = /^[A-Za-z0-9_:-]{8,64}$/;
+
+function seedParam(raw: string | null, re: RegExp): string | undefined {
+  return raw && re.test(raw) ? raw : undefined;
+}
+
+/**
+ * GET: a layout by `?id=`, the layout of one conversation by `?chat=<chatId>`
+ * (created clean on first use — every chat owns its own chart), or the user's
+ * most recent one.
+ */
 export async function GET(req: NextRequest) {
   try {
     const user = await requireUser();
     await initDb();
     const id = req.nextUrl.searchParams.get("id");
+    const chat = req.nextUrl.searchParams.get("chat");
+    if (chat != null && !CHAT_ID_RE.test(chat)) {
+      return NextResponse.json({ error: "layout not found" }, { status: 404 });
+    }
     const layout = id
       ? await getChartLayoutById(id, user.id)
-      : await getOrCreateChartLayout(user.id);
+      : chat
+        ? await getOrCreateChatChartLayout(user.id, chat, {
+            symbol: seedParam(req.nextUrl.searchParams.get("symbol"), /^[A-Za-z0-9._-]{3,20}$/),
+            interval: seedParam(req.nextUrl.searchParams.get("interval"), /^[A-Za-z0-9]{2,4}$/),
+          })
+        : await getOrCreateChartLayout(user.id);
     if (!layout) {
       return NextResponse.json({ error: "layout not found" }, { status: 404 });
     }
@@ -28,6 +48,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({
       id: layout.id,
+      chat_id: layout.chat_id ?? null,
       symbol: layout.symbol,
       interval: layout.interval,
       updated_at: layout.updated_at ?? null,

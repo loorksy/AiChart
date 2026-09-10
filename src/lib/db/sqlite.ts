@@ -1973,6 +1973,17 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_chart_layouts_user ON chart_layouts(user_id);
   `);
+  // One chart per chat session: a layout bound to a conversation id. Rows with
+  // chat_id NULL are the legacy per-user "primary" board (MCP default).
+  const layoutCols = db
+    .prepare("PRAGMA table_info(chart_layouts)")
+    .all() as { name: string }[];
+  if (!layoutCols.some((c) => c.name === "chat_id")) {
+    db.exec("ALTER TABLE chart_layouts ADD COLUMN chat_id TEXT");
+  }
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_chart_layouts_user_chat ON chart_layouts(user_id, chat_id)",
+  );
 
 
   db.exec(`
