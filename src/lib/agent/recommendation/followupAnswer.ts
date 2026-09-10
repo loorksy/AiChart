@@ -48,6 +48,8 @@ export async function composeRecommendationStatusAnswer(input: {
   tradingSession?: string;
   /** The operator explicitly asked for a new analysis / recommendation. */
   requestedNewPlan?: boolean;
+  /** Localized one-recommendation notice (i18n `orch.one_rec_per_session`) for the model-less fallback. */
+  onePlanNotice?: string;
   marketRead?: FollowupMarketRead;
 }): Promise<string> {
   const task = input.requestedNewPlan
@@ -65,9 +67,7 @@ export async function composeRecommendationStatusAnswer(input: {
       ...(input.tradingSession ? { tradingSession: input.tradingSession } : {}),
     },
     fallback:
-      (input.requestedNewPlan
-        ? "توصية واحدة لكل محادثة: التوصية الحالية ما زالت قائمة ولن أُصدر توصية ثانية حتى تنتهي.\n"
-        : "") +
+      (input.requestedNewPlan && input.onePlanNotice ? `${input.onePlanNotice}\n` : "") +
       `حالة التوصية ${input.recommendation.direction} على ${input.recommendation.symbol}: ${input.evaluation.status}.\n` +
       `${input.evaluation.reason}\nالسعر الحالي: ${input.evaluation.priceNow}. الدخول: ${input.recommendation.entry}، الوقف: ${input.recommendation.stopLoss}، الأهداف: ${input.recommendation.targets.join(", ")}.`,
   });

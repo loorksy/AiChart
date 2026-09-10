@@ -2930,6 +2930,10 @@ async function trackStoredRecommendation(input: {
     // overlap…) — the reply may cite it when it explains behaviour at levels.
     tradingSession: tradingSessionPromptBlock(getTradingSessionInfo()),
     requestedNewPlan: input.requestedNewPlan === true,
+    onePlanNotice: t(locale, "orch.one_rec_per_session", {
+      direction: t(locale, rec.direction === "buy" ? "decision.buy" : "decision.sell"),
+      entry: String(rec.entry),
+    }),
     // The agent's read of the market right now — deterministic detectors on
     // the fresh candles, so the opinion is grounded without a second full
     // pipeline run (one recommendation per conversation; opinions are cheap).
