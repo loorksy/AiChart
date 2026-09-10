@@ -27,7 +27,9 @@ export function useRecommendationLifecycle(input: {
 }): void {
   const { enabled, chatId, recommendation, setRecommendation } = input;
   const recRef = useRef(recommendation);
-  recRef.current = recommendation;
+  useEffect(() => {
+    recRef.current = recommendation;
+  }, [recommendation]);
 
   const live =
     enabled &&
