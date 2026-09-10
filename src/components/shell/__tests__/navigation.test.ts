@@ -218,6 +218,53 @@ test("mobile drawer header folds the sidebar; it is not an X-close", () => {
   assert.doesNotMatch(shell, /<X[\s/>]/);
 });
 
+test("PanelRight fold icon is mobile-drawer only; desktop rail stays PanelLeft", () => {
+  const shell = read("components/shell/AppConsoleShell.tsx");
+  const drawerAt = shell.indexOf('data-testid="canonical-mobile-drawer"');
+  const foldAt = shell.indexOf('data-testid="sidebar-collapse-mobile"');
+  const panelRightAt = shell.indexOf("<PanelRight");
+  assert.ok(drawerAt > 0, "mobile drawer");
+  assert.ok(foldAt > drawerAt, "fold control lives inside the mobile drawer");
+  assert.ok(panelRightAt > foldAt, "PanelRight is the mobile fold glyph");
+  assert.equal((shell.match(/<PanelRight\b/g) ?? []).length, 1);
+
+  // Below `lg` the overlay drawer is the nav; from `lg` the docked rail takes over.
+  // `lg:hidden` is on the drawer wrapper's className, just before the test id.
+  const drawerOpen = shell.slice(Math.max(0, drawerAt - 80), drawerAt + 80);
+  assert.match(drawerOpen, /lg:hidden/);
+  assert.match(
+    shell.slice(
+      shell.indexOf('data-testid="canonical-desktop-sidebar"'),
+      shell.indexOf('data-testid="canonical-desktop-sidebar"') + 280,
+    ),
+    /hidden[\s\S]*lg:flex/,
+  );
+
+  const desktopCollapseAt = shell.indexOf('data-testid="sidebar-collapse"');
+  assert.ok(desktopCollapseAt > 0);
+  assert.ok(desktopCollapseAt < drawerAt, "desktop collapse is not in the drawer");
+  const desktopCollapse = shell.slice(desktopCollapseAt, desktopCollapseAt + 420);
+  assert.match(desktopCollapse, /<PanelLeftClose /);
+  assert.match(desktopCollapse, /lg:flex/);
+  assert.doesNotMatch(desktopCollapse, /<PanelRight\b/);
+
+  const desktopExpandAt = shell.indexOf('data-testid="sidebar-expand-brand"');
+  assert.ok(desktopExpandAt > 0 && desktopExpandAt < drawerAt);
+  const desktopExpand = shell.slice(desktopExpandAt, desktopExpandAt + 720);
+  assert.match(desktopExpand, /<PanelLeft\b/);
+  assert.doesNotMatch(desktopExpand, /<PanelRight\b/);
+
+  const topbar = read("components/shell/ConsoleTopBar.tsx");
+  const trigger = topbar.slice(
+    topbar.indexOf('data-testid="mobile-menu-trigger"'),
+    topbar.indexOf('data-testid="mobile-menu-trigger"') + 420,
+  );
+  assert.match(trigger, /<PanelLeft /);
+  assert.match(trigger, /lg:hidden/);
+  assert.doesNotMatch(trigger, /<PanelRight\b/);
+  assert.doesNotMatch(topbar, /<PanelRight\b/);
+});
+
 
 test("docked composer keeps a fade wall and live thread padding", () => {
   const css = read("app/globals.css");
