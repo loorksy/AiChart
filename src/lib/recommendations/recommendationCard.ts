@@ -10,6 +10,7 @@
  * app locale so an Arabic report shares in Arabic.
  */
 import { BRAND_DOMAIN } from "@/lib/brand";
+import { DATA_SYMBOL } from "@/lib/gold";
 import { t, dirForLocale, type AppLocale, type Direction } from "@/lib/i18n";
 import { computeTradeMetricsSummary, displayROf } from "./tradeMetricsSummary";
 import { smartTipKey } from "./smartTip";
@@ -274,7 +275,7 @@ export function buildRecommendationCardModel(
   const entryHigh = finite(rec.entryHigh);
 
   return {
-    symbol: rec.symbol || "XAUUSD",
+    symbol: rec.symbol || DATA_SYMBOL,
     interval: rec.interval || "",
     direction: rec.direction,
     side,

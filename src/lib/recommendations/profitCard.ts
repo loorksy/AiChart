@@ -9,6 +9,7 @@
  * Modal chrome (download / share / sheet title) stays in i18n.
  */
 import { BRAND_DOMAIN, BRAND_URL } from "@/lib/brand";
+import { DATA_SYMBOL } from "@/lib/gold";
 import type { AppLocale } from "@/lib/i18n";
 import { bankedTargetPriceOf } from "./tradeMetrics";
 import { computeTradeMetricsSummary, displayROf } from "./tradeMetricsSummary";
@@ -271,7 +272,7 @@ export function buildProfitCardModel(
   const dateMs = resolveDateMs(rec, summary.terminal, now);
 
   return {
-    symbol: rec.symbol || "XAUUSD",
+    symbol: rec.symbol || DATA_SYMBOL,
     side,
     kind: summary.terminal ? "realized" : "unrealized",
     rMultiple,
