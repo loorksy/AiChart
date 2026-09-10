@@ -19,7 +19,7 @@ import type {
 import "@/styles/klinecharts-pro-aichart.css";
 import { createAiChartDatafeed } from "@/lib/chart/tv/tvDatafeed";
 import type { TvLatestCandle } from "@/lib/chart/tv/tvDatafeed";
-import { TvDrawingManager } from "@/lib/chart/tv/tvDrawingAdapter";
+import { TvDrawingManager, forecastHorizonSec } from "@/lib/chart/tv/tvDrawingAdapter";
 import { TvStudyManager } from "@/lib/chart/tv/tvStudyAdapter";
 import type { ChartStudy } from "@/lib/chart/studies";
 import {
@@ -370,10 +370,21 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             ? opts.shots
             : [{ label: "context", candles: CHART_CAPTURE_CANDLES }];
         const barSec = Math.max(1, barDurationSec(opts?.interval ?? interval));
+        // A capture that includes the agent's drawings must include the part
+        // of them that lives in the future: the scenario route ends bars
+        // ahead of the last candle, and a frame cut at the live bar shows the
+        // model a chart on which its own forecast is missing.
+        const horizonSec = includeDrawings
+          ? forecastHorizonSec(drawings ?? [], barSec)
+          : null;
         const images: { label: string; pngBase64: string }[] = [];
         for (const shot of shots) {
-          const rangeTo = Math.floor(Date.now() / 1000) + barSec;
-          const rangeFrom = rangeTo - Math.max(10, shot.candles) * barSec;
+          const nowSec = Math.floor(Date.now() / 1000);
+          const rangeTo =
+            horizonSec != null && horizonSec > nowSec
+              ? Math.min(horizonSec + 2 * barSec, nowSec + Math.max(10, shot.candles) * barSec)
+              : nowSec + barSec;
+          const rangeFrom = nowSec + barSec - Math.max(10, shot.candles) * barSec;
           try {
             await chart.setVisibleRange({ from: rangeFrom, to: rangeTo });
           } catch {
@@ -791,6 +802,35 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   };
   const pendingReapplyRef = useRef(false);
 
+  // Once per NEW forecast: make sure the future part of the route is on
+  // screen. The scenario ends bars ahead of the last candle; with the pane's
+  // default right margin most of it sat off-screen and the operator saw no
+  // scenario at all. Only widens (never shrinks) the visible range, and only
+  // when the horizon moved — a poll re-delivering the same route, or the
+  // user zooming afterwards, is left alone.
+  const revealedHorizonRef = useRef<number | null>(null);
+  const revealForecast = useCallback((list: ChartDrawing[], ivl: string) => {
+    const w = widgetRef.current;
+    if (!w) return;
+    const barSec = Math.max(60, barDurationSec(ivl));
+    const horizon = forecastHorizonSec(list, barSec);
+    if (horizon == null) {
+      revealedHorizonRef.current = null;
+      return;
+    }
+    if (revealedHorizonRef.current === horizon) return;
+    revealedHorizonRef.current = horizon;
+    try {
+      const chart = w.activeChart();
+      const range = chart.getVisibleRange();
+      const wantedTo = horizon + 3 * barSec;
+      if (!range || !Number.isFinite(range.from) || range.to >= wantedTo) return;
+      void chart.setVisibleRange({ from: range.from, to: wantedTo });
+    } catch {
+      /* widget mid-teardown — the next apply gets another chance */
+    }
+  }, []);
+
   const applyDrawings = useCallback((opts?: { force?: boolean }) => {
     const mgr = managerRef.current;
     if (!mgr || !readyRef.current) return;
@@ -813,7 +853,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       },
       { ...opts, paintTradeOverlay: payload.opts.paintTradeOverlay },
     );
-  }, []);
+    revealForecast(payload.drawings, a.interval);
+  }, [revealForecast]);
   applyDrawingsRef.current = applyDrawings;
 
   // Content changed (new analysis / cleared) → redraw now.

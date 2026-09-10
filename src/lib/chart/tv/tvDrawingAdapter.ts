@@ -162,6 +162,27 @@ function pointsOf(d: ChartDrawing, barSec: number): PricedPointLike[] {
     }));
 }
 
+/**
+ * Furthest point in time (unix seconds) any forecast path reaches, or null
+ * when no drawing projects into the future. The chart uses it to keep the
+ * route on screen: a scenario drawn two hours ahead of a 5m last bar is
+ * invisible on a pane whose right margin is a handful of bars — which is how
+ * a fully-drawn scenario was reported as "not drawn".
+ */
+export function forecastHorizonSec(
+  drawings: ReadonlyArray<ChartDrawing>,
+  barSec: number,
+): number | null {
+  let horizon: number | null = null;
+  for (const d of drawings) {
+    if (d.type !== "forecast_path") continue;
+    for (const p of pointsOf(d, Math.max(60, barSec))) {
+      if (horizon == null || p.time > horizon) horizon = p.time;
+    }
+  }
+  return horizon;
+}
+
 const LINE_STYLE: Record<string, number> = { solid: 0, dotted: 1, dashed: 2 };
 
 const SINGLE_HLINE = new Set<string>(["price_line", "hline", "baseline", "marker"]);
@@ -1215,7 +1236,26 @@ export class TvDrawingManager {
       // Native TV forecast projection from last anchor into the future,
       // plus a dashed path when the AI supplied a multi-point trajectory.
       if (pts.length > 2) {
-        this.multi(pts.slice(0, 8), "path", { ...ov, linestyle: 2 }, label);
+        const shown = pts.slice(0, 8);
+        this.multi(shown, "path", { ...ov, linestyle: 2 }, label);
+        // The turning points are the analysis: where the route reverses
+        // into profit, where the retest lands, where the idea dies. A bare
+        // zig-zag says none of that, so each labelled waypoint gets a note.
+        const labels = Array.isArray(d.meta?.waypointLabels)
+          ? (d.meta.waypointLabels as unknown[])
+          : [];
+        let placed = 0;
+        for (let i = 1; i < shown.length && placed < 5; i++) {
+          const text = typeof labels[i] === "string" ? (labels[i] as string).trim() : "";
+          if (!text) continue;
+          this.one(shown[i]!, "text", text, {
+            color,
+            fontsize: 10,
+            backgroundColor: "rgba(10,14,23,0.66)",
+            drawBorder: false,
+          });
+          placed += 1;
+        }
       } else if (pts.length === 2) {
         this.multi(pts, "forecast", ov);
       }

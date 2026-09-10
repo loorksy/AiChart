@@ -116,7 +116,7 @@ export async function runDrawingAgent(
   // forming/completed state — already strength-gated and bounded by the plan.
   raw.push(...(plan.selectedGeometry ?? []));
 
-  // Scenario paths (valid setups only) — POSSIBLE routes, never a guarantee.
+  // Scenario paths (trade setups AND plan-less reads) — POSSIBLE routes, never a guarantee.
   // Primary: the expected zig-zag to the final target. Alternative: the
   // invalidation route to the stop, drawn fainter so the two read as the
   // analysis's main and runner-up scenarios.

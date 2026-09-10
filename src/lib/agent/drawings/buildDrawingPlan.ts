@@ -457,7 +457,23 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
 
   const geometryDrawings = selectGeometryDrawings(input.geometry, threshold);
 
-  if (!levels.length && !zones.length && !annotations.length && !geometryDrawings.length) {
+  // The expected route is drawn even when there is no trade to take: "where
+  // do I think price goes from here, and where would that read be wrong" is
+  // the answer the operator asked for, and a refused or spent plan still has
+  // one. No plan → no entry/stop/target to pin the route to, so the model's
+  // own waypoints end the path.
+  const forecastPath =
+    buildScenarioPath(input.market, input.scenarioPaths?.primary, null) ?? undefined;
+  const forecastPathAlt =
+    buildScenarioPath(input.market, input.scenarioPaths?.alternative, null) ?? undefined;
+
+  if (
+    !levels.length &&
+    !zones.length &&
+    !annotations.length &&
+    !geometryDrawings.length &&
+    !forecastPath
+  ) {
     return noDrawPlan(
       "قرار انتظار دون مستويات أو مناطق قوية موثوقة — الرسم الآن سيكون مضللاً.",
     );
@@ -484,6 +500,8 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
     selectedZones: cappedZones,
     selectedAnnotations: cappedAnnotations,
     selectedGeometry: geometryDrawings,
+    forecastPath,
+    forecastPathAlt,
   };
 }
 
@@ -698,17 +716,27 @@ const SCENARIO_BAND_SLACK = 1.5;
 export function buildScenarioPath(
   market: AgentMarketContext,
   waypoints: ScenarioWaypointInput[] | null | undefined,
-  plan: { entry: number; stop: number; endAt: number },
+  /**
+   * The trade the route belongs to. Null for a market-read scenario with no
+   * plan (a wait / refused trade): the band is then the waypoints' own range
+   * around the current price and the tail is left where the model put it.
+   */
+  plan: { entry: number; stop: number; endAt: number } | null,
 ): Array<{ time: number; price: number; label?: string }> | null {
   if (!waypoints?.length) return null;
   const candles = market.currentTfCandles;
   const lastTime = candles.at(-1)?.time ?? Date.now();
-  const current = market.currentPrice ?? plan.entry;
+  const current = market.currentPrice ?? plan?.entry ?? candles.at(-1)?.close ?? 0;
+  if (!(current > 0)) return null;
   const step = estimateBarMs(candles);
 
-  const lo = Math.min(plan.entry, plan.stop, plan.endAt, current);
-  const hi = Math.max(plan.entry, plan.stop, plan.endAt, current);
-  const band = Math.max(hi - lo, market.atr ?? 0, current * 0.001);
+  // With a plan the sane band is the plan's own span; without one it is a
+  // volatility window around the live price (a few swings of the timeframe).
+  const lo = plan ? Math.min(plan.entry, plan.stop, plan.endAt, current) : current;
+  const hi = plan ? Math.max(plan.entry, plan.stop, plan.endAt, current) : current;
+  const band = plan
+    ? Math.max(hi - lo, market.atr ?? 0, current * 0.001)
+    : Math.max((market.atr ?? 0) * 6, current * 0.002);
   const minPrice = lo - band * SCENARIO_BAND_SLACK;
   const maxPrice = hi + band * SCENARIO_BAND_SLACK;
 
@@ -738,13 +766,16 @@ export function buildScenarioPath(
   if (points.length < 2) return null;
 
   // The route ends where the plan ends: replace a last point that already
-  // sits at the end level, otherwise add the end level one leg later.
-  const tail = points[points.length - 1]!;
-  const tol = Math.max(market.atr ?? 0, current * 0.0005) * 0.5;
-  if (Math.abs(tail.price - plan.endAt) <= tol) {
-    tail.price = plan.endAt;
-  } else {
-    points.push({ time: tail.time + step, price: plan.endAt });
+  // sits at the end level, otherwise add the end level one leg later. A
+  // plan-less read keeps the model's own ending.
+  if (plan) {
+    const tail = points[points.length - 1]!;
+    const tol = Math.max(market.atr ?? 0, current * 0.0005) * 0.5;
+    if (Math.abs(tail.price - plan.endAt) <= tol) {
+      tail.price = plan.endAt;
+    } else {
+      points.push({ time: tail.time + step, price: plan.endAt });
+    }
   }
   return [{ time: lastTime, price: current }, ...points.slice(0, 7)];
 }

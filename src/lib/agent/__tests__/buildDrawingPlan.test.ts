@@ -135,6 +135,50 @@ describe("buildDrawingPlan", () => {
     assert.equal(plan.selectedZones.length, 0);
   });
 
+  it("WAIT still draws the model's expected route when it gave one", () => {
+    // A refused or spent trade is still a market read: the operator asked
+    // where price goes from here and where that read is wrong.
+    const plan = buildDrawingPlan(
+      baseInput({
+        scenarioPaths: {
+          primary: [
+            { barsAhead: 3, price: 101.2, label: "ارتداد" },
+            { barsAhead: 8, price: 99.4, label: "الهدف" },
+          ],
+          alternative: [{ barsAhead: 4, price: 102.1, label: "إبطال" }, { barsAhead: 6, price: 103 }],
+        },
+      }),
+    );
+    assert.equal(plan.shouldDraw, true);
+    assert.equal(plan.drawingIntent, "wait_zones");
+    assert.ok(plan.forecastPath && plan.forecastPath.length === 3);
+    // Anchored at the live price on the last bar, then the model's own tail —
+    // nothing pinned to an entry/stop/target that does not exist.
+    assert.equal(plan.forecastPath![0]!.price, 100);
+    assert.equal(plan.forecastPath![2]!.price, 99.4);
+    assert.equal(plan.forecastPath![1]!.label, "ارتداد");
+    assert.ok(plan.forecastPathAlt && plan.forecastPathAlt.length === 3);
+    assert.equal(plan.forecastPathAlt![2]!.price, 103);
+  });
+
+  it("WAIT drops waypoints far outside the volatility window around live", () => {
+    const plan = buildDrawingPlan(
+      baseInput({
+        scenarioPaths: {
+          primary: [
+            { barsAhead: 2, price: 100.5 },
+            { barsAhead: 5, price: 250 },
+            { barsAhead: 9, price: 99 },
+          ],
+          alternative: [],
+        },
+      }),
+    );
+    assert.ok(plan.forecastPath);
+    assert.ok(plan.forecastPath!.every((p) => p.price < 120));
+    assert.equal(plan.forecastPath!.length, 3);
+  });
+
   it("WAIT does not draw a weak fractal level", () => {
     // A lone level far from price with zero confluence must score < 75.
     const plan = buildDrawingPlan(
