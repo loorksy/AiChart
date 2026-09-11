@@ -1459,6 +1459,7 @@ export const en = {
   "rec.detail.validity": "Validity",
   "rec.detail.expires": "Expires",
   "rec.detail.max_candles": "{n} candles max",
+  "rec.detail.no_deadline": "No time deadline — closes only when the target is hit or the stop is hit.",
   "rec.detail.invalidation": "Invalidation rule",
   "rec.detail.alternative": "Alternative scenario",
   "rec.detail.evidence": "Evidence",

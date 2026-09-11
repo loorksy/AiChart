@@ -157,15 +157,6 @@ export function RecommendationFullReport({ rec }: { rec: FullReportRecommendatio
       : rec.entry
         ? String(rec.entry)
         : null;
-  const expires = rec.expiresAt
-    ? new Date(rec.expiresAt).toLocaleString(locale === "ar" ? "ar" : "en", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
-
   return (
     <div
       dir={dir}
@@ -237,12 +228,7 @@ export function RecommendationFullReport({ rec }: { rec: FullReportRecommendatio
         {rec.activationCondition ? (
           <Field label={t("rec.detail.activation")}>{rec.activationCondition}</Field>
         ) : null}
-        <Field label={t("rec.detail.validity")}>
-          {expires ? `${t("rec.detail.expires")}: ${expires}` : "—"}
-          {rec.validityCandles != null
-            ? ` · ${t("rec.detail.max_candles", { n: String(rec.validityCandles) })}`
-            : ""}
-        </Field>
+        <Field label={t("rec.detail.validity")}>{t("rec.detail.no_deadline")}</Field>
         {rec.invalidationRule ? (
           <Field label={t("rec.detail.invalidation")}>{rec.invalidationRule}</Field>
         ) : null}

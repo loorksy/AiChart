@@ -1440,6 +1440,7 @@ export const ar: Record<TranslationKey, string> = {
   "rec.detail.validity": "الصلاحية",
   "rec.detail.expires": "ينتهي",
   "rec.detail.max_candles": "{n} شموع كحد أقصى",
+  "rec.detail.no_deadline": "لا مهلة زمنية — تُغلق فقط بتحقق الهدف أو ضرب وقف الخسارة.",
   "rec.detail.invalidation": "قاعدة الإلغاء",
   "rec.detail.alternative": "السيناريو البديل",
   "rec.detail.evidence": "الأدلة",
