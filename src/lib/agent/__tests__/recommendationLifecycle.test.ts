@@ -238,12 +238,15 @@ describe("evaluateRecommendationStatus", () => {
     assert.equal(status.status, "sl_hit");
   });
 
-  it("expires a recommendation past its expiry deadline", () => {
+  it("never expires a recommendation by the clock — a stale untouched plan just keeps waiting", () => {
+    // Operator doctrine: "لا يكون هناك مهلة انتهاء للصفقة" — no deadline on
+    // the trade. A plan that has not filled yet stays pending until price
+    // itself resolves it (fill, SL, or a missed-TP1 run), never a wall clock.
     const status = evaluateRecommendationStatus({
       recommendation: rec({ expiresAt: Date.now() - 1000 }),
       market: market([candle(0, 101, 101.2, 100.5, 101)]),
     });
-    assert.equal(status.status, "expired");
+    assert.equal(status.status, "pending_entry");
   });
 
   it("gold screenshot: sell TP1 4591.48, live low 4596.15 is a zone hit via evaluateRecommendation", () => {

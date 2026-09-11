@@ -191,7 +191,6 @@ function slReached(
 
 export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
   const r = input.recommendation;
-  const now = input.now ?? Date.now();
 
   const base: EvaluateResult = {
     status: r.status,
@@ -308,21 +307,18 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     activationEvidence,
   });
 
-  let elapsedCandles = 0;
   for (const candle of candles) {
-    elapsedCandles += 1;
     if (!triggered) {
-      // Candle-count validity (plan §7 B.7): an untriggered plan is only
-      // meaningful for the number of candles the contract gave it. Checked
-      // alongside wall-clock expiry, per candle so the expiry lands on the
-      // candle that overran the budget, not on whenever the sweep next runs.
-      // Once triggered, SL/TP govern — a live position does not "expire".
-      if (r.validityCandles != null && r.validityCandles > 0 && elapsedCandles > r.validityCandles) {
-        return {
-          ...finalize("expired", "expired"),
-          expiredAt: candle.time,
-        };
-      }
+      // No time or candle-count deadline on a plan (operator doctrine: no
+      // expiry deadline on the trade). A setup that has not filled yet stays
+      // open until price actually deals — its own entry, its own stop, or
+      // the move running to TP1 without a fill (`missedWithoutFill` below,
+      // which is a PRICE event, not a clock). This is also the fix for the
+      // 2026-09-10 incident: a wall-clock cutoff forced an already-closed
+      // (win_tp1) canonical row through a SECOND "expired" transition later,
+      // which the lifecycle state machine correctly refused as illegal
+      // (`closed -> expired`) and surfaced as an unhandled crash in chat.
+      //
       // A plan carrying a structured activation rule must have that rule
       // satisfied BEFORE its entry can fill. Without this gate a plan whose
       // condition demanded a close, a confirmed break, a retest or a rejection
@@ -455,16 +451,11 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     }
   }
 
-  // No terminal price event yet. Apply expiry.
-  if (now > r.expiresAt) {
-    if (highestTp >= 1) {
-      return finalize(STATUS_BY_TP[highestTp as 1 | 2 | 3], WIN_BY_TP[highestTp as 1 | 2 | 3]);
-    }
-    return {
-      ...finalize("expired", "expired"),
-      expiredAt: now,
-    };
-  }
+  // No terminal price event yet, and none is manufactured from the clock: a
+  // plan lives until its own entry/stop/target says otherwise (see the
+  // no-deadline note above the fill loop). `r.expiresAt` is still accepted on
+  // the input type and persisted for display, but nothing here reads it to
+  // end a plan.
 
   // Still active — reflect the current lifecycle state.
   const status: TrackedRecommendationStatus =

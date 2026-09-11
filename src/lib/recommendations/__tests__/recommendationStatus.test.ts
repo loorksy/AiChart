@@ -152,14 +152,43 @@ describe("evaluateRecommendation", () => {
     assert.equal(r.status, "sl_hit");
   });
 
-  it("expires an untriggered recommendation past its deadline", () => {
+  it("never expires a plan by the clock — a stale untouched entry just keeps waiting", () => {
+    // Operator doctrine: "لا يكون هناك مهلة انتهاء للصفقة" — no deadline on
+    // the trade. `expiresAt` long past and no price event at all: the plan
+    // stays pending, not "expired". Only real price action (its own entry,
+    // stop, target, or the move running to TP1 without a fill) ends a plan.
     const r = evaluateRecommendation({
       recommendation: rec({ expiresAt: T }),
       candles: [candle(1, 101, 101.5, 100.5, 101)],
-      now: T + MIN,
+      now: T + 365 * 24 * 60 * MIN,
     });
-    assert.equal(r.status, "expired");
-    assert.equal(r.outcome, "expired");
+    assert.equal(r.status, "pending_entry");
+    assert.equal(r.outcome, "pending");
+  });
+
+  it("never force-closes a TRIGGERED plan by the clock either — it keeps running toward TP2/SL", () => {
+    // The 2026-09-10 incident: a live XAUUSD sell had already filled and
+    // reached TP1, but was still short of TP2 and the stop when its 30-minute
+    // window elapsed. The old wall-clock fallback closed it there anyway —
+    // freezing the P/L box and, on the next status check, throwing when the
+    // already-closed canonical row was pushed through a second "expired"
+    // transition. There is no clock check left to do either of those things:
+    // TP1 alone is a PARTIAL milestone (status "tp1_hit"), not a terminal
+    // close — the outcome stays "pending" until SL or a further TP actually
+    // ends the trade, no matter how much wall-clock time has passed.
+    const r = evaluateRecommendation({
+      recommendation: rec({
+        entryType: "market",
+        status: "triggered",
+        triggeredAt: T,
+        expiresAt: T + MIN,
+      }),
+      candles: [candle(1, 100, 102.2, 99.9, 101.8)], // TP1 only — TP2/SL untouched
+      now: T + 365 * 24 * 60 * MIN,
+    });
+    assert.equal(r.status, "tp1_hit");
+    assert.equal(r.outcome, "pending");
+    assert.equal(r.tp2HitAt, undefined);
   });
 
   it("does not re-evaluate a terminal recommendation", () => {
@@ -174,35 +203,23 @@ describe("evaluateRecommendation", () => {
   });
 });
 
-describe("the weekend sweep, with creation-anchored expiry", () => {
+describe("the weekend sweep — no clock-driven expiry, anchored or not", () => {
   // Jan 1 2026 is a Thursday; Jan 3 12:00 UTC is a Saturday tick with the
-  // market closed and no new candles. The sweeps are deliberately UNCHANGED —
-  // the weekend fix lives at creation (recommendationClockAnchor), so these
-  // pin the division of labour: an anchored plan survives the weekend, a
-  // Friday-expired plan does not.
+  // market closed and no new candles. `recommendationClockAnchor` still
+  // anchors `expiresAt` at creation for display, but nothing here reads that
+  // field to end a plan — a weekend tick (or any tick) with no price event
+  // leaves the plan exactly where it was.
   const SATURDAY = Date.UTC(2026, 0, 3, 12, 0, 0);
 
-  it("does not expire a plan whose anchored deadline is beyond the weekend", () => {
-    // Created Friday, clock anchored at Monday's open + validity.
-    const mondayOpenPlusValidity = Date.UTC(2026, 0, 4, 23, 0, 0) + 3 * 60 * 60_000;
-    const r = evaluateRecommendation({
-      recommendation: rec({ expiresAt: mondayOpenPlusValidity }),
-      candles: [],
-      now: SATURDAY,
-    });
-    assert.equal(r.status, "pending_entry");
-    assert.equal(r.outcome, "pending");
-  });
-
-  it("still expires a plan whose clock genuinely ran out on Friday", () => {
+  it("a plan whose stored deadline already elapsed on Friday still stays pending on Saturday", () => {
     const fridayDeadline = Date.UTC(2026, 0, 2, 15, 0, 0);
     const r = evaluateRecommendation({
       recommendation: rec({ expiresAt: fridayDeadline }),
       candles: [],
       now: SATURDAY,
     });
-    assert.equal(r.status, "expired");
-    assert.equal(r.outcome, "expired");
+    assert.equal(r.status, "pending_entry");
+    assert.equal(r.outcome, "pending");
   });
 });
 

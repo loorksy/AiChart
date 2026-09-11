@@ -152,17 +152,19 @@ describe("expiry and terminal state beat activation", () => {
     assert.equal(result.triggered, false);
   });
 
-  it("a plan past its candle validity expires instead of activating", () => {
+  it("a stored candle-count budget no longer cuts the plan off — the condition still governs", () => {
+    // `validityCandles` is still accepted/persisted on the record, but it no
+    // longer terminates a plan (operator doctrine: no expiry deadline on the
+    // trade). A condition that qualifies on a LATER candle still activates.
     const result = evaluateRecommendation({
       recommendation: rec({ activationRule: CLOSE_ABOVE_100, validityCandles: 1 }),
       candles: [
         candle(1, 99.8, 99.9, 99.5, 99.6), // condition not met
-        candle(2, 99.6, 101, 99.9, 100.6), // would qualify, but the budget is spent
+        candle(2, 99.6, 101, 99.9, 100.6), // now qualifies, and the entry is touched
       ],
       now: T + 2 * MIN,
     });
-    assert.equal(result.status, "expired");
-    assert.equal(result.triggered, false);
+    assert.equal(result.triggered, true);
   });
 
   it("a terminal record is never re-activated", () => {
