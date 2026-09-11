@@ -2911,7 +2911,21 @@ async function trackStoredRecommendation(input: {
   }
 
   const evaluated = evaluateRecommendationStatus({ recommendation: rec, market });
-  await updateActiveRecommendationStatus(rec.id, evaluated.status, evaluated.reason);
+  try {
+    await updateActiveRecommendationStatus(rec.id, evaluated.status, evaluated.reason);
+  } catch (error) {
+    // This session's cached copy can legitimately race the background sweep
+    // (a separate process) that already moved the canonical record on: the
+    // 2026-09-10 incident crashed the whole turn here because the DB was
+    // already terminal and a stale in-session verdict tried to re-write it.
+    // The read below still answers from the fresh evaluation either way —
+    // only the WRITE-BACK is best-effort.
+    log.warn("agent.recommendation_status.write_back_failed", {
+      recommendationId: rec.id,
+      status: evaluated.status,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   // Same market, same moment, same verdict on the CARD: run the canonical
   // rule-aware tracker for this plan too, so "follow the recommendation" cannot answer one
   // thing in prose while the tracked card waits for the next cron sweep to

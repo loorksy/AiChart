@@ -224,24 +224,18 @@ export async function getActiveRecommendation(
     }
   }
   if (!rec) return null;
-  if (rec.expiresAt && Date.now() > rec.expiresAt && !isTerminal(rec.status)) {
-    // Soft-expire must reach the DB too — otherwise the panel dies in memory
-    // while the tracker still shows an active plan.
-    await rememberActiveRecommendation(rec);
-    try {
-      await updateActiveRecommendationStatus(
-        rec.id,
-        "expired",
-        "validity window elapsed",
-      );
-    } catch {
-      await rememberActiveRecommendation({ ...rec, status: "expired" });
-    }
-    return (store.get(rec.id) as ActiveRecommendation | undefined) ?? {
-      ...rec,
-      status: "expired",
-    };
-  }
+  // No clock-driven soft-expire (operator doctrine: no expiry deadline on
+  // the trade). This block used to force ANY
+  // non-terminal cached plan to "expired" the moment `expiresAt` elapsed,
+  // with no regard for whether it was a live, in-profit position — which is
+  // exactly the 2026-09-10 incident: a plan the WORKER sweep had already
+  // moved on (its own TP1 win closed it out) got a SECOND, stale-cache
+  // attempt to transition it to "expired" here, an illegal move the
+  // lifecycle state machine correctly refused, surfacing as an unhandled
+  // crash on the very next "what's the status" question. Status now comes
+  // from real price action only — the canonical evaluator this session's
+  // own follow-up already runs (`evaluateRecommendationStatus` in
+  // `trackStoredRecommendation`), never a guess made from elapsed wall time.
   return rec;
 }
 
