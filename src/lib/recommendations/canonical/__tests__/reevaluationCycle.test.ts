@@ -202,13 +202,23 @@ describe("a changed decision produces a revision through the one mechanism", () 
     assert.equal(stale.reason, "stale_revision");
   });
 
-  it("revises on a direction flip", async () => {
+  it("refuses to flip the issued side — the original plan stands", async () => {
+    // The 2026-09-11 incident: a live BUY was overwritten by a SELL revision
+    // on the same row, so the tracked list showed the opposite recommendation
+    // at the original created_at. A later sweep may look again; it may not
+    // replace the issued side.
     const id = await livePlan();
     const result = await cycle.runReevaluationCycle(trigger(), id, {
       runBrain: async () => brainResult({ direction: "sell", stopLoss: 4020, targets: [3960] }),
     });
-    assert.equal(result.verdict, "revised");
-    assert.equal(result.revision?.direction, "sell");
+    assert.equal(result.verdict, "confirmed");
+    assert.equal(result.revision, null);
+    const all = await revisions.listRevisions(userId, id);
+    assert.equal(all.length, 1);
+    assert.equal(all[0]!.direction, "buy");
+    const canonical = await repository.getCanonicalRecommendation(userId, id);
+    assert.equal(canonical?.direction, "buy");
+    assert.equal(canonical?.entry, 4000);
   });
 
   it("revises on a plan-type change alone", async () => {

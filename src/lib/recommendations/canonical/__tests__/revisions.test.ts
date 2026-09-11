@@ -193,6 +193,33 @@ describe("effective recommendation revisions", () => {
     assert.equal(check.reason, "no_effective_revision");
   });
 
+  it("refuses a revision that would flip the issued side", async () => {
+    const { applyRecommendationRevision, listRevisions, getEffectiveRevision } = await import(
+      "@/lib/recommendations/canonical/revisions"
+    );
+    const rec = await newRecommendation();
+    await assert.rejects(
+      applyRecommendationRevision({
+        userId: owner,
+        recommendationId: rec.recommendationId,
+        revision: {
+          direction: "sell",
+          entry: 4010,
+          stopLoss: 4020,
+          targets: [3960],
+          reason: "opposite side",
+          source: "market_update",
+        },
+      }),
+      /cannot be revised to sell/,
+    );
+    const effective = await getEffectiveRevision(owner, rec.recommendationId);
+    assert.equal(effective?.revisionNo, 1);
+    assert.equal(effective?.direction, "buy");
+    const all = await listRevisions(owner, rec.recommendationId);
+    assert.equal(all.length, 1);
+  });
+
   it("will not revise a finished recommendation", async () => {
     const lifecycle = await import("@/lib/recommendations/canonical");
     const { applyRecommendationRevision } = await import(

@@ -255,8 +255,12 @@ async function writeRevision(
   let revisionNo = 1;
 
   await transaction(async (db) => {
-    const rows = await db.query<{ status: string | null; effective_revision_no: number | null }>(
-      "SELECT status, effective_revision_no FROM recommendations WHERE id = ? AND user_id = ?",
+    const rows = await db.query<{
+      status: string | null;
+      effective_revision_no: number | null;
+      direction: string | null;
+    }>(
+      "SELECT status, effective_revision_no, direction FROM recommendations WHERE id = ? AND user_id = ?",
       [input.recommendationId, input.userId],
     );
     const current = rows[0];
@@ -270,6 +274,17 @@ async function writeRevision(
       throw new RecommendationLifecycleError(
         "RECOMMENDATION_ILLEGAL_TRANSITION",
         "A finished recommendation cannot be revised",
+      );
+    }
+    // The issued side is the plan. A revision may move levels, validity, or
+    // invalidate — it may not turn a live buy into a sell (or the reverse) on
+    // the same row. That overwrite is how the 2026-09-11 tracked list showed
+    // the opposite recommendation at the original created_at.
+    const issuedSide = current.direction === "sell" ? "sell" : current.direction === "buy" ? "buy" : null;
+    if (issuedSide && r.direction !== issuedSide) {
+      throw new RecommendationLifecycleError(
+        "RECOMMENDATION_ILLEGAL_TRANSITION",
+        `An issued ${issuedSide} recommendation cannot be revised to ${r.direction}`,
       );
     }
     const invalidating = r.executionState === "invalidated";

@@ -494,6 +494,39 @@ export async function runReevaluationCycle(
       const before = comparableFromRevision(effective);
       const { changed, fields } = decisionChanged(before, after);
 
+      // The issued side is the recommendation. A later sweep must not overwrite
+      // a live BUY with a SELL (or the reverse) on the same row — that is the
+      // 2026-09-11 incident: the operator was given a buy, then the tracked
+      // list showed a sell at the same created_at because revision 2 replaced
+      // the row. Opposite-side output is recorded as confirmed: the issued
+      // plan stands until its own price events, not until a background re-run
+      // invents a second plan on the first plan's id.
+      if (after.direction !== before.direction) {
+        const detail = `${rec.symbol}: re-evaluated after ${trigger.reason} — issued ${before.direction} stands; opposite side was not written. revision ${effective.revisionNo} remains.`;
+        await recordCycle({
+          trigger,
+          verdict: "confirmed",
+          evidenceHash,
+          detail,
+          evidence,
+          decisionTrace,
+        });
+        metrics.reevaluationVerdicts.inc({ verdict: "confirmed" });
+        const confirmed: CycleResult = {
+          recommendationId: trigger.recommendationId,
+          canonicalId,
+          verdict: "confirmed",
+          revision: null,
+          evidenceHash,
+          detail,
+          trigger,
+        };
+        if (deps.notifyInCycle !== false) {
+          await announceCycle(confirmed, deps.silentNotifications === true);
+        }
+        return confirmed;
+      }
+
       if (!changed) {
         const detail = `${rec.symbol}: أُعيد التقييم بعد ${trigger.reason} والقرار لم يتغيّر — النسخة ${effective.revisionNo} قائمة.`;
         await recordCycle({
