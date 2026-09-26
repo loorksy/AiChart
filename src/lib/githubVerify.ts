@@ -67,11 +67,15 @@ const USER_AGENT = "aichart-github-verify";
 const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 250;
 const RETRY_MAX_MS = 2_000;
+/** Do not re-hit GitHub after a 403/429 rate-limit (healthz/admin must not spam). */
+const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000;
 
 const RATE_LIMIT_BODY =
   /rate limit exceeded|api rate limit|secondary rate limit|authenticated requests get a higher rate limit/i;
 
 let memoryCache: GithubVerifyResult | null = null;
+let rateLimitCooldownUntilMs = 0;
+let rateLimitCooldownResult: GithubVerifyResult | null = null;
 
 const defaultCache: GithubVerifyCache = {
   get: () => memoryCache,
@@ -80,9 +84,44 @@ const defaultCache: GithubVerifyCache = {
   },
 };
 
-/** Test seam — drop the process-local last-success cache. */
+/** Test seam — drop the process-local last-success and rate-limit cooldown caches. */
 export function __resetGithubVerifyCache(): void {
   memoryCache = null;
+  rateLimitCooldownUntilMs = 0;
+  rateLimitCooldownResult = null;
+}
+
+/** Thrown/network bodies that are GitHub rate-limits, not generic failures. */
+export function isGithubRateLimitDetail(text: string): boolean {
+  return RATE_LIMIT_BODY.test(text);
+}
+
+/** Cursor/VPS healthz includes GitHub only when asked — never on the cheap probe. */
+export function shouldIncludeGithubOnHealthz(opts: {
+  searchParams?: { get(name: string): string | null };
+  env?: NodeJS.ProcessEnv;
+}): boolean {
+  if (opts.searchParams?.get("github") === "1") return true;
+  const flag = (opts.env ?? process.env).HEALTHZ_VERIFY_GITHUB?.trim();
+  return flag === "1" || flag === "true";
+}
+
+export function githubVerifyPublic(result: GithubVerifyResult): {
+  status: GithubVerifyStatus;
+  ok: boolean;
+  hardFailure: boolean;
+  authenticated: boolean;
+  message: string;
+  cached: boolean;
+} {
+  return {
+    status: result.status,
+    ok: result.ok,
+    hardFailure: result.hardFailure,
+    authenticated: result.authenticated,
+    message: result.message,
+    cached: Boolean(result.cached),
+  };
 }
 
 export function githubTokenFromEnv(
@@ -246,8 +285,28 @@ export async function verifyGithub(
         })) as typeof fetch;
 
   const headers = githubAuthHeaders(token);
+  const nowMs = opts.nowMs ?? Date.now();
+  if (
+    rateLimitCooldownResult &&
+    nowMs < rateLimitCooldownUntilMs
+  ) {
+    return skippedRateLimit(
+      locale,
+      authenticated,
+      rateLimitCooldownResult.detail ?? "rate-limited",
+      cache.get(),
+    );
+  }
+
   let lastDetail = "unknown";
   let lastStatus: number | undefined;
+
+  const rememberRateLimit = (detail: string): GithubVerifyResult => {
+    const skip = skippedRateLimit(locale, authenticated, detail, cache.get());
+    rateLimitCooldownUntilMs = nowMs + RATE_LIMIT_COOLDOWN_MS;
+    rateLimitCooldownResult = skip;
+    return skip;
+  };
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -262,7 +321,7 @@ export async function verifyGithub(
       });
 
       if (rateLimited) {
-        return skippedRateLimit(locale, authenticated, lastDetail, cache.get());
+        return rememberRateLimit(lastDetail);
       }
 
       if (res.ok) {
@@ -296,6 +355,9 @@ export async function verifyGithub(
       });
     } catch (err) {
       lastDetail = err instanceof Error ? err.message : String(err);
+      if (isGithubRateLimitDetail(lastDetail)) {
+        return rememberRateLimit(lastDetail);
+      }
       if (
         attempt < maxRetries &&
         shouldRetryGithub({ rateLimited: false, networkError: true })

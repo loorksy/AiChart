@@ -26,6 +26,49 @@ function packageScripts(): Record<string, string> {
 }
 
 
+describe("the GitHub verify gate is wired into the real Cursor/VPS path", () => {
+  it("package.json verify:github runs the CLI that calls verifyGithub()", () => {
+    const scripts = packageScripts();
+    assert.equal(scripts["verify:github"], "tsx scripts/verify-github.ts");
+    const cli = readFileSync(path.join(WEB_ROOT, "scripts", "verify-github.ts"), "utf8");
+    assert.match(cli, /verifyGithub/);
+    assert.match(cli, /isGithubRateLimitDetail/);
+    assert.match(cli, /githubVerifyExitCode/);
+  });
+
+  it("vps-pull-deploy.sh is the VPS caller and runs npm run verify:github", () => {
+    const deploy = readFileSync(
+      path.join(WEB_ROOT, "infra", "vps-pull-deploy.sh"),
+      "utf8",
+    );
+    assert.match(deploy, /npm run verify:github/);
+    assert.match(deploy, /export_github_tokens_from_env/);
+    assert.doesNotMatch(
+      deploy,
+      /curl[^\n]*api\.github\.com/,
+      "the deploy gate must not curl api.github.com unauthenticated",
+    );
+  });
+
+  it("healthz and admin diagnostics import verifyGithub instead of a raw GitHub curl", () => {
+    const healthz = readFileSync(
+      path.join(WEB_ROOT, "src", "app", "api", "healthz", "route.ts"),
+      "utf8",
+    );
+    const diagnostics = readFileSync(
+      path.join(WEB_ROOT, "src", "app", "api", "admin", "diagnostics", "route.ts"),
+      "utf8",
+    );
+    assert.match(healthz, /from "@\/lib\/githubVerify"/);
+    assert.match(healthz, /shouldIncludeGithubOnHealthz/);
+    assert.match(healthz, /verifyGithub/);
+    assert.match(diagnostics, /from "@\/lib\/githubVerify"/);
+    assert.match(diagnostics, /verifyGithub/);
+    assert.doesNotMatch(healthz, /api\.github\.com/);
+    assert.doesNotMatch(diagnostics, /api\.github\.com/);
+  });
+});
+
 describe("the Redis release validator refuses the deployed instance", () => {
   const script = path.join(WEB_ROOT, "scripts", "validate-redis-release.ts");
 

@@ -7,7 +7,10 @@ import {
   githubAuthHeaders,
   githubTokenFromEnv,
   githubVerifyExitCode,
+  githubVerifyPublic,
+  isGithubRateLimitDetail,
   isGithubRateLimitResponse,
+  shouldIncludeGithubOnHealthz,
   shouldRetryGithub,
   verifyGithub,
   type GithubVerifyCache,
@@ -273,5 +276,89 @@ describe("verifyGithub", () => {
     assert.equal(limited.hardFailure, false);
     assert.equal(limited.message, t("ar", "github.verify.rate_limit_cached"));
     assert.equal(githubVerifyExitCode(limited), 0);
+  });
+
+  it("soft-skips a thrown rate-limit body instead of the Arabic hard-fail prefix", async () => {
+    let calls = 0;
+    const result = await verifyGithub({
+      env: {},
+      locale: "ar",
+      fetchImpl: (async () => {
+        calls += 1;
+        throw new Error(
+          "API rate limit exceeded for 72.60.83.140. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)",
+        );
+      }) as typeof fetch,
+      sleep: async () => {
+        throw new Error("rate-limit must not sleep/retry");
+      },
+    });
+    assert.equal(calls, 1, "thrown rate-limit 403 must not retry-spam");
+    assert.equal(result.status, "skipped_rate_limit");
+    assert.equal(result.hardFailure, false);
+    assert.equal(githubVerifyExitCode(result), 0);
+    assert.doesNotMatch(result.message, /^تعذر التحقق من GitHub:/);
+    assert.equal(isGithubRateLimitDetail(result.detail ?? ""), true);
+  });
+
+  it("reuses the cooldown instead of re-hitting GitHub after a rate-limit", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return jsonResponse(403, RATE_LIMIT_BODY, { "x-ratelimit-remaining": "0" });
+    }) as typeof fetch;
+    const first = await verifyGithub({ env: {}, locale: "ar", fetchImpl });
+    const second = await verifyGithub({
+      env: {},
+      locale: "ar",
+      fetchImpl,
+      nowMs: Date.now() + 1_000,
+    });
+    assert.equal(first.status, "skipped_rate_limit");
+    assert.equal(second.status, "skipped_rate_limit");
+    assert.equal(calls, 1, "cooldown must not retry-spam 403");
+  });
+});
+
+describe("healthz / public gate helpers", () => {
+  it("does not put GitHub on the cheap healthz probe", () => {
+    assert.equal(
+      shouldIncludeGithubOnHealthz({
+        searchParams: new URLSearchParams(),
+        env: {},
+      }),
+      false,
+    );
+  });
+
+  it("includes GitHub when ?github=1 or HEALTHZ_VERIFY_GITHUB is set", () => {
+    assert.equal(
+      shouldIncludeGithubOnHealthz({
+        searchParams: new URLSearchParams("github=1"),
+        env: {},
+      }),
+      true,
+    );
+    assert.equal(
+      shouldIncludeGithubOnHealthz({
+        searchParams: new URLSearchParams(),
+        env: { HEALTHZ_VERIFY_GITHUB: "1" },
+      }),
+      true,
+    );
+  });
+
+  it("public payload never invents a hard fail for a rate-limit skip", () => {
+    const pub = githubVerifyPublic({
+      ok: true,
+      hardFailure: false,
+      status: "skipped_rate_limit",
+      authenticated: false,
+      message: t("ar", "github.verify.rate_limit_skip"),
+      detail: "API rate limit exceeded for 72.60.83.140.",
+    });
+    assert.equal(pub.hardFailure, false);
+    assert.equal(pub.ok, true);
+    assert.doesNotMatch(pub.message, /^تعذر التحقق من GitHub:/);
   });
 });

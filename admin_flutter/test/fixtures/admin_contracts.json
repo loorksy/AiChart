@@ -51,6 +51,14 @@
     "counters": {
       "completeContracts": 41,
       "invalidLevelRecommendations": 0
+    },
+    "github": {
+      "status": "ok",
+      "ok": true,
+      "hardFailure": false,
+      "authenticated": true,
+      "message": "تم التحقق من GitHub.",
+      "cached": false
     }
   },
   "admin/health": {

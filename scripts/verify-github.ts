@@ -11,6 +11,7 @@
 import { t } from "../src/lib/i18n";
 import {
   githubVerifyExitCode,
+  isGithubRateLimitDetail,
   verifyGithub,
 } from "../src/lib/githubVerify";
 
@@ -21,7 +22,7 @@ async function main(): Promise<void> {
   });
 
   console.log(result.message);
-  if (result.detail && result.status !== "ok") {
+  if (result.detail && result.status === "failed") {
     console.log(result.detail);
   }
   process.exit(githubVerifyExitCode(result));
@@ -29,6 +30,12 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   const detail = err instanceof Error ? err.message : String(err);
+  // A thrown GitHub 403 body must stay a soft skip — this is the CLI the
+  // Cursor/VPS hook actually runs after "Cursor run FINISHED".
+  if (isGithubRateLimitDetail(detail)) {
+    console.log(t("ar", "github.verify.rate_limit_skip"));
+    process.exit(0);
+  }
   console.error(t("ar", "github.verify.failed", { detail }));
   process.exit(1);
 });

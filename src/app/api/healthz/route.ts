@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { releaseIdentity } from "@/lib/version";
+import {
+  githubVerifyPublic,
+  shouldIncludeGithubOnHealthz,
+  verifyGithub,
+} from "@/lib/githubVerify";
+import { gitCommit, releaseIdentity } from "@/lib/version";
 
 export const dynamic = "force-dynamic";
 
@@ -13,28 +18,52 @@ export const dynamic = "force-dynamic";
  * live off the user's own account now, so there is no warehouse tail-age to
  * report. Deep mode touches the DB, so keep orchestrator probes on the
  * default shallow mode.
+ *
+ * `?github=1` (or HEALTHZ_VERIFY_GITHUB=1) runs verifyGithub(). A GitHub
+ * rate-limit 403 is a soft skip — this probe stays 200. A real GitHub
+ * failure (404 / permission) is the only hard fail.
  */
 export async function GET(req: NextRequest) {
   const base = {
-    status: "ok",
+    status: "ok" as const,
     ts: new Date().toISOString(),
     ...releaseIdentity(),
   };
 
-  if (req.nextUrl.searchParams.get("deep") !== "1") {
+  const githubWanted = shouldIncludeGithubOnHealthz({
+    searchParams: req.nextUrl.searchParams,
+  });
+  const deep = req.nextUrl.searchParams.get("deep") === "1";
+
+  if (!deep && !githubWanted) {
     return NextResponse.json(base);
   }
 
-  try {
-    const { internalSchedulerStatus } = await import("@/lib/scheduler/internalScheduler");
-    return NextResponse.json({
-      ...base,
-      scheduler: internalSchedulerStatus(),
-    });
-  } catch (error) {
-    return NextResponse.json({
-      ...base,
-      deepError: error instanceof Error ? error.message : String(error),
-    });
+  const extra: Record<string, unknown> = {};
+
+  if (deep) {
+    try {
+      const { internalSchedulerStatus } = await import("@/lib/scheduler/internalScheduler");
+      extra.scheduler = internalSchedulerStatus();
+    } catch (error) {
+      extra.deepError = error instanceof Error ? error.message : String(error);
+    }
   }
+
+  if (githubWanted) {
+    const sha = gitCommit();
+    const result = await verifyGithub({
+      locale: "ar",
+      sha: sha !== "unknown" ? sha : undefined,
+    });
+    extra.github = githubVerifyPublic(result);
+    if (result.hardFailure) {
+      return NextResponse.json(
+        { ...base, status: "error", ...extra },
+        { status: 503 },
+      );
+    }
+  }
+
+  return NextResponse.json({ ...base, ...extra });
 }
