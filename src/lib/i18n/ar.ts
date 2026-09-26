@@ -466,6 +466,12 @@ export const ar: Record<TranslationKey, string> = {
     "لم يكتمل التحليل: تغطية {stages} التاريخية غير كافية بعد. ما جُمع من أدلة قبل ذلك معروض أدناه، ولم يُفترض شيء مكانه.",
   "fault.auth": "لا يمكن الاتصال بمزوّد الخدمة بسبب مشكلة صلاحيات — تحتاج مراجعة الإعداد.",
   "fault.rate_limit": "مزوّد الخدمة مشغول حالياً — أعد المحاولة بعد قليل.",
+  "github.verify.ok": "تم التحقق من GitHub.",
+  "github.verify.rate_limit_skip":
+    "تُخطّي التحقق من GitHub مؤقتاً بسبب حد الطلبات غير المصادق عليها. أضف GITHUB_TOKEN للتحقق الحي.",
+  "github.verify.rate_limit_cached":
+    "حد طلبات GitHub ممتلئ — استُخدمت آخر نتيجة تحقق ناجحة.",
+  "github.verify.failed": "تعذر التحقق من GitHub: {detail}",
   // Provider-named variants: the operator must know WHICH account failed —
   // an unnamed "the AI provider" sent them to top up the wrong one.
   "fault.named.provider_billing":

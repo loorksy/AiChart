@@ -475,6 +475,12 @@ export const en = {
   "fault.auth":
     "Cannot reach the service provider due to an authorization problem — the configuration needs review.",
   "fault.rate_limit": "The service provider is busy right now — try again shortly.",
+  "github.verify.ok": "GitHub verification succeeded.",
+  "github.verify.rate_limit_skip":
+    "GitHub verification skipped because the unauthenticated rate limit was hit. Set GITHUB_TOKEN for live checks.",
+  "github.verify.rate_limit_cached":
+    "GitHub is rate-limited — using the last successful verification.",
+  "github.verify.failed": "GitHub verification failed: {detail}",
   // Provider-named variants: the operator must know WHICH account failed —
   // an unnamed "the AI provider" sent them to top up the wrong one.
   "fault.named.provider_billing":
