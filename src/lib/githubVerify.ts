@@ -219,7 +219,7 @@ function skippedRateLimit(
   locale: AppLocale,
   authenticated: boolean,
   detail: string,
-  cached?: GithubVerifyResult,
+  cached?: GithubVerifyResult | null,
 ): GithubVerifyResult {
   if (cached && cached.status === "ok") {
     return {
