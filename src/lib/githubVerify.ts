@@ -255,6 +255,12 @@ function backoffMs(attempt: number): number {
   return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt);
 }
 
+function requestInfoUrl(requestUrl: RequestInfo | URL): string {
+  if (typeof requestUrl === "string") return requestUrl;
+  if (requestUrl instanceof URL) return requestUrl.href;
+  return requestUrl.url;
+}
+
 export async function verifyGithub(
   opts: VerifyGithubOptions = {},
 ): Promise<GithubVerifyResult> {
@@ -279,7 +285,7 @@ export async function verifyGithub(
   const doFetch: typeof fetch = opts.fetchImpl
     ? opts.fetchImpl
     : ((requestUrl, init) =>
-        fetchWithTimeout(requestUrl, init ?? {}, {
+        fetchWithTimeout(requestInfoUrl(requestUrl), init ?? {}, {
           timeoutMs: 15_000,
           label: "GitHub",
         })) as typeof fetch;
