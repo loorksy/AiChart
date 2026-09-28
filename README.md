@@ -26,6 +26,14 @@ Also reachable from Telegram, with the same brain behind both.
 Next.js (app + API routes) · `mcp/` MCP server (read-and-recommend tools) ·
 `research-service/` Python backtester · OANDA for all market data.
 
+## VPS
+
+Fresh install on a server that already runs other projects:
+[`docs/vps-install.md`](docs/vps-install.md) and `bash infra/vps-fresh-install.sh`.
+That script is what keeps chart capture wired (`CHART_HOST_URL`,
+`AICHART_API_URL`, and the `chart-host` container). Do not use
+`infra/deploy-vps.sh` — it targets the old `web/` layout.
+
 ## Running it
 
 ```bash
