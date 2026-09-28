@@ -20,6 +20,26 @@ ECOSYSTEM="$INSTALL_DIR/infra/pm2.ecosystem.config.cjs"
 
 log() { echo "[vps-pull] $*"; }
 
+# Pull only the GitHub-verify secrets from .env — do not source the whole file.
+export_github_tokens_from_env() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 0
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      GITHUB_TOKEN=*|GH_TOKEN=*|GITHUB_DEPLOY_TOKEN=*|GIT_COMMIT=*|GITHUB_REPOSITORY=*|GITHUB_OWNER=*|GITHUB_REPO=*|GITHUB_API_URL=*)
+        key="${line%%=*}"
+        value="${line#*=}"
+        value="${value%\"}"
+        value="${value#\"}"
+        value="${value%\'}"
+        value="${value#\'}"
+        export "$key=$value"
+        ;;
+    esac
+  done < "$env_file"
+}
+
 cd "$INSTALL_DIR"
 log "Fetching and pulling $BRANCH..."
 git fetch origin
@@ -29,6 +49,15 @@ log "Now at: $(git log --oneline -1)"
 
 log "npm ci..."
 npm ci
+
+# Cursor/VPS GitHub gate. The previous helper was unused; this is the path
+# that actually runs on 72.60.83.140 after a Cursor run finishes and the
+# VPS pulls. Rate-limit 403 is a soft skip (exit 0). Real 404/permission
+# failures keep the Arabic hard-fail prefix and abort the deploy.
+export_github_tokens_from_env "$INSTALL_DIR/.env"
+log "GitHub verification..."
+npm run verify:github
+
 log "npm run build..."
 npm run build
 

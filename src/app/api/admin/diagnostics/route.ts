@@ -4,7 +4,9 @@ import { requireAdminWith } from "@/lib/adminRoles";
 import { query } from "@/lib/db";
 import { featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import { buildParityReport } from "@/lib/agent/parityLog";
+import { githubVerifyPublic, verifyGithub } from "@/lib/githubVerify";
 import { metrics } from "@/lib/metrics";
+import { gitCommit } from "@/lib/version";
 
 /**
  * One diagnostics view for the plan's dashboards (§17).
@@ -18,7 +20,8 @@ export async function GET() {
   try {
     await requireAdminWith("keys_write");
 
-    const [parity, caseRows, reevalRows] = await Promise.all([
+    const sha = gitCommit();
+    const [parity, caseRows, reevalRows, github] = await Promise.all([
       buildParityReport(50),
       query<{ state: string; count: number | string }>(
         `SELECT CASE WHEN outcome IS NULL THEN 'pending' ELSE 'resolved' END AS state,
@@ -29,6 +32,10 @@ export async function GET() {
         `SELECT outcome, COUNT(*) AS count
            FROM recommendation_reevaluations GROUP BY outcome`,
       ).catch(() => []),
+      verifyGithub({
+        locale: "ar",
+        sha: sha !== "unknown" ? sha : undefined,
+      }),
     ]);
 
     // Counters are read back from the Prometheus registry, so this endpoint
@@ -81,6 +88,7 @@ export async function GET() {
         ),
       },
       featureFlags: featureFlagSnapshot(),
+      github: githubVerifyPublic(github),
     });
   } catch (err) {
     return handleError(err);

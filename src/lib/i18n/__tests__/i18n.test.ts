@@ -77,6 +77,13 @@ describe("i18n core", () => {
     assert.equal(t("en", "this.key.does.not.exist"), "this.key.does.not.exist");
   });
 
+  it("GitHub verification copy is bilingual and the Arabic hard-fail keeps the known prefix", () => {
+    assert.equal(t("ar", "github.verify.failed", { detail: "x" }), "تعذر التحقق من GitHub: x");
+    assert.equal(t("en", "github.verify.failed", { detail: "x" }), "GitHub verification failed: x");
+    assert.match(t("ar", "github.verify.rate_limit_skip"), /GITHUB_TOKEN/);
+    assert.match(t("en", "github.verify.rate_limit_skip"), /GITHUB_TOKEN/);
+  });
+
   it("interpolates {name}", () => {
     assert.equal(t("en", "welcome.title", { name: "Sam" }), "Welcome, Sam 👋");
   });
