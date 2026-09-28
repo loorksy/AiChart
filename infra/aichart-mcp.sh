@@ -61,7 +61,8 @@ if (( needs_build )); then
   # node_modules can outlive dist; only reinstall when it is actually absent or
   # the lockfile moved, so a routine source change does not pay for npm ci.
   if [[ ! -d node_modules ]] || [[ package-lock.json -nt node_modules ]]; then
-    npm ci
+    # NODE_ENV=production would omit typescript/@types and `tsc` then fails.
+    npm ci --include=dev
   fi
   npm run build
 fi
