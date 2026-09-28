@@ -122,6 +122,12 @@ if [[ -x "$INSTALL_DIR/infra/build-admin-android.sh" ]]; then
   fi
 fi
 
+# Env + chart-host container. A pull that restarts the worker without
+# AICHART_API_URL makes every analysis report "no chart captured" while the
+# container is healthy. This does not touch other projects.
+log "Ensuring chart-host runtime..."
+bash "$INSTALL_DIR/infra/vps-ensure-runtime.sh"
+
 # pm2: restart what is running, and start from the ecosystem file otherwise.
 for app in "$APP_WEB" "$APP_WORKER" "$APP_MCP"; do
   if pm2 describe "$app" >/dev/null 2>&1; then
